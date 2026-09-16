@@ -2,6 +2,8 @@
 
 export const HOME = "/";
 export const PROJECT = "/project";
+export const SETUP = "/setup";
+export const HARDWARE = "/setup/hardware";
 export const GALLERY = "/gallery";
 export const TEAM = "/team";
 
@@ -31,6 +33,7 @@ export function isProtectedPath(pathname: string): boolean {
 export const PUBLIC_NAV = [
   { href: HOME, label: "Overview" },
   { href: PROJECT, label: "The Project" },
+  { href: SETUP, label: "Set Up" },
   { href: GALLERY, label: "Gallery" },
   { href: TEAM, label: "Team" },
 ] as const;

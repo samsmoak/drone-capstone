@@ -119,15 +119,15 @@ Legend: `[x]` done · `[ ]` not started · **⚠** blocked on something external
 81. [x] Copy-adapt `lib/supabase/{client,server,middleware}.ts`
 82. [x] Copy-adapt `.env.example` with the service-role warning
 83. [x] `app/globals.css` — tokens on `:root`, raw hex only in definitions, dark theme
-84. [ ] Google OAuth — `app/auth/callback`, middleware gating
+84. [x] Google OAuth — `app/auth/callback`, middleware gating
 85. [x] `lib/queries.ts` (`server-only` + React `cache`) and `lib/mutations.ts`
-86. [ ] Zustand store — live telemetry, socket status, manual state only
+86. [x] Zustand store — live telemetry, socket status, manual state only
 87. [x] Four async states on every surface: loading, empty, error+retry, content
-88. [ ] PWA manifest + icons
+88. [x] PWA manifest + icons
 
 ## Phase 10 — Web features
 
-89. [ ] Dashboard — latest flight, battery, zone summary
+89. [x] Dashboard — latest flight, battery, zone summary
 90. [ ] Live telemetry page via Supabase Realtime
 91. [ ] Flight path map from `lh_x`/`lh_y`
 92. [ ] Time series — selectable metrics
@@ -135,6 +135,17 @@ Legend: `[x]` done · `[ ]` not started · **⚠** blocked on something external
 94. [ ] Manual control page — nudge buttons, connects to the agent socket
 95. [ ] Run comparison across flights
 96. [ ] Zone health map with ML predictions
+
+### Added after review — the visitor-facing manual
+
+The original page list had no setup guide, which left the Owner's Manual PDF as
+the only instructions. Added:
+
+- [x] `/setup` — numbered walkthrough, live agent-status banner, and a
+      troubleshooting list written symptom-first from real bring-up failures
+- [x] `/setup/hardware` — every kit component photographed, including why most
+      sensors are invisible
+- [ ] Download buttons wired to Supabase Storage (needs Phase 12 builds)
 
 ## Phase 11 — ML
 
