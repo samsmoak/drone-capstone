@@ -1,0 +1,211 @@
+================================================================================
+CROPWATCHER — WHAT IS LEFT TO BUILD
+Handoff note. Written 2026-09-16.
+================================================================================
+
+Read CLAUDE.md first — it has the architecture, the flight invariants, and the
+deployment traps. This file is only the to-do list.
+
+Live site:  https://drone-capstone.vercel.app
+Repo:       https://github.com/samsmoak/drone-capstone  (private)
+Supabase:   fuwojlqpavvfgmqardfo
+
+
+--------------------------------------------------------------------------------
+HONEST STATUS
+--------------------------------------------------------------------------------
+
+DONE and verified:
+  - Python flight agent: flight core, preflight gates, thermal correction,
+    geofence + occupancy, missions, CSV/Supabase sinks, REST + WebSocket API,
+    manual control loop.  162 tests passing, ruff + mypy clean.
+  - Supabase: 7 tables, RLS on all of them, atomic mission claiming, applied
+    and verified on the HOSTED project.
+  - Deployment: Vercel builds from web/ and auto-deploys on push to main.
+
+NOT done:
+  - 11 of 17 web pages.  Only 6 routes exist.
+  - The Tauri desktop app.  desktop/ is an empty folder. Nothing started.
+  - No installers have ever been built.
+  - ML inference is not wired in.
+
+Roughly: backend complete, ~35% of the UI, 0% of the desktop app.
+
+Ignore any "N/100" counter in docs/ROADMAP.md — it over-reports, because one
+roadmap line can mean a whole page. Trust this file.
+
+
+--------------------------------------------------------------------------------
+BEFORE YOU START — THREE THINGS ONLY THE OWNER CAN DO
+--------------------------------------------------------------------------------
+
+1. ROTATE THE SUPABASE SECRET KEY.
+   sb_secret_-uaeQv8... was pasted into a chat transcript. It bypasses every
+   RLS policy. Dashboard -> Settings -> API Keys.
+   Nothing in this repo uses it, so rotating breaks nothing.
+   Rotate the database password too, for the same reason.
+
+2. GOOGLE SIGN-IN NEEDS A REDIRECT URL.
+   Supabase -> Authentication -> URL Configuration -> Redirect URLs, add:
+     https://drone-capstone.vercel.app/auth/callback
+   Email/password already works without this.
+
+3. TWO JUNK VERCEL PROJECTS EXIST: "agent" and "agent-kpqe".
+   Auto-created by a failed build that detected the Python agent. Nothing uses
+   them. Delete when convenient.
+
+
+--------------------------------------------------------------------------------
+TASK 1 — OPERATOR PAGES  (biggest chunk, do first)
+--------------------------------------------------------------------------------
+
+All under web/app/app/. The layout, nav, auth gate and design tokens already
+exist — these are pages, not foundations.
+
+  /app/live            Live telemetry via Supabase Realtime.
+                       Subscribe to the telemetry table; push rows into the
+                       Zustand store. Zustand holds ONLY live ephemeral state.
+
+  /app/flights         List of flights. lib/queries.ts::getRecentFlights.
+
+  /app/flights/[id]    One flight: time-series charts, flight path, raw rows.
+                       getFlightTelemetry is already written and capped at
+                       5000 rows.
+
+  /app/compare         Several flights on one chart. ONE Y-AXIS ONLY — never a
+                       dual-axis chart. Two measures of different scale means
+                       two charts.
+
+  /app/zones           Zone grid coloured by health. Plain SVG rectangles, no
+                       chart library.
+
+  /app/plan            Mission planner. Click zones -> waypoints -> validate ->
+                       queueMission() in lib/mutations.ts (already written).
+
+  /app/manual          Manual control. Connects to the agent over WebSocket at
+                       NEXT_PUBLIC_AGENT_URL. Keyboard map is in
+                       docs/ROADMAP.md under "Keyboard control".
+                       THE BROWSER SENDS HELD-KEY STATE, NOT ONE PACKET PER
+                       KEYPRESS. The agent already generates the 50 Hz stream
+                       and lands itself if the heartbeat stops. Do not
+                       reimplement that in the browser.
+
+  /app/settings        Geofence bounds, drone URI, agent reachability.
+
+Rules that already apply (see CLAUDE.md):
+  - Every async surface needs all four states. components/ui/states.tsx has
+    them. A failed fetch must SAY so — never render nothing.
+  - Read data through lib/queries.ts, write through lib/mutations.ts. Never
+    call createClient() inside a component.
+  - Chart colours come from the validated tokens in app/globals.css
+    (--series-1..4). Do not invent colours. Light-mode aqua and yellow are
+    under 3:1 contrast, so charts using them need direct labels or a table view.
+
+
+--------------------------------------------------------------------------------
+TASK 2 — PUBLIC PAGES
+--------------------------------------------------------------------------------
+
+  /project             The capstone report. Copy-adapt doctor-portfolio's
+                       BlockNote setup (lib/blocknote/, ServerBlockNoteEditor).
+  /project/[slug]      Deep-dives: hardware, flight control, correction, ML.
+  /gallery             Kit photos are already in web/public/hardware/.
+  /team                The five members.
+  /admin               BlockNote CMS for the above. Gate on role='operator'.
+
+Already built: /, /setup, /setup/hardware, /login, /auth/callback, /app.
+
+
+--------------------------------------------------------------------------------
+TASK 3 — TAURI DESKTOP APP  (highest risk — consider doing this FIRST)
+--------------------------------------------------------------------------------
+
+Rust 1.98.1 and create-tauri-app 4.7.4 are installed. desktop/ is empty.
+
+  a. Scaffold Tauri v2 in desktop/.
+  b. One window, three panels: status bar, manual control, log.
+     Not a second copy of the web app.
+  c. PyInstaller the agent into a single binary.
+  d. Bundle it as a Tauri sidecar (externalBin in tauri.conf.json).
+  e. GitHub Actions to build .dmg + .exe on tag — you CANNOT cross-compile
+     Tauri from macOS, so CI must build each on its own runner.
+  f. Upload installers to a public Supabase Storage bucket; wire the download
+     buttons on /setup (currently placeholders saying "coming soon").
+
+WHY DO THIS FIRST: bundling a PyInstaller binary that talks to USB inside a
+Mac app has never been tested here. It is the most likely thing to fail, and
+it is currently last in the plan. Prove it with a trivial build before
+investing more time in pages.
+
+macOS will warn "unidentified developer" on first launch. Either users
+right-click -> Open once, or pay Apple $99/yr to sign. /setup already explains
+this.
+
+
+--------------------------------------------------------------------------------
+TASK 4 — ML
+--------------------------------------------------------------------------------
+
+  - Port feature extraction from the old notebooks into
+    backend/agent/cropwatcher/telemetry/features.py
+  - Load best_lnn_stable.pt (in the OLD repo, ~/Desktop/drone project/code/),
+    run inference after correction, write rows to the predictions table.
+  - Inference runs in the agent, never in the browser. The model is a .pt file.
+
+
+--------------------------------------------------------------------------------
+NEVER VERIFIED ON HARDWARE — DO THIS IN THE LAB
+--------------------------------------------------------------------------------
+
+Everything drone-facing has only ever run against a fake. With the Crazyradio
+plugged in and a charged battery:
+
+    cd backend/agent && source .venv/bin/activate
+    cropwatcher check
+    cropwatcher hover --height 0.3 --secs 30 --ambient 74F
+
+The second should reproduce the 25-second held hover from bring-up and write a
+CSV into organized_flights/.
+
+Then run the hardware test suite:
+
+    pytest -m hardware
+
+
+--------------------------------------------------------------------------------
+GATES — RUN BEFORE EVERY COMMIT
+--------------------------------------------------------------------------------
+
+    cd backend/agent && source .venv/bin/activate
+    ruff check . && mypy cropwatcher && pytest
+
+    cd web
+    pnpm exec tsc --noEmit && pnpm lint && pnpm build
+
+Report pass/fail/skipped honestly. Do not claim done on an unrun gate.
+
+
+--------------------------------------------------------------------------------
+TRAPS THAT ALREADY COST TIME
+--------------------------------------------------------------------------------
+
+- Vercel Root Directory MUST stay "web". Unset, Vercel finds
+  backend/agent/pyproject.toml, detects FastAPI, and tries to deploy the flight
+  agent. Never give it a FastAPI entrypoint — the agent needs a USB radio and
+  cannot run in the cloud.
+
+- Hosted Supabase grants authenticated ALL privileges on public by default;
+  local does not. Migration 0004 revokes and re-grants explicitly. If you add a
+  table, check its grants on the HOSTED project, not just locally.
+
+- A security test that only checks for denial proves nothing. Confirm the
+  permitted path works too, or you cannot tell a policy from a missing grant.
+
+- Seeding auth.users requires empty strings, not NULL, in the token columns.
+  NULL makes every sign-in fail with a 500 that says "Database error querying
+  schema" and looks nothing like a seeding problem.
+
+- Do not run `supabase db reset` against the hosted project. It drops
+  everything. Use `db push`.
+
+================================================================================

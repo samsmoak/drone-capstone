@@ -1,5 +1,8 @@
 # CLAUDE.md
 
+> **Picking this up fresh? Read `NEXT-STEPS.txt` at the repo root** — it lists
+> exactly what is built, what is not, and what to do next.
+
 **drone-capstone** — CropWatcher: an indoor greenhouse crop-health monitoring system built
 around a Crazyflie 2.1. The drone flies autonomous scouting missions, logs position-tagged
 environmental data, and surfaces it as zone-level crop-health estimates in a web dashboard.

@@ -40,3 +40,5 @@ mission_paths/
 # ── Supabase local ────────────────────────────────────────
 backend/supabase/.branches/
 backend/supabase/.temp/
+.vercel
+.env*
