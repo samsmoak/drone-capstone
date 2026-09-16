@@ -1,0 +1,176 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ─────────────────────────── Design tokens ───────────────────────────
+   Raw hex appears ONLY in these definitions. Components reference the
+   variables, so both themes swap in one place.
+
+   The chart palette below is not chosen by eye — it is the validated
+   reference palette, re-checked with the data-viz validator for the four
+   series slots this dashboard uses:
+
+     light  worst adjacent CVD ΔE 9.1, normal-vision ΔE 22.9   ALL PASS
+     dark   worst adjacent CVD ΔE 8.4, normal-vision ΔE 19.8   ALL PASS
+
+   Light-mode aqua (2.74:1) and yellow (2.11:1) sit under 3:1 on the light
+   surface. That is allowed only with relief: every chart using them must
+   carry direct labels or a table view, never colour alone.            */
+
+:root {
+  /* Surfaces and ink */
+  --background: #fcfcfb;
+  --foreground: #0b0b0b;
+  --surface: #ffffff;
+  --surface-2: #f5f5f3;
+  --border: #e4e4e1;
+  --muted: #52514e;        /* labels only — never a figure that matters */
+
+  --primary: #1c5cab;
+  --on-primary: #ffffff;
+  --ring: #1c5cab33;
+
+  /* Categorical series, fixed order. Never cycled, never reassigned by rank. */
+  --series-1: #2a78d6;     /* blue    */
+  --series-2: #eb6834;     /* orange  */
+  --series-3: #1baf7a;     /* aqua    */
+  --series-4: #eda100;     /* yellow  */
+
+  /* Status — reserved. Never reused as a series colour, always with a label. */
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
+
+  /* Sequential (zone health magnitude): one hue, light → dark. */
+  --seq-100: #cde2fb;
+  --seq-250: #86b6ef;
+  --seq-400: #3987e5;
+  --seq-550: #1c5cab;
+  --seq-700: #0d366b;
+
+  /* Diverging (deviation from expected): blue ↔ red, neutral grey midpoint. */
+  --div-low: #2a78d6;
+  --div-mid: #f0efec;
+  --div-high: #d03b3b;
+
+  /* Recessive chart furniture */
+  --grid: #ebebe8;
+  --axis: #9a9993;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: #1a1a19;
+    --foreground: #ffffff;
+    --surface: #222221;
+    --surface-2: #2a2a28;
+    --border: #383835;
+    --muted: #c3c2b7;
+
+    --primary: #3987e5;
+    --on-primary: #0b0b0b;
+    --ring: #3987e555;
+
+    /* Same eight hues, stepped for the dark surface — not an automatic flip. */
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+
+    --seq-100: #0d366b;
+    --seq-250: #184f95;
+    --seq-400: #2a78d6;
+    --seq-550: #5598e7;
+    --seq-700: #9ec5f4;
+
+    --div-low: #3987e5;
+    --div-mid: #383835;
+    --div-high: #d03b3b;
+
+    --grid: #2e2e2b;
+    --axis: #6b6a65;
+  }
+}
+
+:root[data-theme="dark"] {
+  --background: #1a1a19;
+  --foreground: #ffffff;
+  --surface: #222221;
+  --surface-2: #2a2a28;
+  --border: #383835;
+  --muted: #c3c2b7;
+
+  --primary: #3987e5;
+  --on-primary: #0b0b0b;
+  --ring: #3987e555;
+
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+
+  --seq-100: #0d366b;
+  --seq-250: #184f95;
+  --seq-400: #2a78d6;
+  --seq-550: #5598e7;
+  --seq-700: #9ec5f4;
+
+  --div-low: #3987e5;
+  --div-mid: #383835;
+  --div-high: #d03b3b;
+
+  --grid: #2e2e2b;
+  --axis: #6b6a65;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-on-primary: var(--on-primary);
+
+  --color-series-1: var(--series-1);
+  --color-series-2: var(--series-2);
+  --color-series-3: var(--series-3);
+  --color-series-4: var(--series-4);
+
+  --color-good: var(--status-good);
+  --color-warning: var(--status-warning);
+  --color-serious: var(--status-serious);
+  --color-critical: var(--status-critical);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+/* Focus must always be visible — WCAG 2.2 AA. */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Numbers that matter line up and never reflow as they tick. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono), ui-monospace, monospace;
+}

@@ -88,7 +88,7 @@ Legend: `[x]` done · `[ ]` not started · **⚠** blocked on something external
 59. [x] `claim_next_mission()` RPC — atomic, avoids two agents taking one job
 60. [x] Realtime enabled on `telemetry` and `missions`
 61. [x] `seed.sql` — one greenhouse, a zone grid, a demo flight
-62. [ ] Generate `types/database.ts` from the schema
+62. [x] Generate `types/database.ts` from the schema
 
 ## Phase 7 — Agent ↔ Supabase  ✅
 
@@ -115,14 +115,14 @@ Legend: `[x]` done · `[ ]` not started · **⚠** blocked on something external
 
 ## Phase 9 — Web foundation
 
-80. [ ] `pnpm create next-app` — Next 16, React 19, TS strict, Tailwind v4
-81. [ ] Copy-adapt `lib/supabase/{client,server,middleware}.ts`
-82. [ ] Copy-adapt `.env.example` with the service-role warning
-83. [ ] `app/globals.css` — tokens on `:root`, raw hex only in definitions, dark theme
+80. [x] `pnpm create next-app` — Next 16, React 19, TS strict, Tailwind v4
+81. [x] Copy-adapt `lib/supabase/{client,server,middleware}.ts`
+82. [x] Copy-adapt `.env.example` with the service-role warning
+83. [x] `app/globals.css` — tokens on `:root`, raw hex only in definitions, dark theme
 84. [ ] Google OAuth — `app/auth/callback`, middleware gating
-85. [ ] `lib/queries.ts` (`server-only` + React `cache`) and `lib/mutations.ts`
+85. [x] `lib/queries.ts` (`server-only` + React `cache`) and `lib/mutations.ts`
 86. [ ] Zustand store — live telemetry, socket status, manual state only
-87. [ ] Four async states on every surface: loading, empty, error+retry, content
+87. [x] Four async states on every surface: loading, empty, error+retry, content
 88. [ ] PWA manifest + icons
 
 ## Phase 10 — Web features
