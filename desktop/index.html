@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CropWatcher</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+
+  <body>
+    <!-- Panel 1 — status. What the drone and the agent are doing right now. -->
+    <header class="status" aria-label="Status">
+      <div class="status-items">
+        <div class="status-item">
+          <span class="status-label">Agent</span>
+          <span class="status-value" id="agent-state" role="status" aria-live="polite">
+            starting…
+          </span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">Drone</span>
+          <span class="status-value" id="drone-state" role="status" aria-live="polite">
+            checking…
+          </span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">Control</span>
+          <span class="status-value tabular" id="control-state">idle</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">Thrust</span>
+          <span class="status-value tabular" id="thrust-value">0</span>
+        </div>
+      </div>
+
+      <!-- Always reachable, never nested in a panel that can be disabled. -->
+      <button type="button" id="panic" class="panic">
+        Cut motors
+        <kbd>P</kbd>
+      </button>
+    </header>
+
+    <main>
+      <!-- Panel 2 — manual control. -->
+      <section class="panel" aria-labelledby="manual-heading">
+        <div class="panel-head">
+          <h2 id="manual-heading">Manual control</h2>
+          <button type="button" id="connect" class="primary">Take control</button>
+        </div>
+
+        <p class="note" id="manual-note">
+          Not connected. Take control to fly, then hold the keys below — the drone
+          descends whenever you are not asking it to climb.
+        </p>
+
+        <!-- Every binding is on screen. A manual-control surface whose keys are
+             not visible is a crash waiting to happen (docs/ROADMAP.md). -->
+        <dl class="keys" id="keymap">
+          <div class="key-row"><dt><kbd data-key="ArrowUp">↑</kbd><kbd data-key="ArrowDown">↓</kbd></dt><dd>Forward / back</dd></div>
+          <div class="key-row"><dt><kbd data-key="ArrowLeft">←</kbd><kbd data-key="ArrowRight">→</kbd></dt><dd>Left / right</dd></div>
+          <div class="key-row"><dt><kbd data-key="KeyW">W</kbd><kbd data-key="KeyS">S</kbd></dt><dd>Up / down</dd></div>
+          <div class="key-row"><dt><kbd data-key="KeyA">A</kbd><kbd data-key="KeyD">D</kbd></dt><dd>Rotate left / right</dd></div>
+          <div class="key-row"><dt><kbd data-key="KeyQ">Q</kbd></dt><dd>Land gently and disarm</dd></div>
+          <div class="key-row danger"><dt><kbd data-key="KeyP">P</kbd></dt><dd>Cut motors immediately</dd></div>
+        </dl>
+      </section>
+
+      <!-- Panel 3 — log. The only account of what the drone did. -->
+      <section class="panel log-panel" aria-labelledby="log-heading">
+        <div class="panel-head">
+          <h2 id="log-heading">Agent log</h2>
+          <button type="button" id="clear-log" class="quiet">Clear</button>
+        </div>
+        <div class="log" id="log" role="log" aria-live="polite" aria-label="Agent log">
+          <p class="log-empty" id="log-empty">Waiting for the agent to start…</p>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

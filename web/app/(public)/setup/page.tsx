@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AgentStatus } from "@/components/ui/agent-status";
+import { DownloadButtons } from "@/components/ui/download-buttons";
 import { HARDWARE } from "@/lib/routes";
 
 export const metadata = {
@@ -55,14 +56,7 @@ const STEPS = [
           One download. It contains everything — you will not need Python, a
           terminal, or any commands.
         </p>
-        <div className="mt-4 flex flex-wrap gap-3">
-          <span className="inline-flex min-h-11 items-center rounded-lg border border-[var(--border)] px-5 text-sm text-[var(--muted)]">
-            Download for macOS — coming soon
-          </span>
-          <span className="inline-flex min-h-11 items-center rounded-lg border border-[var(--border)] px-5 text-sm text-[var(--muted)]">
-            Download for Windows — coming soon
-          </span>
-        </div>
+        <DownloadButtons />
         <p className="mt-4 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-3 text-sm">
           <strong>On a Mac</strong>, the first launch will say the app is from an
           unidentified developer. That is expected. Right-click the app and choose{" "}

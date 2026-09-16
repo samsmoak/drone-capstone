@@ -5,6 +5,9 @@ __pycache__/
 venv/
 *.egg-info/
 .pytest_cache/
+# PyInstaller output — the sidecar is built, never committed.
+backend/agent/packaging/build/
+backend/agent/packaging/dist/
 .mypy_cache/
 .ruff_cache/
 

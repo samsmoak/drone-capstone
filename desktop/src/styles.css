@@ -1,0 +1,322 @@
+/* ─────────────────────────── Design tokens ───────────────────────────
+   Copied from web/app/globals.css rather than re-picked, so the desktop app
+   and the dashboard are recognisably one product. Same rule applies here:
+   raw hex ONLY in these definitions, components reference the variables.
+
+   The chart palette is not carried over — this window draws no charts. Status
+   colours are, because they mean the same thing in both places.             */
+
+:root {
+  --background: #fcfcfb;
+  --foreground: #0b0b0b;
+  --surface: #ffffff;
+  --surface-2: #f5f5f3;
+  --border: #e4e4e1;
+  --muted: #52514e; /* labels only — never a figure that matters */
+
+  --primary: #1c5cab;
+  --on-primary: #ffffff;
+
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
+
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: #1a1a19;
+    --foreground: #ffffff;
+    --surface: #222221;
+    --surface-2: #2a2a28;
+    --border: #383835;
+    --muted: #c3c2b7;
+
+    --primary: #3987e5;
+    --on-primary: #0b0b0b;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Numbers that tick must not reflow as they change. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Panel 1 — status ─────────────────────────────────────────────── */
+
+.status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.status-items {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.status-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.status-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+/* The figure is never muted — grey is for the label above it. */
+.status-value {
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+/* Status always carries a word, never colour alone. */
+.status-value[data-status="good"]::before {
+  content: "● ";
+  color: var(--status-good);
+}
+.status-value[data-status="warning"]::before {
+  content: "▲ ";
+  color: var(--status-warning);
+}
+.status-value[data-status="critical"]::before {
+  content: "■ ";
+  color: var(--status-critical);
+}
+.status-value[data-status="idle"]::before {
+  content: "○ ";
+  color: var(--muted);
+}
+
+.panic {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 2px solid var(--status-critical);
+  border-radius: 8px;
+  background: var(--status-critical);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.panic kbd {
+  border-color: rgba(255, 255, 255, 0.5);
+  color: #ffffff;
+}
+
+/* ── Layout ───────────────────────────────────────────────────────── */
+
+main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(320px, 2fr) 3fr;
+  gap: 16px;
+  padding: 16px;
+  min-height: 0;
+}
+
+@media (max-width: 800px) {
+  main {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.panel-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+button.primary {
+  min-height: 44px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 8px;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button.quiet {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+button[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.note {
+  margin: 0 0 14px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.note[data-tone="error"] {
+  color: var(--foreground);
+  border-left: 3px solid var(--status-critical);
+  padding-left: 10px;
+}
+
+/* ── Panel 2 — key map ────────────────────────────────────────────── */
+
+.keys {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.key-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.key-row dt {
+  display: flex;
+  gap: 4px;
+  min-width: 96px;
+}
+
+.key-row dd {
+  margin: 0;
+  color: var(--muted);
+}
+
+.key-row.danger dd {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--foreground);
+}
+
+/* A held key lights up, so the operator can see what the drone is being told
+   even when the drone is across the room. */
+kbd[data-held="true"] {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+
+/* ── Panel 3 — log ────────────────────────────────────────────────── */
+
+.log-panel {
+  min-height: 0;
+}
+
+.log {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.log p {
+  margin: 0 0 2px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.log-empty {
+  color: var(--muted);
+}
+
+.log p[data-stream="stderr"] {
+  color: var(--foreground);
+  border-left: 3px solid var(--status-critical);
+  padding-left: 8px;
+}
