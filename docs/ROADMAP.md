@@ -1,0 +1,167 @@
+# Roadmap
+
+100 stages from empty repo to demo. Tick them off as they land.
+
+Ordering is by dependency and by risk: the agent comes first because everything
+else needs its data shapes, and Tauri comes last because it needs `rustup` and
+is the only piece that can be cut without losing the capstone.
+
+Legend: `[x]` done · `[ ]` not started · **⚠** blocked on something external.
+
+---
+
+## Phase 1 — Repo skeleton  ✅
+
+1. [x] Create `drone-capstone/`, `git init`, author `samsmoaky@gmail.com`
+2. [x] `.gitignore` — venv, node_modules, Rust target, secrets, flight CSVs
+3. [x] `CLAUDE.md` — architecture, invariants, conventions, git rules
+4. [x] `docs/README.md` router
+5. [x] Move the 10 kit photos + 2 reference PDFs into `docs/hardware/`
+6. [x] First commit
+
+## Phase 2 — Flight agent core  ✅
+
+7. [x] `pyproject.toml` — cflib, FastAPI, pydantic, supabase; dev + analysis extras
+8. [x] Package layout `flight/ telemetry/ safety/ api/ sync/`
+9. [x] `flight/preflight.py` — deck check, `sys.canfly`, base stations
+10. [x] `wait_for_stable_z` — sliding window, never a fixed sleep
+11. [x] Endurance model from voltage, not linear-in-duration
+12. [x] `flight/core.py` — `connect()`, `session()`, `Flight`
+13. [x] Ground-relative altitude throughout
+14. [x] `send_notify_setpoint_stop()` in `_configure`
+15. [x] Mellinger controller selection with PID fallback
+16. [x] `_cut_motors` on every exit path
+17. [x] `telemetry/correction.py` — thermal engine, constants ported verbatim
+18. [x] Derived quantities: air density, QFF, pressure altitude
+19. [x] `telemetry/sinks.py` — `TelemetrySink` protocol, `CsvSink`, `SupabaseSink`, `FanOutSink`
+20. [x] `cli.py` — `check`, `hover`, `goto` with real arguments
+21. [x] Tests: correction engine (10), sinks (9), preflight model (10)
+22. [x] Gates green — ruff, mypy, pytest
+
+## Phase 3 — Telemetry pipeline
+
+23. [ ] `telemetry/reader.py` — `LogConfig` subscription at 10 Hz
+24. [ ] Detect barometer variable names across firmware versions
+25. [ ] `telemetry/row.py` — one typed row schema, shared by CSV and Postgres
+26. [ ] Wire correction engine into the reader
+27. [ ] Ambient temperature as a launch parameter, unit recorded in the row
+28. [ ] Tests: reader assembles a full row from fake log data
+29. [ ] Tests: unit selection round-trips through the row
+30. [ ] `cropwatcher hover` writes a real CSV
+
+## Phase 4 — Safety
+
+31. [ ] `safety/occupancy.py` — load YAML + PGM occupancy grid
+32. [ ] World coordinates → map cells
+33. [ ] Bresenham line check between two points
+34. [ ] `safety/geofence.py` — axis-aligned bounds check
+35. [ ] Reject waypoints outside bounds, with the reason
+36. [ ] Reject paths crossing blocked cells
+37. [ ] Tests: geofence accepts inside, rejects outside, rejects on the boundary
+38. [ ] Tests: Bresenham finds a wall between two clear points
+39. [ ] Wire safety checks into `flight/missions.py` before any `goto`
+
+## Phase 5 — Missions
+
+40. [ ] `flight/missions.py` — `Mission` model, ordered waypoints
+41. [ ] `hover`, `lawnmower`, `waypoint` as mission types
+42. [ ] Lawnmower generator — area, step, altitude layers → waypoints
+43. [ ] Dry-run mode: validate and print, never arm
+44. [ ] Abort handling — land on exception, on Ctrl+C, on critical voltage
+45. [ ] Mission progress events (`started`, `waypoint_reached`, `landed`, `aborted`)
+46. [ ] Tests: lawnmower covers the area with no gaps
+47. [ ] Tests: abort mid-mission still lands
+48. [ ] `cropwatcher mission --file plan.json`
+
+## Phase 6 — Supabase schema
+
+49. [ ] `supabase/config.toml`, local dev via `supabase start`
+50. [ ] `migrations/0001_init.sql` — `profiles`, `drones`
+51. [ ] `flights` table — one row per flight, status, started/ended
+52. [ ] `telemetry` table — FK to flight, indexed on `(flight_id, recorded_at)`
+53. [ ] `missions` table — the queue: `queued`/`claimed`/`running`/`done`/`failed`
+54. [ ] `predictions` table — zone health output
+55. [ ] `zones` table — greenhouse grid definition
+56. [ ] RLS on every table, deny by default
+57. [ ] Policy: authenticated users read their own org's data
+58. [ ] Policy: only the agent role may claim a mission
+59. [ ] `claim_next_mission()` RPC — atomic, avoids two agents taking one job
+60. [ ] Realtime enabled on `telemetry` and `missions`
+61. [ ] `seed.sql` — one greenhouse, a zone grid, a demo flight
+62. [ ] Generate `types/database.ts` from the schema
+
+## Phase 7 — Agent ↔ Supabase
+
+63. [ ] `sync/client.py` — Supabase client from env, fails loudly if unset
+64. [ ] `sync/poller.py` — claim → execute → report, outbound only
+65. [ ] Backoff when the queue is empty; never hammer
+66. [ ] Mark a mission failed with its reason, never leave it `claimed`
+67. [ ] Resume safely after an agent restart (stale claim reclaim)
+68. [ ] `SupabaseSink` wired into live flights
+69. [ ] Tests: poller claims exactly one mission with two agents running
+70. [ ] Tests: a failed flight marks the mission failed, not stuck
+
+## Phase 8 — Agent HTTP + WebSocket
+
+71. [ ] `api/rest.py` — FastAPI app, `/health`, `/status`, `/preflight`
+72. [ ] `POST /flight/mission`, `POST /flight/stop`
+73. [ ] `api/ws.py` — manual control socket
+74. [ ] Browser sends intent; agent generates 50 Hz setpoints itself
+75. [ ] Heartbeat — auto-land after 0.5 s of silence
+76. [ ] Bind to localhost by default; LAN only behind an explicit flag
+77. [ ] Telemetry broadcast over the same socket
+78. [ ] Tests: dropped heartbeat triggers land
+79. [ ] Tests: malformed control frame is rejected, not crashed on
+
+## Phase 9 — Web foundation
+
+80. [ ] `pnpm create next-app` — Next 16, React 19, TS strict, Tailwind v4
+81. [ ] Copy-adapt `lib/supabase/{client,server,middleware}.ts`
+82. [ ] Copy-adapt `.env.example` with the service-role warning
+83. [ ] `app/globals.css` — tokens on `:root`, raw hex only in definitions, dark theme
+84. [ ] Google OAuth — `app/auth/callback`, middleware gating
+85. [ ] `lib/queries.ts` (`server-only` + React `cache`) and `lib/mutations.ts`
+86. [ ] Zustand store — live telemetry, socket status, manual state only
+87. [ ] Four async states on every surface: loading, empty, error+retry, content
+88. [ ] PWA manifest + icons
+
+## Phase 10 — Web features
+
+89. [ ] Dashboard — latest flight, battery, zone summary
+90. [ ] Live telemetry page via Supabase Realtime
+91. [ ] Flight path map from `lh_x`/`lh_y`
+92. [ ] Time series — selectable metrics
+93. [ ] Mission planner — click zones, review, queue
+94. [ ] Manual control page — nudge buttons, connects to the agent socket
+95. [ ] Run comparison across flights
+96. [ ] Zone health map with ML predictions
+
+## Phase 11 — ML
+
+97. [ ] Port the notebook's feature extraction into `telemetry/features.py`
+98. [ ] Load `best_lnn_stable.pt`, infer after correction, write to `predictions`
+
+## Phase 12 — Desktop + ship  ⚠ needs `rustup`
+
+99. [ ] Tauri app — manual control window, agent bundled as a PyInstaller sidecar
+100. [ ] GitHub Actions — build macOS `.dmg` + Windows `.exe` on tag
+
+---
+
+## Verification gates
+
+Run before calling any phase done, and report pass/fail/skipped honestly:
+
+```bash
+cd backend/agent && source .venv/bin/activate
+ruff check . && mypy cropwatcher && pytest      # agent
+
+cd web && pnpm typecheck && pnpm lint && pnpm build   # web
+```
+
+Hardware verification needs the Crazyradio plugged in:
+
+```bash
+cropwatcher check                          # preflight only, no motors
+cropwatcher hover --height 0.3 --secs 30   # reproduce the 25 s held hover
+```

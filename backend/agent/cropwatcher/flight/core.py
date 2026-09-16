@@ -80,12 +80,18 @@ class Flight:
     """
 
     def __init__(self, scf: SyncCrazyflie, report: PreflightReport) -> None:
-        self._scf = scf
+        # Public: the telemetry reader needs the link to open its own log
+        # subscription alongside this flight's.
+        self.scf = scf
         self._cf = scf.cf
         self._hlc = scf.cf.high_level_commander
         self.report = report
         self.ground_z = report.ground_z_m
         self._airborne = False
+
+    @property
+    def airborne(self) -> bool:
+        return self._airborne
 
     # ── commands ─────────────────────────────────────────────────────────
 
@@ -112,7 +118,7 @@ class Flight:
 
     def position(self) -> tuple[float, float, float]:
         """Current position, metres, relative to the ground reference."""
-        row = preflight.sample(self._scf, [
+        row = preflight.sample(self.scf, [
             ("stateEstimate.x", "float"),
             ("stateEstimate.y", "float"),
             ("stateEstimate.z", "float"),
@@ -126,7 +132,7 @@ class Flight:
     def battery(self) -> float:
         # cflib log rows are untyped dicts, so coerce at this boundary rather
         # than letting Any leak into callers.
-        return float(preflight.sample(self._scf, [("pm.vbat", "float")], n=1)[0]["pm.vbat"])
+        return float(preflight.sample(self.scf, [("pm.vbat", "float")], n=1)[0]["pm.vbat"])
 
     def voltage_critical(self) -> bool:
         return self.battery() < preflight.CRITICAL_VBAT
@@ -164,7 +170,7 @@ def session(
             yield flight
         finally:
             try:
-                if flight._airborne:
+                if flight.airborne:
                     flight.land()
             except Exception:
                 log.exception("landing failed during cleanup")

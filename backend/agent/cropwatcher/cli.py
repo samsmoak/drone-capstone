@@ -13,10 +13,15 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from pathlib import Path
 
 from cropwatcher.flight import core
 from cropwatcher.flight.core import Waypoint
 from cropwatcher.flight.preflight import PreflightError
+from cropwatcher.telemetry.correction import ThermalEngine
+from cropwatcher.telemetry.reader import TelemetryReader, detect_baro_vars, read_initial
+from cropwatcher.telemetry.row import TempUnit, parse_ambient
+from cropwatcher.telemetry.sinks import CsvSink
 
 log = logging.getLogger("cropwatcher")
 
@@ -42,6 +47,13 @@ def build_parser() -> argparse.ArgumentParser:
     hover = sub.add_parser("hover", help="take off, hold altitude, land")
     hover.add_argument("--height", type=float, default=0.5, help="metres above ground")
     hover.add_argument("--secs", type=float, default=5.0, help="hold duration")
+    hover.add_argument(
+        "--ambient",
+        default="22C",
+        help="room temperature, e.g. 74F or 22C. The unit you use here is the "
+             "unit every temperature column is stored in.",
+    )
+    hover.add_argument("--no-log", action="store_true", help="skip CSV logging")
     _add_common(hover)
 
     goto = sub.add_parser("goto", help="take off, fly to one point, return, land")
@@ -71,28 +83,64 @@ def cmd_check(args: argparse.Namespace) -> int:
 
 
 def cmd_hover(args: argparse.Namespace) -> int:
+    ambient_c, unit = parse_ambient(args.ambient)
+
     with core.session(args.uri, hold_seconds=args.secs, force=args.force) as flight:
         print(f"  battery {flight.report.vbat:.2f} V, "
-              f"ground z {flight.ground_z:+.3f} m\n")
-        print(f"  taking off to {args.height:.2f} m above ground")
-        flight.takeoff(args.height)
+              f"ground z {flight.ground_z:+.3f} m")
 
-        deadline = args.secs
-        elapsed = 0.0
-        while elapsed < deadline:
-            x, y, z = flight.position()
-            vbat = flight.battery()
-            print(f"   {z:5.2f} m AGL   err={z - args.height:+.3f} m   {vbat:.2f} V")
-            if vbat < core.preflight.CRITICAL_VBAT:
-                print("   VOLTAGE CRITICAL — landing early")
-                break
-            flight.hold(0.25)
-            elapsed += 0.25
+        reader, csv_path = (None, None)
+        if not args.no_log:
+            reader, csv_path = _start_logging(flight, ambient_c, unit)
 
-        print("\n  landing")
-        flight.land()
+        try:
+            print(f"\n  taking off to {args.height:.2f} m above ground")
+            flight.takeoff(args.height)
+
+            elapsed = 0.0
+            while elapsed < args.secs:
+                _, _, z = flight.position()
+                vbat = flight.battery()
+                print(f"   {z:5.2f} m AGL   err={z - args.height:+.3f} m   {vbat:.2f} V")
+                if vbat < core.preflight.CRITICAL_VBAT:
+                    print("   VOLTAGE CRITICAL — landing early")
+                    break
+                flight.hold(0.25)
+                elapsed += 0.25
+
+            print("\n  landing")
+            flight.land()
+        finally:
+            # Stop logging after landing, not before: the correction engine
+            # needs the idle samples either side of the flight.
+            if reader is not None:
+                reader.stop()
+                print(f"  telemetry written to {csv_path}")
+
     print("  done")
     return 0
+
+
+def _start_logging(
+    flight: core.Flight, ambient_c: float, unit: TempUnit
+) -> tuple[TelemetryReader, Path]:
+    """Seed the correction engine from a real reading, then start streaming."""
+    scf = flight.scf
+    temp_var, press_var = detect_baro_vars(scf)
+    raw_c, _pressure = read_initial(scf, temp_var, press_var)
+    print(f"  startup temp {raw_c:.2f} C, ambient given as {ambient_c:.2f} C "
+          f"(storing in {unit})")
+
+    sink = CsvSink()
+    reader = TelemetryReader(
+        scf,
+        sink,
+        ThermalEngine(raw_c, ambient_c),
+        unit=unit,
+        ground_z=flight.ground_z,
+    )
+    reader.start()
+    return reader, sink.path
 
 
 def cmd_goto(args: argparse.Namespace) -> int:

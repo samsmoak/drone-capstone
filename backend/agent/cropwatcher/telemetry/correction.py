@@ -93,6 +93,7 @@ class CorrectionResult:
     ambient_est_c: float
     roc_c_per_s: float
     air_density_kg_m3: float
+    station_pressure_hpa: float
     sea_level_pressure_hpa: float
     absolute_altitude_m: float
     mode: Mode
@@ -195,6 +196,7 @@ class ThermalEngine:
             ambient_est_c=self.ambient_est_c,
             roc_c_per_s=roc,
             air_density_kg_m3=air_density(pressure_hpa, corrected_c),
+            station_pressure_hpa=pressure_hpa,
             sea_level_pressure_hpa=sea_level_pressure(pressure_hpa, corrected_c, 0.0),
             absolute_altitude_m=pressure_altitude(pressure_hpa),
             mode=self.mode,
