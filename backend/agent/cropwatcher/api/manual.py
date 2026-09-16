@@ -179,9 +179,23 @@ class ManualController:
         self._commander.send_stop_setpoint()
 
     def _run(self) -> None:
+        """Tick on a fixed schedule, not a fixed sleep.
+
+        Sleeping `tick_s` after each tick adds the tick's own cost and the OS
+        timer slack to every period. Measured against a recording commander,
+        that loop ran at 38 Hz, not 50. Sleeping until the next deadline holds
+        the rate; if the loop ever falls a whole tick behind (a GC pause, a
+        slow radio call) it resyncs rather than bursting setpoints to catch up.
+        """
+        next_tick = time.monotonic()
         while self._running:
             self.tick()
-            time.sleep(self._tick_s)
+            next_tick += self._tick_s
+            delay = next_tick - time.monotonic()
+            if delay > 0:
+                time.sleep(delay)
+            elif delay < -self._tick_s:
+                next_tick = time.monotonic()
 
     def tick(self) -> None:
         """One control frame. Separated from the loop so tests can drive it."""

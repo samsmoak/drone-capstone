@@ -84,6 +84,12 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--host", default="127.0.0.1",
                        help="binding beyond localhost exposes drone control with no auth")
     serve.add_argument("--port", type=int, default=8765)
+    serve.add_argument(
+        "--exit-with-parent",
+        action="store_true",
+        help="cut motors and exit when stdin closes. The desktop app passes "
+             "this so quitting it cannot strand an agent holding the radio.",
+    )
 
     poll = sub.add_parser("poll", help="claim and fly missions from Supabase")
     poll.add_argument("--fence", type=float, default=2.0, help="geofence half-extent, metres")
@@ -270,7 +276,11 @@ def cmd_serve(args: argparse.Namespace) -> int:
     from cropwatcher.api.rest import serve as run_server
 
     print(f"  agent API on http://{args.host}:{args.port}")
-    run_server(host=args.host, port=args.port)
+    run_server(
+        host=args.host,
+        port=args.port,
+        exit_with_parent=args.exit_with_parent,
+    )
     return 0
 
 

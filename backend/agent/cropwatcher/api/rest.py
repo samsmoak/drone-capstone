@@ -14,10 +14,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import sys
+import threading
 from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from cropwatcher.api.manual import Intent, ManualController
@@ -30,6 +34,41 @@ log = logging.getLogger(__name__)
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
+
+# Browser origins allowed to talk to this agent.
+#
+# Binding to localhost does NOT keep websites out. Any page the operator has
+# open can send requests to 127.0.0.1, and WebSockets are not covered by CORS
+# at all — without an Origin check, a page on any site could open /ws/manual
+# and fly the drone. So the socket checks this list itself, and CORS uses the
+# same list for the read-only endpoints the dashboard polls.
+#
+# Extend with CROPWATCHER_ALLOWED_ORIGINS (comma-separated) for a preview
+# deployment; never with "*".
+BUILTIN_ORIGINS = (
+    "https://drone-capstone.vercel.app",
+    "http://localhost:3000",       # next dev
+    "tauri://localhost",           # desktop app, macOS
+    "http://tauri.localhost",      # desktop app, Windows
+    "http://localhost:1420",       # desktop app, tauri dev
+)
+
+
+def allowed_origins() -> frozenset[str]:
+    extra = os.environ.get("CROPWATCHER_ALLOWED_ORIGINS", "")
+    return frozenset(
+        [*BUILTIN_ORIGINS, *(o.strip().rstrip("/") for o in extra.split(",") if o.strip())]
+    )
+
+
+def origin_permitted(origin: str | None) -> bool:
+    """Whether a request's Origin may use this agent.
+
+    A missing Origin is permitted: browsers always send one on a WebSocket
+    handshake, so its absence means a non-browser client — the CLI, a test, a
+    script on this machine — which already has local access anyway.
+    """
+    return origin is None or origin in allowed_origins()
 
 
 # ── request models ───────────────────────────────────────────────────────
@@ -88,6 +127,19 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="CropWatcher Agent", version="0.1.0", lifespan=lifespan)
+
+# GET only. The dashboard needs to see whether the agent is running; it never
+# needs to start a flight from a browser tab, and a POST that arms a drone
+# should not be reachable from a web page at all.
+#
+# `allow_private_network` answers Chrome's Private Network Access preflight,
+# without which a public https page cannot reach 127.0.0.1 regardless of CORS.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=sorted(allowed_origins()),
+    allow_methods=["GET"],
+    allow_private_network=True,
+)
 
 
 # ── read-only ────────────────────────────────────────────────────────────
@@ -206,6 +258,13 @@ async def manual_socket(websocket: WebSocket) -> None:
     the 50 Hz setpoint loop itself. If this socket goes quiet the controller
     lands the drone without needing to be told.
     """
+    # Before accept, before touching the radio. See BUILTIN_ORIGINS.
+    origin = websocket.headers.get("origin")
+    if not origin_permitted(origin):
+        log.warning("refused manual control from origin %r", origin)
+        await websocket.close(code=1008)  # policy violation
+        return
+
     await websocket.accept()
 
     if state.busy:
@@ -265,7 +324,51 @@ async def manual_socket(websocket: WebSocket) -> None:
         state.release()
 
 
-def serve(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> None:
+def exit_when_parent_closes() -> None:
+    """Shut down when whoever launched us goes away. Used by the desktop app.
+
+    Killing the sidecar from the desktop side is not enough, and the reason is
+    worth writing down because it is invisible and it strands an armed drone.
+
+    A PyInstaller one-file binary is **two** processes: a bootloader that
+    unpacks the archive, and the real Python process it then spawns. Measured
+    from the built app:
+
+        desktop(43661) → bootloader(43666) → python(43670)   ← holds the radio
+
+    Tauri knows only about the bootloader. Killing it leaves the Python process
+    orphaned onto `launchd`, still holding the radio and the port. The next
+    launch then reports "no drone found" with a drone plainly sitting there.
+
+    Stdin is the fix because it is the one handle the real process inherits:
+    when the parent dies its pipe closes, and the read below returns EOF in the
+    process that actually matters. Motors are cut before exiting — this path
+    can run while the drone is in the air.
+    """
+    def watch() -> None:
+        try:
+            # Returns "" only at EOF. A terminal simply blocks here forever,
+            # which is why this is opt-in and never affects interactive use.
+            while sys.stdin.readline():
+                pass
+        except Exception:  # noqa: BLE001 - a closed pipe must not raise here
+            pass
+
+        log.warning("parent process closed — cutting motors and exiting")
+        if state.manual is not None:
+            state.manual.panic()
+        # Hard exit: uvicorn's graceful path waits on connections, and this
+        # runs when the operator's window is already gone.
+        os._exit(0)
+
+    threading.Thread(target=watch, daemon=True, name="parent-watchdog").start()
+
+
+def serve(
+    host: str = DEFAULT_HOST,
+    port: int = DEFAULT_PORT,
+    exit_with_parent: bool = False,
+) -> None:
     """Run the API. Binding beyond localhost is deliberate — see module docs."""
     import uvicorn
 
@@ -274,7 +377,9 @@ def serve(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> None:
             "binding to %s — this API can arm a drone and has no authentication. "
             "Only do this on a trusted network.", host
         )
+    if exit_with_parent:
+        exit_when_parent_closes()
     uvicorn.run(app, host=host, port=port, log_level="info")
 
 
-__all__ = ["app", "serve", "asyncio"]
+__all__ = ["app", "serve", "exit_when_parent_closes", "asyncio"]

@@ -286,3 +286,24 @@ class TestLand:
         panicking.panic()
 
         assert landing.thrust > panicking.thrust == 0
+
+
+class TestLoopRate:
+    def test_holds_fifty_hertz_in_real_time(self):
+        """The rate is the invariant: below ~10 Hz the commander drops the drone.
+
+        Real thread, real sleep — the bug this guards against lives in the
+        scheduling, which a fake clock cannot see. A fixed sleep after each tick
+        measured 38 Hz. Bounds are loose enough for a busy machine and still
+        fail that.
+        """
+        import time
+
+        commander = FakeCommander()
+        ctl = controller(commander=commander)
+        ctl.start()
+        time.sleep(1.0)
+        ctl.stop()
+
+        rate = len(commander.setpoints) / 1.0
+        assert 45 <= rate <= 55, f"loop ran at {rate:.0f} Hz"
