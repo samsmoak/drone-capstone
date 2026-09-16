@@ -101,17 +101,17 @@ Legend: `[x]` done · `[ ]` not started · **⚠** blocked on something external
 69. [x] Tests: poller claims exactly one mission with two agents running
 70. [x] Tests: a failed flight marks the mission failed, not stuck
 
-## Phase 8 — Agent HTTP + WebSocket
+## Phase 8 — Agent HTTP + WebSocket  ✅
 
-71. [ ] `api/rest.py` — FastAPI app, `/health`, `/status`, `/preflight`
-72. [ ] `POST /flight/mission`, `POST /flight/stop`
-73. [ ] `api/ws.py` — manual control socket
-74. [ ] Browser sends intent; agent generates 50 Hz setpoints itself
-75. [ ] Heartbeat — auto-land after 0.5 s of silence
-76. [ ] Bind to localhost by default; LAN only behind an explicit flag
-77. [ ] Telemetry broadcast over the same socket
-78. [ ] Tests: dropped heartbeat triggers land
-79. [ ] Tests: malformed control frame is rejected, not crashed on
+71. [x] `api/rest.py` — FastAPI app, `/health`, `/status`, `/preflight`
+72. [x] `POST /flight/mission`, `POST /flight/stop`
+73. [x] `api/ws.py` — manual control socket
+74. [x] Browser sends intent; agent generates 50 Hz setpoints itself
+75. [x] Heartbeat — auto-land after 0.5 s of silence
+76. [x] Bind to localhost by default; LAN only behind an explicit flag
+77. [x] Telemetry broadcast over the same socket
+78. [x] Tests: dropped heartbeat triggers land
+79. [x] Tests: malformed control frame is rejected, not crashed on
 
 ## Phase 9 — Web foundation
 

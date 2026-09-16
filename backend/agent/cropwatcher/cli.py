@@ -80,6 +80,16 @@ def build_parser() -> argparse.ArgumentParser:
     _add_mission_common(lawn)
     _add_common(lawn)
 
+    serve = sub.add_parser("serve", help="run the local API for the desktop app")
+    serve.add_argument("--host", default="127.0.0.1",
+                       help="binding beyond localhost exposes drone control with no auth")
+    serve.add_argument("--port", type=int, default=8765)
+
+    poll = sub.add_parser("poll", help="claim and fly missions from Supabase")
+    poll.add_argument("--fence", type=float, default=2.0, help="geofence half-extent, metres")
+    poll.add_argument("--once", action="store_true", help="handle one mission then exit")
+    _add_common(poll)
+
     run = sub.add_parser("mission", help="fly a saved mission file")
     run.add_argument("--file", required=True, help="path to a mission JSON file")
     _add_mission_common(run)
@@ -256,6 +266,38 @@ def _plan_and_fly(mission: Mission, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    from cropwatcher.api.rest import serve as run_server
+
+    print(f"  agent API on http://{args.host}:{args.port}")
+    run_server(host=args.host, port=args.port)
+    return 0
+
+
+def cmd_poll(args: argparse.Namespace) -> int:
+    """Claim missions from Supabase and fly them."""
+    import contextlib
+
+    from cropwatcher.sync.client import Settings, SupabaseQueue
+    from cropwatcher.sync.poller import Poller
+
+    queue = SupabaseQueue(Settings.from_env())
+
+    @contextlib.contextmanager
+    def factory(hold_seconds: float):
+        with core.session(args.uri, hold_seconds=hold_seconds, force=args.force) as f:
+            yield f
+
+    poller = Poller(queue, factory, geofence=Geofence.square(args.fence))
+    poller.install_signal_handlers()
+
+    print(f"  polling for missions (fence {args.fence * 2:.1f} m square)")
+    stats = poller.run_forever(max_iterations=1 if args.once else None)
+    print(f"\n  claimed={stats.claimed} completed={stats.completed} "
+          f"failed={stats.failed} rejected={stats.rejected}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(
@@ -269,6 +311,8 @@ def main(argv: list[str] | None = None) -> int:
         "goto": cmd_goto,
         "lawnmower": cmd_lawnmower,
         "mission": cmd_mission,
+        "serve": cmd_serve,
+        "poll": cmd_poll,
     }
     try:
         return handlers[args.command](args)

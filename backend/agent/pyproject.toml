@@ -17,6 +17,10 @@ dependencies = [
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
+    # Required by fastapi.testclient. Starlette warns that it prefers httpx2;
+    # httpx still works and switching is not worth a behaviour change in the
+    # test harness right now.
+    "httpx>=0.27",
     "ruff>=0.7",
     "mypy>=1.13",
 ]
