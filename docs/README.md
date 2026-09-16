@@ -6,16 +6,19 @@ One line per doc. Read this first, then open only what your work touches.
 
 | Doc | What it covers |
 |---|---|
-| [platform/architecture.md](platform/architecture.md) | Why the agent owns the radio, and the two control paths |
-| [platform/flight-safety.md](platform/flight-safety.md) | Preflight gates, arming, abort and auto-land rules |
-| [platform/temperature-correction.md](platform/temperature-correction.md) | The correction engine and its tuned constants |
-| [platform/data-model.md](platform/data-model.md) | Tables, RLS, the CSV-first rule |
+| [platform/agent-api.md](platform/agent-api.md) | Agent HTTP/WebSocket API, origin checks, the 50 Hz loop |
+| platform/architecture.md | **Not written.** Why the agent owns the radio — see CLAUDE.md meanwhile |
+| platform/flight-safety.md | **Not written.** Preflight gates, arming, abort, auto-land |
+| platform/temperature-correction.md | **Not written.** CLAUDE.md names this as the source for the tuned constants; the engine itself is `backend/agent/cropwatcher/telemetry/correction.py` |
+| platform/data-model.md | **Not written.** Tables and RLS — read `backend/supabase/migrations/` |
 
 ## Features — product capabilities
 
 | Doc | What it covers |
 |---|---|
-| _(none yet)_ | Added as features ship |
+| [features/operator-dashboard.md](features/operator-dashboard.md) | The `/app` pages: live, flights, zones, compare, manual, settings |
+| [features/mission-planner.md](features/mission-planner.md) | Building, validating, queuing and cancelling missions |
+| [features/desktop-app.md](features/desktop-app.md) | Tauri app, the agent sidecar, installers and CI |
 
 ## Hardware
 

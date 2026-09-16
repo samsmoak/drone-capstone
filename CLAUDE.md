@@ -39,7 +39,7 @@ The agent is the only process that touches the radio. Nothing else — ever.
 # agent
 cd backend/agent && source .venv/bin/activate
 pytest                                    # gate
-python -m cropwatcher.api.rest            # serve
+cropwatcher serve                         # serve (the api module has no entry point)
 
 # web
 cd web && pnpm dev
