@@ -1,0 +1,14 @@
+# Vercel must never build or deploy anything but web/.
+#
+# The Python agent under backend/ talks to a USB radio. It cannot run in the
+# cloud, and deploying it would put operator credentials on a server for no
+# benefit. Vercel's framework detection finds backend/agent/pyproject.toml,
+# sees FastAPI, and tries to deploy it — which is what broke the first build.
+#
+# The authoritative fix is the project's Root Directory setting (= "web").
+# This file is a second line of defence.
+
+backend/
+docs/
+*.md
+!web/**

@@ -92,6 +92,22 @@ These cost real debugging time to discover. Each is a rule, with the failure it 
 - **Authorization is server-side**, enforced by RLS on every table. Client-side checks are
   UX only. The app is publicly reachable and commands a physical drone.
 
+## Deploying
+
+**Vercel's Root Directory must be set to `web`.** Left unset, Vercel scans the
+repo root, finds `backend/agent/pyproject.toml`, detects FastAPI and tries to
+deploy the flight agent — the build then fails asking for a FastAPI entrypoint.
+
+Never give it one. The agent talks to a USB radio: it cannot run in the cloud,
+and deploying it would put operator credentials on a server for no benefit.
+`.vercelignore` is a second line of defence, but the Root Directory setting is
+the actual fix.
+
+Env vars needed on Vercel: `NEXT_PUBLIC_SUPABASE_URL`,
+`NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SITE_URL`. The build succeeds
+without them — `isSupabaseConfigured()` degrades the operator area rather than
+blanking the site — but sign-in will not work until they are set.
+
 ## Git
 
 - Commit as **`samsmoaky@gmail.com`**.
