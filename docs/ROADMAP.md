@@ -146,6 +146,35 @@ Legend: `[x]` done · `[ ]` not started · **⚠** blocked on something external
 99. [ ] Tauri app — manual control window, agent bundled as a PyInstaller sidecar
 100. [ ] GitHub Actions — build macOS `.dmg` + Windows `.exe` on tag
 
+### Keyboard control (Tauri manual window)
+
+Keys mirror `keyboard_fly.py` from the bring-up session, which flew.
+
+| Key | Action |
+|---|---|
+| `↑` `↓` | pitch — forward / back |
+| `←` `→` | roll — left / right |
+| `W` `S` | thrust — up / down |
+| `A` `D` | yaw — rotate left / right |
+| `Space` | **cut motors immediately** |
+| `Q` | land gently and disarm |
+
+Rules the implementation must honour:
+
+- **The browser sends held-key state, never one command per keypress.** The
+  agent generates the 50 Hz setpoint stream itself. A key-per-packet design
+  breaks the moment one packet is late, and the commander cuts out below ~10 Hz.
+- **Thrust decays toward zero whenever `W` is not held**, so releasing the
+  keyboard brings the drone down rather than leaving it pinned at power.
+- **Heartbeat at 10 Hz; auto-land after 0.5 s of silence.** Covers a closed tab,
+  a frozen browser, a lost socket.
+- `Space` is checked before anything else in the frame, so a panic stop is never
+  queued behind a movement.
+- Keys are repeated OS-level while held — track key *state* (down/up events),
+  not the repeat stream, or the rate is at the mercy of the OS repeat delay.
+- Show every binding on screen. A manual-control surface whose keys are not
+  visible is a crash waiting to happen.
+
 ---
 
 ## Verification gates
