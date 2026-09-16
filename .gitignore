@@ -1,0 +1,38 @@
+# ── Python ────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── Node / Next ───────────────────────────────────────────
+node_modules/
+.next/
+out/
+.vercel/
+*.tsbuildinfo
+
+# ── Rust / Tauri ──────────────────────────────────────────
+target/
+desktop/src-tauri/target/
+desktop/src-tauri/bin/
+
+# ── Secrets ───────────────────────────────────────────────
+.env
+.env.local
+.env*.local
+!.env.example
+
+# ── Flight output ─────────────────────────────────────────
+# Flight logs are data, not source. Back them up deliberately;
+# do not let them bloat the repo.
+organized_flights/
+mission_paths/
+*.csv
+!tests/**/*.csv
+
+# ── OS ────────────────────────────────────────────────────
+.DS_Store
