@@ -13,11 +13,19 @@
 -- Inserting into auth.users directly is only appropriate for local seeding.
 -- In production, sign up through the app and the trigger creates the profile.
 
+-- The token columns MUST be empty strings, not NULL. GoTrue scans them into
+-- Go `string` values, and a NULL makes every sign-in fail with a 500 and
+-- "converting NULL to string is unsupported" — which surfaces to the client as
+-- "Database error querying schema" and looks nothing like a seeding problem.
+
 insert into auth.users (
   instance_id, id, aud, role, email,
   encrypted_password, email_confirmed_at,
   raw_app_meta_data, raw_user_meta_data,
-  created_at, updated_at
+  created_at, updated_at,
+  confirmation_token, recovery_token,
+  email_change_token_new, email_change, email_change_token_current,
+  phone_change, phone_change_token, reauthentication_token
 )
 values (
   '00000000-0000-0000-0000-000000000000',
@@ -27,7 +35,8 @@ values (
   now(),
   '{"provider":"email","providers":["email"]}',
   '{"full_name":"Demo Operator"}',
-  now(), now()
+  now(), now(),
+  '', '', '', '', '', '', '', ''
 )
 on conflict (id) do nothing;
 

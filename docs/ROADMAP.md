@@ -73,7 +73,7 @@ Legend: `[x]` done · `[ ]` not started · **⚠** blocked on something external
 47. [x] Tests: abort mid-mission still lands
 48. [x] `cropwatcher mission --file plan.json`
 
-## Phase 6 — Supabase schema
+## Phase 6 — Supabase schema  ✅
 
 49. [x] `supabase/config.toml`, local dev via `supabase start`
 50. [x] `migrations/0001_init.sql` — `profiles`, `drones`
@@ -90,16 +90,16 @@ Legend: `[x]` done · `[ ]` not started · **⚠** blocked on something external
 61. [x] `seed.sql` — one greenhouse, a zone grid, a demo flight
 62. [ ] Generate `types/database.ts` from the schema
 
-## Phase 7 — Agent ↔ Supabase
+## Phase 7 — Agent ↔ Supabase  ✅
 
-63. [ ] `sync/client.py` — Supabase client from env, fails loudly if unset
-64. [ ] `sync/poller.py` — claim → execute → report, outbound only
-65. [ ] Backoff when the queue is empty; never hammer
-66. [ ] Mark a mission failed with its reason, never leave it `claimed`
-67. [ ] Resume safely after an agent restart (stale claim reclaim)
-68. [ ] `SupabaseSink` wired into live flights
-69. [ ] Tests: poller claims exactly one mission with two agents running
-70. [ ] Tests: a failed flight marks the mission failed, not stuck
+63. [x] `sync/client.py` — Supabase client from env, fails loudly if unset
+64. [x] `sync/poller.py` — claim → execute → report, outbound only
+65. [x] Backoff when the queue is empty; never hammer
+66. [x] Mark a mission failed with its reason, never leave it `claimed`
+67. [x] Resume safely after an agent restart (stale claim reclaim)
+68. [x] `SupabaseSink` wired into live flights
+69. [x] Tests: poller claims exactly one mission with two agents running
+70. [x] Tests: a failed flight marks the mission failed, not stuck
 
 ## Phase 8 — Agent HTTP + WebSocket
 
