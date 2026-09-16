@@ -38,40 +38,40 @@ Legend: `[x]` done · `[ ]` not started · **⚠** blocked on something external
 21. [x] Tests: correction engine (10), sinks (9), preflight model (10)
 22. [x] Gates green — ruff, mypy, pytest
 
-## Phase 3 — Telemetry pipeline
+## Phase 3 — Telemetry pipeline  ✅
 
-23. [ ] `telemetry/reader.py` — `LogConfig` subscription at 10 Hz
-24. [ ] Detect barometer variable names across firmware versions
-25. [ ] `telemetry/row.py` — one typed row schema, shared by CSV and Postgres
-26. [ ] Wire correction engine into the reader
-27. [ ] Ambient temperature as a launch parameter, unit recorded in the row
-28. [ ] Tests: reader assembles a full row from fake log data
-29. [ ] Tests: unit selection round-trips through the row
-30. [ ] `cropwatcher hover` writes a real CSV
+23. [x] `telemetry/reader.py` — `LogConfig` subscription at 10 Hz
+24. [x] Detect barometer variable names across firmware versions
+25. [x] `telemetry/row.py` — one typed row schema, shared by CSV and Postgres
+26. [x] Wire correction engine into the reader
+27. [x] Ambient temperature as a launch parameter, unit recorded in the row
+28. [x] Tests: reader assembles a full row from fake log data
+29. [x] Tests: unit selection round-trips through the row
+30. [x] `cropwatcher hover` writes a real CSV
 
-## Phase 4 — Safety
+## Phase 4 — Safety  ✅
 
-31. [ ] `safety/occupancy.py` — load YAML + PGM occupancy grid
-32. [ ] World coordinates → map cells
-33. [ ] Bresenham line check between two points
-34. [ ] `safety/geofence.py` — axis-aligned bounds check
-35. [ ] Reject waypoints outside bounds, with the reason
-36. [ ] Reject paths crossing blocked cells
-37. [ ] Tests: geofence accepts inside, rejects outside, rejects on the boundary
-38. [ ] Tests: Bresenham finds a wall between two clear points
-39. [ ] Wire safety checks into `flight/missions.py` before any `goto`
+31. [x] `safety/occupancy.py` — load YAML + PGM occupancy grid
+32. [x] World coordinates → map cells
+33. [x] Bresenham line check between two points
+34. [x] `safety/geofence.py` — axis-aligned bounds check
+35. [x] Reject waypoints outside bounds, with the reason
+36. [x] Reject paths crossing blocked cells
+37. [x] Tests: geofence accepts inside, rejects outside, rejects on the boundary
+38. [x] Tests: Bresenham finds a wall between two clear points
+39. [x] Wire safety checks into `flight/missions.py` before any `goto`
 
-## Phase 5 — Missions
+## Phase 5 — Missions  ✅
 
-40. [ ] `flight/missions.py` — `Mission` model, ordered waypoints
-41. [ ] `hover`, `lawnmower`, `waypoint` as mission types
-42. [ ] Lawnmower generator — area, step, altitude layers → waypoints
-43. [ ] Dry-run mode: validate and print, never arm
-44. [ ] Abort handling — land on exception, on Ctrl+C, on critical voltage
-45. [ ] Mission progress events (`started`, `waypoint_reached`, `landed`, `aborted`)
-46. [ ] Tests: lawnmower covers the area with no gaps
-47. [ ] Tests: abort mid-mission still lands
-48. [ ] `cropwatcher mission --file plan.json`
+40. [x] `flight/missions.py` — `Mission` model, ordered waypoints
+41. [x] `hover`, `lawnmower`, `waypoint` as mission types
+42. [x] Lawnmower generator — area, step, altitude layers → waypoints
+43. [x] Dry-run mode: validate and print, never arm
+44. [x] Abort handling — land on exception, on Ctrl+C, on critical voltage
+45. [x] Mission progress events (`started`, `waypoint_reached`, `landed`, `aborted`)
+46. [x] Tests: lawnmower covers the area with no gaps
+47. [x] Tests: abort mid-mission still lands
+48. [x] `cropwatcher mission --file plan.json`
 
 ## Phase 6 — Supabase schema
 

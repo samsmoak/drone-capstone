@@ -15,9 +15,16 @@ import logging
 import sys
 from pathlib import Path
 
-from cropwatcher.flight import core
+from cropwatcher.flight import core, missions
 from cropwatcher.flight.core import Waypoint
+from cropwatcher.flight.missions import (
+    Mission,
+    MissionValidationError,
+    lawnmower_mission,
+)
 from cropwatcher.flight.preflight import PreflightError
+from cropwatcher.safety.geofence import Geofence
+from cropwatcher.safety.occupancy import OccupancyGrid
 from cropwatcher.telemetry.correction import ThermalEngine
 from cropwatcher.telemetry.reader import TelemetryReader, detect_baro_vars, read_initial
 from cropwatcher.telemetry.row import TempUnit, parse_ambient
@@ -63,7 +70,35 @@ def build_parser() -> argparse.ArgumentParser:
     goto.add_argument("--secs", type=float, default=3.0, help="travel duration")
     _add_common(goto)
 
+    lawn = sub.add_parser("lawnmower", help="serpentine scan of a rectangle")
+    lawn.add_argument("--width", type=float, default=2.0, help="metres")
+    lawn.add_argument("--height", type=float, default=2.0, help="metres")
+    lawn.add_argument("--step", type=float, default=0.5, help="lane spacing, metres")
+    lawn.add_argument("--altitude", type=float, default=0.5, help="metres above ground")
+    lawn.add_argument("--layers", type=int, default=1)
+    lawn.add_argument("--hold", type=float, default=0.0, help="dwell per waypoint")
+    _add_mission_common(lawn)
+    _add_common(lawn)
+
+    run = sub.add_parser("mission", help="fly a saved mission file")
+    run.add_argument("--file", required=True, help="path to a mission JSON file")
+    _add_mission_common(run)
+    _add_common(run)
+
     return parser
+
+
+def _add_mission_common(p: argparse.ArgumentParser) -> None:
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="validate and print the plan; never connects, never arms",
+    )
+    p.add_argument("--fence", type=float, default=2.0,
+                   help="half-extent of the square geofence, metres")
+    p.add_argument("--map", help="occupancy map YAML for path checking")
+    p.add_argument("--ambient", default="22C", help="room temperature, e.g. 74F")
+    p.add_argument("--save", help="write the generated plan to this path")
 
 
 def cmd_check(args: argparse.Namespace) -> int:
@@ -161,6 +196,66 @@ def cmd_goto(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_lawnmower(args: argparse.Namespace) -> int:
+    mission = lawnmower_mission(
+        width_m=args.width,
+        height_m=args.height,
+        step_m=args.step,
+        altitude_m=args.altitude,
+        layers=args.layers,
+        hold_s=args.hold,
+    )
+    return _plan_and_fly(mission, args)
+
+
+def cmd_mission(args: argparse.Namespace) -> int:
+    return _plan_and_fly(Mission.from_file(args.file), args)
+
+
+def _plan_and_fly(mission: Mission, args: argparse.Namespace) -> int:
+    """Validate, print, then fly — unless this is a dry run.
+
+    Validation happens with no drone connected, so an operator can check a
+    route from a desk before carrying anything to the greenhouse.
+    """
+    geofence = Geofence.square(args.fence)
+    occupancy = OccupancyGrid.from_yaml(args.map) if args.map else None
+
+    print(mission.describe())
+    print()
+
+    try:
+        mission.validate(geofence=geofence, occupancy=occupancy)
+    except MissionValidationError as e:
+        print(f"  PLAN REJECTED — {e}\n", file=sys.stderr)
+        return 3
+    print("  plan validated"
+          f" against a {args.fence * 2:.1f} m square fence"
+          + (" and the occupancy map" if occupancy else " (no map supplied)"))
+
+    if args.save:
+        mission.save(args.save)
+        print(f"  saved to {args.save}")
+
+    if args.dry_run:
+        print("\n  DRY RUN — nothing was armed\n")
+        return 0
+
+    ambient_c, unit = parse_ambient(args.ambient)
+    estimated = mission.estimated_duration_s()
+
+    with core.session(args.uri, hold_seconds=estimated, force=args.force) as flight:
+        reader, csv_path = _start_logging(flight, ambient_c, unit)
+        try:
+            for event in missions.execute(mission, flight):
+                print(f"   [{event.kind}] {event.detail}")
+        finally:
+            reader.stop()
+            print(f"\n  telemetry written to {csv_path}")
+
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(
@@ -168,7 +263,13 @@ def main(argv: list[str] | None = None) -> int:
         format="%(levelname)s %(name)s: %(message)s",
     )
 
-    handlers = {"check": cmd_check, "hover": cmd_hover, "goto": cmd_goto}
+    handlers = {
+        "check": cmd_check,
+        "hover": cmd_hover,
+        "goto": cmd_goto,
+        "lawnmower": cmd_lawnmower,
+        "mission": cmd_mission,
+    }
     try:
         return handlers[args.command](args)
     except PreflightError as e:
