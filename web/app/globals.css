@@ -41,6 +41,7 @@
   --status-warning: #fab219;
   --status-serious: #ec835a;
   --status-critical: #d03b3b;
+  --on-critical: #ffffff;  /* 4.80:1 on --status-critical, measured — the Cut motors button */
 
   /* Sequential (zone health magnitude): one hue, light → dark. */
   --seq-100: #cde2fb;

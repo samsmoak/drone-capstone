@@ -2,18 +2,10 @@ import Link from "next/link";
 import { getDashboardSummary } from "@/lib/queries";
 import { EmptyState, Stat } from "@/components/ui/states";
 import { FLIGHTS, PLAN, SETUP } from "@/lib/routes";
+import { batteryStatus } from "@/lib/flight-format";
+import { LocalTime } from "@/components/ui/local-time";
 
 export const metadata = { title: "Dashboard" };
-
-/** Voltage thresholds, from what the firmware actually does. */
-function batteryStatus(v: number | null): "good" | "warning" | "critical" | undefined {
-  if (v === null) return undefined;
-  if (v < 3.3) return "critical";
-  // Below roughly 3.75 V the supervisor refuses to arm at all, so "will not
-  // fly" is a more useful warning than a percentage.
-  if (v < 3.75) return "warning";
-  return "good";
-}
 
 export default async function DashboardPage() {
   const summary = await getDashboardSummary();
@@ -47,9 +39,7 @@ export default async function DashboardPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
           <p className="mt-1 text-sm text-[var(--muted)]">
             Last flight{" "}
-            <time dateTime={latest.started_at}>
-              {new Date(latest.started_at).toLocaleString()}
-            </time>
+            <LocalTime iso={latest.started_at} />
           </p>
         </div>
         <Link
