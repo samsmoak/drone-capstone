@@ -75,19 +75,19 @@ Legend: `[x]` done · `[ ]` not started · **⚠** blocked on something external
 
 ## Phase 6 — Supabase schema
 
-49. [ ] `supabase/config.toml`, local dev via `supabase start`
-50. [ ] `migrations/0001_init.sql` — `profiles`, `drones`
-51. [ ] `flights` table — one row per flight, status, started/ended
-52. [ ] `telemetry` table — FK to flight, indexed on `(flight_id, recorded_at)`
-53. [ ] `missions` table — the queue: `queued`/`claimed`/`running`/`done`/`failed`
-54. [ ] `predictions` table — zone health output
-55. [ ] `zones` table — greenhouse grid definition
-56. [ ] RLS on every table, deny by default
-57. [ ] Policy: authenticated users read their own org's data
-58. [ ] Policy: only the agent role may claim a mission
-59. [ ] `claim_next_mission()` RPC — atomic, avoids two agents taking one job
-60. [ ] Realtime enabled on `telemetry` and `missions`
-61. [ ] `seed.sql` — one greenhouse, a zone grid, a demo flight
+49. [x] `supabase/config.toml`, local dev via `supabase start`
+50. [x] `migrations/0001_init.sql` — `profiles`, `drones`
+51. [x] `flights` table — one row per flight, status, started/ended
+52. [x] `telemetry` table — FK to flight, indexed on `(flight_id, recorded_at)`
+53. [x] `missions` table — the queue: `queued`/`claimed`/`running`/`done`/`failed`
+54. [x] `predictions` table — zone health output
+55. [x] `zones` table — greenhouse grid definition
+56. [x] RLS on every table, deny by default
+57. [x] Policy: authenticated users read their own org's data
+58. [x] Policy: only the agent role may claim a mission
+59. [x] `claim_next_mission()` RPC — atomic, avoids two agents taking one job
+60. [x] Realtime enabled on `telemetry` and `missions`
+61. [x] `seed.sql` — one greenhouse, a zone grid, a demo flight
 62. [ ] Generate `types/database.ts` from the schema
 
 ## Phase 7 — Agent ↔ Supabase

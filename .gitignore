@@ -36,3 +36,7 @@ mission_paths/
 
 # ── OS ────────────────────────────────────────────────────
 .DS_Store
+
+# ── Supabase local ────────────────────────────────────────
+backend/supabase/.branches/
+backend/supabase/.temp/
