@@ -68,7 +68,6 @@ export const OPERATOR_NAV = [
   { href: PLAN, label: "Plan" },
   { href: MANUAL, label: "Manual" },
   { href: SETTINGS, label: "Settings" },
-  { href: ADMIN, label: "Admin" },
 ] as const;
 
 export const ADMIN_NAV = [

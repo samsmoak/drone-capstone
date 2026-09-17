@@ -49,6 +49,7 @@ from cropwatcher.sync import auth_store
 from cropwatcher.sync.cloud import AuthError, Cloud, Operator
 from cropwatcher.sync.outbox import Kind, Outbox, new_id
 from cropwatcher.sync.syncer import Syncer
+from cropwatcher.telemetry import trace as flight_trace
 from cropwatcher.telemetry.reader import FlightRecorder
 from cropwatcher.telemetry.row import TempUnit, parse_ambient
 from cropwatcher.telemetry.sinks import CsvSink, FanOutSink, LiveUploadSink
@@ -150,6 +151,8 @@ class Session:
         # checks' ground unless an unassisted flight re-read it from the baro.
         self._height_reference: float | None = None
         self._manual_lock = threading.Lock()
+        self._trace: flight_trace.FlightTrace | None = None
+        self._unsubscribe_trace: Callable[[], None] | None = None
 
     # ── events ───────────────────────────────────────────────────────────
 
@@ -554,10 +557,13 @@ class Session:
         flight_id = self._begin_flight(mode=Mode.MANUAL, program=None, ambient=ambient)
         controller = link.manual(report)
         self._height_reference = controller.ground_z
+        applied = [a.to_dict() for a in getattr(link, "tuning_applied", [])]
+        self._start_trace(link, controller, flight_id, applied)
         controller.arm()
         controller.start()
         self.manual = controller
-        audit.record(Action.MANUAL_ARM, session_id=self._snapshot.session_id, flight_id=flight_id)
+        audit.record(Action.MANUAL_ARM, session_id=self._snapshot.session_id, flight_id=flight_id,
+                     detail={"tuning": applied, "assisted": report.assisted})
         self._start_manual_guard()
         self._set(state=State.BUSY, activity="manual",
                   message=(
@@ -566,6 +572,32 @@ class Session:
                       "Unassisted: props are idling. Hold W to raise the throttle until it "
                       "lifts; let go and the throttle stays put — you hold the height."
                   ))
+
+    def _start_trace(self, link: Any, controller: Any, flight_id: str, applied: list[dict]) -> None:
+        """A 10 Hz control trace beside the flight CSV (telemetry/trace.py)."""
+        stream = getattr(link, "stream", None)
+        if stream is None:
+            return
+        try:
+            day = datetime.now().strftime("%Y-%m-%d")
+            path = flights_dir() / day / f"trace_{flight_id[:8]}.csv"
+            tuning = ";".join(f"{a['name']}={a['before']}->{a['after']}" for a in applied)
+            self._trace = flight_trace.FlightTrace(path, controller, tuning=tuning)
+            self._unsubscribe_trace = flight_trace.subscribe(stream, self._trace)
+        except OSError:
+            log.exception("could not start the flight trace; flying without it")
+            self._trace = None
+
+    def _stop_trace(self) -> None:
+        if self._unsubscribe_trace is not None:
+            try:
+                self._unsubscribe_trace()
+            except Exception:
+                log.debug("trace unsubscribe failed")
+            self._unsubscribe_trace = None
+        if self._trace is not None:
+            self._trace.close()
+            self._trace = None
 
     def set_intent(self, keys: dict[str, Any]) -> None:
         if self.manual is None:
@@ -635,9 +667,10 @@ class Session:
         if self._manual_guard_stop is not None:
             self._manual_guard_stop.set()
             self._manual_guard_stop = None
+        self._stop_trace()
         report = self.report
-        if report is not None and not report.assisted and self.link is not None:
-            self.link.restore_estimator()
+        if self.link is not None:
+            self.link.restore_estimator()        # tuning back, Kalman back
         if report is not None:
             self._height_reference = report.ground_z_m if report.assisted else None
 
@@ -716,9 +749,9 @@ class Session:
         if self._manual_guard_stop is not None:
             self._manual_guard_stop.set()
             self._manual_guard_stop = None
-        report = self.report
-        if manual is not None and report is not None and not report.assisted and self.link:
-            self.link.restore_estimator()
+        self._stop_trace()
+        if manual is not None and self.link:
+            self.link.restore_estimator()        # tuning back, Kalman back
         self.flight = None
 
         if self._flight_id is not None:

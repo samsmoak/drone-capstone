@@ -77,6 +77,18 @@ MOVE_SPEED_M_S = 0.20               # arrows, body frame
 YAW_RATE_DEG_S = 30.0
 LAND_S = 3.0
 
+# ── glide ────────────────────────────────────────────────────────────────
+#
+# Nothing the keys command changes in a step. A key press used to set the climb
+# speed instantly and a release stopped it instantly — a jolt at both ends that
+# the height controller answered with the bounce seen in the lab traces
+# (2026-09-17: motors slamming between 0 and full every 0.2–0.4 s). Every
+# command now eases toward what the keys ask for at a bounded rate.
+CLIMB_ACCEL_M_S2 = 0.30             # 0 → 0.15 m/s in 0.5 s; stops within ~4 cm
+MOVE_ACCEL_M_S2 = 0.40              # assisted arrows: 0 → 0.20 m/s in 0.5 s
+TILT_RATE_DEG_S = 12.0              # unassisted arrows: 0 → 5° in ~0.4 s
+YAW_ACCEL_DEG_S2 = 90.0             # 0 → 30 °/s in ~0.3 s
+
 # ── unassisted flight (barometer height hold) ────────────────────────────
 #
 # No base stations: the firmware estimates height from the barometer and holds
@@ -185,6 +197,13 @@ class ManualController:
         self._land = land
         self._assisted = assisted
         self._touchdown_at: float | None = None
+        # The eased commands. See "glide" above.
+        self._climb_velocity = 0.0
+        self._vx = 0.0
+        self._vy = 0.0
+        self._roll = 0.0
+        self._pitch = 0.0
+        self._yaw_rate = 0.0
         self._heartbeat_timeout = heartbeat_timeout_s
         self._tick_s = tick_s
         self._clock = clock
@@ -218,6 +237,18 @@ class ManualController:
         return self._assisted
 
     @property
+    def intent(self) -> Intent:
+        """The keys currently held, for the flight trace."""
+        with self._lock:
+            return self._intent
+
+    @property
+    def climb_velocity(self) -> float:
+        """The eased climb speed the height target is moving at, m/s."""
+        with self._lock:
+            return self._climb_velocity
+
+    @property
     def ground_z(self) -> float:
         """The floor, in the estimator's frame. Barometric when unassisted."""
         return self._ground_z
@@ -233,6 +264,7 @@ class ManualController:
                 return
             self._intent = Intent()
             self._target_height = 0.0
+            self._reset_glide_locked()
             self._last_heartbeat = self._clock()
             self._last_tick = self._clock()
             self._state = ControlState.ARMED
@@ -341,24 +373,12 @@ class ManualController:
                     self._state = ControlState.IDLE
                     log.warning("manual control: app went quiet while armed — disarming")
                     send = self._commander.send_stop_setpoint
-                elif self._assisted:
-                    intent = self._intent
-                    if intent.up:
-                        self._target_height = min(
-                            MAX_HEIGHT_M, self._target_height + CLIMB_RATE_M_S * dt)
-                    if self._target_height > LIFTOFF_HEIGHT_M:
-                        self._state = ControlState.FLYING
-                        send = self._hover_setpoint_locked(intent)
-                    else:
-                        send = lambda: self._commander.send_setpoint(0.0, 0.0, 0.0, IDLE_THRUST)  # noqa: E731
                 else:
                     intent = self._intent
-                    if intent.up:
-                        self._target_height = min(
-                            MAX_UNASSISTED_HEIGHT_M, self._target_height + CLIMB_RATE_M_S * dt)
+                    self._glide_height_locked(CLIMB_RATE_M_S if intent.up else 0.0, dt)
                     if self._target_height > LIFTOFF_HEIGHT_M:
                         self._state = ControlState.FLYING
-                        send = self._zdistance_setpoint_locked(intent)
+                        send = self._flight_setpoint_locked(intent, dt)
                     else:
                         send = lambda: self._commander.send_setpoint(0.0, 0.0, 0.0, IDLE_THRUST)  # noqa: E731
 
@@ -367,27 +387,14 @@ class ManualController:
                     self.stats.heartbeat_timeouts += 1
                     log.warning("manual control: app went quiet — landing")
                     self._begin_landing_locked()
-                elif self._assisted:
-                    intent = self._intent
-                    climb = (1 if intent.up else 0) - (1 if intent.down else 0)
-                    self._target_height = min(
-                        MAX_HEIGHT_M, max(0.0, self._target_height + climb * CLIMB_RATE_M_S * dt)
-                    )
-                    if intent.down and self._target_height <= TOUCHDOWN_HEIGHT_M:
-                        self._begin_landing_locked()
-                    else:
-                        send = self._hover_setpoint_locked(intent)
                 else:
                     intent = self._intent
                     climb = (1 if intent.up else 0) - (1 if intent.down else 0)
-                    self._target_height = min(
-                        MAX_UNASSISTED_HEIGHT_M,
-                        max(0.0, self._target_height + climb * CLIMB_RATE_M_S * dt),
-                    )
+                    self._glide_height_locked(climb * CLIMB_RATE_M_S, dt)
                     if intent.down and self._target_height <= TOUCHDOWN_HEIGHT_M:
                         self._begin_landing_locked()
                     else:
-                        send = self._zdistance_setpoint_locked(intent)
+                        send = self._flight_setpoint_locked(intent, dt)
 
             if self._state is ControlState.LANDING:
                 if self._assisted:
@@ -402,7 +409,7 @@ class ManualController:
                     # Lower the target at a fixed rate — a controlled descent on
                     # the barometer, not a throttle cut — then settle and stop.
                     self._landing_started = True
-                    self._target_height = max(0.0, self._target_height - LAND_RATE_M_S * dt)
+                    self._glide_height_locked(-LAND_RATE_M_S, dt)
                     if self._target_height <= 0.0:
                         if self._touchdown_at is None:
                             self._touchdown_at = now
@@ -411,34 +418,67 @@ class ManualController:
                             self._touchdown_at = None
                             send = self._commander.send_stop_setpoint
                         else:
-                            send = self._zdistance_setpoint_locked(Intent())
+                            send = self._zdistance_setpoint_locked(Intent(), dt)
                     else:
-                        send = self._zdistance_setpoint_locked(Intent())
+                        send = self._zdistance_setpoint_locked(Intent(), dt)
 
         if send is not None:
             send()
 
     # ── helpers (lock held) ──────────────────────────────────────────────
 
-    def _hover_setpoint_locked(self, intent: Intent) -> Callable[[], None]:
+    @staticmethod
+    def _ease(current: float, target: float, max_step: float) -> float:
+        return current + max(-max_step, min(max_step, target - current))
+
+    def _reset_glide_locked(self) -> None:
+        self._climb_velocity = self._vx = self._vy = 0.0
+        self._roll = self._pitch = self._yaw_rate = 0.0
+
+    def _glide_height_locked(self, desired_velocity: float, dt: float) -> None:
+        """Move the height target at an eased climb speed, within the ceiling."""
+        ceiling = MAX_HEIGHT_M if self._assisted else MAX_UNASSISTED_HEIGHT_M
+        self._climb_velocity = self._ease(
+            self._climb_velocity, desired_velocity, CLIMB_ACCEL_M_S2 * dt)
+        target = self._target_height + self._climb_velocity * dt
+        if target >= ceiling or target <= 0.0:
+            # Stopping at a limit is a hard edge by nature; the speed there is at
+            # most the climb rate, which the height controller absorbs.
+            self._climb_velocity = 0.0
+        self._target_height = min(ceiling, max(0.0, target))
+
+    def _flight_setpoint_locked(self, intent: Intent, dt: float) -> Callable[[], None]:
+        if self._assisted:
+            return self._hover_setpoint_locked(intent, dt)
+        return self._zdistance_setpoint_locked(intent, dt)
+
+    def _hover_setpoint_locked(self, intent: Intent, dt: float) -> Callable[[], None]:
         forward = (1 if intent.forward else 0) - (1 if intent.back else 0)
         # cflib MotionCommander: left is +vy, turning left is +yawrate.
         left = (1 if intent.left else 0) - (1 if intent.right else 0)
         yaw = (1 if intent.yaw_left else 0) - (1 if intent.yaw_right else 0)
+        self._vx = self._ease(self._vx, forward * MOVE_SPEED_M_S, MOVE_ACCEL_M_S2 * dt)
+        self._vy = self._ease(self._vy, left * MOVE_SPEED_M_S, MOVE_ACCEL_M_S2 * dt)
+        self._yaw_rate = self._ease(self._yaw_rate, yaw * YAW_RATE_DEG_S, YAW_ACCEL_DEG_S2 * dt)
         z = self._ground_z + self._target_height
-        vx, vy, rate = forward * MOVE_SPEED_M_S, left * MOVE_SPEED_M_S, yaw * YAW_RATE_DEG_S
+        vx, vy, rate = self._vx, self._vy, self._yaw_rate
         return lambda: self._commander.send_hover_setpoint(vx, vy, rate, z)
 
-    def _zdistance_setpoint_locked(self, intent: Intent) -> Callable[[], None]:
+    def _zdistance_setpoint_locked(self, intent: Intent, dt: float) -> Callable[[], None]:
         """Level attitude from the arrows, height held by the firmware on the
-        barometer — the unassisted law."""
+        barometer — the unassisted law. Tilt and yaw ease in and out."""
         forward = (1 if intent.forward else 0) - (1 if intent.back else 0)
-        pitch = forward * MAX_TILT_DEG * PITCH_SIGN
+        right = (1 if intent.right else 0) - (1 if intent.left else 0)
+        # Turning left is a positive yaw rate (cflib MotionCommander.start_turn_left).
+        yaw = (1 if intent.yaw_left else 0) - (1 if intent.yaw_right else 0)
+        self._pitch = self._ease(
+            self._pitch, forward * MAX_TILT_DEG * PITCH_SIGN, TILT_RATE_DEG_S * dt)
         # Positive roll is to the right in the firmware's setpoint frame.
-        roll = ((1 if intent.right else 0) - (1 if intent.left else 0)) * MAX_TILT_DEG
-        yaw = ((1 if intent.yaw_left else 0) - (1 if intent.yaw_right else 0)) * YAW_RATE_DEG_S
+        self._roll = self._ease(self._roll, right * MAX_TILT_DEG, TILT_RATE_DEG_S * dt)
+        self._yaw_rate = self._ease(self._yaw_rate, yaw * YAW_RATE_DEG_S, YAW_ACCEL_DEG_S2 * dt)
         z = self._ground_z + self._target_height
-        return lambda: self._commander.send_zdistance_setpoint(roll, pitch, yaw, z)
+        roll, pitch, rate = self._roll, self._pitch, self._yaw_rate
+        return lambda: self._commander.send_zdistance_setpoint(roll, pitch, rate, z)
 
     def _begin_landing_locked(self) -> None:
         self._intent = Intent()

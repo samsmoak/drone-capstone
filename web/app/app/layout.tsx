@@ -1,51 +1,5 @@
-import { Nav } from "@/components/ui/nav";
-import Link from "next/link";
-import { HOME, OPERATOR_HOME, OPERATOR_NAV } from "@/lib/routes";
-import { getCurrentProfile } from "@/lib/queries";
-import { signOut } from "@/lib/mutations";
+import { OperatorShell } from "@/components/operator/OperatorShell";
 
-export default async function OperatorLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const profile = await getCurrentProfile();
-
-  return (
-    <>
-      <Nav
-        brand="CropWatcher"
-        // Home of this view: the dashboard, not the visitor site.
-        brandHref={OPERATOR_HOME}
-        items={OPERATOR_NAV}
-        trailing={
-          <form action={signOut} className="flex items-center gap-3">
-            <Link
-              href={HOME}
-              className="inline-flex min-h-11 items-center gap-1.5 rounded-md border border-[var(--border)] px-3 text-sm font-medium"
-            >
-              <span aria-hidden="true">←</span> Visitor site
-            </Link>
-            {profile && (
-              <span className="hidden text-sm text-[var(--muted)] sm:inline">
-                {profile.full_name ?? profile.email}
-                {/* Role is shown because it changes what you can do: a viewer
-                    cannot queue flights, and should know that up front. */}
-                {profile.role === "viewer" && " · viewer"}
-              </span>
-            )}
-            <button
-              type="submit"
-              className="min-h-11 rounded-md border border-[var(--border)] px-3 text-sm"
-            >
-              Sign out
-            </button>
-          </form>
-        }
-      />
-      <main id="main" className="mx-auto max-w-6xl px-6 py-8">
-        {children}
-      </main>
-    </>
-  );
+export default function OperatorLayout({ children }: { children: React.ReactNode }) {
+  return <OperatorShell>{children}</OperatorShell>;
 }

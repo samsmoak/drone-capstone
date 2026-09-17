@@ -1,0 +1,79 @@
+FLIGHT TUNING AND THE FLIGHT TRACE — why the drone bounced, and what changed
+============================================================================
+
+WHAT IT IS
+
+Two things a manual flight now does: it tunes the firmware's height loop for
+THIS drone before arming and restores it afterwards, and it records a 10 Hz
+trace of what the controller asked for beside what the drone did.
+
+
+THE EVIDENCE (lab traces, 2026-09-17, two barometer flights, 177 + 265 samples)
+
+  Motors hammered      ~15% of samples had a motor pinned at 0 or full while
+                       the drone was being commanded, cycling every 0.2–0.4 s.
+                       That is the bounce the operator felt.
+  Yaw spun             20–35 °/s throughout, a turn every 10–15 s. A saturated
+                       motor has no authority left for yaw — and a spinning
+                       drone re-aims "forward" every few seconds, which is why
+                       forward, sideways and rotate seemed not to work.
+  vz is noise on baro  At rest with motors off the vertical-speed estimate read
+                       ±0.5–0.8 m/s. velCtlPid.vzKp (25) multiplies that
+                       straight into thrust.
+  Hover is not 36000   Unsaturated airborne motor output averaged 48,400 and
+                       49,100. posCtlPid.thrustBase assumes 36,000 (a stock
+                       2.1), leaving the integrator to find ~13,000 — wind-up,
+                       then overshoot.
+
+
+WHERE IT LIVES
+
+  backend/agent/cropwatcher/flight/tuning.py      profiles, apply, restore
+  backend/agent/cropwatcher/flight/link.py        applied at manual(), restored
+                                                  by restore_estimator()
+  backend/agent/cropwatcher/telemetry/trace.py    the 10 Hz control trace
+  backend/agent/cropwatcher/api/manual.py         the glide (see manual-control.txt)
+  backend/agent/tests/test_tuning.py
+
+  On disk:  <app data>/flights/<date>/trace_<flight id>.csv
+
+
+THE PROFILES
+
+  every manual flight   posCtlPid.thrustBase = 48500 (measured hover)
+  barometer flights     velCtlPid.vzKp ×0.40, velCtlPid.vzKi ×0.30,
+                        posCtlPid.zKp ×0.75, posCtlPid.zKi ×0.50
+
+Values are SCALED FROM WHAT THE DRONE REPORTS, never assumed, and the exact
+originals are written back when the flight ends. These are starting values from
+two flights — refine them from the traces, they are not a finished tune.
+
+
+THE TRACE
+
+One row per telemetry sample: the keys held, the eased height target and climb
+speed the agent commanded, the firmware's own target (posCtl.targetZ), the
+barometer estimator's height and climb rate, thrust, attitude, gyro z, the four
+motors, battery, base stations received, and the tuning in force. The first
+diagnosis had to infer held keys from motion because nothing recorded them.
+
+
+INVARIANTS
+
+- Read before write. A gain is scaled from the value the drone reports, so a
+  re-tuned or newer firmware is never overwritten with a number from here.
+- A parameter the firmware does not publish is skipped and logged, not guessed;
+  a refused write leaves that value alone and the rest still apply.
+- Format by the parameter's declared type, not by how the old value looked: a
+  float gain reported as "2" must not have 1.5 rounded back to "2", and a
+  uint16 refuses "48500.0".
+- restore() writes back the exact originals and is safe to call twice. Writes
+  are RAM-only, so a power cycle also restores the firmware defaults.
+- Tuning is applied before the estimator switch, so the barometer ground is read
+  under the gains the flight will use.
+
+STILL NEEDS THE LAB
+
+None of this has flown. Expect the bounce to be much smaller and the spin to
+stop; horizontal drift will remain until the base stations are seen, because
+nothing else on this drone measures horizontal position.

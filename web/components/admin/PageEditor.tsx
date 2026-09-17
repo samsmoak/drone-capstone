@@ -56,7 +56,7 @@ export function PageEditor({ pageKey, initial, edited }: { pageKey: PageKey; ini
 
   return (
     <div className="grid gap-6">
-      <header className="sticky top-0 z-20 -mx-2 flex flex-wrap items-center justify-between gap-4 rounded-b-xl bg-[var(--background)]/95 px-2 py-3 backdrop-blur">
+      <header className="sticky top-0 z-20 -mx-2 flex max-lg:top-[6.5rem] flex-wrap items-center justify-between gap-4 rounded-b-xl bg-[var(--background)]/95 px-2 py-3 backdrop-blur">
         <div className="min-w-0">
           <Link href={ADMIN_PAGES} className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]">← Pages</Link>
           <h1 className="font-display mt-1 text-3xl font-semibold">{spec.title}</h1>

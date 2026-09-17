@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from cropwatcher.api.manual import (
+    CLIMB_ACCEL_M_S2,
     CLIMB_RATE_M_S,
     HEARTBEAT_TIMEOUT_S,
     IDLE_THRUST,
@@ -19,6 +20,7 @@ from cropwatcher.api.manual import (
     MAX_HEIGHT_M,
     MAX_TILT_DEG,
     MAX_UNASSISTED_HEIGHT_M,
+    MOVE_ACCEL_M_S2,
     MOVE_SPEED_M_S,
     TICK_S,
     TOUCHDOWN_HOLD_S,
@@ -29,6 +31,18 @@ from cropwatcher.api.manual import (
 )
 
 GROUND = 1.0
+
+
+def glide_distance(seconds: float) -> float:
+    """How far the height target moves from rest while a key is held."""
+    ramp = CLIMB_RATE_M_S / CLIMB_ACCEL_M_S2
+    if seconds <= ramp:
+        return 0.5 * CLIMB_ACCEL_M_S2 * seconds**2
+    return 0.5 * CLIMB_ACCEL_M_S2 * ramp**2 + CLIMB_RATE_M_S * (seconds - ramp)
+
+
+#: Distance covered easing from full climb speed to a stop.
+STOPPING_DISTANCE = CLIMB_RATE_M_S**2 / (2 * CLIMB_ACCEL_M_S2)
 
 
 class FakeCommander:
@@ -90,9 +104,13 @@ class Rig:
             self.ctl.tick()
 
     def fly_to(self, height: float):
+        """Hold W until the target is near `height`, then release and let it
+        glide to a stop — which lands it at `height` within a centimetre."""
         self.ctl.arm()
-        self.run(height / CLIMB_RATE_M_S + TICK_S, Intent(up=True))
-        self.ctl.set_intent(Intent())
+        self.ctl.set_intent(Intent(up=True))
+        while self.ctl.target_height + STOPPING_DISTANCE < height:
+            self.run(TICK_S)
+        self.run(1.0, Intent())
 
 
 class TestIntentParsing:
@@ -146,14 +164,15 @@ class TestGentleClimb:
         rig = Rig()
         rig.ctl.arm()
         rig.run(2.0, Intent(up=True))
-        assert rig.ctl.target_height == pytest.approx(2.0 * CLIMB_RATE_M_S, abs=0.01)
+        assert rig.ctl.target_height == pytest.approx(glide_distance(2.0), abs=0.01)
+        assert rig.ctl.climb_velocity == pytest.approx(CLIMB_RATE_M_S)
         assert rig.ctl.state is ControlState.FLYING
 
     def test_height_is_commanded_relative_to_ground(self):
         rig = Rig()
         rig.fly_to(0.30)
         rig.run(0.1)
-        assert rig.cmd.last("hover")[4] == pytest.approx(GROUND + 0.30, abs=0.01)
+        assert rig.cmd.last("hover")[4] == pytest.approx(GROUND + 0.30, abs=0.015)
 
     def test_releasing_the_keys_holds_height(self):
         """The old controller bled thrust off and the drone sank."""
@@ -162,13 +181,15 @@ class TestGentleClimb:
         before = rig.ctl.target_height
         rig.run(3.0, Intent())
         assert rig.ctl.target_height == pytest.approx(before)
+        assert rig.ctl.climb_velocity == 0.0
         assert rig.ctl.state is ControlState.FLYING
 
     def test_lowering_is_gentle_too(self):
         rig = Rig()
         rig.fly_to(0.60)
+        start = rig.ctl.target_height
         rig.run(1.0, Intent(down=True))
-        assert rig.ctl.target_height == pytest.approx(0.60 - CLIMB_RATE_M_S, abs=0.02)
+        assert rig.ctl.target_height == pytest.approx(start - glide_distance(1.0), abs=0.01)
 
     def test_height_is_capped(self):
         rig = Rig()
@@ -190,11 +211,11 @@ class TestMovement:
     def test_arrows_and_yaw_follow_cflib_conventions(self):
         rig = Rig()
         rig.fly_to(0.3)
-        rig.run(0.1, Intent(forward=True, left=True, yaw_left=True))
+        rig.run(1.0, Intent(forward=True, left=True, yaw_left=True))
         _, vx, vy, yaw, _ = rig.cmd.last("hover")
-        assert vx == MOVE_SPEED_M_S
-        assert vy == MOVE_SPEED_M_S        # left is +vy
-        assert yaw == YAW_RATE_DEG_S       # turning left is +yawrate
+        assert vx == pytest.approx(MOVE_SPEED_M_S)
+        assert vy == pytest.approx(MOVE_SPEED_M_S)     # left is +vy
+        assert yaw == pytest.approx(YAW_RATE_DEG_S)    # turning left is +yawrate
 
     def test_opposite_keys_cancel(self):
         rig = Rig()
@@ -361,19 +382,22 @@ class TestUnassisted:
         rig.ctl.arm()
         rig.run(1.0, Intent(up=True))
         assert rig.ctl.state is ControlState.FLYING
-        assert rig.ctl.target_height == pytest.approx(CLIMB_RATE_M_S, abs=0.01)
+        assert rig.ctl.target_height == pytest.approx(glide_distance(1.0), abs=0.01)
         _, _, _, _, z = rig.cmd.last("zdistance")
-        assert z == pytest.approx(GROUND + CLIMB_RATE_M_S, abs=0.01)
+        assert z == pytest.approx(GROUND + glide_distance(1.0), abs=0.01)
         assert "hover" not in rig.cmd.kinds()
 
     def test_releasing_w_holds_the_height(self):
         rig = Rig(assisted=False)
         rig.ctl.arm()
         rig.run(2.0, Intent(up=True))
-        held = rig.ctl.target_height
-        rig.run(3.0, Intent())
-        assert rig.ctl.target_height == held
-        assert rig.cmd.last("zdistance")[4] == pytest.approx(GROUND + held)
+        released = rig.ctl.target_height
+        rig.run(1.0, Intent())                    # glides to a stop
+        settled = rig.ctl.target_height
+        assert settled == pytest.approx(released + STOPPING_DISTANCE, abs=0.01)
+        rig.run(3.0, Intent())                    # and then holds exactly
+        assert rig.ctl.target_height == settled
+        assert rig.cmd.last("zdistance")[4] == pytest.approx(GROUND + settled)
 
     def test_the_height_is_capped(self):
         rig = Rig(assisted=False)
@@ -408,11 +432,13 @@ class TestUnassisted:
         rig.run(3.0, Intent(up=True))
         start = rig.ctl.target_height
         rig.ctl.land()
-        rig.run(1.0)
+        # Landing mid-climb eases out of the climb first, then into the descent.
+        rig.run(2.0)
         assert rig.ctl.state is ControlState.LANDING
-        assert rig.ctl.target_height == pytest.approx(start - LAND_RATE_M_S, abs=0.02)
+        assert rig.ctl.target_height < start - 0.1           # it is coming down
+        assert rig.ctl.climb_velocity == pytest.approx(-LAND_RATE_M_S)
 
-        rig.run(start / LAND_RATE_M_S + TOUCHDOWN_HOLD_S + 0.2)
+        rig.run(start / LAND_RATE_M_S + 1.0 + TOUCHDOWN_HOLD_S + 0.2)
         assert rig.ctl.state is ControlState.LANDED
         assert rig.lands == []
         assert rig.cmd.kinds()[-1] == "stop"
@@ -458,3 +484,68 @@ class TestThrustUnlock:
         assert setpoints[0] == ("setpoint", 0.0, 0.0, 0.0, 0)
         assert rig.cmd.commands[0] == ("setpoint", 0.0, 0.0, 0.0, 0)
 
+
+
+class TestGlide:
+    """Nothing the keys command changes in a step.
+
+    The lab traces of 2026-09-17 show motors slamming between 0 and full every
+    0.2–0.4 s. A climb speed that jumps on key press and release is a jolt the
+    height controller answers with exactly that. These pin the easing.
+    """
+
+    @pytest.mark.parametrize("assisted", [True, False])
+    def test_the_climb_speed_never_steps(self, assisted):
+        rig = Rig(assisted=assisted)
+        rig.ctl.arm()
+        speeds = []
+        plan = [(Intent(up=True), 2.0), (Intent(), 1.0), (Intent(down=True), 1.0), (Intent(), 1.0)]
+        for keys, seconds in plan:
+            rig.ctl.set_intent(keys)
+            for _ in range(round(seconds / TICK_S)):
+                rig.run(TICK_S)
+                speeds.append(rig.ctl.climb_velocity)
+        steps = [abs(b - a) for a, b in zip(speeds, speeds[1:], strict=False)]
+        assert max(steps) <= CLIMB_ACCEL_M_S2 * TICK_S + 1e-9
+
+    def test_releasing_w_eases_to_a_stop_rather_than_stopping_dead(self):
+        rig = Rig(assisted=False)
+        rig.ctl.arm()
+        rig.run(2.0, Intent(up=True))
+        rig.run(0.1, Intent())
+        assert 0 < rig.ctl.climb_velocity < CLIMB_RATE_M_S       # still slowing
+        rig.run(1.0, Intent())
+        assert rig.ctl.climb_velocity == 0.0
+
+    def test_the_commanded_height_is_smooth(self):
+        """Second difference of the setpoint bounded by the acceleration limit."""
+        rig = Rig(assisted=False)
+        rig.ctl.arm()
+        rig.run(2.0, Intent(up=True))
+        rig.run(1.5, Intent())
+        zs = [c[4] for c in rig.cmd.commands if c[0] == "zdistance"]
+        triples = zip(zs, zs[1:], zs[2:], strict=False)
+        accel = [abs((c - b) - (b - a)) / TICK_S**2 for a, b, c in triples]
+        assert max(accel) <= CLIMB_ACCEL_M_S2 * 1.01
+
+    def test_tilt_and_yaw_ease_in_and_out(self):
+        rig = Rig(assisted=False)
+        rig.ctl.arm()
+        rig.run(1.0, Intent(up=True))
+        rig.run(0.1, Intent(right=True, yaw_left=True))
+        _, roll, _, yaw, _ = rig.cmd.last("zdistance")
+        assert 0 < roll < MAX_TILT_DEG
+        assert 0 < yaw < YAW_RATE_DEG_S
+        rig.run(1.0, Intent(right=True, yaw_left=True))
+        _, roll, _, yaw, _ = rig.cmd.last("zdistance")
+        assert roll == pytest.approx(MAX_TILT_DEG) and yaw == pytest.approx(YAW_RATE_DEG_S)
+        rig.run(0.1, Intent())
+        _, roll, _, yaw, _ = rig.cmd.last("zdistance")
+        assert 0 < roll < MAX_TILT_DEG                           # levelling, not snapped
+
+    def test_assisted_arrows_ease_too(self):
+        rig = Rig()
+        rig.fly_to(0.3)
+        rig.run(0.1, Intent(forward=True))
+        _, vx, _, _, _ = rig.cmd.last("hover")
+        assert 0 < vx <= MOVE_ACCEL_M_S2 * 0.1 + 1e-9

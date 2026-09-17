@@ -1,8 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { ADMIN_GALLERY, ADMIN_PROJECTS, ADMIN_TEAM, FLIGHTS, GALLERY, PLAN, PROJECTS, TEAM } from "@/lib/routes";
+import { ADMIN_GALLERY, ADMIN_PROJECTS, ADMIN_TEAM, FLIGHTS, GALLERY, HOME, PLAN, PROJECTS, TEAM } from "@/lib/routes";
 import { youtubeId } from "@/lib/video";
 import { PAGE_SPECS, isPageKey, normalizeContent } from "@/lib/site-content";
 import type { Json } from "@/types/database";
@@ -126,6 +127,9 @@ export async function signOut(): Promise<void> {
   const supabase = await createClient();
   await supabase.auth.signOut();
   revalidatePath("/", "layout");
+  // To the visitor home: signing out of the operator view would otherwise land
+  // on a protected page and bounce to the sign-in form.
+  redirect(HOME);
 }
 
 // ── portfolio (admin) ────────────────────────────────────────────────────
