@@ -45,9 +45,19 @@ session is running and nothing is flying, and the profile menu: an initial in a
 circle, opening to name, email and role with Sign in or Sign out. The bar never
 shows a bare email address.
 
-Every chart in a sensor window opens that window's log: one collapsible section
-per session, a time-stamped table of that window's readings. Every history view
-follows the Auto/Manual toggle (see ../backend/session-history.txt).
+
+LIVE NOW, OR THE LOG
+
+A sensor window is live: the last 60 seconds at 10 Hz, and it says so under the
+title. Its past readings are one page away — every chart, and the button beside
+the title, opens that window's log.
+
+The log opens showing readings, not a list to click through: the latest ten
+sessions, the most recent three already expanded, each with that session's last
+25 readings and a line saying how many were left out. "View all in the
+dashboard" sits at the top of the list, above the sessions, because it is the
+way out of the limit rather than something found at the bottom. Every history
+view follows the Auto/Manual toggle (see ../backend/session-history.txt).
 
 
 STARTING UP
@@ -66,9 +76,9 @@ Every history view follows the Auto/Manual toggle, and the toggle starts on
 Auto. An operator whose flights were all manual therefore saw "no sessions" on
 every log page with 45 readings sitting on disk (2026-09-17). The views now
 count what the filter hid and offer it — "2 manual sessions are hidden by the
-Auto toggle · Show every session" — and every one of them carries a link that
-opens the web dashboard in the operator's browser, which holds every flight from
-every laptop rather than just this one's (lib/web.ts, tauri-plugin-opener).
+Auto toggle · Show every session" — and each page's heading carries the link
+that opens the web dashboard in the operator's browser, which holds every flight
+from every laptop rather than just this one's (lib/web.ts, tauri-plugin-opener).
 
 
 DECISIONS
@@ -90,6 +100,12 @@ DECISIONS
   measures 4.38 and 3.95 in dark, which is why it is not used for text.
 - Values that are text (an email, a hardware id) render smaller and break
   anywhere; figures keep the tabular numerals and the large size.
+- A log shows its readings on arrival. Asking for the log is already the click;
+  a second one per session to see anything made the pages read as empty.
+- Three sessions open, not ten: ten open tables is 450 rows of scrolling, and
+  the sessions below would never be seen.
+- One dashboard link per page, at the top. The second one ("flights from other
+  computers") said the same thing in different words.
 - Fraunces for page titles, Inter for everything else — the portfolio site's
   pairing. Bundled with @fontsource, never fetched: the window's CSP allows no
   remote fonts, and a lab laptop may be offline.
@@ -115,5 +131,12 @@ INVARIANTS
   one — it reaches the agent through Tauri's `invoke`). Checked at 720 px (the
   window's minimum), 1000 and 1280: no element crosses the viewport, in both
   themes. It is not shipped; `vite build` only builds index.html.
+- The session views need real sessions, so the harness can stand in for the
+  Tauri bridge: `harness.html?agent=<token>[&mode=][&session=<id>]` points them
+  at the agent already running on this machine. The token is the running
+  agent's — `CROPWATCHER_AGENT_TOKEN` in its environment, or ~/.../agent-token —
+  and is never stored in the repo.
+- Tailwind v4 does not give buttons a hand cursor. styles.css sets it for
+  button, summary and [role=link] rather than each component remembering.
 - A value that is missing says so. A blank panel where a battery voltage belongs
   reads as "fine" to an operator about to fly.

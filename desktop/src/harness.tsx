@@ -14,8 +14,10 @@ import { createRoot } from "react-dom/client";
 import { HomePage } from "@/pages/home/HomePage";
 import { ControlPage } from "@/pages/control/ControlPage";
 import { SensorWindow, WINDOWS } from "@/pages/windows/SensorWindow";
+import { WindowLog } from "@/pages/sessions/WindowLog";
+import { SessionsPage } from "@/pages/sessions/SessionsPage";
 import { StartupPage } from "@/pages/startup/StartupPage";
-import { EMPTY_INTENT, type Session, type Telemetry } from "@/lib/agent";
+import { EMPTY_INTENT, connectToShell, type Session, type Telemetry } from "@/lib/agent";
 import type { History } from "@/App";
 import "./styles.css";
 
@@ -66,6 +68,24 @@ const history: History = Array.from({ length: 120 }, (_, i) => ({
 
 const noop = async () => {};
 
+/**
+ * `?agent=<token>` measures the session views against the agent already running
+ * on this machine, by standing in for the Tauri bridge the browser lacks. The
+ * token is per-launch and never stored here; without the parameter the harness
+ * renders the static pages exactly as before.
+ */
+const query = new URLSearchParams(location.search);
+const agentToken = query.get("agent");
+if (agentToken) {
+  (window as unknown as { __TAURI_INTERNALS__: unknown }).__TAURI_INTERNALS__ = {
+    invoke: async (command: string) =>
+      command === "agent_port" ? Number(query.get("port") ?? 8765)
+        : command === "agent_token" ? agentToken
+          : null,
+  };
+  await connectToShell();
+}
+
 createRoot(document.getElementById("root")!).render(
   <div className="mx-auto grid w-full max-w-6xl gap-6 bg-[var(--background)] px-6 py-8 text-[var(--foreground)]">
     <StartupPage connected={false} />
@@ -79,5 +99,11 @@ createRoot(document.getElementById("root")!).render(
     {WINDOWS.map((w) => (
       <SensorWindow key={w.key} windowKey={w.key} telemetry={telemetry} history={history} session={session} onOpenLog={() => {}} />
     ))}
+    {agentToken && (
+      <>
+        <WindowLog windowKey="flight" refreshKey="h" mode={(query.get("mode") as "auto" | "manual") ?? "manual"} onBack={() => {}} />
+        <SessionsPage refreshKey="h" mode={(query.get("mode") as "auto" | "manual") ?? "manual"} selectedId={query.get("session")} onSelect={() => {}} />
+      </>
+    )}
   </div>,
 );

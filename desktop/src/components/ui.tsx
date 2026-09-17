@@ -149,7 +149,7 @@ export function Button({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border px-5 text-sm font-medium disabled:opacity-50 ${styles}`}
+      className={`inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg border px-5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 ${styles}`}
     >
       {children}
     </button>

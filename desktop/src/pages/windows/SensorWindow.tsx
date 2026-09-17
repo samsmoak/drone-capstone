@@ -14,7 +14,7 @@
  */
 
 import type { ReactNode } from "react";
-import type { History } from "@/App";
+import { HISTORY_S, type History } from "@/App";
 import { LiveChart, type Sample } from "@/pages/windows/LiveChart";
 import type { Session, Telemetry } from "@/lib/agent";
 import { Button, PageHeader, Panel, Stat, StatusDot } from "@/components/ui";
@@ -123,7 +123,16 @@ export function SensorWindow({
   const page = WINDOWS.find((w) => w.key === windowKey)!;
   const header = (
     <div className="flex flex-wrap items-end justify-between gap-4">
-      <PageHeader title={page.label}>{page.note}</PageHeader>
+      <div className="grid gap-2">
+        <PageHeader title={page.label}>{page.note}</PageHeader>
+        <p className="text-sm text-[var(--muted)]">
+          <StatusDot tone={telemetry ? "good" : "idle"}>
+            {telemetry
+              ? `Live — the last ${HISTORY_S} seconds, updating ten times a second.`
+              : "Live readings appear here once the drone is connected."}
+          </StatusDot>
+        </p>
+      </div>
       <Button onClick={onOpenLog}>Past sessions log →</Button>
     </div>
   );

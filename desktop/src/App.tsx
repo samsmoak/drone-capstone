@@ -51,7 +51,7 @@ export const KEY_MAP: Record<string, keyof Intent> = {
   KeyD: "yaw_right",
 };
 
-const HISTORY_S = 60;
+export const HISTORY_S = 60;
 const HISTORY_LIMIT = HISTORY_S * 10;      // 10 Hz
 
 export type History = { t: number; values: Record<string, number>; height_m: number | null }[];

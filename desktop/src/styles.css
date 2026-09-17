@@ -211,3 +211,14 @@ body {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum", "zero";
 }
+
+/* The hand cursor on anything clickable. Tailwind v4 no longer sets it on
+   buttons, and a summary row that looks like a button must feel like one. */
+button:not(:disabled),
+summary,
+[role="link"],
+[role="button"]:not([aria-disabled="true"]),
+label:has(> input[type="checkbox"]),
+label:has(> input[type="radio"]) {
+  cursor: pointer;
+}
