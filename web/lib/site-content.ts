@@ -62,13 +62,18 @@ export const PAGE_SPECS = {
       ...HEADER_FIELDS,
       { type: "text", key: "primaryCta", label: "Main button", hint: "Goes to Projects." },
       { type: "text", key: "secondaryCta", label: "Second button", hint: "Goes to the dashboard (sign-in first)." },
+      { type: "image", key: "heroImage", label: "Main photo", hint: "Beside the title. Leave empty for none." },
+      { type: "text", key: "heroImageAlt", label: "Main photo description", hint: "Read aloud by screen readers." },
       {
         type: "items", key: "capabilities", label: "Capability cards", itemLabel: "Card",
         fields: [
+          { type: "image", key: "image", label: "Photo", hint: "Optional. Sits above the title." },
           { type: "text", key: "title", label: "Title" },
           { type: "textarea", key: "body", label: "Text" },
         ],
       },
+      { type: "boolean", key: "showGallery", label: "Show a strip of photos from the gallery" },
+      { type: "text", key: "galleryTitle", label: "Title of the photo strip" },
       { type: "text", key: "teamLine", label: "Line above the footer" },
       { type: "text", key: "teamLinkLabel", label: "Team link label" },
     ],
@@ -84,6 +89,18 @@ export const PAGE_SPECS = {
   gallery: {
     key: "gallery", title: "Gallery", description: "The heading of the gallery.",
     path: "/gallery", fields: HEADER_FIELDS,
+  },
+  apps: {
+    key: "apps",
+    title: "Apps",
+    description: "The download page. The builds themselves come from CI, not from here.",
+    path: "/apps",
+    fields: [
+      ...HEADER_FIELDS,
+      { type: "textarea", key: "note", label: "Note above the downloads", hint: "Shown in a shaded box." },
+      { type: "text", key: "unsignedTitle", label: "Heading of the 'it will warn you' section" },
+      { type: "textarea", key: "unsignedIntro", label: "Text of that section" },
+    ],
   },
   setup: {
     key: "setup",
@@ -139,7 +156,7 @@ export const PAGE_SPECS = {
   },
 } satisfies Record<string, PageSpec>;
 
-export type PageKey = "site" | "home" | "projects" | "team" | "gallery" | "setup" | "hardware";
+export type PageKey = "site" | "home" | "projects" | "team" | "gallery" | "apps" | "setup" | "hardware";
 export const PAGE_KEYS = Object.keys(PAGE_SPECS) as PageKey[];
 
 export function isPageKey(value: string): value is PageKey {
@@ -159,26 +176,34 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
       "environmental data, and turns it into a crop-health map.",
     primaryCta: "See the projects",
     secondaryCta: "Dashboard",
+    heroImage: "/home/hero-greenhouse.jpg",
+    heroImageAlt: "Rows of crops growing under a greenhouse roof",
+    showGallery: true,
+    galleryTitle: "From the gallery",
     capabilities: [
       {
+        image: "/home/autonomous-flight.jpg",
         title: "Autonomous flight",
         body:
           "Lawnmower scans and custom waypoint routes, flown under closed-loop position " +
           "control with Lighthouse indoor positioning.",
       },
       {
+        image: "/home/sensing.jpg",
         title: "Corrected sensing",
         body:
           "The barometer sits on a board that heats itself. A two-timescale thermal model " +
           "separates the electronics from the room, validated to 0.12 °F.",
       },
       {
+        image: "/home/safety.jpg",
         title: "Safety before arming",
         body:
           "Every plan is checked against a geofence and an obstacle map before a motor " +
           "spins — including the leg out of the takeoff point.",
       },
       {
+        image: "/home/zones.jpg",
         title: "Zone-level health",
         body:
           "Position-tagged readings become a greenhouse map, so a grower can see which rows " +
@@ -204,6 +229,20 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
     eyebrow: "Gallery",
     title: "The kit, the team, and the drone in the air",
     intro: "Photos and videos from building and flying CropWatcher, grouped into albums.",
+  },
+  apps: {
+    eyebrow: "Downloads",
+    title: "Get the apps",
+    intro:
+      "Everything you need to run CropWatcher on your own machine. Each build is produced by " +
+      "CI from the code on the main branch, so what is here is what the project is.",
+    note:
+      "The desktop app has to run on the computer with the Crazyradio plugged in — the radio " +
+      "is a USB dongle, so no website can command the drone.",
+    unsignedTitle: "Your computer will warn you",
+    unsignedIntro:
+      "These builds are not code-signed: a capstone project has no Apple or Microsoft " +
+      "developer certificate. The warning is about the certificate, not about the file.",
   },
   setup: {
     title: "Set up the system",

@@ -3,15 +3,32 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { createMember, deleteMember, reorderMembers, updateMember, type MemberInput } from "@/lib/mutations";
+import {
+  createMember, deleteMember, EMPTY_MEMBER, reorderMembers, updateMember, type MemberInput,
+} from "@/lib/mutations";
 import type { TeamMemberRow } from "@/lib/queries";
+import { hobbies, LIMITS, links, photos, slugify } from "@/lib/team-profile";
 import { ImagePicker } from "./ImagePicker";
+import { ListEditor } from "./ListEditor";
 import { Button, Card, Input, Label, Textarea } from "./ui";
 
-const EMPTY: MemberInput = { full_name: "", role: "", bio: "", avatar_url: null, website_url: null, email: null };
-
 function toInput(m: TeamMemberRow): MemberInput {
-  return { full_name: m.full_name, role: m.role, bio: m.bio, avatar_url: m.avatar_url, website_url: m.website_url, email: m.email };
+  return {
+    full_name: m.full_name,
+    slug: m.slug ?? "",
+    role: m.role,
+    headline: m.headline ?? "",
+    location: m.location ?? "",
+    bio: m.bio,
+    about: m.about ?? "",
+    current_work: m.current_work ?? "",
+    avatar_url: m.avatar_url,
+    website_url: m.website_url,
+    email: m.email,
+    hobbies: hobbies(m.hobbies),
+    links: links(m.links),
+    photos: photos(m.photos),
+  };
 }
 
 /** Add, edit, order and remove team members. The order here is the order on /team. */
@@ -19,14 +36,14 @@ export function TeamManager({ initial }: { initial: TeamMemberRow[] }) {
   const router = useRouter();
   const [items, setItems] = useState(initial);
   const [editing, setEditing] = useState<string | "new" | null>(null);
-  const [draft, setDraft] = useState<MemberInput>(EMPTY);
+  const [draft, setDraft] = useState<MemberInput>(EMPTY_MEMBER);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   function open(member: TeamMemberRow | null) {
     setError(null);
     setEditing(member ? member.id : "new");
-    setDraft(member ? toInput(member) : EMPTY);
+    setDraft(member ? toInput(member) : EMPTY_MEMBER);
   }
 
   function save() {
@@ -77,20 +94,95 @@ export function TeamManager({ initial }: { initial: TeamMemberRow[] }) {
       {error && <p role="alert" className="text-sm text-[var(--status-critical)]">{error}</p>}
 
       {editing && (
-        <Card className="grid gap-6 p-6 md:grid-cols-[14rem_minmax(0,1fr)]">
-          <ImagePicker label="Photo" value={draft.avatar_url} onChange={(url) => set("avatar_url", url)} prefix="team" />
-          <div className="grid gap-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div><Label htmlFor="m-name">Name</Label><Input id="m-name" value={draft.full_name} onChange={(e) => set("full_name", e.target.value)} /></div>
-              <div><Label htmlFor="m-role">Role</Label><Input id="m-role" value={draft.role} onChange={(e) => set("role", e.target.value)} placeholder="Flight software" /></div>
-              <div><Label htmlFor="m-web">Website</Label><Input id="m-web" value={draft.website_url ?? ""} onChange={(e) => set("website_url", e.target.value)} placeholder="https://" /></div>
-              <div><Label htmlFor="m-email">Email</Label><Input id="m-email" type="email" value={draft.email ?? ""} onChange={(e) => set("email", e.target.value)} /></div>
+        <Card className="grid gap-8 p-6">
+          <div className="grid gap-6 md:grid-cols-[14rem_minmax(0,1fr)]">
+            <ImagePicker label="Photo" value={draft.avatar_url} onChange={(url) => set("avatar_url", url)} prefix="team" />
+            <div className="grid gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div><Label htmlFor="m-name">Name</Label><Input id="m-name" value={draft.full_name} onChange={(e) => set("full_name", e.target.value)} /></div>
+                <div><Label htmlFor="m-role">Role</Label><Input id="m-role" value={draft.role} onChange={(e) => set("role", e.target.value)} placeholder="Flight software" /></div>
+                <div>
+                  <Label htmlFor="m-slug">Page address</Label>
+                  <Input id="m-slug" value={draft.slug} onChange={(e) => set("slug", e.target.value)}
+                         placeholder={slugify(draft.full_name) || "first-last"} />
+                  <p className="mt-1 text-xs text-[var(--muted)]">
+                    /team/{draft.slug || slugify(draft.full_name) || "…"} — leave it alone once the page is shared.
+                  </p>
+                </div>
+                <div><Label htmlFor="m-place">Where they are</Label><Input id="m-place" value={draft.location} onChange={(e) => set("location", e.target.value)} placeholder="Accra, Ghana" /></div>
+                <div><Label htmlFor="m-web">Website</Label><Input id="m-web" value={draft.website_url ?? ""} onChange={(e) => set("website_url", e.target.value)} placeholder="https://" /></div>
+                <div><Label htmlFor="m-email">Email</Label><Input id="m-email" type="email" value={draft.email ?? ""} onChange={(e) => set("email", e.target.value)} /></div>
+              </div>
+              <div>
+                <Label htmlFor="m-headline">One line about them</Label>
+                <Input id="m-headline" value={draft.headline} onChange={(e) => set("headline", e.target.value)}
+                       placeholder="Keeps the drone in the air and the logs honest." />
+              </div>
+              <div>
+                <Label htmlFor="m-bio">Short bio</Label>
+                <Textarea id="m-bio" rows={2} value={draft.bio} onChange={(e) => set("bio", e.target.value)} />
+                <p className="mt-1 text-xs text-[var(--muted)]">Used beside projects. The long version goes below.</p>
+              </div>
+              <div>
+                <Label htmlFor="m-now">Working on now</Label>
+                <Textarea id="m-now" rows={2} value={draft.current_work} onChange={(e) => set("current_work", e.target.value)}
+                          placeholder="What they are in the middle of." />
+              </div>
+              <div>
+                <Label htmlFor="m-about">About</Label>
+                <Textarea id="m-about" rows={6} value={draft.about} onChange={(e) => set("about", e.target.value)} />
+                <p className="mt-1 text-xs text-[var(--muted)]">A blank line starts a new paragraph.</p>
+              </div>
             </div>
-            <div><Label htmlFor="m-bio">Bio</Label><Textarea id="m-bio" rows={3} value={draft.bio} onChange={(e) => set("bio", e.target.value)} /></div>
-            <div className="flex gap-2">
-              <Button onClick={save} disabled={pending || !draft.full_name.trim()}>{pending ? "Saving…" : "Save"}</Button>
-              <Button variant="ghost" onClick={() => setEditing(null)} disabled={pending}>Cancel</Button>
-            </div>
+          </div>
+
+          <ListEditor
+            label="Hobbies" addLabel="+ Add a hobby" limit={LIMITS.hobbies}
+            items={draft.hobbies} onChange={(next) => set("hobbies", next)}
+            blank={() => ({ title: "", body: "", image_url: null })}
+          >
+            {(hobby, setHobby) => (
+              <div className="grid gap-4 md:grid-cols-[12rem_minmax(0,1fr)]">
+                <ImagePicker label="Photo" value={hobby.image_url} prefix="team" aspectClass="aspect-[4/3]"
+                             onChange={(url) => setHobby({ ...hobby, image_url: url })} />
+                <div className="grid gap-3">
+                  <div><Label>Title</Label><Input value={hobby.title} onChange={(e) => setHobby({ ...hobby, title: e.target.value })} placeholder="Photography" /></div>
+                  <div><Label>What about it</Label><Textarea rows={3} value={hobby.body} onChange={(e) => setHobby({ ...hobby, body: e.target.value })} /></div>
+                </div>
+              </div>
+            )}
+          </ListEditor>
+
+          <ListEditor
+            label="Links" addLabel="+ Add a link" limit={LIMITS.links}
+            items={draft.links} onChange={(next) => set("links", next)}
+            blank={() => ({ label: "", url: "" })}
+          >
+            {(link, setLink) => (
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+                <div><Label>Label</Label><Input value={link.label} onChange={(e) => setLink({ ...link, label: e.target.value })} placeholder="GitHub" /></div>
+                <div><Label>Address</Label><Input value={link.url} onChange={(e) => setLink({ ...link, url: e.target.value })} placeholder="https://github.com/…" /></div>
+              </div>
+            )}
+          </ListEditor>
+
+          <ListEditor
+            label="Photos" addLabel="+ Add a photo" limit={LIMITS.photos}
+            items={draft.photos} onChange={(next) => set("photos", next)}
+            blank={() => ({ url: "", caption: "" })}
+          >
+            {(photo, setPhoto) => (
+              <div className="grid gap-4 md:grid-cols-[12rem_minmax(0,1fr)]">
+                <ImagePicker label="Photo" value={photo.url || null} prefix="team"
+                             onChange={(url) => setPhoto({ ...photo, url: url ?? "" })} />
+                <div><Label>Caption</Label><Input value={photo.caption} onChange={(e) => setPhoto({ ...photo, caption: e.target.value })} placeholder="Optional" /></div>
+              </div>
+            )}
+          </ListEditor>
+
+          <div className="flex gap-2">
+            <Button onClick={save} disabled={pending || !draft.full_name.trim()}>{pending ? "Saving…" : "Save"}</Button>
+            <Button variant="ghost" onClick={() => setEditing(null)} disabled={pending}>Cancel</Button>
           </div>
         </Card>
       )}

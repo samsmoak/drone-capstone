@@ -6,8 +6,13 @@ WHAT IT IS
 Two things that shape the whole website:
 
 1. EVERY WORD ON THE VISITOR SITE IS EDITABLE at /admin/pages — Home, Set Up,
-   Hardware, the Projects / Team / Gallery headings, and the footer. Projects,
-   team members and gallery albums have their own admin sections.
+   Hardware, Apps, the Projects / Team / Gallery headings, and the footer.
+   Projects, team members and gallery albums have their own admin sections.
+   Home's photos are editable too: the hero image and one per capability card
+   are `image` fields, defaulting to stock photos in public/home (CREDITS.txt
+   names each one). The strip at the foot of the home page is not a field — it
+   is the real gallery, four album covers straight from the table, so it fills
+   itself as albums are added.
 
 2. TWO VIEWS. The visitor site (/) and the operator view (/app, /admin).
    Signing in keeps you on the visitor site; only Dashboard switches views.
@@ -38,6 +43,11 @@ a wide screen, and Hardware lays the parts two to a row.
 
 Dashboard sits with the navigation links rather than out at the far right: it is
 another destination on this site, not an action.
+
+/apps is the download page: every app bundle grouped by app, both platforms,
+with the version and build date CI publishes beside them. Set Up keeps its two
+buttons and links here for the rest. See ../development/releases.txt — the
+builds come from CI, not from this repo's code.
 
 
 THE OPERATOR SHELL

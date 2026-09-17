@@ -48,6 +48,7 @@ Feature docs are plain `.txt`, grouped by the surface they describe.
 | Doc | What it covers |
 |---|---|
 | [features/development/skills.txt](features/development/skills.txt) | The `/preflight` and `/adapt` commands committed in `.claude/commands/` |
+| [features/development/releases.txt](features/development/releases.txt) | How a merge to main becomes a download on /apps, on both platforms |
 
 ## Plans
 

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ADMIN_GALLERY, ADMIN_PROJECTS, ADMIN_TEAM, FLIGHTS, GALLERY, HOME, PLAN, PROJECTS, TEAM } from "@/lib/routes";
 import { youtubeId } from "@/lib/video";
 import { PAGE_SPECS, isPageKey, normalizeContent } from "@/lib/site-content";
+import * as profile from "@/lib/team-profile";
 import type { Json } from "@/types/database";
 import { getZones } from "@/lib/queries";
 import { buildPlan, parsePlanInput, validatePlan } from "@/lib/mission-plan";
@@ -149,6 +150,13 @@ function revalidatePortfolio(slug?: string) {
   revalidatePath(ADMIN_TEAM);
 }
 
+/** A person's own page, plus the list that links to it. */
+function revalidateMember(slug: string | null) {
+  revalidatePath(TEAM);
+  if (slug) revalidatePath(`${TEAM}/${slug}`);
+  revalidatePath(ADMIN_TEAM);
+}
+
 function slugify(text: string): string {
   return (
     text
@@ -265,11 +273,26 @@ export async function reorderProjects(order: { id: string; position: number }[])
 
 export type MemberInput = {
   full_name: string;
+  slug: string;
   role: string;
+  headline: string;
+  location: string;
   bio: string;
+  about: string;
+  current_work: string;
   avatar_url: string | null;
   website_url: string | null;
   email: string | null;
+  hobbies: profile.Hobby[];
+  links: profile.MemberLink[];
+  photos: profile.Photo[];
+};
+
+/** The empty person, so the admin and its tests start from one definition. */
+export const EMPTY_MEMBER: MemberInput = {
+  full_name: "", slug: "", role: "", headline: "", location: "", bio: "", about: "",
+  current_work: "", avatar_url: null, website_url: null, email: null,
+  hobbies: [], links: [], photos: [],
 };
 
 function cleanMember(input: MemberInput): MemberInput | string {
@@ -279,7 +302,33 @@ function cleanMember(input: MemberInput): MemberInput | string {
   if (website && !/^https?:\/\//i.test(website)) return "The website must start with http:// or https://.";
   const email = input.email?.trim() || null;
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "That email address does not look right.";
-  return { ...input, full_name, role: input.role.trim(), bio: input.bio.trim(), website_url: website, email };
+  // The slug is this person's URL. Typed freely in the admin, so it is cleaned
+  // the same way here — the address bar must never see a space or a slash.
+  const slug = profile.slugify(input.slug || full_name);
+  if (!slug) return "That name has no letters or numbers to make a web address from — set one by hand.";
+  // The three lists go through the same parser the pages read them with, so a
+  // row can only ever hold what a page can render (lib/team-profile.ts).
+  return {
+    ...input,
+    full_name,
+    slug,
+    role: input.role.trim(),
+    headline: input.headline.trim(),
+    location: input.location.trim(),
+    bio: input.bio.trim(),
+    about: input.about.trim(),
+    current_work: input.current_work.trim(),
+    website_url: website,
+    email,
+    hobbies: profile.hobbies(input.hobbies as unknown as Json),
+    links: profile.links(input.links as unknown as Json),
+    photos: profile.photos(input.photos as unknown as Json),
+  };
+}
+
+/** Postgres 23505: two people cannot share a web address. */
+function slugTaken(error: { code?: string }): boolean {
+  return error.code === "23505";
 }
 
 export async function createMember(input: MemberInput): Promise<PortfolioResult<{ id: string }>> {
@@ -290,11 +339,20 @@ export async function createMember(input: MemberInput): Promise<PortfolioResult<
     .from("team_members").select("display_order").order("display_order", { ascending: false }).limit(1);
   const { data, error } = await supabase
     .from("team_members")
-    .insert({ ...cleaned, display_order: (last?.[0]?.display_order ?? 0) + 1 })
+    .insert({ ...cleaned, hobbies: cleaned.hobbies as unknown as Json,
+              links: cleaned.links as unknown as Json, photos: cleaned.photos as unknown as Json,
+              display_order: (last?.[0]?.display_order ?? 0) + 1 })
     .select("id")
     .single();
-  if (error) return { ok: false, error: "Could not add the team member." };
-  revalidatePortfolio();
+  if (error) {
+    return {
+      ok: false,
+      error: slugTaken(error)
+        ? `The web address /team/${cleaned.slug} is already taken. Give this person a different one.`
+        : "Could not add the team member.",
+    };
+  }
+  revalidateMember(cleaned.slug);
   return { ok: true, data: { id: data.id } };
 }
 
@@ -304,10 +362,19 @@ export async function updateMember(id: string, input: MemberInput): Promise<Port
   const supabase = await createClient();
   const { error } = await supabase
     .from("team_members")
-    .update({ ...cleaned, updated_at: new Date().toISOString() })
+    .update({ ...cleaned, hobbies: cleaned.hobbies as unknown as Json,
+              links: cleaned.links as unknown as Json, photos: cleaned.photos as unknown as Json,
+              updated_at: new Date().toISOString() })
     .eq("id", id);
-  if (error) return { ok: false, error: "Could not save the team member." };
-  revalidatePortfolio();
+  if (error) {
+    return {
+      ok: false,
+      error: slugTaken(error)
+        ? `The web address /team/${cleaned.slug} is already taken. Give this person a different one.`
+        : "Could not save the team member.",
+    };
+  }
+  revalidateMember(cleaned.slug);
   return { ok: true, data: undefined };
 }
 

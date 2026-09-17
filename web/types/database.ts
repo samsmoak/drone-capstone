@@ -578,38 +578,62 @@ export type Database = {
       }
       team_members: {
         Row: {
+          about: string
           avatar_url: string | null
           bio: string
           created_at: string
+          current_work: string
           display_order: number
           email: string | null
           full_name: string
+          headline: string
+          hobbies: Json
           id: string
+          links: Json
+          location: string
+          photos: Json
           role: string
+          slug: string | null
           updated_at: string
           website_url: string | null
         }
         Insert: {
+          about?: string
           avatar_url?: string | null
           bio?: string
           created_at?: string
+          current_work?: string
           display_order?: number
           email?: string | null
           full_name: string
+          headline?: string
+          hobbies?: Json
           id?: string
+          links?: Json
+          location?: string
+          photos?: Json
           role?: string
+          slug?: string | null
           updated_at?: string
           website_url?: string | null
         }
         Update: {
+          about?: string
           avatar_url?: string | null
           bio?: string
           created_at?: string
+          current_work?: string
           display_order?: number
           email?: string | null
           full_name?: string
+          headline?: string
+          hobbies?: Json
           id?: string
+          links?: Json
+          location?: string
+          photos?: Json
           role?: string
+          slug?: string | null
           updated_at?: string
           website_url?: string | null
         }

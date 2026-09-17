@@ -262,6 +262,44 @@ export const getTeamMembers = cache(async (): Promise<TeamMemberRow[]> => {
   return data;
 });
 
+/** One person, by the slug in their URL. */
+export const getTeamMemberBySlug = cache(
+  async (slug: string): Promise<TeamMemberRow | null> => {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("team_members")
+      .select("*")
+      .eq("slug", slug)
+      .maybeSingle();
+    if (error) {
+      if (missingTable(error)) return null;
+      throw new QueryError("this team member", error);
+    }
+    return data;
+  },
+);
+
+/**
+ * The published projects a person worked on, in the order they are listed on
+ * each project. A draft is filtered out here as well as by RLS: an operator
+ * reading a public page should see the public page.
+ */
+export const getProjectsForMember = cache(async (memberId: string): Promise<ProjectCard[]> => {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("project_members")
+    .select(`display_order, projects(${CARD_COLUMNS})`)
+    .eq("member_id", memberId)
+    .order("display_order", { ascending: true });
+  if (error) {
+    if (missingTable(error)) return [];
+    throw new QueryError("this person's projects", error);
+  }
+  return data
+    .map((row) => row.projects as ProjectCard | null)
+    .filter((p): p is ProjectCard => p !== null && p.status === "published");
+});
+
 async function teamFor(projectId: string): Promise<TeamMemberRow[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
