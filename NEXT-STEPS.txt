@@ -42,11 +42,12 @@ platform docs it used to link never existed; the router now says so.
 BEFORE YOU START — THREE THINGS ONLY THE OWNER CAN DO
 --------------------------------------------------------------------------------
 
-1. ROTATE THE SUPABASE SECRET KEY.
-   sb_secret_-uaeQv8... was pasted into a chat transcript. It bypasses every
-   RLS policy. Dashboard -> Settings -> API Keys.
-   Nothing in this repo uses it, so rotating breaks nothing.
-   Rotate the database password too, for the same reason.
+1. ROTATE THE SUPABASE SECRET KEY AND THE DATABASE PASSWORD.
+   Both have been shared outside the Supabase dashboard during development.
+   The secret key bypasses every RLS policy. Dashboard -> Settings -> API Keys,
+   and Settings -> Database for the password. Nothing in this repo reads either,
+   so rotating breaks nothing here — but update the two GitHub Actions secrets
+   (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) or desktop builds stop publishing.
 
 2. GOOGLE SIGN-IN NEEDS A REDIRECT URL.
    Supabase -> Authentication -> URL Configuration -> Redirect URLs, add:
