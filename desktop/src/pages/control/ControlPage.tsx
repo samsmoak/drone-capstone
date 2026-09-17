@@ -11,9 +11,9 @@
  */
 
 import { useState, type FormEvent, type InputHTMLAttributes } from "react";
-import { api, KEY_LABELS, type Intent, type Session, type Telemetry } from "./agent";
-import { RecentSessions } from "./HistoryPages";
-import { Button, Message, PageHeader, Panel, Spinner, Stat, StatusDot } from "./ui";
+import { api, KEY_LABELS, type Intent, type Session, type Telemetry } from "@/lib/agent";
+import { RecentSessions } from "@/pages/sessions/RecentSessions";
+import { Button, Message, PageHeader, Panel, Spinner, Stat, StatusDot } from "@/components/ui";
 
 type Props = {
   session: Session | null;

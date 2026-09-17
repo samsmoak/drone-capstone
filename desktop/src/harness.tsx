@@ -11,12 +11,12 @@
  */
 
 import { createRoot } from "react-dom/client";
-import { HomePage } from "./HomePage";
-import { ControlPage } from "./ControlPage";
-import { SensorWindow, WINDOWS } from "./windows";
-import { StartupPage } from "./StartupPage";
-import { EMPTY_INTENT, type Session, type Telemetry } from "./agent";
-import type { History } from "./App";
+import { HomePage } from "@/pages/home/HomePage";
+import { ControlPage } from "@/pages/control/ControlPage";
+import { SensorWindow, WINDOWS } from "@/pages/windows/SensorWindow";
+import { StartupPage } from "@/pages/startup/StartupPage";
+import { EMPTY_INTENT, type Session, type Telemetry } from "@/lib/agent";
+import type { History } from "@/App";
 import "./styles.css";
 
 const session: Session = {

@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Message, Skeleton, SkeletonPanel, Spinner } from "./ui";
+import { Message, Skeleton, SkeletonPanel, Spinner } from "@/components/ui";
 
 /** How long to wait before saying that this is taking longer than it should. */
 const PATIENCE_MS = 12000;

@@ -1,8 +1,8 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import App from "./App";
-import { api, connectToShell } from "./agent";
+import App from "@/App";
+import { api, connectToShell } from "@/lib/agent";
 import "@fontsource-variable/inter";
 import "@fontsource-variable/fraunces";
 import "./styles.css";

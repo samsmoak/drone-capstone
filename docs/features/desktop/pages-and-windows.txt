@@ -21,13 +21,19 @@ Land and Emergency stop.
 
 WHERE IT LIVES
 
-  desktop/src/App.tsx          the shell, the nav, the keyboard, Land/Stop
-  desktop/src/HomePage.tsx     status and the next step
-  desktop/src/ControlPage.tsx  the session flow and both modes
-  desktop/src/windows.tsx      the five live sensor windows
-  desktop/src/LiveChart.tsx    the chart, copy-adapted from the web
-  desktop/src/ui.tsx           PageHeader, Panel, Stat, StatusDot, Button
-  desktop/src/harness.tsx      the layout harness (see below)
+  desktop/src/App.tsx                    the shell, the nav, the keyboard, Land/Stop
+  desktop/src/pages/home/                status and the next step
+  desktop/src/pages/control/             the session flow and both modes
+  desktop/src/pages/windows/             the five live sensor windows, LiveChart
+  desktop/src/pages/sessions/            RecentSessions, SessionsPage, WindowLog,
+                                         and the parts they share
+  desktop/src/pages/startup/             the loading state
+  desktop/src/components/                ui.tsx, ProfileMenu.tsx
+  desktop/src/lib/                       agent.ts, format.ts, web.ts
+  desktop/src/harness.tsx                the layout harness (see below)
+
+One folder per page, imported through the `@/` alias (tsconfig + vite), so
+moving a file does not rewrite a dozen relative imports.
 
 
 TOP BAR
@@ -52,6 +58,17 @@ known, the window shows StartupPage — placeholders in the shape of the page,
 plus what it is waiting for. The agent reports this as `restoring` on the
 session, cleared however the attempt ends. Before that, the window rendered the
 signed-out page and swapped it for the operator's account a second later.
+
+
+WHEN A LOG LOOKS EMPTY
+
+Every history view follows the Auto/Manual toggle, and the toggle starts on
+Auto. An operator whose flights were all manual therefore saw "no sessions" on
+every log page with 45 readings sitting on disk (2026-09-17). The views now
+count what the filter hid and offer it — "2 manual sessions are hidden by the
+Auto toggle · Show every session" — and every one of them carries a link that
+opens the web dashboard in the operator's browser, which holds every flight from
+every laptop rather than just this one's (lib/web.ts, tauri-plugin-opener).
 
 
 DECISIONS
