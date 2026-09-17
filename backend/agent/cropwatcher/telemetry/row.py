@@ -12,6 +12,7 @@ from a launch prompt and never wrote it down.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 from typing import Any
@@ -64,6 +65,27 @@ class TelemetryRow:
     y_m: float
     z_m: float
 
+    # Live sensor data shown in the desktop app's windows, stored so the web's
+    # history holds what the operator saw. None when this firmware does not
+    # publish the variable.
+    vx_m_s: float | None = None
+    vy_m_s: float | None = None
+    vz_m_s: float | None = None
+    roll_deg: float | None = None
+    pitch_deg: float | None = None
+    yaw_deg: float | None = None
+    acc_x_g: float | None = None
+    acc_y_g: float | None = None
+    acc_z_g: float | None = None
+    gyro_x_deg_s: float | None = None
+    gyro_y_deg_s: float | None = None
+    gyro_z_deg_s: float | None = None
+    motor_m1: int | None = None
+    motor_m2: int | None = None
+    motor_m3: int | None = None
+    motor_m4: int | None = None
+    lighthouse_received: int | None = None      # count of base stations received
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
@@ -78,6 +100,7 @@ def build_row(
     thrust: int,
     position: tuple[float, float, float],
     unit: TempUnit,
+    sensors: Mapping[str, float] | None = None,
 ) -> TelemetryRow:
     """Assemble a row, converting temperatures into the operator's unit.
 
@@ -117,7 +140,32 @@ def build_row(
         x_m=x,
         y_m=y,
         z_m=z,
+        **_sensor_columns(sensors or {}),
     )
+
+
+# Stream variable → row column. One mapping, so the CSV header, the Postgres
+# columns and the live windows all use the same names for the same readings.
+SENSOR_COLUMNS: dict[str, str] = {
+    "stateEstimate.vx": "vx_m_s", "stateEstimate.vy": "vy_m_s", "stateEstimate.vz": "vz_m_s",
+    "stabilizer.roll": "roll_deg", "stabilizer.pitch": "pitch_deg", "stabilizer.yaw": "yaw_deg",
+    "acc.x": "acc_x_g", "acc.y": "acc_y_g", "acc.z": "acc_z_g",
+    "gyro.x": "gyro_x_deg_s", "gyro.y": "gyro_y_deg_s", "gyro.z": "gyro_z_deg_s",
+    "motor.m1": "motor_m1", "motor.m2": "motor_m2", "motor.m3": "motor_m3", "motor.m4": "motor_m4",
+}
+_INT_COLUMNS = {"motor_m1", "motor_m2", "motor_m3", "motor_m4"}
+
+
+def _sensor_columns(sensors: Mapping[str, float]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for variable, column in SENSOR_COLUMNS.items():
+        value = sensors.get(variable)
+        if value is not None:
+            out[column] = int(value) if column in _INT_COLUMNS else float(value)
+    received = sensors.get("lighthouse.bsReceive")
+    if received is not None:
+        out["lighthouse_received"] = bin(int(received)).count("1")
+    return out
 
 
 def parse_ambient(text: str) -> tuple[float, TempUnit]:

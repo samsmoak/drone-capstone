@@ -1,13 +1,21 @@
 """The agent's local HTTP and WebSocket API.
 
-This is what the desktop app and the browser talk to. It binds to **localhost
-by default**: it can arm a real drone and has no authentication of its own, so
-exposing it on a network is an explicit, deliberate act.
+This is what the desktop app talks to. It binds to **localhost by default**: it
+can arm a real drone, so exposing it on a network is an explicit, deliberate
+act — and even on localhost every command needs the local control token, since
+any page the operator has open can reach 127.0.0.1.
 
 Two surfaces, split by how much delay each tolerates:
 
-  REST       mission control. One request, delay is harmless.
-  WebSocket  manual control. Needs 50 Hz and cannot cross the internet.
+  REST       commands. One request, delay is harmless.
+  WebSocket  the live stream out (telemetry, session state, checks) and the
+             manual-control intent in. Needs 10 Hz and cannot cross the
+             internet.
+
+What is deliberately **not** here any more: `POST /flight/mission` and
+`/preflight` used to fly a drone with no authentication of any kind, and they
+bypassed the checks. Flying now goes through a session, which needs the token,
+a signed-in operator, passing checks and a confirmed area.
 """
 
 from __future__ import annotations
@@ -15,43 +23,46 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import sys
 import threading
 from contextlib import asynccontextmanager
-from typing import Any
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 
-from cropwatcher.api.manual import Intent, ManualController
-from cropwatcher.flight import core, missions
-from cropwatcher.flight.missions import Mission, MissionValidationError
-from cropwatcher.flight.preflight import PreflightError
-from cropwatcher.safety.geofence import Geofence
+from cropwatcher import history
+from cropwatcher.api.events import EventHub
+from cropwatcher.api.tokens import HEADER, load_or_create_token
+from cropwatcher.session import Mode, Session, SessionError
+from cropwatcher.sync.cloud import SupabaseCloud
+from cropwatcher.sync.outbox import Outbox
+from cropwatcher.sync.syncer import Syncer
 
 log = logging.getLogger(__name__)
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 
-# Browser origins allowed to talk to this agent.
-#
-# Binding to localhost does NOT keep websites out. Any page the operator has
-# open can send requests to 127.0.0.1, and WebSockets are not covered by CORS
-# at all — without an Origin check, a page on any site could open /ws/manual
-# and fly the drone. So the socket checks this list itself, and CORS uses the
-# same list for the read-only endpoints the dashboard polls.
-#
-# Extend with CROPWATCHER_ALLOWED_ORIGINS (comma-separated) for a preview
-# deployment; never with "*".
-BUILTIN_ORIGINS = (
-    "https://drone-capstone.vercel.app",
-    "http://localhost:3000",       # next dev
-    "tauri://localhost",           # desktop app, macOS
-    "http://tauri.localhost",      # desktop app, Windows
-    "http://localhost:1420",       # desktop app, tauri dev
+# The desktop window itself. WebKit serves it from `tauri://localhost` on macOS
+# and `http://tauri.localhost` on Windows; `localhost:1420` is `pnpm tauri dev`.
+# These may send commands — and still need the control token to be obeyed.
+DESKTOP_ORIGINS = (
+    "tauri://localhost",
+    "http://tauri.localhost",
+    "http://localhost:1420",
 )
+
+# Websites allowed to *read* status, so the dashboard can say whether the agent
+# is running. They may never command: a page on the internet cannot know the
+# token, and these origins are not allowed to POST at all.
+WEBSITE_ORIGINS = (
+    "https://drone-capstone.vercel.app",
+    "http://localhost:3000",
+)
+
+BUILTIN_ORIGINS = (*DESKTOP_ORIGINS, *WEBSITE_ORIGINS)
 
 
 def allowed_origins() -> frozenset[str]:
@@ -61,85 +72,163 @@ def allowed_origins() -> frozenset[str]:
     )
 
 
-def origin_permitted(origin: str | None) -> bool:
-    """Whether a request's Origin may use this agent.
-
-    A missing Origin is permitted: browsers always send one on a WebSocket
-    handshake, so its absence means a non-browser client — the CLI, a test, a
-    script on this machine — which already has local access anyway.
-    """
-    return origin is None or origin in allowed_origins()
-
-
 # ── request models ───────────────────────────────────────────────────────
 
 
-class HoverRequest(BaseModel):
-    height_m: float = Field(0.5, gt=0, le=3.0, description="metres above ground")
-    secs: float = Field(5.0, gt=0, le=300.0)
-    ambient: str = Field("22C", description="e.g. 74F or 22C")
-    force: bool = False
+class SignInRequest(BaseModel):
+    email: str
+    password: str
 
 
-class MissionRequest(BaseModel):
-    plan: dict[str, Any]
-    fence_m: float = Field(2.0, gt=0, le=10.0)
+class ModeRequest(BaseModel):
+    mode: Mode
+
+
+class ProgramRequest(BaseModel):
+    height_m: float = Field(0.30, gt=0, le=1.0, description="metres above the floor")
+    hold_s: float = Field(10.0, gt=0, le=60.0)
+    ambient: str = Field("22C", description="room temperature, e.g. 74F or 22C")
+
+
+class ManualRequest(BaseModel):
     ambient: str = "22C"
-    dry_run: bool = False
-    force: bool = False
+
+
+class ConfirmRequest(BaseModel):
+    #: The operator accepts flying with no base stations: height from the
+    #: barometer only, no position hold, no drift or fence guard. Required only
+    #: when the checks reported that assistance is unavailable.
+    accept_unassisted: bool = False
 
 
 # ── app state ────────────────────────────────────────────────────────────
 
 
-class AgentState:
-    """Whatever is currently happening. One drone, so one flight at a time."""
+class Agent:
+    """Everything the API drives. Built once, at startup."""
 
     def __init__(self) -> None:
-        self.uri = core.DEFAULT_URI
-        self.busy = False
-        self.current: str | None = None
-        self.manual: ManualController | None = None
+        self.hub = EventHub()
+        self.outbox = Outbox()
+        self.token = load_or_create_token()
+        self.cloud = SupabaseCloud(
+            os.environ.get("SUPABASE_URL", "").strip(),
+            os.environ.get("SUPABASE_ANON_KEY", "").strip(),
+        )
+        self.syncer = Syncer(
+            self.outbox,
+            lambda: self.cloud if self.cloud.operator is not None else None,
+            on_status=lambda status: self.hub.publish("sync", status.to_dict()),
+        )
+        self.session = Session(
+            cloud=self.cloud, outbox=self.outbox, syncer=self.syncer,
+            publish=self.hub.publish,
+        )
 
-    def claim(self, what: str) -> None:
-        if self.busy:
-            raise HTTPException(
-                status_code=409,
-                detail=f"the drone is already busy with: {self.current}",
-            )
-        self.busy = True
-        self.current = what
 
-    def release(self) -> None:
-        self.busy = False
-        self.current = None
+agent = Agent()
 
 
-state = AgentState()
+def _restore_sign_in() -> None:
+    try:
+        agent.session.restore_sign_in()
+    except Exception:
+        log.exception("restoring the saved sign-in failed")
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    log.info("agent API starting on %s:%d", DEFAULT_HOST, DEFAULT_PORT)
+    agent.hub.bind(asyncio.get_running_loop())
+    agent.syncer.start()
+    # Signing back in is a network call; the API must answer /health while it
+    # happens, so it runs beside startup rather than in front of it.
+    threading.Thread(target=_restore_sign_in, daemon=True, name="restore-sign-in").start()
+    log.info("agent API on %s:%d", DEFAULT_HOST, DEFAULT_PORT)
     yield
-    if state.manual is not None:
-        state.manual.stop()
+    try:
+        agent.session.end("agent shutting down")
+    except Exception:
+        log.exception("could not end the session cleanly")
+    agent.syncer.stop()
 
 
-app = FastAPI(title="CropWatcher Agent", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="CropWatcher Agent", version="0.2.0", lifespan=lifespan)
 
-# GET only. The dashboard needs to see whether the agent is running; it never
-# needs to start a flight from a browser tab, and a POST that arms a drone
-# should not be reachable from a web page at all.
-#
-# `allow_private_network` answers Chrome's Private Network Access preflight,
-# without which a public https page cannot reach 127.0.0.1 regardless of CORS.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=sorted(allowed_origins()),
-    allow_methods=["GET"],
-    allow_private_network=True,
-)
+
+class LocalCORS(BaseHTTPMiddleware):
+    """CORS, with the method list decided per origin.
+
+    The desktop window is a browser too: WebKit enforces CORS on its `fetch`,
+    so a single allow-list of GET blocked the app's own commands — every button
+    failed with "could not reach the agent" while the WebSocket, which CORS does
+    not cover, worked fine. That is what this asymmetry is for:
+
+      desktop origins   GET and POST — plus the control token, always
+      website origins   GET only, so the dashboard can see if the agent runs
+      anything else     no CORS headers at all
+
+    Removing the method split would let any page the operator has open POST to
+    the agent. It would still be refused for want of the token, but a drone is
+    not the place to rely on one gate.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        origin = request.headers.get("origin", "")
+        desktop = origin in DESKTOP_ORIGINS
+        known = desktop or origin in allowed_origins()
+        methods = "GET, POST, OPTIONS" if desktop else "GET, OPTIONS"
+
+        if request.method == "OPTIONS" and "access-control-request-method" in request.headers:
+            if not known:
+                return Response(status_code=400, content="Disallowed CORS origin")
+            requested = request.headers["access-control-request-method"].upper()
+            if requested not in methods:
+                return Response(status_code=400, content="Disallowed CORS method")
+            return Response(status_code=200, headers=self._headers(origin, methods, preflight=True))
+
+        response = await call_next(request)
+        if known:
+            response.headers.update(self._headers(origin, methods, preflight=False))
+        return response
+
+    @staticmethod
+    def _headers(origin: str, methods: str, *, preflight: bool) -> dict[str, str]:
+        headers = {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Methods": methods,
+            "Vary": "Origin",
+        }
+        if preflight:
+            headers["Access-Control-Allow-Headers"] = f"content-type, {HEADER.lower()}"
+            headers["Access-Control-Max-Age"] = "600"
+            # Chrome's Private Network Access preflight: a public https page
+            # fetching 127.0.0.1 needs this answered or it discards the reply,
+            # and the /setup banner can only ever say "not running".
+            headers["Access-Control-Allow-Private-Network"] = "true"
+        return headers
+
+
+app.add_middleware(LocalCORS)
+
+
+def require_token(x_agent_token: str = Header(default="")) -> None:
+    """Every command. Rejects anything that is not the app that launched us."""
+    if not x_agent_token or x_agent_token != agent.token:
+        raise HTTPException(
+            status_code=401, detail="This client is not authorised to fly the drone."
+        )
+
+
+Command = Depends(require_token)
+
+
+def _run(action) -> dict:
+    """Turn a refusal into a 409 the app can show verbatim."""
+    try:
+        action()
+    except SessionError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from None
+    return agent.session.snapshot().to_dict()
 
 
 # ── read-only ────────────────────────────────────────────────────────────
@@ -147,181 +236,237 @@ app.add_middleware(
 
 @app.get("/health")
 def health() -> dict:
-    """Liveness. The web app uses this to decide whether to show Download
-    or Start, so it must answer even when no drone is connected."""
-    return {"ok": True, "service": "cropwatcher-agent", "version": "0.1.0"}
+    """Liveness. No radio, no token: the setup page polls this to decide
+    whether to show Download or Start."""
+    return {"ok": True, "service": "cropwatcher-agent", "version": "0.2.0"}
 
 
 @app.get("/status")
 def status() -> dict:
-    found = core.scan()
+    """A summary safe to show without the token — no operator details."""
+    snapshot = agent.session.snapshot()
     return {
-        "drone_connected": bool(found),
-        "uri": found[0] if found else None,
-        "busy": state.busy,
-        "current": state.current,
-        "manual_state": str(state.manual.state) if state.manual else None,
+        "state": str(snapshot.state),
+        "mode": str(snapshot.mode),
+        "signed_in": snapshot.operator is not None,
+        "drone_connected": snapshot.drone is not None,
+        "sync": agent.syncer.status.to_dict(),
     }
 
 
-@app.get("/preflight")
-def preflight_check() -> dict:
-    """Run every gate without spinning a motor."""
-    from cropwatcher.flight import preflight
+@app.get("/session", dependencies=[Command])
+def session_state() -> dict:
+    return agent.session.snapshot().to_dict()
 
+
+# ── auth ─────────────────────────────────────────────────────────────────
+
+
+@app.post("/auth/sign-in", dependencies=[Command])
+def sign_in(request: SignInRequest) -> dict:
+    return _run(lambda: agent.session.sign_in(request.email, request.password))
+
+
+@app.post("/auth/sign-out", dependencies=[Command])
+def sign_out() -> dict:
+    return _run(agent.session.sign_out)
+
+
+# ── history ──────────────────────────────────────────────────────────────
+#
+# The operator's own sessions, read from this laptop. Token-gated like every
+# command: it names people and carries their flight data.
+
+
+@app.get("/history/sessions", dependencies=[Command])
+def list_sessions(
+    limit: int = Query(20, ge=1, le=200),
+    mode: Mode | None = None,           # only sessions that used this mode
+) -> list[dict]:
+    return history.list_sessions(limit, mode=str(mode) if mode else None)
+
+
+@app.get("/history/sessions/{session_id}", dependencies=[Command])
+def read_session(session_id: str) -> dict:
     try:
-        with core.connect(state.uri) as scf:
-            report = preflight.run(scf, hold_seconds=0.0)
-    except PreflightError as e:
-        # A refusal is a real answer, not a server error. 409 so the UI can
-        # show the reason rather than a generic failure.
-        raise HTTPException(status_code=409, detail={
-            "reason": e.reason, "detail": e.detail,
-        }) from e
-    except core.FlightError as e:
-        raise HTTPException(status_code=503, detail=str(e)) from e
-
-    return {
-        "battery_v": round(report.vbat, 2),
-        "can_fly": report.can_fly,
-        "base_stations": report.base_stations,
-        "ground_z_m": round(report.ground_z_m, 3),
-        "estimate_spread_m": round(report.estimate_spread_m, 4),
-        "endurance_s": round(report.endurance_s),
-    }
+        found = history.read_session(session_id)
+    except ValueError:
+        found = None
+    if found is None:
+        raise HTTPException(status_code=404, detail="No such session on this computer.")
+    return found
 
 
-# ── flying ───────────────────────────────────────────────────────────────
-
-
-@app.post("/flight/mission")
-def run_mission(request: MissionRequest) -> dict:
-    """Validate a plan and fly it. `dry_run` validates without connecting."""
+@app.get("/history/sessions/{session_id}/samples", dependencies=[Command])
+def read_samples(
+    session_id: str,
+    variables: str = Query(..., alias="vars", description="comma-separated variable names"),
+    limit: int = Query(history.MAX_SAMPLES_RETURNED, ge=1, le=history.MAX_SAMPLES_RETURNED),
+    mode: Mode | None = None,           # only readings taken in this mode
+) -> list[dict]:
+    names = [v.strip() for v in variables.split(",") if v.strip()]
     try:
-        mission = Mission.from_dict(request.plan)
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=f"malformed plan: {e}") from e
-
-    geofence = Geofence.square(request.fence_m)
-    try:
-        mission.validate(geofence=geofence)
-    except MissionValidationError as e:
-        raise HTTPException(status_code=422, detail=str(e)) from e
-
-    if request.dry_run:
-        return {
-            "validated": True,
-            "flown": False,
-            "waypoints": len(mission.waypoints),
-            "estimated_s": round(mission.estimated_duration_s()),
-            "plan": mission.describe(),
-        }
-
-    state.claim(f"mission: {mission.name}")
-    events: list[dict] = []
-    try:
-        with core.session(
-            state.uri,
-            hold_seconds=mission.estimated_duration_s(),
-            force=request.force,
-        ) as flight:
-            for event in missions.execute(mission, flight):
-                events.append({"kind": str(event.kind), "detail": event.detail})
-    except PreflightError as e:
-        raise HTTPException(status_code=409, detail=e.detail) from e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}") from e
-    finally:
-        state.release()
-
-    return {"validated": True, "flown": True, "events": events}
+        return history.read_samples(
+            session_id, names, mode=str(mode) if mode else None, limit=limit)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="No such session on this computer.") from None
 
 
-@app.post("/flight/stop")
-def stop_flight() -> dict:
-    """Abort whatever is happening. Always succeeds — a stop that can fail is
-    not a stop."""
-    if state.manual is not None:
-        state.manual.panic()
-    state.release()
-    return {"stopped": True}
+# ── session ──────────────────────────────────────────────────────────────
 
 
-# ── manual control ───────────────────────────────────────────────────────
+@app.post("/session/mode", dependencies=[Command])
+def set_mode(request: ModeRequest) -> dict:
+    return _run(lambda: agent.session.set_mode(request.mode))
 
 
-@app.websocket("/ws/manual")
-async def manual_socket(websocket: WebSocket) -> None:
-    """Manual flight.
+@app.post("/session/start", dependencies=[Command])
+def start_session() -> dict:
+    return _run(agent.session.start)
 
-    The client sends held-key state and a periodic heartbeat; the agent runs
-    the 50 Hz setpoint loop itself. If this socket goes quiet the controller
-    lands the drone without needing to be told.
+
+@app.post("/session/confirm", dependencies=[Command])
+def confirm_area(request: ConfirmRequest | None = None) -> dict:
+    accept = bool(request and request.accept_unassisted)
+    return _run(lambda: agent.session.confirm_area(accept_unassisted=accept))
+
+
+@app.post("/session/prop-test", dependencies=[Command])
+def prop_test() -> dict:
+    return _run(agent.session.prop_test)
+
+
+@app.post("/session/program", dependencies=[Command])
+def run_program(request: ProgramRequest) -> dict:
+    return _run(lambda: agent.session.run_program(
+        height_m=request.height_m, hold_s=request.hold_s, ambient=request.ambient))
+
+
+@app.post("/session/manual/arm", dependencies=[Command])
+def arm_manual(request: ManualRequest) -> dict:
+    return _run(lambda: agent.session.arm_manual(ambient=request.ambient))
+
+
+@app.post("/session/land", dependencies=[Command])
+def land() -> dict:
+    return _run(agent.session.land)
+
+
+@app.post("/session/emergency-stop", dependencies=[Command])
+def emergency_stop() -> dict:
+    """Always answers. A stop that can fail is not a stop."""
+    return _run(agent.session.emergency_stop)
+
+
+@app.post("/session/end", dependencies=[Command])
+def end_session() -> dict:
+    return _run(lambda: agent.session.end("operator"))
+
+
+@app.post("/sync/now", dependencies=[Command])
+def sync_now() -> dict:
+    agent.syncer.trigger()
+    return agent.syncer.status.to_dict()
+
+
+# ── the live socket ──────────────────────────────────────────────────────
+
+
+@app.websocket("/ws/live")
+async def live(websocket: WebSocket) -> None:
+    """Session state, checks and telemetry out; manual intent and heartbeat in.
+
+    The token arrives in the first message rather than the URL: a query string
+    is written to the access log, and this one grants control of a drone.
     """
-    # Before accept, before touching the radio. See BUILTIN_ORIGINS.
     origin = websocket.headers.get("origin")
-    if not origin_permitted(origin):
-        log.warning("refused manual control from origin %r", origin)
-        await websocket.close(code=1008)  # policy violation
+    if origin is not None and origin not in allowed_origins():
+        log.warning("refused a live socket from origin %r", origin)
+        await websocket.close(code=1008)
         return
 
     await websocket.accept()
-
-    if state.busy:
-        await websocket.send_json({"error": f"drone busy with {state.current}"})
-        await websocket.close()
+    try:
+        opening = await asyncio.wait_for(websocket.receive_json(), timeout=5.0)
+    except (TimeoutError, Exception):
+        await websocket.close(code=1008)
         return
 
-    controller: ManualController | None = None
+    if opening.get("type") != "auth" or opening.get("token") != agent.token:
+        await websocket.send_json({"type": "error", "message": "not authorised"})
+        await websocket.close(code=1008)
+        return
+
+    queue = agent.hub.subscribe()
+    await websocket.send_json({"type": "session", **agent.session.snapshot().to_dict()})
+    await websocket.send_json({"type": "sync", **agent.syncer.status.to_dict()})
+
+    async def pump() -> None:
+        while True:
+            message = await queue.get()
+            await websocket.send_json(message)
+
+    pump_task = asyncio.create_task(pump())
     try:
-        with core.connect(state.uri) as scf:
-            core._configure(scf.cf)
-            controller = ManualController(scf.cf.commander)
-            state.manual = controller
-            state.claim("manual control")
-            controller.start()
-
-            await websocket.send_json({"ready": True})
-
-            while True:
-                message = await websocket.receive_json()
-                kind = message.get("type")
-
-                if kind == "intent":
-                    try:
-                        controller.set_intent(Intent.from_payload(message.get("keys", {})))
-                    except ValueError as e:
-                        # Reject the frame, keep flying. Dropping the link over
-                        # a bad message would be worse than ignoring it.
-                        controller.stats.rejected_frames += 1
-                        await websocket.send_json({"error": str(e)})
-                elif kind == "heartbeat":
-                    controller.heartbeat()
-                elif kind == "panic":
-                    controller.panic()
-                    await websocket.send_json({"state": str(controller.state)})
-                elif kind == "land":
-                    controller.land()
-                else:
-                    controller.stats.rejected_frames += 1
-                    await websocket.send_json({"error": f"unknown frame type: {kind!r}"})
-
-                await websocket.send_json({
-                    "state": str(controller.state),
-                    "thrust": controller.thrust,
-                })
-
+        while True:
+            message = await websocket.receive_json()
+            kind = message.get("type")
+            if kind == "intent":
+                agent.session.set_intent(message.get("keys", {}))
+            elif kind == "heartbeat":
+                agent.session.heartbeat()
+            elif kind == "ping":
+                await websocket.send_json({"type": "pong"})
     except WebSocketDisconnect:
-        # The expected exit: the operator closed the tab. The controller's
-        # heartbeat timeout lands the drone; stopping it here does so at once.
-        log.info("manual socket disconnected")
+        # Expected: the window closed. The manual controller's heartbeat
+        # timeout lands the drone by itself.
+        log.info("live socket disconnected")
     except Exception:
-        log.exception("manual socket failed")
+        log.exception("live socket failed")
     finally:
-        if controller is not None:
-            controller.stop()
-        state.manual = None
-        state.release()
+        pump_task.cancel()
+        agent.hub.unsubscribe(queue)
+
+
+# ── serving ──────────────────────────────────────────────────────────────
+
+
+class QuietHealthFilter(logging.Filter):
+    """Log the first few /health polls, then stop.
+
+    The app polls /health every 2 s; without this the agent log is nothing but
+    those lines, and the flight messages that matter scroll away.
+    """
+
+    def __init__(self, keep: int = 10) -> None:
+        super().__init__()
+        self._keep = keep
+        self._seen = 0
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        if "/health" not in message:
+            return True
+        self._seen += 1
+        if self._seen == self._keep:
+            log.info("further /health polls will not be logged")
+        return self._seen <= self._keep
+
+
+def serve(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT,
+          exit_with_parent: bool = False) -> None:
+    """Run the API. Binding beyond localhost is deliberate — see module docs."""
+    import uvicorn
+
+    if host not in {"127.0.0.1", "localhost"}:
+        log.warning(
+            "binding to %s — this API can arm a drone. Only do this on a trusted network.", host
+        )
+    if exit_with_parent:
+        exit_when_parent_closes()
+
+    logging.getLogger("uvicorn.access").addFilter(QuietHealthFilter())
+    uvicorn.run(app, host=host, port=port, log_level="info")
 
 
 def exit_when_parent_closes() -> None:
@@ -342,44 +487,27 @@ def exit_when_parent_closes() -> None:
 
     Stdin is the fix because it is the one handle the real process inherits:
     when the parent dies its pipe closes, and the read below returns EOF in the
-    process that actually matters. Motors are cut before exiting — this path
-    can run while the drone is in the air.
+    process that actually matters. The session is ended first — this path can
+    run while the drone is in the air.
     """
+    import sys
+    import threading
+
     def watch() -> None:
         try:
-            # Returns "" only at EOF. A terminal simply blocks here forever,
-            # which is why this is opt-in and never affects interactive use.
             while sys.stdin.readline():
                 pass
         except Exception:  # noqa: BLE001 - a closed pipe must not raise here
             pass
 
-        log.warning("parent process closed — cutting motors and exiting")
-        if state.manual is not None:
-            state.manual.panic()
-        # Hard exit: uvicorn's graceful path waits on connections, and this
-        # runs when the operator's window is already gone.
+        log.warning("parent process closed — landing and shutting down")
+        try:
+            agent.session.end("the app closed")
+        except Exception:
+            log.exception("could not end the session; stopping the motors")
         os._exit(0)
 
     threading.Thread(target=watch, daemon=True, name="parent-watchdog").start()
 
 
-def serve(
-    host: str = DEFAULT_HOST,
-    port: int = DEFAULT_PORT,
-    exit_with_parent: bool = False,
-) -> None:
-    """Run the API. Binding beyond localhost is deliberate — see module docs."""
-    import uvicorn
-
-    if host not in {"127.0.0.1", "localhost"}:
-        log.warning(
-            "binding to %s — this API can arm a drone and has no authentication. "
-            "Only do this on a trusted network.", host
-        )
-    if exit_with_parent:
-        exit_when_parent_closes()
-    uvicorn.run(app, host=host, port=port, log_level="info")
-
-
-__all__ = ["app", "serve", "exit_when_parent_closes", "asyncio"]
+__all__ = ["app", "serve", "agent", "exit_when_parent_closes"]

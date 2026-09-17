@@ -133,7 +133,7 @@ def _check_server(binary: Path) -> list[str]:
         try:
             connection.request(
                 "GET",
-                "/ws/manual",
+                "/ws/live",
                 headers={
                     "Connection": "Upgrade",
                     "Upgrade": "websocket",
@@ -144,8 +144,9 @@ def _check_server(binary: Path) -> list[str]:
             response = connection.getresponse()
             if response.status != 101:
                 raise VerificationError(
-                    f"WebSocket upgrade returned {response.status}, not 101 — "
-                    "uvicorn's websockets implementation is probably not bundled."
+                    f"WebSocket upgrade returned {response.status}, not 101. Either "
+                    f"uvicorn's websockets implementation is not bundled, or the live "
+                    f"socket's path changed and this check is probing the old one."
                 )
             results.append("WebSocket upgrades to 101")
         finally:

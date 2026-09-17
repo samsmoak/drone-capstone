@@ -24,7 +24,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
-from cropwatcher.flight.core import Flight, Waypoint
+from cropwatcher.flight.control import GuardedFlight
+from cropwatcher.flight.core import Waypoint
 from cropwatcher.safety.geofence import Geofence, GeofenceViolation
 from cropwatcher.safety.occupancy import ObstacleViolation, OccupancyGrid
 
@@ -257,7 +258,7 @@ def lawnmower_mission(
 
 def execute(
     mission: Mission,
-    flight: Flight,
+    flight: GuardedFlight,
     *,
     on_event: Callable[[MissionEvent], None] | None = None,
     abort_on_low_voltage: bool = True,

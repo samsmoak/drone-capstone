@@ -1,0 +1,285 @@
+"""One connection to one drone — the only way anything in the agent flies.
+
+Before this, five paths could move the drone: the CLI's ``hover``, ``goto`` and
+``mission``, the ``poll`` loop, and an unauthenticated REST endpoint. All of
+them used a flight object that slept through its waits without watching
+anything. Now there is one path:
+
+    DroneLink.open()            connect, configure, start the telemetry stream
+      .checks()                 the live preflight checklist → ReadyReport
+      .prop_test()              the firmware's propeller test
+      .guarded_flight(report)   autonomous flight, every wait watched
+      .manual(report)           the assisted manual controller
+    DroneLink.close()           stop the stream, stop the motors, close the link
+
+The desktop session and the CLI both use it, so the safety behaviour exercised
+in the lab is the behaviour of every caller.
+"""
+
+from __future__ import annotations
+
+import logging
+import time
+from collections.abc import Callable, Generator
+from typing import Any
+
+from cropwatcher.api.manual import ManualController
+from cropwatcher.flight import core, preflight
+from cropwatcher.flight.checks import (
+    CheckResult,
+    PropTestResult,
+    ReadyReport,
+    run_checks,
+    run_prop_test,
+)
+from cropwatcher.flight.control import GuardedFlight, PhaseEvent
+from cropwatcher.paths import cflib_cache_dir
+from cropwatcher.safety.flight_guard import FlightGuard, GuardContext
+from cropwatcher.telemetry.reader import stream_variables_for
+from cropwatcher.telemetry.stream import Snapshot, TelemetryStream
+
+log = logging.getLogger(__name__)
+
+DEFAULT_FENCE_M = 2.0
+DEFAULT_MAX_HEIGHT_M = 1.0
+
+# `stabilizer.estimator`: 1 complementary (height from the barometer), 2 Kalman
+# (height from the base stations). Switched at runtime for unassisted flight.
+ESTIMATOR_PARAM = "stabilizer.estimator"
+ESTIMATOR_COMPLEMENTARY = "1"
+ESTIMATOR_KALMAN = "2"
+ESTIMATOR_SETTLE_S = 1.5
+
+
+class LinkError(RuntimeError):
+    """The drone could not be reached. The message is safe to show an operator."""
+
+
+def _default_scf(uri: str) -> Any:
+    from cflib.crazyflie import Crazyflie
+    from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
+
+    return SyncCrazyflie(uri, cf=Crazyflie(rw_cache=str(cflib_cache_dir())))
+
+
+def _default_stream(scf: Any) -> TelemetryStream:
+    return TelemetryStream(scf, variables=stream_variables_for(scf))
+
+
+def _default_scan() -> list[str]:
+    import cflib.crtp
+
+    cflib.crtp.init_drivers()
+    return [found[0] for found in cflib.crtp.scan_interfaces()]
+
+
+class DroneLink:
+    def __init__(
+        self,
+        uri: str = core.DEFAULT_URI,
+        *,
+        scf_factory: Callable[[str], Any] = _default_scf,
+        scan: Callable[[], list[str]] = _default_scan,
+        stream_factory: Callable[[Any], TelemetryStream] = _default_stream,
+        configure: Callable[[Any], None] = core._configure,
+        cut_motors: Callable[[Any], None] = core._cut_motors,
+    ) -> None:
+        self.uri = uri
+        self._scf_factory = scf_factory
+        self._scan = scan
+        self._stream_factory = stream_factory
+        self._configure = configure
+        self._cut_motors = cut_motors
+        self.scf: Any = None
+        self.stream: TelemetryStream | None = None
+
+    # ── lifecycle ────────────────────────────────────────────────────────
+
+    @property
+    def is_open(self) -> bool:
+        return self.scf is not None
+
+    def open(self) -> None:
+        if self.is_open:
+            return
+        try:
+            found = self._scan()
+        except Exception as e:
+            raise LinkError(
+                "The Crazyradio could not be opened. Is it plugged in, and is no other "
+                "program using it?"
+            ) from e
+        if not found:
+            raise LinkError(
+                "No drone answered. Check the battery is connected, the drone is "
+                "switched on, and it is within a few metres of this computer."
+            )
+
+        scf = self._scf_factory(self.uri)
+        try:
+            scf.open_link()
+        except Exception as e:
+            raise LinkError(f"The drone was found but the link failed to open ({e}).") from e
+
+        try:
+            self._configure(scf.cf)
+            stream = self._stream_factory(scf)
+            stream.start()
+        except Exception:
+            self._safe_close(scf)
+            raise
+        self.scf, self.stream = scf, stream
+        log.info("link open to %s", self.uri)
+
+    def close(self) -> None:
+        if not self.is_open:
+            return
+        scf, stream = self.scf, self.stream
+        self.scf, self.stream = None, None
+        if stream is not None:
+            try:
+                stream.stop()
+            except Exception:
+                log.debug("stream stop failed during close")
+        self._safe_close(scf)
+        log.info("link closed")
+
+    def _safe_close(self, scf: Any) -> None:
+        # Motors stopped on every path out, whatever state the link is in.
+        try:
+            self._cut_motors(scf)
+        finally:
+            try:
+                scf.close_link()
+            except Exception:
+                log.debug("close_link failed — link probably already down")
+
+    def __enter__(self) -> DroneLink:
+        self.open()
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
+    # ── reading ──────────────────────────────────────────────────────────
+
+    def _require_open(self) -> tuple[Any, TelemetryStream]:
+        if self.scf is None or self.stream is None:
+            raise LinkError("Not connected to a drone.")
+        return self.scf, self.stream
+
+    def snapshot(self) -> Snapshot:
+        _, stream = self._require_open()
+        return stream.snapshot()
+
+    # ── checks ───────────────────────────────────────────────────────────
+
+    def checks(self) -> Generator[CheckResult, None, ReadyReport]:
+        scf, stream = self._require_open()
+        return run_checks(
+            scf.cf, stream.snapshot,
+            reset_estimator=lambda: preflight.reset_estimator(scf.cf),
+        )
+
+    def prop_test(self) -> PropTestResult:
+        """Spins the motors briefly. The caller must hold the operator's
+        confirmation that the drone is on the floor and clear."""
+        scf, _ = self._require_open()
+
+        def read_health() -> tuple[int, int]:
+            row = preflight.sample(
+                scf, [("health.motorTestCount", "uint16_t"), ("health.motorPass", "uint8_t")], n=1
+            )[0]
+            return int(row["health.motorTestCount"]), int(row["health.motorPass"])
+
+        return run_prop_test(scf.cf, read_health)
+
+    # ── flying ───────────────────────────────────────────────────────────
+
+    def guarded_flight(
+        self,
+        report: ReadyReport,
+        *,
+        target_height_m: float | None,
+        hold_position: bool = True,
+        fence_half_extent_m: float = DEFAULT_FENCE_M,
+        max_height_m: float = DEFAULT_MAX_HEIGHT_M,
+        on_phase: Callable[[PhaseEvent], None] | None = None,
+        clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> GuardedFlight:
+        scf, stream = self._require_open()
+        guard = FlightGuard(GuardContext(
+            ground_z=report.ground_z_m,
+            fence_half_extent_m=fence_half_extent_m,
+            max_height_m=max_height_m,
+            takeoff_xy=report.takeoff_xy if hold_position else None,
+            target_height_m=target_height_m,
+            assisted=report.assisted,
+        ))
+        return GuardedFlight(
+            scf.cf, stream.snapshot, guard, report,
+            clock=clock, sleep=sleep, on_phase=on_phase,
+        )
+
+    def manual(
+        self,
+        report: ReadyReport,
+        *,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> ManualController:
+        """The manual controller for this flight.
+
+        Unassisted, the drone is switched to the complementary estimator, whose
+        height comes from the barometer, and the floor is read from it once it
+        has had a moment to settle. The Kalman ground height in the report is
+        meaningless without base stations and is not used.
+        """
+        scf, _ = self._require_open()
+        ground_z = report.ground_z_m
+        if not report.assisted:
+            scf.cf.param.set_value(ESTIMATOR_PARAM, ESTIMATOR_COMPLEMENTARY)
+            sleep(ESTIMATOR_SETTLE_S)
+            ground_z = self._average_z(sleep)
+            log.info("unassisted flight: barometer ground at z=%.3f", ground_z)
+        return ManualController(
+            scf.cf.commander,
+            ground_z=ground_z,
+            land=lambda z, duration: scf.cf.high_level_commander.land(z, duration),
+            assisted=report.assisted,
+        )
+
+    def restore_estimator(self) -> None:
+        """Back to the Kalman estimator, so the next checks see base stations."""
+        if self.scf is None:
+            return
+        try:
+            self.scf.cf.param.set_value(ESTIMATOR_PARAM, ESTIMATOR_KALMAN)
+        except Exception:
+            log.warning("could not restore the Kalman estimator")
+
+    def _average_z(self, sleep: Callable[[float], None], samples: int = 10) -> float:
+        values: list[float] = []
+        for _ in range(samples * 3):
+            z = self.snapshot().get("stateEstimate.z")
+            if z is not None:
+                values.append(z)
+                if len(values) >= samples:
+                    break
+            sleep(0.1)
+        return sum(values) / len(values) if values else 0.0
+
+    def manual_guard(
+        self,
+        report: ReadyReport,
+        *,
+        fence_half_extent_m: float = DEFAULT_FENCE_M,
+        max_height_m: float = DEFAULT_MAX_HEIGHT_M,
+    ) -> FlightGuard:
+        """Manual flight moves on purpose, so no drift or height-error checks."""
+        return FlightGuard(GuardContext(
+            ground_z=report.ground_z_m,
+            fence_half_extent_m=fence_half_extent_m,
+            max_height_m=max_height_m,
+            assisted=report.assisted,
+        ))

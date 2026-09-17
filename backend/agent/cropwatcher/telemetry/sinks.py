@@ -15,7 +15,7 @@ import csv
 import logging
 import queue
 import threading
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -77,29 +77,28 @@ class CsvSink:
                 self._file.close()
 
 
-class SupabaseSink:
-    """Batch rows to Supabase on a background thread.
+class LiveUploadSink:
+    """Batch rows to Supabase during the flight, on a background thread.
 
-    Never blocks the flight loop and never raises into it — an upload failure
-    is logged and dropped, because the CSV already holds the data. Rows are
-    batched rather than inserted one at a time; at 10 Hz, per-row inserts would
-    be 10 round trips a second for no benefit.
+    Never blocks the flight loop and never raises into it — a failed batch is
+    logged and dropped, because the CSV already holds the data and the sync
+    re-sends whatever the server is missing once it can (see sync/syncer.py).
+    Rows are batched rather than inserted one at a time; at 10 Hz, per-row
+    inserts would be 10 round trips a second for no benefit.
     """
 
     def __init__(
         self,
-        client: Any,
-        table: str = "telemetry",
+        send: Callable[[list[dict[str, Any]]], None],
         batch_size: int = 50,
         flush_interval_s: float = 5.0,
     ) -> None:
-        self._client = client
-        self._table = table
+        self._send = send
         self._batch_size = batch_size
         self._flush_interval = flush_interval_s
 
         self._queue: queue.Queue[dict[str, Any] | None] = queue.Queue()
-        self._thread = threading.Thread(target=self._run, daemon=True, name="supabase-sink")
+        self._thread = threading.Thread(target=self._run, daemon=True, name="live-upload")
         self._thread.start()
 
     def write(self, row: dict[str, Any]) -> None:
@@ -132,11 +131,11 @@ class SupabaseSink:
         if not batch:
             return
         try:
-            self._client.table(self._table).insert(batch).execute()
+            self._send(batch)
         except Exception:
-            # Deliberately swallowed. The CSV has the data; losing the upload
-            # is an inconvenience, losing the flight is not recoverable.
-            log.exception("supabase upload failed, dropping %d rows", len(batch))
+            # Deliberately swallowed. The CSV has the data, and the sync fills
+            # the gap; losing the flight is what cannot be recovered.
+            log.info("live upload failed for %d rows; the sync will send them", len(batch))
 
 
 class FanOutSink:

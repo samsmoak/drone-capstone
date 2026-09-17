@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import csv
 
-from cropwatcher.telemetry.sinks import CsvSink, FanOutSink
+from cropwatcher.telemetry.sinks import CsvSink, FanOutSink, LiveUploadSink
 
 
 def row(i: int) -> dict:
@@ -110,3 +110,27 @@ class TestFanOutSink:
 
         with csv_sink.path.open() as f:
             assert len(list(csv.DictReader(f))) == 10
+
+
+class TestLiveUploadSink:
+    def test_batches_rows_and_sends_them_on_close(self):
+        sent: list[list[dict]] = []
+        sink = LiveUploadSink(sent.append, batch_size=3, flush_interval_s=0.05)
+        for i in range(4):
+            sink.write({"index": i})
+        sink.close()
+        assert [len(b) for b in sent] == [3, 1]
+        assert [r["index"] for b in sent for r in b] == [0, 1, 2, 3]
+
+    def test_a_failed_upload_never_reaches_the_flight_loop(self):
+        def explode(_batch):
+            raise ConnectionError("offline")
+
+        sink = LiveUploadSink(explode, batch_size=1, flush_interval_s=0.05)
+        sink.write({"index": 0})       # must not raise
+        sink.close()
+
+    def test_nothing_is_sent_when_there_is_nothing(self):
+        sent: list[list[dict]] = []
+        LiveUploadSink(sent.append, flush_interval_s=0.05).close()
+        assert sent == []

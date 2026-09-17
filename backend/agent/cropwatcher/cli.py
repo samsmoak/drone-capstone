@@ -1,33 +1,38 @@
 """Command line entry point.
 
-This is the whole point of ``flight.core``: every parameter is an argument.
-Nothing here prompts, and nothing has to be edited between flights.
+For the lab and for diagnostics. The desktop app is what an operator uses; this
+is what you reach for when a drone will not connect and there is no window to
+click in.
 
-    cropwatcher check                       # preflight only, no motors
-    cropwatcher hover --height 0.5 --secs 30
-    cropwatcher goto --x 0.3 --y -0.2 --z 0.5
+    cropwatcher check                       # every gate, no motors
+    cropwatcher proptest                    # the firmware's motor test
+    cropwatcher hover --height 0.3 --secs 10 --ambient 74F
+    cropwatcher mission --file plan.json
+    cropwatcher serve                       # the local API for the desktop app
+
+Every flight here goes through the same :class:`DroneLink` the app uses, so the
+checks and the in-flight guards are identical. Nothing prompts, and nothing has
+to be edited between flights.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 from pathlib import Path
 
-from cropwatcher.flight import core, missions
-from cropwatcher.flight.core import Waypoint
-from cropwatcher.flight.missions import (
-    Mission,
-    MissionValidationError,
-    lawnmower_mission,
-)
-from cropwatcher.flight.preflight import PreflightError
+from cropwatcher.flight import core
+from cropwatcher.flight.checks import CheckResult, ChecksFailed, CheckStatus, ReadyReport, collect
+from cropwatcher.flight.control import FlightAborted
+from cropwatcher.flight.link import DroneLink, LinkError
+from cropwatcher.flight.missions import Mission, MissionValidationError, execute, lawnmower_mission
+from cropwatcher.flight.programs import HoverTest, run_hover_test
+from cropwatcher.paths import flights_dir
 from cropwatcher.safety.geofence import Geofence
-from cropwatcher.safety.occupancy import OccupancyGrid
-from cropwatcher.telemetry.correction import ThermalEngine
-from cropwatcher.telemetry.reader import TelemetryReader, detect_baro_vars, read_initial
-from cropwatcher.telemetry.row import TempUnit, parse_ambient
+from cropwatcher.telemetry.reader import FlightRecorder
+from cropwatcher.telemetry.row import parse_ambient
 from cropwatcher.telemetry.sinks import CsvSink
 
 log = logging.getLogger("cropwatcher")
@@ -35,12 +40,18 @@ log = logging.getLogger("cropwatcher")
 
 def _add_common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--uri", default=core.DEFAULT_URI, help="Crazyflie radio URI")
+
+
+def _add_flight_common(p: argparse.ArgumentParser) -> None:
+    _add_common(p)
     p.add_argument(
-        "--force",
-        action="store_true",
-        help="skip advisory gates (endurance, estimate stability). Never skips "
-             "the physical ones — no positioning deck still means no flight.",
+        "--ambient", default="22C",
+        help="room temperature, e.g. 74F or 22C. The unit you use here is the "
+             "unit every temperature in this flight is stored in.",
     )
+    p.add_argument("--fence", type=float, default=2.0,
+                   help="half-extent of the square geofence, metres")
+    p.add_argument("--no-log", action="store_true", help="fly without recording a CSV")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -48,227 +59,175 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-v", "--verbose", action="store_true")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    check = sub.add_parser("check", help="run preflight only; never spins a motor")
+    check = sub.add_parser("check", help="run every gate; never spins a motor")
     _add_common(check)
 
-    hover = sub.add_parser("hover", help="take off, hold altitude, land")
-    hover.add_argument("--height", type=float, default=0.5, help="metres above ground")
-    hover.add_argument("--secs", type=float, default=5.0, help="hold duration")
-    hover.add_argument(
-        "--ambient",
-        default="22C",
-        help="room temperature, e.g. 74F or 22C. The unit you use here is the "
-             "unit every temperature column is stored in.",
-    )
-    hover.add_argument("--no-log", action="store_true", help="skip CSV logging")
-    _add_common(hover)
+    proptest = sub.add_parser("proptest", help="the firmware's propeller test — motors spin")
+    _add_common(proptest)
 
-    goto = sub.add_parser("goto", help="take off, fly to one point, return, land")
-    goto.add_argument("--x", type=float, required=True, help="metres")
-    goto.add_argument("--y", type=float, required=True, help="metres")
-    goto.add_argument("--z", type=float, required=True, help="metres above ground")
-    goto.add_argument("--secs", type=float, default=3.0, help="travel duration")
-    _add_common(goto)
+    hover = sub.add_parser("hover", help="take off, hold a steady height, land")
+    hover.add_argument("--height", type=float, default=0.3, help="metres above the floor")
+    hover.add_argument("--secs", type=float, default=10.0, help="hold duration")
+    _add_flight_common(hover)
 
-    lawn = sub.add_parser("lawnmower", help="serpentine scan of a rectangle")
-    lawn.add_argument("--width", type=float, default=2.0, help="metres")
-    lawn.add_argument("--height", type=float, default=2.0, help="metres")
+    mission = sub.add_parser("mission", help="fly a saved mission file")
+    mission.add_argument("--file", required=True, help="path to a mission JSON file")
+    _add_flight_common(mission)
+
+    lawn = sub.add_parser("lawnmower", help="write a serpentine scan to a mission file")
+    lawn.add_argument("--width", type=float, required=True, help="metres")
+    lawn.add_argument("--height-m", type=float, required=True, help="metres")
     lawn.add_argument("--step", type=float, default=0.5, help="lane spacing, metres")
-    lawn.add_argument("--altitude", type=float, default=0.5, help="metres above ground")
-    lawn.add_argument("--layers", type=int, default=1)
-    lawn.add_argument("--hold", type=float, default=0.0, help="dwell per waypoint")
-    _add_mission_common(lawn)
-    _add_common(lawn)
+    lawn.add_argument("--altitude", type=float, default=0.5, help="metres above the floor")
+    lawn.add_argument("--out", required=True, help="where to write the plan")
 
     serve = sub.add_parser("serve", help="run the local API for the desktop app")
     serve.add_argument("--host", default="127.0.0.1",
-                       help="binding beyond localhost exposes drone control with no auth")
+                       help="binding beyond localhost exposes drone control")
     serve.add_argument("--port", type=int, default=8765)
     serve.add_argument(
-        "--exit-with-parent",
-        action="store_true",
-        help="cut motors and exit when stdin closes. The desktop app passes "
+        "--exit-with-parent", action="store_true",
+        help="land, cut motors and exit when stdin closes. The desktop app passes "
              "this so quitting it cannot strand an agent holding the radio.",
     )
-
-    poll = sub.add_parser("poll", help="claim and fly missions from Supabase")
-    poll.add_argument("--fence", type=float, default=2.0, help="geofence half-extent, metres")
-    poll.add_argument("--once", action="store_true", help="handle one mission then exit")
-    _add_common(poll)
-
-    run = sub.add_parser("mission", help="fly a saved mission file")
-    run.add_argument("--file", required=True, help="path to a mission JSON file")
-    _add_mission_common(run)
-    _add_common(run)
-
     return parser
 
 
-def _add_mission_common(p: argparse.ArgumentParser) -> None:
-    p.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="validate and print the plan; never connects, never arms",
+# ── shared ───────────────────────────────────────────────────────────────
+
+
+def _print_step(step: CheckResult) -> None:
+    if step.status is CheckStatus.RUNNING:
+        return
+    mark = "ok  " if step.status is CheckStatus.PASSED else "FAIL"
+    print(f"  {mark} {step.label:22} {step.detail}")
+
+
+def _run_checks(link: DroneLink) -> ReadyReport:
+    print("  checks:")
+    return collect(link.checks(), _print_step)
+
+
+def _record(link: DroneLink, report: ReadyReport, args, flight_id: str) -> FlightRecorder | None:
+    if args.no_log:
+        return None
+    ambient_c, unit = parse_ambient(args.ambient)
+    sink = CsvSink(root=flights_dir(), prefix=f"flight_{flight_id}")
+    assert link.stream is not None
+    recorder = FlightRecorder(
+        link.stream, sink, ambient_c=ambient_c, unit=unit,
+        ground_z=report.ground_z_m, flight_id=flight_id,
     )
-    p.add_argument("--fence", type=float, default=2.0,
-                   help="half-extent of the square geofence, metres")
-    p.add_argument("--map", help="occupancy map YAML for path checking")
-    p.add_argument("--ambient", default="22C", help="room temperature, e.g. 74F")
-    p.add_argument("--save", help="write the generated plan to this path")
+    recorder.start()
+    print(f"  recording to {sink.path}")
+    return recorder
+
+
+def _confirm_area() -> bool:
+    """The same confirmation the desktop app requires before motors turn."""
+    answer = input("  Is the drone on the floor with the area clear? [y/N] ").strip().lower()
+    return answer in ("y", "yes")
+
+
+# ── commands ─────────────────────────────────────────────────────────────
 
 
 def cmd_check(args: argparse.Namespace) -> int:
-    with core.connect(args.uri) as scf:
-        from cropwatcher.flight import preflight
-
-        report = preflight.run(scf, hold_seconds=0.0, force=args.force)
-
-    print(f"  battery       {report.vbat:.2f} V")
-    print(f"  firmware      canfly={int(report.can_fly)}")
-    print(f"  base stations {report.base_stations}")
-    print(f"  ground z      {report.ground_z_m:+.3f} m "
-          f"(settled to {report.estimate_spread_m * 100:.1f} cm)")
-    print(f"  endurance     ~{report.endurance_s:.0f}s of hover")
-    print("\n  READY")
+    with DroneLink(args.uri) as link:
+        report = _run_checks(link)
+        print(f"\n  drone      {report.hardware_id}")
+        print(f"  battery    {report.vbat:.2f} V, ~{report.endurance_s:.0f}s of hover")
+        print(f"  stations   {', '.join(str(s) for s in report.positioning.usable)}")
+        print(f"  ground z   {report.ground_z_m:+.3f} m "
+              f"(settled to {report.estimate_spread_m * 100:.1f} cm)")
+        print("\n  READY")
     return 0
+
+
+def cmd_proptest(args: argparse.Namespace) -> int:
+    with DroneLink(args.uri) as link:
+        _run_checks(link)
+        if not _confirm_area():
+            print("  cancelled")
+            return 1
+        result = link.prop_test()
+        for motor in (1, 2, 3, 4):
+            print(f"  motor {motor}   {'ok' if motor in result.passed else 'FAILED'}")
+        return 0 if result.ok else 1
 
 
 def cmd_hover(args: argparse.Namespace) -> int:
-    ambient_c, unit = parse_ambient(args.ambient)
+    program = HoverTest(height_m=args.height, hold_s=args.secs)
+    with DroneLink(args.uri) as link:
+        report = _run_checks(link)
+        if program.duration_s() > report.budget_s():
+            print(f"\n  this battery has about {report.budget_s():.0f}s of flying left; "
+                  f"the program needs {program.duration_s():.0f}s")
+            return 1
+        if not _confirm_area():
+            print("  cancelled")
+            return 1
 
-    with core.session(args.uri, hold_seconds=args.secs, force=args.force) as flight:
-        print(f"  battery {flight.report.vbat:.2f} V, "
-              f"ground z {flight.ground_z:+.3f} m")
-
-        reader, csv_path = (None, None)
-        if not args.no_log:
-            reader, csv_path = _start_logging(flight, ambient_c, unit)
-
+        recorder = _record(link, report, args, flight_id="cli")
+        flight = link.guarded_flight(
+            report, target_height_m=program.height_m, fence_half_extent_m=args.fence,
+            on_phase=lambda event: print(f"  {event.phase}: {event.detail}"),
+        )
         try:
-            print(f"\n  taking off to {args.height:.2f} m above ground")
-            flight.takeoff(args.height)
-
-            elapsed = 0.0
-            while elapsed < args.secs:
-                _, _, z = flight.position()
-                vbat = flight.battery()
-                print(f"   {z:5.2f} m AGL   err={z - args.height:+.3f} m   {vbat:.2f} V")
-                if vbat < core.preflight.CRITICAL_VBAT:
-                    print("   VOLTAGE CRITICAL — landing early")
-                    break
-                flight.hold(0.25)
-                elapsed += 0.25
-
-            print("\n  landing")
-            flight.land()
+            result = run_hover_test(flight, program)
         finally:
-            # Stop logging after landing, not before: the correction engine
-            # needs the idle samples either side of the flight.
-            if reader is not None:
-                reader.stop()
-                print(f"  telemetry written to {csv_path}")
-
-    print("  done")
-    return 0
+            if recorder is not None:
+                recorder.stop()
+        print(f"\n  {result.message}")
+        return 0 if result.outcome.value == "completed" else 1
 
 
-def _start_logging(
-    flight: core.Flight, ambient_c: float, unit: TempUnit
-) -> tuple[TelemetryReader, Path]:
-    """Seed the correction engine from a real reading, then start streaming."""
-    scf = flight.scf
-    temp_var, press_var = detect_baro_vars(scf)
-    raw_c, _pressure = read_initial(scf, temp_var, press_var)
-    print(f"  startup temp {raw_c:.2f} C, ambient given as {ambient_c:.2f} C "
-          f"(storing in {unit})")
+def cmd_mission(args: argparse.Namespace) -> int:
+    try:
+        mission = Mission.from_file(args.file)
+    except (OSError, ValueError) as e:
+        print(f"  could not read the mission: {e}")
+        return 2
+    try:
+        mission.validate(geofence=Geofence.square(args.fence))
+    except MissionValidationError as e:
+        print(f"  the plan is not safe to fly: {e}")
+        return 2
 
-    sink = CsvSink()
-    reader = TelemetryReader(
-        scf,
-        sink,
-        ThermalEngine(raw_c, ambient_c),
-        unit=unit,
-        ground_z=flight.ground_z,
-    )
-    reader.start()
-    return reader, sink.path
+    with DroneLink(args.uri) as link:
+        report = _run_checks(link)
+        if mission.estimated_duration_s() > report.budget_s():
+            print(f"\n  this battery has about {report.budget_s():.0f}s of flying left; "
+                  f"the mission needs {mission.estimated_duration_s():.0f}s")
+            return 1
+        if not _confirm_area():
+            print("  cancelled")
+            return 1
 
-
-def cmd_goto(args: argparse.Namespace) -> int:
-    target = Waypoint(args.x, args.y, args.z)
-    with core.session(args.uri, hold_seconds=args.secs * 2, force=args.force) as flight:
-        print(f"  taking off to {args.z:.2f} m")
-        flight.takeoff(args.z)
-
-        print(f"  flying to ({target.x:+.2f}, {target.y:+.2f}, {target.z:.2f})")
-        flight.goto(target, duration_s=args.secs)
-        x, y, z = flight.position()
-        print(f"  arrived at ({x:+.3f}, {y:+.3f}, {z:.3f})")
-
-        print("  returning to start")
-        flight.goto(Waypoint(0.0, 0.0, args.z), duration_s=args.secs)
-        flight.land()
-    print("  done")
+        recorder = _record(link, report, args, flight_id="cli")
+        flight = link.guarded_flight(
+            report, target_height_m=mission.altitude_m, hold_position=False,
+            fence_half_extent_m=args.fence,
+        )
+        try:
+            for event in execute(mission, flight):
+                print(f"  {event.kind}: {event.detail}")
+        except FlightAborted as e:
+            print(f"\n  {e.verdict.message}")
+            return 1
+        finally:
+            if recorder is not None:
+                recorder.stop()
     return 0
 
 
 def cmd_lawnmower(args: argparse.Namespace) -> int:
     mission = lawnmower_mission(
-        width_m=args.width,
-        height_m=args.height,
-        step_m=args.step,
-        altitude_m=args.altitude,
-        layers=args.layers,
-        hold_s=args.hold,
+        width_m=args.width, height_m=args.height_m, step_m=args.step, altitude_m=args.altitude,
     )
-    return _plan_and_fly(mission, args)
-
-
-def cmd_mission(args: argparse.Namespace) -> int:
-    return _plan_and_fly(Mission.from_file(args.file), args)
-
-
-def _plan_and_fly(mission: Mission, args: argparse.Namespace) -> int:
-    """Validate, print, then fly — unless this is a dry run.
-
-    Validation happens with no drone connected, so an operator can check a
-    route from a desk before carrying anything to the greenhouse.
-    """
-    geofence = Geofence.square(args.fence)
-    occupancy = OccupancyGrid.from_yaml(args.map) if args.map else None
-
-    print(mission.describe())
-    print()
-
-    try:
-        mission.validate(geofence=geofence, occupancy=occupancy)
-    except MissionValidationError as e:
-        print(f"  PLAN REJECTED — {e}\n", file=sys.stderr)
-        return 3
-    print("  plan validated"
-          f" against a {args.fence * 2:.1f} m square fence"
-          + (" and the occupancy map" if occupancy else " (no map supplied)"))
-
-    if args.save:
-        mission.save(args.save)
-        print(f"  saved to {args.save}")
-
-    if args.dry_run:
-        print("\n  DRY RUN — nothing was armed\n")
-        return 0
-
-    ambient_c, unit = parse_ambient(args.ambient)
-    estimated = mission.estimated_duration_s()
-
-    with core.session(args.uri, hold_seconds=estimated, force=args.force) as flight:
-        reader, csv_path = _start_logging(flight, ambient_c, unit)
-        try:
-            for event in missions.execute(mission, flight):
-                print(f"   [{event.kind}] {event.detail}")
-        finally:
-            reader.stop()
-            print(f"\n  telemetry written to {csv_path}")
-
+    Path(args.out).write_text(json.dumps(mission.to_dict(), indent=2), encoding="utf-8")
+    print(f"  {len(mission.waypoints)} waypoints, about "
+          f"{mission.estimated_duration_s():.0f}s → {args.out}")
     return 0
 
 
@@ -276,35 +235,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     from cropwatcher.api.rest import serve as run_server
 
     print(f"  agent API on http://{args.host}:{args.port}")
-    run_server(
-        host=args.host,
-        port=args.port,
-        exit_with_parent=args.exit_with_parent,
-    )
-    return 0
-
-
-def cmd_poll(args: argparse.Namespace) -> int:
-    """Claim missions from Supabase and fly them."""
-    import contextlib
-
-    from cropwatcher.sync.client import Settings, SupabaseQueue
-    from cropwatcher.sync.poller import Poller
-
-    queue = SupabaseQueue(Settings.from_env())
-
-    @contextlib.contextmanager
-    def factory(hold_seconds: float):
-        with core.session(args.uri, hold_seconds=hold_seconds, force=args.force) as f:
-            yield f
-
-    poller = Poller(queue, factory, geofence=Geofence.square(args.fence))
-    poller.install_signal_handlers()
-
-    print(f"  polling for missions (fence {args.fence * 2:.1f} m square)")
-    stats = poller.run_forever(max_iterations=1 if args.once else None)
-    print(f"\n  claimed={stats.claimed} completed={stats.completed} "
-          f"failed={stats.failed} rejected={stats.rejected}")
+    run_server(host=args.host, port=args.port, exit_with_parent=args.exit_with_parent)
     return 0
 
 
@@ -317,25 +248,25 @@ def main(argv: list[str] | None = None) -> int:
 
     handlers = {
         "check": cmd_check,
+        "proptest": cmd_proptest,
         "hover": cmd_hover,
-        "goto": cmd_goto,
-        "lawnmower": cmd_lawnmower,
         "mission": cmd_mission,
+        "lawnmower": cmd_lawnmower,
         "serve": cmd_serve,
-        "poll": cmd_poll,
     }
     try:
         return handlers[args.command](args)
-    except PreflightError as e:
-        # A refused preflight is an expected outcome, not a crash. Say what the
-        # drone said and what to do about it.
-        print(f"\n  REFUSED — {e.detail}\n", file=sys.stderr)
-        return 2
-    except core.FlightError as e:
-        print(f"\n  {e}\n", file=sys.stderr)
+    except LinkError as e:
+        print(f"\n  {e}\n")
+        return 1
+    except ChecksFailed as e:
+        print(f"\n  {e.result.detail}\n")
+        return 1
+    except FlightAborted as e:
+        print(f"\n  {e.verdict.message}\n")
         return 1
     except KeyboardInterrupt:
-        print("\n  aborted", file=sys.stderr)
+        print("\n  interrupted — the drone lands on the way out")
         return 130
 
 

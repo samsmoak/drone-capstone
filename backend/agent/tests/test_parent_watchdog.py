@@ -81,25 +81,24 @@ class TestExitWithParent:
             process.wait(timeout=10)
 
 
-class TestMotorsCutOnParentLoss:
-    def test_panics_an_active_manual_controller_before_exiting(self, monkeypatch):
-        """This path can run mid-flight, so the motors are cut first."""
+class TestSessionEndsOnParentLoss:
+    def test_the_session_is_ended_before_exiting(self, monkeypatch):
+        """This path can run mid-flight, so the drone is landed first."""
+        import sys as real_sys
+
         events: list[str] = []
         exited = threading.Event()
-
-        class FakeController:
-            def panic(self) -> None:
-                events.append("panic")
 
         def fake_exit(code: int) -> None:
             events.append(f"exit:{code}")
             exited.set()
 
-        monkeypatch.setattr(rest.sys, "stdin", io.StringIO(""))  # immediate EOF
+        monkeypatch.setattr(real_sys, "stdin", io.StringIO(""))     # immediate EOF
         monkeypatch.setattr(rest.os, "_exit", fake_exit)
-        monkeypatch.setattr(rest.state, "manual", FakeController())
+        monkeypatch.setattr(rest.agent.session, "end",
+                            lambda reason: events.append(f"end:{reason}"))
 
         rest.exit_when_parent_closes()
 
         assert exited.wait(timeout=5)
-        assert events == ["panic", "exit:0"]
+        assert events == ["end:the app closed", "exit:0"]
