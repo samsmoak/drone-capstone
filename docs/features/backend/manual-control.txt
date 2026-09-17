@@ -40,8 +40,23 @@ Replaced (2026-09-16): a raw-throttle law. Its slow ramp through liftoff let the
 drone skid on a leg and tumble, and letting go of W held nothing.
 
 
+THE GLIDE
+
+Nothing the keys command changes in a step. A press used to set the climb speed
+instantly and a release stopped it instantly — a jolt at both ends, and the
+height controller answered with the motor hammering in the 2026-09-17 traces.
+The climb speed, the assisted arrow velocities, the unassisted tilt and the yaw
+rate all ease toward what the keys ask at a bounded rate (CLIMB_ACCEL_M_S2 0.30,
+MOVE_ACCEL_M_S2 0.40, TILT_RATE_DEG_S 12, YAW_ACCEL_DEG_S2 90). Releasing W
+eases to a stop within about 4 cm and then holds exactly. Land eases out of a
+climb before easing into the descent, so pressing Land mid-climb is smooth.
+
+See flight-tuning.txt for the firmware-side half of the same fix.
+
+
 THE NUMBERS
 
+  CLIMB_ACCEL_M_S2    0.30          easing, both modes
   TICK_HZ             50            setpoints per second
   HEARTBEAT_TIMEOUT_S 0.5           no word from the window -> land
   IDLE_THRUST         11000         props turning, no lift

@@ -56,6 +56,13 @@ WINDOWS: dict[str, tuple[str, ...]] = {
     ),
     "environment": ("baro.temp", "baro.pressure"),
     "motion": ("acc.x", "acc.y", "acc.z", "gyro.x", "gyro.y", "gyro.z"),
+    # What the height controller is doing, for the flight trace: its target,
+    # and the barometer estimator's height and climb rate. Firmware that does
+    # not publish these simply skips them (see `missing`).
+    "control": (
+        "posCtl.targetZ", "posCtl.targetVZ",
+        "posEstAlt.estimatedZ", "posEstAlt.velocityZ",
+    ),
     "positioning": (
         "lighthouse.bsReceive", "lighthouse.bsActive",
         "lighthouse.bsCalVal", "lighthouse.bsGeoVal", "lighthouse.bsAvailable",

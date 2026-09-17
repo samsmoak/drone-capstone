@@ -24,6 +24,17 @@ Two things that shape the whole website:
    and it is what the area is.
 
 
+THE OPERATOR SHELL
+
+/app and /admin share one frame (components/operator/OperatorShell.tsx): a fixed
+left sidebar on wide screens, a slim sticky bar on phones. Copied from
+../doctor-portfolio's admin studio layout, with the links in two groups —
+"Flight data" and "Website" (operators only) — and "View site" above the account
+at the foot. The account button shows an initial; its menu holds the email, the
+role and Sign out. The old top bar wrapped onto three rows once every link and
+the email were in it, which is why the navbar was so tall.
+
+
 WHERE IT LIVES
 
   lib/site-content.ts                     field specs, default wording, normaliser
@@ -33,6 +44,8 @@ WHERE IT LIVES
   components/admin/PageEditor.tsx         one generic form drawn from the spec
   app/admin/pages/, app/admin/pages/[key]
   components/site/VisitorAccount.tsx      Sign in / Dashboard / account menu
+  components/operator/OperatorShell.tsx   the operator frame (sidebar + mobile)
+  components/operator/nav-items.ts        the two nav groups, and active matching
   components/site/PageIntro.tsx           eyebrow + title + intro, from content
   lib/routes.ts safeNext                  same-site redirect guard
   backend/supabase/migrations/20260917000009_site_pages.sql

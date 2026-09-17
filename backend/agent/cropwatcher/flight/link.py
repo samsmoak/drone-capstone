@@ -33,6 +33,7 @@ from cropwatcher.flight.checks import (
     run_prop_test,
 )
 from cropwatcher.flight.control import GuardedFlight, PhaseEvent
+from cropwatcher.flight.tuning import BAROMETER_PROFILE, BASE_PROFILE, Applied, FlightTuning
 from cropwatcher.paths import cflib_cache_dir
 from cropwatcher.safety.flight_guard import FlightGuard, GuardContext
 from cropwatcher.telemetry.reader import stream_variables_for
@@ -92,6 +93,9 @@ class DroneLink:
         self._cut_motors = cut_motors
         self.scf: Any = None
         self.stream: TelemetryStream | None = None
+        self._tuning: FlightTuning | None = None
+        #: What the last manual flight changed, for the audit trail and history.
+        self.tuning_applied: list[Applied] = []
 
     # ── lifecycle ────────────────────────────────────────────────────────
 
@@ -237,6 +241,11 @@ class DroneLink:
         """
         scf, _ = self._require_open()
         ground_z = report.ground_z_m
+        # Tuning first, so the estimator settles under the gains it will fly on.
+        # See flight/tuning.py for the lab evidence behind every value.
+        self._tuning = FlightTuning(getattr(scf.cf, "param", None))
+        profiles = (BASE_PROFILE,) if report.assisted else (BASE_PROFILE, BAROMETER_PROFILE)
+        self.tuning_applied = self._tuning.apply(*profiles)
         if not report.assisted:
             scf.cf.param.set_value(ESTIMATOR_PARAM, ESTIMATOR_COMPLEMENTARY)
             sleep(ESTIMATOR_SETTLE_S)
@@ -250,7 +259,12 @@ class DroneLink:
         )
 
     def restore_estimator(self) -> None:
-        """Back to the Kalman estimator, so the next checks see base stations."""
+        """Put the drone back as the flight found it: the flight tuning's exact
+        original values, and the Kalman estimator so the next checks see the
+        base stations. Called after every manual flight, assisted or not."""
+        if self._tuning is not None:
+            self._tuning.restore()
+            self._tuning = None
         if self.scf is None:
             return
         try:
