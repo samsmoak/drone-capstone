@@ -195,3 +195,30 @@ Keep each file to roughly a screen.
 Take the commit identity, attribution rules, branch mapping and deploy path from
 the project's `CLAUDE.md`. If they are not written down, **ask rather than
 guessing** — the wrong author or branch is tedious to undo.
+
+**Shipping includes what people download, not just what deploys.** A project
+that hands out an installer has a second artifact that must not fall behind the
+code: when a merge to the main branch changes an app that people install,
+publishing a fresh build of it is part of shipping, and the page offering that
+download must show the new one without anyone redeploying the site.
+
+Check this before calling the work shipped:
+
+- The build runs from CI on the merge, not from someone's laptop. A build made
+  by hand is a build nobody else can reproduce, and it stops happening the week
+  its author is busy.
+- It builds on the platforms people actually use. Neither half of a desktop app
+  cross-compiles: the Windows build comes off a Windows runner, the macOS build
+  off a macOS runner.
+- It publishes to a stable location the site reads, so a new build needs no
+  redeploy — and the site checks the file is there rather than linking blindly.
+- Trigger it on the paths that can change the app, not on every commit.
+  Rebuilding an identical binary because a doc changed wastes the runners and
+  teaches everyone to ignore the pipeline.
+- Unsigned builds are the normal case for a student or internal project. Say on
+  the download page what the operating system will warn and what to click, or
+  the download is useless to whoever is not expecting it.
+
+In this repository that is `.github/workflows/desktop-release.yml` publishing to
+the `installers` bucket, and `/apps` reading it — see
+`docs/features/development/releases.txt`.

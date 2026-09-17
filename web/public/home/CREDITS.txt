@@ -1,0 +1,16 @@
+Stock photos on the landing page.
+
+Free to use under the Unsplash Licence (https://unsplash.com/license), which
+allows commercial and non-commercial use without permission or attribution.
+Attribution is kept here anyway, by photo id, so any of them can be traced back
+and replaced with the team's own photograph.
+
+  hero-greenhouse.jpg    unsplash photo-1623136299195-570a06bdae6b
+  autonomous-flight.jpg  unsplash photo-1487219116710-23ffcb172b2b
+  sensing.jpg            unsplash photo-1591754060004-f91c95f5cf05
+  safety.jpg             unsplash photo-1581091226033-d5c48150dbaa
+  zones.jpg              unsplash photo-1615671524827-c1fe3973b648
+
+These are stand-ins for the project's own photographs. Replace them at
+/admin/pages/home — the page reads whatever is set there, so no code changes.
+The real hardware photographs are in ../hardware/, and are not stock.

@@ -4,8 +4,10 @@ PORTFOLIO — projects, the team, and the website admin
 WHAT IT IS
 
 The public side of the website: /projects lists the projects, /projects/<slug>
-shows one with its write-up and the team who built it beside it, and /team shows
-everyone. Operators edit all of it at /admin — no code, no deploy.
+shows one with its write-up and the team who built it beside it, /team shows
+everyone, and /team/<slug> is one person's own page — what they are working on,
+about them, their hobbies, their photos and their links. Operators edit all of
+it at /admin — no code, no deploy.
 
 A DOMAIN PORT of ../doctor-portfolio (projects, BlockNote write-ups, admin CMS).
 Same stack, different subject; structure and idiom kept, vocabulary adapted.
@@ -13,15 +15,19 @@ Same stack, different subject; structure and idiom kept, vocabulary adapted.
 
 WHERE IT LIVES
 
-  public    app/(public)/projects/page.tsx, projects/[slug]/page.tsx, team/page.tsx
-            components/portfolio/ProjectCard, TeamCard, TeamSidebar, TableOfContents
+  public    app/(public)/projects/page.tsx, projects/[slug]/page.tsx,
+            team/page.tsx, team/[slug]/page.tsx
+            components/portfolio/ProjectCard, TeamCard, TeamSidebar, TeamStack,
+            MemberSidebar, MemberLinks, HobbyGrid, PhotoWall, TableOfContents
   admin     app/admin/layout.tsx (operator gate), admin/projects, admin/team
             components/admin/ProjectsManager, ProjectEditor, TeamManager,
             ImagePicker, ui.tsx
   editor    components/editor/BlockEditor.tsx (+ Client), lib/blocknote/*
-  data      lib/queries.ts, lib/mutations.ts (portfolio sections), lib/upload.ts
+  data      lib/queries.ts, lib/mutations.ts (portfolio sections), lib/upload.ts,
+            lib/team-profile.ts (the jsonb lists, parsed both ways)
   database  backend/supabase/migrations/20260916000007_portfolio.sql
-  seed      backend/supabase/seed/portfolio.py
+            backend/supabase/migrations/20260917000010_team_profiles.sql
+  seed      backend/supabase/seed/portfolio.py, seed/team_profiles.py
 
   Source it was copied from: ../doctor-portfolio app/projects/*,
   components/public/ProjectCard|ProjectsSidebar, app/components/TableOfContents,
@@ -40,6 +46,22 @@ WHAT CHANGED IN THE PORT, AND WHY
   theme toggle (ThemeProvider)      system colour scheme, as the rest of the site
   (new) team_members + project_members tables, TeamManager, a team picker in the
   project editor
+
+
+A PERSON'S PAGE
+
+/team/<slug>: the project page's layout with people in it. The main column runs
+headline, working-on-now, about, hobbies and photos — each section left out
+entirely when it is empty, so a half-written page never shows an empty heading.
+The sticky right column lists the whole team, each row in that person's own
+accent colour with the current one marked, then the projects they worked on
+(from project_members) in their category colours.
+
+The three lists — hobbies, links, photos — are jsonb on team_members, not three
+more tables: they are only ever read as a whole person, never queried across
+people, and the admin saves them in one write. lib/team-profile.ts parses them
+on the way out AND on the way in, so a row can only hold what a page can render,
+and a link with a javascript: URL is dropped rather than put in an href.
 
 
 THE PROJECT PAGE SIDEBAR
@@ -65,10 +87,17 @@ DECISIONS
   not move a project.
 - Fonts: Inter (body) and Fraunces (titles), via next/font — the portfolio's
   pairing, shared with the desktop app.
-- The seed uses the SECRET key and runs on a developer machine only. Team roles,
-  emails and websites not provided were left blank rather than invented; the
+- The seed uses the SECRET key and runs on a developer machine only. The
   projects are starter text drawn from this repo's own docs, to be rewritten in
   /admin. Re-running the seed overwrites the fields it sets.
+- team_profiles.py seeds DUMMY profiles so the pages can be reviewed before five
+  people have written their own. What it will not invent, because it would
+  outlive the seed as a claim about a real person: employers, schools,
+  qualifications, locations, email addresses, and links to accounts that might
+  belong to a stranger. Roles are a guess, to be swapped in the admin.
+- A person's URL is a slug column, not their name at render time. Two people
+  called Sam would collide, and a rename would silently move a shared page. The
+  admin proposes a slug from the name and then leaves it alone.
 
 
 INVARIANTS
@@ -80,7 +109,10 @@ INVARIANTS
   because only operators can write projects (RLS) and BlockNote's lossy export
   escapes text. Never let a non-operator write `projects.content`.
 - Images are public URLs in a public bucket and cannot be revoked. Never upload
-  anything private through the admin.
+  anything private through the admin — a team member's own photos included.
+- Saving a person is refused with "that web address is already taken" on a 23505
+  from the unique index, not a generic failure. Two profiles at one URL is the
+  one error the admin can actually cause.
 - next/image only loads from this project's Supabase storage host
   (next.config.ts remotePatterns). A different bucket host needs adding there.
 - Verified 2026-09-16 against the hosted project: anon reads team and published

@@ -1,0 +1,80 @@
+RELEASES — how a commit becomes a download
+==========================================
+
+WHAT IT IS
+
+Merging to main publishes the desktop app. A push that touches the app builds
+it on a macOS runner and a Windows runner, uploads both installers to a public
+Supabase bucket at fixed paths, and writes a small manifest beside them. The
+website reads that bucket, so a new build appears on /apps and /setup without
+anyone redeploying the site.
+
+The rule this exists for: **what people download must never be behind the code
+on main.** A build made by hand on someone's laptop is not reproducible and
+stops happening the week that person is busy.
+
+
+WHERE IT LIVES
+
+  .github/workflows/desktop-release.yml   build, upload, manifest
+  backend/agent/packaging/build_sidecar.sh  freezes and verifies the agent
+  backend/supabase/migrations/…_installers_bucket.sql  the public bucket
+  web/lib/installers.ts                   the bundle list and the bucket reads
+  web/app/(public)/apps/page.tsx          the download page
+  web/components/ui/download-buttons.tsx  the short form, used by /setup
+
+Objects in the `installers` bucket:
+
+  latest/CropWatcher-macos.dmg       Apple silicon
+  latest/CropWatcher-windows.exe     64-bit
+  latest/manifest.json               { version, commit, built_at, run }
+
+Two repository secrets turn publishing on: SUPABASE_URL and
+SUPABASE_SERVICE_ROLE_KEY. Without them the workflow still builds and attaches
+the installers to the run page, so the pipeline is useful before they are set.
+
+
+WHEN IT RUNS
+
+  push to main touching desktop/**, backend/agent/** or the workflow itself
+  push of a v* tag
+  "Run workflow" by hand
+
+The path filter is deliberate. A commit that changes only docs or web/ cannot
+change the installer, so rebuilding would republish an identical binary after
+twenty minutes of macOS and Windows runners. Add to the list when something new
+can affect the app; do not remove the filter.
+
+
+DECISIONS
+
+- Fixed object paths, overwritten, rather than a path per version. The site then
+  needs no redeploy and no database row when a build is published — the bucket
+  is the list. The version is in the manifest, for saying which.
+- The manifest is written by its own job, after both installers are up. Written
+  per-platform it could name a version only one platform actually has.
+- The bucket is public for reading and has no write policy at all. Only CI's
+  service role can write, which bypasses RLS. A signed-in user who could replace
+  an installer could ship arbitrary code to every operator who downloads it.
+- /apps groups downloads by app rather than listing files, because the second
+  one is coming and "which app is this" should not have to be read out of a
+  filename.
+- The page HEADs each object before offering it. A button that downloads a 404
+  page is worse than one that says "coming soon".
+
+
+INVARIANTS
+
+- Neither half cross-compiles. PyInstaller freezes for the platform it runs on
+  and Tauri bundles for the platform it runs on: the .exe cannot be produced on
+  a Mac. That is why the matrix has two runners, not one.
+- The sidecar is verified before Tauri bundles it (build_sidecar.sh runs
+  verify_sidecar.py). A frozen agent that cannot load libusb still builds and
+  still launches — it fails only when a radio is plugged in, on a user's desk.
+- The builds are unsigned: a capstone project has no Apple or Microsoft
+  developer certificate. macOS says "unidentified developer" and Windows shows
+  SmartScreen. /apps carries the instructions for both; a download page without
+  them hands people a file they cannot open.
+- `concurrency: cancel-in-progress` is not an optimisation. Two pushes a minute
+  apart would otherwise race to overwrite the same object, and the slower build
+  could win.

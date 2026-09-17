@@ -8,6 +8,8 @@ export const HARDWARE = "/setup/hardware";
 export const GALLERY = "/gallery";
 export const galleryPath = (slug: string) => `${GALLERY}/${encodeURIComponent(slug)}`;
 export const TEAM = "/team";
+export const memberPath = (slug: string) => `${TEAM}/${encodeURIComponent(slug)}`;
+export const APPS = "/apps";
 
 export const LOGIN = "/login";
 export const AUTH_CALLBACK = "/auth/callback";
@@ -55,6 +57,7 @@ export const PUBLIC_NAV = [
   { href: HOME, label: "Overview" },
   { href: PROJECTS, label: "Projects" },
   { href: SETUP, label: "Set Up" },
+  { href: APPS, label: "Apps" },
   { href: GALLERY, label: "Gallery" },
   { href: TEAM, label: "Team" },
 ] as const;

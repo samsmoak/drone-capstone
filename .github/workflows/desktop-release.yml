@@ -1,6 +1,19 @@
-# Build the desktop installers on a version tag.
+# Build the desktop installers and publish them to the website.
 #
+# Runs on every push to main that can change the app, and on a version tag:
+#
+#   git push origin main              (desktop/ or backend/agent/ changed)
 #   git tag v0.1.0 && git push origin v0.1.0
+#
+# The path filter is the point, not a saving: a commit that touches only docs
+# or web/ cannot change the installer, so rebuilding it would republish an
+# identical binary after twenty minutes of macOS and Windows runners. Anything
+# that CAN change the app is listed below — add to that list, never remove the
+# filter, or the download silently falls behind the code.
+#
+# The filter applies to the tag trigger too, so tagging a commit that changed
+# none of those paths does not rebuild. That is the correct outcome (the build
+# is already current), and "Run workflow" forces one either way.
 #
 # Each OS builds on its own runner because neither half can cross-compile:
 # PyInstaller freezes for the platform it runs on, and Tauri bundles for the
@@ -20,11 +33,22 @@ name: desktop-release
 
 on:
   push:
+    branches: [main]
+    paths:
+      - "desktop/**"
+      - "backend/agent/**"
+      - ".github/workflows/desktop-release.yml"
     tags: ["v*"]
   workflow_dispatch:
 
 permissions:
   contents: read
+
+# One publish at a time. Two pushes in a minute would otherwise race to
+# overwrite the same object, and the slower build could win.
+concurrency:
+  group: desktop-release
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -118,3 +142,37 @@ jobs:
             -H "x-upsert: true" \
             -H "Content-Type: ${{ matrix.content_type }}" \
             --data-binary "@${{ steps.installer.outputs.path }}"
+
+  # What the /apps page says about the build: version, commit and when. Its own
+  # job, because it must be written once, after BOTH installers are up — a
+  # manifest that names a version only one platform has is worse than none.
+  manifest:
+    needs: build
+    if: ${{ always() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish the manifest
+        if: ${{ env.SUPABASE_URL != '' && env.SUPABASE_SERVICE_ROLE_KEY != '' }}
+        run: |
+          version=$(node -p "require('./desktop/src-tauri/tauri.conf.json').version")
+          cat > manifest.json <<JSON
+          {
+            "version": "$version",
+            "commit": "${GITHUB_SHA}",
+            "built_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "run": "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          }
+          JSON
+          curl --fail-with-body -sS -X POST \
+            "$SUPABASE_URL/storage/v1/object/installers/latest/manifest.json" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "x-upsert: true" \
+            -H "Content-Type: application/json" \
+            -H "Cache-Control: max-age=60" \
+            --data-binary @manifest.json

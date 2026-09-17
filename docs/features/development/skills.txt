@@ -31,7 +31,9 @@ project copy is the shared one. Edit the project copy and commit it.
   4. On go: implement, run every gate, report pass/fail honestly.
   5. Update docs/features/* with what actually shipped.
   6. Ship only on explicit approval (standing approval for this repo: commit,
-     push and merge after every build — see CLAUDE.md "Git").
+     push and merge after every build — see CLAUDE.md "Git"). Shipping includes
+     what people download: a merge to main that changes the desktop app
+     publishes a new build to the website (releases.txt).
 
 
 /adapt — copy, then adapt only what the target forces

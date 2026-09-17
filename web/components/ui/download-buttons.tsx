@@ -1,78 +1,53 @@
+import Link from "next/link";
+import { APPS, bundleFile, formatBytes } from "@/lib/installers";
+import { APPS as APPS_PATH } from "@/lib/routes";
+
 /**
- * Installer downloads for /setup.
+ * The desktop app's downloads, for the Set Up page.
  *
- * The installers live in the public `installers` bucket at stable paths, which
- * CI overwrites on every release — so this never needs a redeploy for a new
- * version. What it does need is to know whether a file is there yet: a button
- * that downloads a 404 page is worse than one that says "coming soon".
+ * The full listing — every app, with versions, sizes and the unsigned-build
+ * instructions — is /apps. This is the short form for someone who is already
+ * following the setup steps, so it shows the two buttons and points there.
  *
- * So each object is checked with a HEAD request, cached for an hour. A failed
- * check falls back to "coming soon" rather than to a broken link.
+ * Whether each file exists is checked, not assumed: see lib/installers.ts.
  */
-
-const PLATFORMS = [
-  {
-    // macos-latest runners are Apple silicon; an Intel build is not produced.
-    label: "Download for macOS",
-    note: "Apple silicon",
-    object: "latest/CropWatcher-macos.dmg",
-  },
-  {
-    label: "Download for Windows",
-    note: "64-bit",
-    object: "latest/CropWatcher-windows.exe",
-  },
-] as const;
-
-function installerUrl(object: string): string | null {
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!base || base === "https://your-project-ref.supabase.co") return null;
-  return `${base}/storage/v1/object/public/installers/${object}`;
-}
-
-async function isPublished(url: string): Promise<boolean> {
-  try {
-    const response = await fetch(url, {
-      method: "HEAD",
-      next: { revalidate: 3600 },
-      signal: AbortSignal.timeout(3000),
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
 export async function DownloadButtons() {
+  const app = APPS[0];
   const platforms = await Promise.all(
-    PLATFORMS.map(async (platform) => {
-      const url = installerUrl(platform.object);
-      return { ...platform, url: url && (await isPublished(url)) ? url : null };
-    }),
+    app.platforms.map(async (platform) => ({ ...platform, file: await bundleFile(platform.object) })),
   );
 
   return (
-    <div className="mt-4 flex flex-wrap gap-3">
-      {platforms.map((platform) =>
-        platform.url ? (
-          <a
-            key={platform.object}
-            href={platform.url}
-            download
-            className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[var(--primary)] px-5 text-sm font-medium text-[var(--on-primary)]"
-          >
-            {platform.label}
-            <span className="font-normal opacity-90">({platform.note})</span>
-          </a>
-        ) : (
-          <span
-            key={platform.object}
-            className="inline-flex min-h-11 items-center rounded-lg border border-[var(--border)] px-5 text-sm text-[var(--muted)]"
-          >
-            {platform.label} — coming soon
-          </span>
-        ),
-      )}
+    <div className="mt-4 grid gap-3">
+      <div className="flex flex-wrap gap-3">
+        {platforms.map((platform) =>
+          platform.file.url ? (
+            <a
+              key={platform.object}
+              href={platform.file.url}
+              download
+              className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[var(--primary)] px-5 text-sm font-medium text-[var(--on-primary)]"
+            >
+              Download for {platform.os}
+              <span className="font-normal opacity-90">
+                ({[platform.note, formatBytes(platform.file.bytes)].filter(Boolean).join(" · ")})
+              </span>
+            </a>
+          ) : (
+            <span
+              key={platform.object}
+              className="inline-flex min-h-11 items-center rounded-lg border border-[var(--border)] px-5 text-sm text-[var(--muted)]"
+            >
+              Download for {platform.os} — coming soon
+            </span>
+          ),
+        )}
+      </div>
+      <p className="text-sm text-[var(--muted)]">
+        <Link href={APPS_PATH} className="underline underline-offset-4">
+          All downloads, with what to do about the security warning
+        </Link>
+      </p>
     </div>
   );
 }
