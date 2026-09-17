@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database";
+import { normalizeContent, type ContentObject, type PageKey } from "@/lib/site-content";
 
 export type FlightRow = Database["public"]["Tables"]["flights"]["Row"];
 export type TelemetryRow = Database["public"]["Tables"]["telemetry"]["Row"];
@@ -393,4 +394,26 @@ export const getAlbumByIdAdmin = cache(async (id: string): Promise<AlbumWithItem
   if (!data) return null;
   const { gallery_items, ...album } = data;
   return { ...album, items: [...(gallery_items ?? [])].sort((a, b) => a.display_order - b.display_order) };
+});
+
+// ── editable page wording ────────────────────────────────────────────────
+
+/**
+ * A public page's wording: the stored override normalised against the page's
+ * spec, or its defaults. Never throws — a public page must render even if the
+ * table is missing or the read fails; the failure is logged.
+ */
+export const getPageContent = cache(async (key: PageKey): Promise<ContentObject> => {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("site_pages").select("content").eq("key", key).maybeSingle();
+  if (error && !missingTable(error)) console.error(`page content read failed: ${key}`, error.code, error.message);
+  return normalizeContent(key, data?.content ?? null);
+});
+
+/** Admin: which pages carry an override, and when each was last edited. */
+export const getEditedPages = cache(async (): Promise<Map<string, string>> => {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("site_pages").select("key, updated_at");
+  if (error) throw new QueryError("the pages", error);
+  return new Map(data.map((row) => [row.key, row.updated_at]));
 });

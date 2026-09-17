@@ -25,8 +25,22 @@ export const ADMIN = "/admin";
 export const ADMIN_PROJECTS = "/admin/projects";
 export const ADMIN_TEAM = "/admin/team";
 export const ADMIN_GALLERY = "/admin/gallery";
+export const ADMIN_PAGES = "/admin/pages";
+export const adminPagePath = (key: string) => `${ADMIN_PAGES}/${key}`;
 export const adminAlbumPath = (id: string) => `${ADMIN_GALLERY}/${id}`;
 export const adminProjectPath = (id: string) => `${ADMIN_PROJECTS}/${id}`;
+
+/**
+ * Where to send someone after signing in, from a `next` parameter.
+ *
+ * Only a same-site path is accepted. `//evil.example` and `https://…` are
+ * refused, or a crafted sign-in link would hand a fresh session's user to
+ * another site (an open redirect).
+ */
+export function safeNext(next: string | null | undefined): string | null {
+  if (!next || !next.startsWith("/") || next.startsWith("//") || next.startsWith("/\\")) return null;
+  return next;
+}
 
 /** Everything under these needs a session. */
 const PROTECTED_PREFIXES = ["/app", "/admin"] as const;
@@ -58,6 +72,7 @@ export const OPERATOR_NAV = [
 ] as const;
 
 export const ADMIN_NAV = [
+  { href: ADMIN_PAGES, label: "Pages" },
   { href: ADMIN_PROJECTS, label: "Projects" },
   { href: ADMIN_TEAM, label: "Team" },
   { href: ADMIN_GALLERY, label: "Gallery" },

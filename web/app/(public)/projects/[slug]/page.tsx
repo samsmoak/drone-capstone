@@ -82,7 +82,9 @@ export default async function ProjectPage({ params }: PageProps<"/projects/[slug
           </div>
         </article>
 
-        <aside className="lg:col-span-3">
+        {/* Sticky like the contents on the left. The team stays a stack until
+            opened, so the column is short enough to stay in view. */}
+        <aside className="lg:col-span-3 lg:sticky lg:top-24 lg:self-start">
           <TeamSidebar team={project.team} projects={allProjects} activeSlug={project.slug} />
         </aside>
       </div>

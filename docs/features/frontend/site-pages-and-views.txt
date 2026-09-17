@@ -1,0 +1,74 @@
+SITE PAGES AND VIEWS — editable wording, and visitor vs. operator
+=================================================================
+
+WHAT IT IS
+
+Two things that shape the whole website:
+
+1. EVERY WORD ON THE VISITOR SITE IS EDITABLE at /admin/pages — Home, Set Up,
+   Hardware, the Projects / Team / Gallery headings, and the footer. Projects,
+   team members and gallery albums have their own admin sections.
+
+2. TWO VIEWS. The visitor site (/) and the operator view (/app, /admin).
+   Signing in keeps you on the visitor site; only Dashboard switches views.
+
+     Visitor navbar   Sign in (back to the same page) · Dashboard · account menu
+     Operator navbar  ← Visitor site · Sign out
+     Brand / Home     goes to the home of the view you are in:
+                      "/" on the visitor site, "/app" in the operator view
+
+   Dashboard is a protected route. Signed out, clicking it goes to sign-in and
+   then straight on to the dashboard (middleware.ts `next`).
+
+   "Dashboard" replaced the working name "analytics deeper dive": it is short,
+   and it is what the area is.
+
+
+WHERE IT LIVES
+
+  lib/site-content.ts                     field specs, default wording, normaliser
+  lib/queries.ts getPageContent           override ⊕ defaults, never throws
+  lib/mutations.ts savePageContent,       normalise then upsert; reset = delete
+                   resetPageContent
+  components/admin/PageEditor.tsx         one generic form drawn from the spec
+  app/admin/pages/, app/admin/pages/[key]
+  components/site/VisitorAccount.tsx      Sign in / Dashboard / account menu
+  components/site/PageIntro.tsx           eyebrow + title + intro, from content
+  lib/routes.ts safeNext                  same-site redirect guard
+  backend/supabase/migrations/20260917000009_site_pages.sql
+
+
+HOW TO MAKE SOMETHING NEW EDITABLE
+
+Add a field to the page's spec in PAGE_SPECS and its current wording to
+PAGE_DEFAULTS, then read it on the page with text()/strings()/items()/flag().
+The admin form picks it up with no new screen. Field types: text, textarea,
+boolean, image, strings (a list of text), items (a list of groups of fields).
+
+
+DECISIONS
+
+- Defaults live in code; the database stores overrides only. A page with no row
+  shows its original wording, so a missing row or a failed read never blanks a
+  page, and "Reset to original" is deleting the row.
+- Rich inline formatting (bold, links inside a sentence) became plain fields —
+  a paragraph list, bullets, a highlighted note, and switches such as "show the
+  download buttons". Simpler to edit safely than free HTML, which a public page
+  would have to sanitise.
+- The admin is wide (up to 110rem) with fields in two columns; long fields and
+  lists take the full width. The editor's Save bar stays pinned at the top.
+
+
+INVARIANTS
+
+- EVERYTHING READ OR SAVED GOES THROUGH normalizeContent. It keeps only the
+  fields a page declares, of the declared type, capped in length and count.
+  Image fields accept only a site path (/...) or https URL — never javascript:
+  or data:. Verified 2026-09-17 against hosted: an operator-stored unknown field
+  and a javascript: image both stored, and neither reached the rendered page.
+- `next` redirects accept same-site paths only (safeNext). //evil.example and
+  absolute URLs fall back to a local page — otherwise a crafted sign-in link is
+  an open redirect. Verified: /login?next=//evil.example → /.
+- A signed-in user who lands on /login goes to `next` or the visitor home, never
+  the dashboard: signing in must not switch views by itself.
+- site_pages: anyone reads, operators write (RLS + grants, migration 0009).

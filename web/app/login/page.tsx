@@ -12,7 +12,8 @@ export default async function LoginPage({
     <main id="main" className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6">
       <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
       <p className="mt-2 text-sm text-[var(--muted)]">
-        The operator area controls a real drone, so it needs an account.
+        Sign in with your CropWatcher account. You stay on the page you came from — open
+        the Dashboard whenever you want the operator screens.
       </p>
       <LoginForm next={next} />
     </main>
