@@ -3,11 +3,11 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import {
-  createMember, deleteMember, EMPTY_MEMBER, reorderMembers, updateMember, type MemberInput,
-} from "@/lib/mutations";
+import { createMember, deleteMember, reorderMembers, updateMember } from "@/lib/mutations";
 import type { TeamMemberRow } from "@/lib/queries";
-import { hobbies, LIMITS, links, photos, slugify } from "@/lib/team-profile";
+import {
+  EMPTY_MEMBER, hobbies, LIMITS, links, photos, slugify, type MemberInput,
+} from "@/lib/team-profile";
 import { ImagePicker } from "./ImagePicker";
 import { ListEditor } from "./ListEditor";
 import { Button, Card, Input, Label, Textarea } from "./ui";

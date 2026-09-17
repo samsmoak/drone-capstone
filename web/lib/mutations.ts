@@ -271,29 +271,9 @@ export async function reorderProjects(order: { id: string; position: number }[])
   return { ok: true, data: undefined };
 }
 
-export type MemberInput = {
-  full_name: string;
-  slug: string;
-  role: string;
-  headline: string;
-  location: string;
-  bio: string;
-  about: string;
-  current_work: string;
-  avatar_url: string | null;
-  website_url: string | null;
-  email: string | null;
-  hobbies: profile.Hobby[];
-  links: profile.MemberLink[];
-  photos: profile.Photo[];
-};
-
-/** The empty person, so the admin and its tests start from one definition. */
-export const EMPTY_MEMBER: MemberInput = {
-  full_name: "", slug: "", role: "", headline: "", location: "", bio: "", about: "",
-  current_work: "", avatar_url: null, website_url: null, email: null,
-  hobbies: [], links: [], photos: [],
-};
+// MemberInput and EMPTY_MEMBER live in lib/team-profile.ts: a "use server"
+// module may export functions only, and the admin form needs the empty value.
+type MemberInput = profile.MemberInput;
 
 function cleanMember(input: MemberInput): MemberInput | string {
   const full_name = input.full_name.trim();

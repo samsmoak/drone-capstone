@@ -42,6 +42,33 @@ const HEADER_FIELDS: FieldSpec[] = [
   { type: "textarea", key: "intro", label: "Introduction" },
 ];
 
+/** Every setup guide is the same form: numbered steps, then what goes wrong. */
+const SETUP_FIELDS: FieldSpec[] = [
+  { type: "text", key: "title", label: "Title" },
+  { type: "textarea", key: "intro", label: "Introduction" },
+  {
+    type: "items", key: "steps", label: "Steps", itemLabel: "Step",
+    fields: [
+      { type: "text", key: "title", label: "Step title" },
+      { type: "strings", key: "paragraphs", label: "Paragraphs", itemLabel: "Paragraph" },
+      { type: "strings", key: "bullets", label: "Bullet points", itemLabel: "Bullet" },
+      { type: "textarea", key: "note", label: "Highlighted note", hint: "Shown in a shaded box. Leave empty for none." },
+      { type: "boolean", key: "showDownloads", label: "Show this product's download buttons" },
+      { type: "boolean", key: "linkHardware", label: "Link to the Hardware page" },
+    ],
+  },
+  { type: "text", key: "troubleTitle", label: "Troubleshooting title" },
+  { type: "textarea", key: "troubleIntro", label: "Troubleshooting introduction" },
+  {
+    type: "items", key: "troubles", label: "Problems", itemLabel: "Problem",
+    fields: [
+      { type: "text", key: "symptom", label: "What you see" },
+      { type: "text", key: "cause", label: "Usual cause" },
+      { type: "textarea", key: "fix", label: "What to do" },
+    ],
+  },
+];
+
 export const PAGE_SPECS = {
   site: {
     key: "site",
@@ -102,36 +129,33 @@ export const PAGE_SPECS = {
       { type: "textarea", key: "unsignedIntro", label: "Text of that section" },
     ],
   },
+  "setup-index": {
+    key: "setup-index",
+    title: "Set Up — the index",
+    description: "The heading above the setup cards. Each guide has its own page.",
+    path: "/setup",
+    fields: HEADER_FIELDS,
+  },
   setup: {
     key: "setup",
-    title: "Set Up",
+    title: "Set Up — desktop app",
     description: "From an unopened box to a first flight, and what to do when it will not fly.",
-    path: "/setup",
-    fields: [
-      { type: "text", key: "title", label: "Title" },
-      { type: "textarea", key: "intro", label: "Introduction" },
-      {
-        type: "items", key: "steps", label: "Steps", itemLabel: "Step",
-        fields: [
-          { type: "text", key: "title", label: "Step title" },
-          { type: "strings", key: "paragraphs", label: "Paragraphs", itemLabel: "Paragraph" },
-          { type: "strings", key: "bullets", label: "Bullet points", itemLabel: "Bullet" },
-          { type: "textarea", key: "note", label: "Highlighted note", hint: "Shown in a shaded box. Leave empty for none." },
-          { type: "boolean", key: "showDownloads", label: "Show the app download buttons" },
-          { type: "boolean", key: "linkHardware", label: "Link to the Hardware page" },
-        ],
-      },
-      { type: "text", key: "troubleTitle", label: "Troubleshooting title" },
-      { type: "textarea", key: "troubleIntro", label: "Troubleshooting introduction" },
-      {
-        type: "items", key: "troubles", label: "Problems", itemLabel: "Problem",
-        fields: [
-          { type: "text", key: "symptom", label: "What you see" },
-          { type: "text", key: "cause", label: "Usual cause" },
-          { type: "textarea", key: "fix", label: "What to do" },
-        ],
-      },
-    ],
+    path: "/setup/desktop-app",
+    fields: SETUP_FIELDS,
+  },
+  "setup-agent": {
+    key: "setup-agent",
+    title: "Set Up — flight agent",
+    description: "Running the agent from source, for anyone working on flight code.",
+    path: "/setup/flight-agent",
+    fields: SETUP_FIELDS,
+  },
+  "setup-web": {
+    key: "setup-web",
+    title: "Set Up — dashboard",
+    description: "Running this website locally, and what it needs to be deployed.",
+    path: "/setup/dashboard",
+    fields: SETUP_FIELDS,
   },
   hardware: {
     key: "hardware",
@@ -156,7 +180,9 @@ export const PAGE_SPECS = {
   },
 } satisfies Record<string, PageSpec>;
 
-export type PageKey = "site" | "home" | "projects" | "team" | "gallery" | "apps" | "setup" | "hardware";
+export type PageKey =
+  | "site" | "home" | "projects" | "team" | "gallery" | "apps"
+  | "setup-index" | "setup" | "setup-agent" | "setup-web" | "hardware";
 export const PAGE_KEYS = Object.keys(PAGE_SPECS) as PageKey[];
 
 export function isPageKey(value: string): value is PageKey {
@@ -243,6 +269,156 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
     unsignedIntro:
       "These builds are not code-signed: a capstone project has no Apple or Microsoft " +
       "developer certificate. The warning is about the certificate, not about the file.",
+  },
+  "setup-index": {
+    eyebrow: "Set Up",
+    title: "Set up the system",
+    intro:
+      "Three pieces, set up one at a time: the app that flies the drone, the agent it bundles, " +
+      "and the dashboard that reads what they record. Start with the desktop app — it is the " +
+      "only one you need to fly.",
+  },
+  "setup-agent": {
+    title: "Run the flight agent from source",
+    intro:
+      "The desktop app already bundles the agent. Do this only when you are working on flight " +
+      "code, reading a trace, or bringing up a drone from a terminal. About 10 minutes.",
+    steps: [
+      {
+        title: "Install it into a virtual environment",
+        paragraphs: [
+          "Python 3.11 or newer, on the laptop the Crazyradio is plugged into. The agent is "
+          + "installed in editable mode, so your changes are live without reinstalling.",
+        ],
+        bullets: [
+          "cd backend/agent",
+          "python3 -m venv .venv && source .venv/bin/activate",
+          "pip install -e .",
+        ],
+        note: "Docker cannot reach USB on macOS — Docker Desktop runs a Linux VM with no USB "
+              + "passthrough. The agent runs bare in a venv; the Dockerfile is for CI and Linux only.",
+        showDownloads: false,
+        linkHardware: false,
+      },
+      {
+        title: "Plug in the radio and serve",
+        paragraphs: [
+          "`cropwatcher serve` starts the local API on 127.0.0.1:8765 and prints the control "
+          + "token. Every command needs that token, even on localhost: an unauthenticated local "
+          + "API that can arm a drone is reachable from any page you have open.",
+        ],
+        bullets: [
+          "cropwatcher serve",
+          "Open http://127.0.0.1:8765/health in a browser to check it answers",
+        ],
+        note: "",
+        showDownloads: false,
+        linkHardware: true,
+      },
+      {
+        title: "Run the checks before you fly anything",
+        paragraphs: [
+          "pytest is the gate. The flight guards and the pre-flight checks have tests that do "
+          + "not need a drone, and they are the parts worth trusting.",
+        ],
+        bullets: ["pytest", "pytest -k guard   # just the in-flight guards"],
+        note: "",
+        showDownloads: false,
+        linkHardware: false,
+      },
+    ],
+    troubleTitle: "When it will not run",
+    troubleIntro: "The three that cost the most time here.",
+    troubles: [
+      {
+        symptom: "No Crazyradio found",
+        cause: "The dongle is not visible to the process, or another program holds it.",
+        fix: "Close cfclient and any other script using the radio, then re-plug the dongle. On "
+             + "Linux you also need the udev rule from Bitcraze's install guide.",
+      },
+      {
+        symptom: "The drone connects but the motors never spin",
+        cause: "A low-level setpoint was sent earlier in the same power cycle and still holds "
+               + "priority over the high-level commander.",
+        fix: "Call send_notify_setpoint_stop() before using the high-level commander, or power-"
+             + "cycle the drone. takeoff() returns successfully either way, which is what makes "
+             + "this so slow to spot.",
+      },
+      {
+        symptom: "It refuses to arm and blames the battery",
+        cause: "The firmware supervisor will not arm below roughly 3.75 V and says so itself.",
+        fix: "Charge it. Read sys.canfly rather than guessing a voltage threshold — a guessed "
+             + "3.70 V refused flights the drone would have allowed.",
+      },
+    ],
+  },
+  "setup-web": {
+    title: "Run the dashboard",
+    intro:
+      "Nothing to install to use it — sign in and open the dashboard. This is for running the "
+      + "site locally, or deploying your own copy.",
+    steps: [
+      {
+        title: "Install and start it",
+        paragraphs: [
+          "Node 24 and pnpm. The site talks to the same Supabase project as the deployed one, so "
+          + "what you see locally is real data.",
+        ],
+        bullets: ["cd web", "pnpm install", "pnpm dev"],
+        note: "",
+        showDownloads: false,
+        linkHardware: false,
+      },
+      {
+        title: "Point it at Supabase",
+        paragraphs: [
+          "Three variables in web/.env.local. The build succeeds without them — the operator "
+          + "area degrades rather than the site blanking — but sign-in will not work.",
+        ],
+        bullets: [
+          "NEXT_PUBLIC_SUPABASE_URL",
+          "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+          "NEXT_PUBLIC_SITE_URL",
+        ],
+        note: "Never put the service-role key in this file. It bypasses row-level security, and "
+              + "anything in a NEXT_PUBLIC_ variable is shipped to the browser.",
+        showDownloads: false,
+        linkHardware: false,
+      },
+      {
+        title: "Deploy it",
+        paragraphs: [
+          "Vercel, with the root directory set to web. Left unset, Vercel scans the repository "
+          + "root, finds the agent's pyproject.toml, decides this is a FastAPI project and fails "
+          + "the build asking for an entrypoint. Never give it one: the agent talks to a USB "
+          + "radio and cannot run in the cloud.",
+        ],
+        bullets: [
+          "Root Directory: web",
+          "The same three environment variables, in the Vercel project",
+          "Pushes to main deploy on their own",
+        ],
+        note: "",
+        showDownloads: false,
+        linkHardware: false,
+      },
+    ],
+    troubleTitle: "When it will not build",
+    troubleIntro: "Both of these have caught someone on this project.",
+    troubles: [
+      {
+        symptom: "Vercel asks for a FastAPI entrypoint",
+        cause: "The root directory is not set to web, so it detected the flight agent.",
+        fix: "Set Root Directory to web in the Vercel project settings. .vercelignore is a "
+             + "second line of defence, not the fix.",
+      },
+      {
+        symptom: "A page says the table could not be found",
+        cause: "A migration was applied by hand and PostgREST is still holding its old schema.",
+        fix: "Run notify pgrst, 'reload schema'; against the database. Until then new tables "
+             + "answer 404 PGRST205 even though they exist.",
+      },
+    ],
   },
   setup: {
     title: "Set up the system",

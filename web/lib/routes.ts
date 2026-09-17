@@ -4,12 +4,15 @@ export const HOME = "/";
 export const PROJECTS = "/projects";
 export const projectPath = (slug: string) => `${PROJECTS}/${encodeURIComponent(slug)}`;
 export const SETUP = "/setup";
+/** One product's guide. "hardware" is a real page under /setup, never a slug. */
+export const setupPath = (slug: string) => `${SETUP}/${encodeURIComponent(slug)}`;
 export const HARDWARE = "/setup/hardware";
 export const GALLERY = "/gallery";
 export const galleryPath = (slug: string) => `${GALLERY}/${encodeURIComponent(slug)}`;
 export const TEAM = "/team";
 export const memberPath = (slug: string) => `${TEAM}/${encodeURIComponent(slug)}`;
 export const APPS = "/apps";
+export const appPath = (slug: string) => `${APPS}/${encodeURIComponent(slug)}`;
 
 export const LOGIN = "/login";
 export const AUTH_CALLBACK = "/auth/callback";

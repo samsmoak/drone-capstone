@@ -46,11 +46,11 @@ export function TeamCard({ member, compact = false }: { member: TeamMemberRow; c
   );
 
   return (
-    <article className="flex flex-col items-center text-center">
+    <article className="flex w-full flex-col items-center text-center">
       {member.slug ? (
         <Link
           href={memberPath(member.slug)}
-          className="group flex flex-col items-center rounded-xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--heading)]"
+          className="group flex w-full flex-col items-center rounded-xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--heading)]"
         >
           {face}
           <span className="mt-1 text-xs font-medium text-[var(--heading)] underline-offset-4 group-hover:underline">
@@ -58,7 +58,7 @@ export function TeamCard({ member, compact = false }: { member: TeamMemberRow; c
           </span>
         </Link>
       ) : (
-        <div className="group flex flex-col items-center">{face}</div>
+        <div className="group flex w-full flex-col items-center">{face}</div>
       )}
 
       {(member.website_url || member.email) && (

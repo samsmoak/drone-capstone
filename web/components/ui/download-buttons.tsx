@@ -1,20 +1,22 @@
 import Link from "next/link";
-import { APPS, bundleFile, formatBytes } from "@/lib/installers";
-import { APPS as APPS_PATH } from "@/lib/routes";
+import { bundleFile, formatBytes } from "@/lib/installers";
+import type { Product } from "@/lib/products";
+import { appPath } from "@/lib/routes";
 
 /**
- * The desktop app's downloads, for the Set Up page.
+ * One product's downloads, inside its setup guide.
  *
- * The full listing — every app, with versions, sizes and the unsigned-build
- * instructions — is /apps. This is the short form for someone who is already
- * following the setup steps, so it shows the two buttons and points there.
+ * The full listing — sizes, build dates, the unsigned-build instructions — is
+ * /apps/<slug>. This is the short form for someone already following the steps,
+ * so it shows the buttons and points there.
  *
  * Whether each file exists is checked, not assumed: see lib/installers.ts.
  */
-export async function DownloadButtons() {
-  const app = APPS[0];
+export async function DownloadButtons({ product }: { product: Product }) {
+  if (product.platforms.length === 0) return null;
+
   const platforms = await Promise.all(
-    app.platforms.map(async (platform) => ({ ...platform, file: await bundleFile(platform.object) })),
+    product.platforms.map(async (platform) => ({ ...platform, file: await bundleFile(platform.object) })),
   );
 
   return (
@@ -44,7 +46,7 @@ export async function DownloadButtons() {
         )}
       </div>
       <p className="text-sm text-[var(--muted)]">
-        <Link href={APPS_PATH} className="underline underline-offset-4">
+        <Link href={appPath(product.slug)} className="underline underline-offset-4">
           All downloads, with what to do about the security warning
         </Link>
       </p>

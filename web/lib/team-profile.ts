@@ -19,6 +19,38 @@ export type Hobby = { title: string; body: string; image_url: string | null };
 export type MemberLink = { label: string; url: string };
 export type Photo = { url: string; caption: string };
 
+/**
+ * Everything the admin edits about a person.
+ *
+ * Declared here rather than beside the Server Actions that save it: every
+ * export of a "use server" module is a Server Function, so a plain constant
+ * exported from there and read by a client component is called during render
+ * and the page 500s. Types survive that (they are erased); values do not.
+ */
+export type MemberInput = {
+  full_name: string;
+  slug: string;
+  role: string;
+  headline: string;
+  location: string;
+  bio: string;
+  about: string;
+  current_work: string;
+  avatar_url: string | null;
+  website_url: string | null;
+  email: string | null;
+  hobbies: Hobby[];
+  links: MemberLink[];
+  photos: Photo[];
+};
+
+/** The empty person, so the admin and the actions start from one definition. */
+export const EMPTY_MEMBER: MemberInput = {
+  full_name: "", slug: "", role: "", headline: "", location: "", bio: "", about: "",
+  current_work: "", avatar_url: null, website_url: null, email: null,
+  hobbies: [], links: [], photos: [],
+};
+
 /** How many of each a person may have. A page, not an archive. */
 export const LIMITS = { hobbies: 12, links: 10, photos: 24 } as const;
 
