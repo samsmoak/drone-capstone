@@ -193,6 +193,95 @@ export type Database = {
           },
         ]
       }
+      gallery_albums: {
+        Row: {
+          category: string
+          cover_image_url: string | null
+          created_at: string
+          date_label: string
+          display_order: number
+          id: string
+          slug: string
+          status: string
+          summary: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string
+          cover_image_url?: string | null
+          created_at?: string
+          date_label?: string
+          display_order?: number
+          id?: string
+          slug: string
+          status?: string
+          summary?: string
+          title?: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          cover_image_url?: string | null
+          created_at?: string
+          date_label?: string
+          display_order?: number
+          id?: string
+          slug?: string
+          status?: string
+          summary?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      gallery_items: {
+        Row: {
+          album_id: string
+          caption: string
+          created_at: string
+          credit: string
+          display_order: number
+          height: number | null
+          id: string
+          kind: string
+          url: string
+          width: number | null
+        }
+        Insert: {
+          album_id: string
+          caption?: string
+          created_at?: string
+          credit?: string
+          display_order?: number
+          height?: number | null
+          id?: string
+          kind: string
+          url: string
+          width?: number | null
+        }
+        Update: {
+          album_id?: string
+          caption?: string
+          created_at?: string
+          credit?: string
+          display_order?: number
+          height?: number | null
+          id?: string
+          kind?: string
+          url?: string
+          width?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gallery_items_album_id_fkey"
+            columns: ["album_id"]
+            isOneToOne: false
+            referencedRelation: "gallery_albums"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       missions: {
         Row: {
           claimed_at: string | null

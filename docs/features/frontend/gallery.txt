@@ -1,0 +1,67 @@
+GALLERY — albums of photos and videos
+=====================================
+
+WHAT IT IS
+
+/gallery shows albums as cards — a mosaic of each album's first photos, its
+category, and how many photos and videos are inside — with a category filter.
+/gallery/<slug> opens an album: its videos first, then its photos in a masonry
+layout at their real proportions, each opening full screen. Operators manage it
+at /admin/gallery.
+
+Albums seeded 2026-09-17:
+
+  The kit             Hardware    10 real photos of the kit (web/public/hardware)
+  Flight videos       Videos      3 real Crazyflie videos, Bitcraze's channel
+  The team            Team        Samuel's photo + 6 placeholder photos
+  Drones in flight    Flights     8 placeholder photos
+  In the greenhouse   Greenhouse  7 placeholder photos
+
+Placeholders are Unsplash stock photos, free to use under the Unsplash License,
+each captioned "Placeholder photo · Unsplash". Replace them in /admin/gallery as
+the team's own photos arrive.
+
+
+WHERE IT LIVES
+
+  public    app/(public)/gallery/page.tsx, gallery/[slug]/page.tsx
+            components/gallery/AlbumGrid, AlbumCard, AlbumMedia, VideoEmbed, icons
+  admin     app/admin/gallery/page.tsx, gallery/[id]/page.tsx
+            components/admin/AlbumsManager, AlbumEditor
+  data      lib/queries.ts + lib/mutations.ts (gallery sections), lib/video.ts
+  database  backend/supabase/migrations/20260917000008_gallery.sql
+  seed      backend/supabase/seed/gallery.py
+
+  Copied from ../doctor-portfolio: lib/video.ts, components/media/VideoEmbed.tsx,
+  the lightbox in components/media/Lightbox.tsx (folded into AlbumMedia), and the
+  grid-of-cards layout from the projects page.
+
+
+DECISIONS
+
+- Albums, not one long wall of photos: grouped like projects, so a visitor picks
+  a subject first. Category is free text, so a new kind of album needs no
+  migration.
+- Videos are YouTube links, played through youtube-nocookie and only loaded on
+  click — the player is heavy and starts tracking; most visitors never press
+  play. Uploading video files was not built: storage and transcoding cost more
+  than a link.
+- Image width and height are stored with each photo (read from the file header
+  by the seed, in the browser by the admin), so the masonry lays out before the
+  images load and nothing jumps.
+- The seed downloads its own images, so it can be re-run on any machine. It
+  replaces the items of the albums it owns and leaves every other album alone.
+
+
+INVARIANTS
+
+- next/image loads from this project's storage host and from i.ytimg.com (video
+  posters) only — next.config.ts remotePatterns.
+- Anyone reads published albums and their items; drafts and every write are
+  operator-only (RLS). Deleting an album deletes its items (on delete cascade).
+  Verified 2026-09-17: anon cannot see a draft; operator create/add/delete work;
+  items cascade.
+- Only public material goes in the gallery bucket: a public URL cannot be
+  revoked.
+- Verified: /gallery, /gallery/<slug> render with no console errors in both
+  themes and no horizontal overflow at 390 and 768 px.

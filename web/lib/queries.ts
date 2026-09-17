@@ -313,3 +313,84 @@ export const getProjectByIdAdmin = cache(
     return { ...data, team: await teamFor(data.id) };
   },
 );
+
+// ── gallery ──────────────────────────────────────────────────────────────
+//
+// Albums of photos and videos (migration 0008). Same rule as the portfolio:
+// public readers return empty when the tables are missing, admin readers throw.
+
+export type AlbumRow = Database["public"]["Tables"]["gallery_albums"]["Row"];
+export type GalleryItemRow = Database["public"]["Tables"]["gallery_items"]["Row"];
+export type AlbumCard = AlbumRow & {
+  photoCount: number;
+  videoCount: number;
+  /** Up to three images for the card's mosaic, in album order. */
+  preview: GalleryItemRow[];
+};
+export type AlbumWithItems = AlbumRow & { items: GalleryItemRow[] };
+
+function toCard(album: AlbumRow & { gallery_items: GalleryItemRow[] | null }): AlbumCard {
+  const items = [...(album.gallery_items ?? [])].sort((a, b) => a.display_order - b.display_order);
+  const { gallery_items: _items, ...row } = album;
+  void _items;
+  return {
+    ...row,
+    photoCount: items.filter((i) => i.kind === "image").length,
+    videoCount: items.filter((i) => i.kind === "video").length,
+    preview: items.filter((i) => i.kind === "image").slice(0, 3),
+  };
+}
+
+export const getPublishedAlbums = cache(async (): Promise<AlbumCard[]> => {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("gallery_albums")
+    .select("*, gallery_items(*)")
+    .eq("status", "published")
+    .order("display_order", { ascending: true });
+  if (error) {
+    if (missingTable(error)) return [];
+    throw new QueryError("the gallery", error);
+  }
+  return data.map(toCard);
+});
+
+export const getPublishedAlbumBySlug = cache(async (slug: string): Promise<AlbumWithItems | null> => {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("gallery_albums")
+    .select("*, gallery_items(*)")
+    .eq("slug", slug)
+    .eq("status", "published")
+    .maybeSingle();
+  if (error) {
+    if (missingTable(error)) return null;
+    throw new QueryError("this album", error);
+  }
+  if (!data) return null;
+  const { gallery_items, ...album } = data;
+  return { ...album, items: [...(gallery_items ?? [])].sort((a, b) => a.display_order - b.display_order) };
+});
+
+export const getAllAlbumsAdmin = cache(async (): Promise<AlbumCard[]> => {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("gallery_albums")
+    .select("*, gallery_items(*)")
+    .order("display_order", { ascending: true });
+  if (error) throw new QueryError("albums", error);
+  return data.map(toCard);
+});
+
+export const getAlbumByIdAdmin = cache(async (id: string): Promise<AlbumWithItems | null> => {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("gallery_albums")
+    .select("*, gallery_items(*)")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw new QueryError("this album", error);
+  if (!data) return null;
+  const { gallery_items, ...album } = data;
+  return { ...album, items: [...(gallery_items ?? [])].sort((a, b) => a.display_order - b.display_order) };
+});

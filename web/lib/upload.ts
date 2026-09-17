@@ -10,7 +10,7 @@ import { createClient } from "@/lib/supabase/client";
  * checks here only give a readable refusal before a wasted upload.
  */
 
-export type UploadPrefix = "covers" | "team" | "content";
+export type UploadPrefix = "covers" | "team" | "content" | "gallery";
 
 const BUCKET = "portfolio-images";
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
