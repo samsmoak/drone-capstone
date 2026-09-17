@@ -95,6 +95,13 @@ export default async function AppsPage() {
           </Link>
           .
         </p>
+        <p className="mt-2 text-sm text-[var(--muted)]">
+          Nothing here for your computer?{" "}
+          <Link href={setupPath("desktop-app")} className="underline underline-offset-4">
+            Clone the repository and build it yourself
+          </Link>{" "}
+          — about ten minutes, and it builds for the machine you run it on.
+        </p>
       </section>
     </main>
   );
