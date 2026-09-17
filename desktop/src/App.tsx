@@ -73,6 +73,7 @@ export default function App() {
     setLogWindow(null);
   }, []);
   const [error, setError] = useState<string | null>(null);
+  const [refused, setRefused] = useState<string | null>(null);
   const [intent, setIntent] = useState<Intent>(EMPTY_INTENT);
 
   const live = useRef<LiveConnection | null>(null);
@@ -85,6 +86,7 @@ export default function App() {
       await connectToShell();
       connection = new LiveConnection({
         onSession: setSession,
+        onRefused: setRefused,
         onSync: setSync,
         onConnection: setConnected,
         onTelemetry: (frame) => {
@@ -292,7 +294,9 @@ export default function App() {
           )}
           {error && <Message tone="critical" text={error} />}
 
-          {starting ? (
+          {refused ? (
+            <Message tone="critical" text={refused} />
+          ) : starting ? (
             <StartupPage connected={connected} />
           ) : page === "home" ? (
             <HomePage
