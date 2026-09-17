@@ -19,9 +19,11 @@ WHERE IT LIVES
   .github/workflows/desktop-release.yml   build, upload, manifest
   backend/agent/packaging/build_sidecar.sh  freezes and verifies the agent
   backend/supabase/migrations/…_installers_bucket.sql  the public bucket
-  web/lib/installers.ts                   the bundle list and the bucket reads
-  web/app/(public)/apps/page.tsx          the download page
-  web/components/ui/download-buttons.tsx  the short form, used by /setup
+  web/lib/products.ts                     what ships, and which files belong to it
+  web/lib/installers.ts                   the bucket reads and the manifest
+  web/app/(public)/apps/page.tsx          the index: a card per piece
+  web/app/(public)/apps/[slug]/page.tsx   one piece's downloads
+  web/components/ui/download-buttons.tsx  the short form, inside a setup guide
 
 Objects in the `installers` bucket:
 
@@ -56,9 +58,9 @@ DECISIONS
 - The bucket is public for reading and has no write policy at all. Only CI's
   service role can write, which bypasses RLS. A signed-in user who could replace
   an installer could ship arbitrary code to every operator who downloads it.
-- /apps groups downloads by app rather than listing files, because the second
-  one is coming and "which app is this" should not have to be read out of a
-  filename.
+- /apps is a card per piece of the project, opening that piece's own download
+  page — "which app is this" should not have to be read out of a filename, and
+  the pieces with nothing to download still belong on the page, saying so.
 - The page HEADs each object before offering it. A button that downloads a 404
   page is worse than one that says "coming soon".
 

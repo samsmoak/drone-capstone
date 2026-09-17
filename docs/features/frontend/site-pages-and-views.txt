@@ -5,8 +5,9 @@ WHAT IT IS
 
 Two things that shape the whole website:
 
-1. EVERY WORD ON THE VISITOR SITE IS EDITABLE at /admin/pages — Home, Set Up,
-   Hardware, Apps, the Projects / Team / Gallery headings, and the footer.
+1. EVERY WORD ON THE VISITOR SITE IS EDITABLE at /admin/pages — Home, the three
+   setup guides and their index, Hardware, Apps, the Projects / Team / Gallery
+   headings, and the footer.
    Projects, team members and gallery albums have their own admin sections.
    Home's photos are editable too: the hero image and one per capability card
    are `image` fields, defaulting to stock photos in public/home (CREDITS.txt
@@ -44,10 +45,27 @@ a wide screen, and Hardware lays the parts two to a row.
 Dashboard sits with the navigation links rather than out at the far right: it is
 another destination on this site, not an action.
 
-/apps is the download page: every app bundle grouped by app, both platforms,
-with the version and build date CI publishes beside them. Set Up keeps its two
-buttons and links here for the rest. See ../development/releases.txt — the
-builds come from CI, not from this repo's code.
+THREE PIECES, TWO INDEXES
+
+lib/products.ts is the one list of what this project ships: the desktop app, the
+flight agent and the dashboard. Each carries where it runs, what it does, the
+page key holding its setup wording, and the installers CI publishes for it.
+
+Both indexes read that list and draw the same card (components/site/ProductCard):
+
+  /setup            a card per piece  ->  /setup/<slug>   its own guide
+  /apps             a card per piece  ->  /apps/<slug>    its downloads
+
+Setup used to be one page for everything, so every step had to say which piece
+it was about. Now each guide is its own page with its own steps, troubleshooting
+and page key (setup, setup-agent, setup-web), and /setup answers "which of these
+am I setting up" before the first instruction. /setup/hardware is a real page,
+not a product slug — a static route beats the dynamic one, which is why the
+parts page still works.
+
+A piece with nothing to download still appears on /apps, saying so and linking
+to its guide. See ../development/releases.txt — the builds come from CI, not
+from anything in this repo's pages.
 
 
 THE OPERATOR SHELL
