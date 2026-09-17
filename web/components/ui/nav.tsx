@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { SITE_CONTAINER } from "@/lib/layout";
 
 type NavItem = { readonly href: string; readonly label: string };
 
@@ -16,12 +17,15 @@ export function Nav({
   brand,
   brandHref = "/",
   trailing,
-  width = "max-w-6xl px-6",
+  cta,
+  width = SITE_CONTAINER,
 }: {
   items: readonly NavItem[];
   brand: string;
   brandHref?: string;
   trailing?: React.ReactNode;
+  /** Sits with the links, not out at the far right — it is a destination too. */
+  cta?: React.ReactNode;
   /** Container width and padding — must match the page below so the edges line up. */
   width?: string;
 }) {
@@ -42,7 +46,7 @@ export function Nav({
     <header className="border-b border-[var(--border)] bg-[var(--surface)]">
       <nav
         aria-label="Main"
-        className={`mx-auto flex ${width} flex-wrap items-center gap-x-6 gap-y-2 py-3`}
+        className={`flex ${width} flex-wrap items-center gap-x-6 gap-y-2 py-3`}
       >
         <Link href={brandHref} className="font-semibold tracking-tight">
           {brand}
@@ -67,6 +71,7 @@ export function Nav({
               </li>
             );
           })}
+          {cta && <li className="ml-1">{cta}</li>}
         </ul>
 
         {trailing && <div className="ml-auto">{trailing}</div>}

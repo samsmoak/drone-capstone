@@ -1,3 +1,4 @@
+import { SITE_CONTAINER } from "@/lib/layout";
 import type { Metadata } from "next";
 import { ProjectCard } from "@/components/portfolio/ProjectCard";
 import { PageIntro } from "@/components/site/PageIntro";
@@ -12,7 +13,7 @@ export default async function ProjectsPage() {
   const [projects, intro] = await Promise.all([getPublishedProjects(), getPageContent("projects")]);
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-16 md:py-20">
+    <main className={`${SITE_CONTAINER} py-16 md:py-20`}>
       <PageIntro content={intro} />
 
       {projects.length === 0 ? (

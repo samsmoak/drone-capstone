@@ -14,6 +14,7 @@ import { createRoot } from "react-dom/client";
 import { HomePage } from "./HomePage";
 import { ControlPage } from "./ControlPage";
 import { SensorWindow, WINDOWS } from "./windows";
+import { StartupPage } from "./StartupPage";
 import { EMPTY_INTENT, type Session, type Telemetry } from "./agent";
 import type { History } from "./App";
 import "./styles.css";
@@ -38,6 +39,7 @@ const session: Session = {
   flight: null,
   message: "The checks did not pass, so the drone will not arm.",
   can_fly: false,
+  restoring: false,
   assisted: false,
   unassisted_reason: "No base station signal is reaching the drone. Check both base stations are on (front LED solid green), the drone is upright, and nothing blocks the line of sight.",
 };
@@ -66,6 +68,7 @@ const noop = async () => {};
 
 createRoot(document.getElementById("root")!).render(
   <div className="mx-auto grid w-full max-w-6xl gap-6 bg-[var(--background)] px-6 py-8 text-[var(--foreground)]">
+    <StartupPage connected={false} />
     <HomePage session={session} telemetry={telemetry} sync={null} connected run={noop} onGo={() => {}} />
     <ControlPage session={{ ...session, state: "awaiting_confirmation" }} telemetry={telemetry} intent={EMPTY_INTENT} flying={false} run={noop} historyKey="h" onOpenSession={() => {}} onOpenSessions={() => {}} />
     <ControlPage

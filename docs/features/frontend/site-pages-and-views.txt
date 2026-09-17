@@ -24,6 +24,22 @@ Two things that shape the whole website:
    and it is what the area is.
 
 
+ONE WIDTH FOR THE VISITOR SITE
+
+lib/layout.ts SITE_CONTAINER (max-w-6xl, px-6) is used by the navbar, the footer
+and every visitor page, so their edges line up all the way down the site. Pages
+used to choose their own width — navbar 72rem, home 64rem, Set Up and Hardware
+48rem, a project 96rem — and each looked inset by a different amount.
+
+Long-form pages keep a readable line length by holding their TEXT to
+PROSE_COLUMN inside the full-width frame, not by narrowing the frame: Set Up
+puts the steps in the reading column with the troubleshooting list alongside on
+a wide screen, and Hardware lays the parts two to a row.
+
+Dashboard sits with the navigation links rather than out at the far right: it is
+another destination on this site, not an action.
+
+
 THE OPERATOR SHELL
 
 /app and /admin share one frame (components/operator/OperatorShell.tsx): a fixed
@@ -46,6 +62,7 @@ WHERE IT LIVES
   components/site/VisitorAccount.tsx      Sign in / Dashboard / account menu
   components/operator/OperatorShell.tsx   the operator frame (sidebar + mobile)
   components/operator/nav-items.ts        the two nav groups, and active matching
+  lib/layout.ts                           SITE_CONTAINER, PROSE_COLUMN
   components/site/PageIntro.tsx           eyebrow + title + intro, from content
   lib/routes.ts safeNext                  same-site redirect guard
   backend/supabase/migrations/20260917000009_site_pages.sql

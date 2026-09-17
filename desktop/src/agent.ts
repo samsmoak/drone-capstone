@@ -40,6 +40,9 @@ export type Session = {
   flight: { id: string; phase: string; detail: string } | null;
   message: string | null;
   can_fly: boolean;
+  /** True until the agent has tried the saved sign-in. Show a loading state,
+   *  never a sign-in form: "signed out" is not known to be true yet. */
+  restoring: boolean;
   /** False when the drone has no usable position estimate: no height hold, no
    *  programs, and the position guards cannot run. */
   assisted: boolean;

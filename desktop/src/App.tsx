@@ -31,6 +31,7 @@ import { ControlPage } from "./ControlPage";
 import { HomePage } from "./HomePage";
 import { ProfileMenu } from "./ProfileMenu";
 import { SessionsPage, WindowLog } from "./HistoryPages";
+import { StartupPage } from "./StartupPage";
 import { SensorWindow, WINDOWS, type WindowKey } from "./windows";
 import { Button, Message, StatusDot } from "./ui";
 
@@ -185,6 +186,9 @@ export default function App() {
     };
   }, [manualFlying, run]);
 
+  // Nothing is known yet: the agent has not answered, or it is still trying the
+  // saved sign-in. Hold the shape rather than claim "signed out".
+  const starting = session === null || session.restoring;
   const inSession = session != null &&
     !["signed_out", "idle"].includes(session.state);
   // History reloads whenever a session starts or ends.
@@ -222,7 +226,7 @@ export default function App() {
                 key={mode}
                 type="button"
                 aria-pressed={session?.mode === mode}
-                disabled={!session || session.state === "busy"}
+                disabled={starting || session?.state === "busy"}
                 title={session?.state === "busy" ? "Finish the current flight first" : undefined}
                 onClick={() => void run(() => api.setMode(mode))}
                 className={`min-h-9 rounded-md px-4 text-sm font-medium capitalize disabled:opacity-50 ${
@@ -288,7 +292,9 @@ export default function App() {
           )}
           {error && <Message tone="critical" text={error} />}
 
-          {page === "home" ? (
+          {starting ? (
+            <StartupPage connected={connected} />
+          ) : page === "home" ? (
             <HomePage
               session={session}
               telemetry={telemetry}
