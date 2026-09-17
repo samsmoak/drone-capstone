@@ -9,6 +9,21 @@ import { LOGIN, OPERATOR_HOME } from "@/lib/routes";
 type Account = { email: string; name: string | null; role: string } | null;
 
 /**
+ * The way into the operator view, sitting with the navigation because that is
+ * what it is: another destination on this site, not an action.
+ */
+export function DashboardLink() {
+  return (
+    <Link
+      href={OPERATOR_HOME}
+      className="inline-flex min-h-11 items-center rounded-lg bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--on-primary)] transition-opacity hover:opacity-90"
+    >
+      Dashboard
+    </Link>
+  );
+}
+
+/**
  * The right side of the visitor navbar.
  *
  * Signing in keeps you on the visitor site — the operator screens open only from
@@ -29,32 +44,18 @@ export function VisitorAccount({ account }: { account: Account }) {
     return () => { document.removeEventListener("mousedown", onClick); document.removeEventListener("keydown", onKey); };
   }, [open]);
 
-  const dashboard = (
-    <Link href={OPERATOR_HOME}
-          className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--on-primary)] transition-opacity hover:opacity-90">
-      Dashboard
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4" aria-hidden="true">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M13 6l6 6-6 6" />
-      </svg>
-    </Link>
-  );
-
   if (!account) {
     return (
-      <div className="flex items-center gap-2">
-        <Link href={`${LOGIN}?next=${encodeURIComponent(pathname || "/")}`}
-              className="inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-medium text-[var(--muted)] hover:text-[var(--foreground)]">
-          Sign in
-        </Link>
-        {dashboard}
-      </div>
+      <Link href={`${LOGIN}?next=${encodeURIComponent(pathname || "/")}`}
+            className="inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-medium text-[var(--muted)] hover:text-[var(--foreground)]">
+        Sign in
+      </Link>
     );
   }
 
   const initial = (account.name || account.email).trim().charAt(0).toUpperCase();
   return (
     <div className="flex items-center gap-2">
-      {dashboard}
       <div ref={root} className="relative">
         <button type="button" aria-haspopup="menu" aria-expanded={open}
                 aria-label={`Account: ${account.email}`} onClick={() => setOpen((v) => !v)}

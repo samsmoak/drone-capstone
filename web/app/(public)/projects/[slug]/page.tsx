@@ -1,3 +1,4 @@
+import { SITE_CONTAINER } from "@/lib/layout";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
@@ -30,7 +31,7 @@ export default async function ProjectPage({ params }: PageProps<"/projects/[slug
   const { html, sections } = await renderProjectContent(project.content);
 
   return (
-    <main className="mx-auto max-w-[96rem] px-6 py-10 md:py-14">
+    <main className={`${SITE_CONTAINER} py-10 md:py-14`}>
       <Link
         href={PROJECTS}
         className="mb-8 inline-flex items-center gap-1.5 text-sm font-medium text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"

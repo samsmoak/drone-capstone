@@ -1,3 +1,4 @@
+import { SITE_CONTAINER } from "@/lib/layout";
 import type { Metadata } from "next";
 import { TeamCard } from "@/components/portfolio/TeamCard";
 import { PageIntro } from "@/components/site/PageIntro";
@@ -12,7 +13,7 @@ export default async function TeamPage() {
   const [team, intro] = await Promise.all([getTeamMembers(), getPageContent("team")]);
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-16 md:py-20">
+    <main className={`${SITE_CONTAINER} py-16 md:py-20`}>
       <PageIntro content={intro} />
 
       {team.length === 0 ? (

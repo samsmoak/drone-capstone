@@ -44,6 +44,16 @@ per session, a time-stamped table of that window's readings. Every history view
 follows the Auto/Manual toggle (see ../backend/session-history.txt).
 
 
+STARTING UP
+
+Two things are unknown when the window opens: whether the bundled agent is up,
+and whether the saved sign-in still works (a network call). Until both are
+known, the window shows StartupPage — placeholders in the shape of the page,
+plus what it is waiting for. The agent reports this as `restoring` on the
+session, cleared however the attempt ends. Before that, the window rendered the
+signed-out page and swapped it for the operator's account a second later.
+
+
 DECISIONS
 
 - Home opens first, not Control. An operator who has just installed this needs

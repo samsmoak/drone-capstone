@@ -163,6 +163,32 @@ export function Message({ text, tone }: { text: string; tone: Tone }) {
   );
 }
 
+/**
+ * A placeholder in the shape of the thing that is loading.
+ *
+ * The window opens before the agent has answered and before the saved sign-in
+ * has been tried. Showing the signed-out page in that gap told the operator
+ * something false and then changed under them; this holds the shape instead.
+ */
+export function Skeleton({ className = "" }: { className?: string }) {
+  return (
+    <span aria-hidden="true" className={`block animate-pulse rounded-md bg-[var(--surface-2)] ${className}`} />
+  );
+}
+
+export function SkeletonPanel({ lines = 3 }: { lines?: number }) {
+  return (
+    <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6">
+      <Skeleton className="h-5 w-40" />
+      <div className="mt-5 grid gap-3">
+        {Array.from({ length: lines }).map((_, i) => (
+          <Skeleton key={i} className="h-4" />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function Spinner({ label }: { label: string }) {
   return (
     <p role="status" aria-live="polite" className="flex items-center gap-3 text-sm">

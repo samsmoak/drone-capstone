@@ -1,3 +1,4 @@
+import { PROSE_COLUMN, SITE_CONTAINER } from "@/lib/layout";
 import Link from "next/link";
 import { getPageContent } from "@/lib/queries";
 import { OPERATOR_HOME, PROJECTS, TEAM } from "@/lib/routes";
@@ -15,8 +16,8 @@ export default async function LandingPage() {
   const home = await getPageContent("home");
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-16">
-      <section>
+    <main className={`${SITE_CONTAINER} py-16 md:py-20`}>
+      <section className={PROSE_COLUMN}>
         <p className="eyebrow text-[var(--heading)]">{text(home, "eyebrow")}</p>
         <h1 className="font-display mt-3 text-4xl font-semibold tracking-tight sm:text-6xl">{text(home, "title")}</h1>
         <p className="mt-5 max-w-2xl text-lg leading-relaxed text-[var(--muted)]">{text(home, "intro")}</p>
@@ -33,7 +34,7 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      <section className="mt-16 grid gap-4 sm:grid-cols-2">
+      <section className="mt-16 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {items(home, "capabilities").map((item, i) => (
           <article key={`${text(item, "title")}-${i}`} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6">
             <h2 className="font-display text-lg font-semibold">{text(item, "title")}</h2>

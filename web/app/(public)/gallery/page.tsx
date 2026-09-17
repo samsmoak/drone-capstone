@@ -1,3 +1,4 @@
+import { SITE_CONTAINER } from "@/lib/layout";
 import type { Metadata } from "next";
 import { AlbumGrid } from "@/components/gallery/AlbumGrid";
 import { PhotoIcon, PlayIcon } from "@/components/gallery/icons";
@@ -15,7 +16,7 @@ export default async function GalleryPage() {
   const videos = albums.reduce((n, a) => n + a.videoCount, 0);
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-16 md:py-20">
+    <main className={`${SITE_CONTAINER} py-16 md:py-20`}>
       <PageIntro content={intro} />
       {albums.length > 0 && (
         <p className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-[var(--muted)]">

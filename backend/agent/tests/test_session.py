@@ -649,3 +649,39 @@ class TestHistoryByMode:
         rig.session.end()
         assert history.list_sessions(mode="manual") == []
         assert len(history.list_sessions(mode="auto")) == 1
+
+
+class TestStartupState:
+    """The app must not show "signed out" before the saved sign-in was tried."""
+
+    def test_a_fresh_session_reports_restoring(self, rig):
+        assert rig.session.snapshot().restoring is True
+
+    def test_restoring_clears_when_there_is_nothing_saved(self, rig):
+        assert rig.session.restore_sign_in() is None
+        assert rig.session.snapshot().restoring is False
+
+    def test_restoring_clears_after_a_successful_restore(self, rig):
+        from cropwatcher.sync import auth_store
+
+        auth_store.save("refresh-abc", "ada@example.com")
+        rig.cloud.restore = lambda token: Operator("user-1", "ada@example.com", "Ada", "operator")
+        rig.session.restore_sign_in()
+        snapshot = rig.session.snapshot()
+        assert snapshot.restoring is False and snapshot.state is State.IDLE
+
+    def test_restoring_clears_when_the_saved_sign_in_expired(self, rig):
+        from cropwatcher.sync import auth_store
+
+        auth_store.save("stale", "ada@example.com")
+
+        def refuse(token):
+            raise AuthError("expired")
+
+        rig.cloud.restore = refuse
+        rig.session.restore_sign_in()
+        assert rig.session.snapshot().restoring is False
+
+    def test_signing_in_by_hand_also_clears_it(self, rig):
+        sign_in(rig)
+        assert rig.session.snapshot().restoring is False

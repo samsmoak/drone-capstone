@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { VisitorAccount } from "@/components/site/VisitorAccount";
+import { DashboardLink, VisitorAccount } from "@/components/site/VisitorAccount";
 import { Nav } from "@/components/ui/nav";
 import { getCurrentProfile, getPageContent } from "@/lib/queries";
+import { SITE_CONTAINER } from "@/lib/layout";
 import { HOME, PUBLIC_NAV, SETUP } from "@/lib/routes";
 import { text } from "@/lib/site-content";
 
@@ -15,10 +16,16 @@ export default async function PublicLayout({ children }: { children: React.React
 
   return (
     <>
-      <Nav brand="CropWatcher" brandHref={HOME} items={PUBLIC_NAV} trailing={<VisitorAccount account={account} />} />
+      <Nav
+        brand="CropWatcher"
+        brandHref={HOME}
+        items={PUBLIC_NAV}
+        cta={<DashboardLink />}
+        trailing={<VisitorAccount account={account} />}
+      />
       <div id="main">{children}</div>
       <footer className="mt-20 border-t border-[var(--border)]">
-        <div className="mx-auto max-w-6xl px-6 py-8 text-sm text-[var(--muted)]">
+        <div className={`${SITE_CONTAINER} py-8 text-sm text-[var(--muted)]`}>
           {text(site, "footerText")}{" "}
           <Link href={SETUP} className="underline underline-offset-4">{text(site, "footerLinkLabel")}</Link>.
         </div>

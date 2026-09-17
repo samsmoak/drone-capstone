@@ -94,6 +94,9 @@ class Snapshot:
     flight: dict[str, Any] | None = None
     message: str | None = None
     can_fly: bool = False
+    #: True until the saved sign-in has been tried, at startup. The app shows a
+    #: loading state while it is set: signed out is not yet known to be true.
+    restoring: bool = True
     #: True when the drone can hold a height and a position for itself. False
     #: means the app must offer unassisted manual flight only, and say so.
     assisted: bool = True
@@ -105,7 +108,7 @@ class Snapshot:
             "state": str(self.state), "mode": str(self.mode), "operator": self.operator,
             "drone": self.drone, "session_id": self.session_id, "activity": self.activity,
             "checks": self.checks, "prop_test": self.prop_test, "flight": self.flight,
-            "message": self.message, "can_fly": self.can_fly,
+            "message": self.message, "can_fly": self.can_fly, "restoring": self.restoring,
             "assisted": self.assisted, "unassisted_reason": self.unassisted_reason,
         }
 
@@ -208,21 +211,24 @@ class Session:
         """
         with self._lock:
             if self._snapshot.state is not State.SIGNED_OUT:
+                self._snapshot.restoring = False
                 return self.operator
         stored = auth_store.load()
         restore = getattr(self._cloud, "restore", None)
         if stored is None or restore is None:
+            self._set(restoring=False)
             return None
         token, _email = stored
         try:
             operator: Operator = restore(token)
         except AuthError as e:
             auth_store.clear()
-            self._set(message=str(e))
+            self._set(message=str(e), restoring=False)
             return None
         if not operator.is_operator:
             auth_store.clear()
             self._cloud.sign_out()
+            self._set(restoring=False)
             return None
         self.operator = operator
         self.audit = AuditLog(
@@ -243,6 +249,7 @@ class Session:
 
     def _signed_in(self, operator: Operator) -> None:
         self._set(
+            restoring=False,
             state=State.IDLE,
             operator={"id": operator.id, "email": operator.email, "name": operator.full_name,
                       "role": operator.role},
@@ -261,7 +268,7 @@ class Session:
         self._cloud.sign_out()
         auth_store.clear()
         self.operator, self.audit = None, None
-        self._set(state=State.SIGNED_OUT, operator=None, message=None)
+        self._set(state=State.SIGNED_OUT, operator=None, message=None, restoring=False)
 
     def _require_operator(self) -> tuple[Operator, AuditLog]:
         if self.operator is None or self.audit is None:
