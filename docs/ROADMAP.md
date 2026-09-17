@@ -87,7 +87,7 @@ Legend: `[x]` done · `[ ]` not started · **⚠** blocked on something external
 58. [x] Policy: only the agent role may claim a mission
 59. [x] `claim_next_mission()` RPC — atomic, avoids two agents taking one job
 60. [x] Realtime enabled on `telemetry` and `missions`
-61. [x] `seed.sql` — one greenhouse, a zone grid, a demo flight
+61. [ ] `seed.sql` — one greenhouse, a zone grid, a demo flight (zones, a drone and a user are seeded; **no flight** is)
 62. [x] Generate `types/database.ts` from the schema
 
 ## Phase 7 — Agent ↔ Supabase  ✅
@@ -105,11 +105,11 @@ Legend: `[x]` done · `[ ]` not started · **⚠** blocked on something external
 
 71. [x] `api/rest.py` — FastAPI app, `/health`, `/status`, `/preflight`
 72. [x] `POST /flight/mission`, `POST /flight/stop`
-73. [x] `api/ws.py` — manual control socket
+73. [x] Manual control socket — `/ws/manual` in `api/rest.py`, loop in `api/manual.py`
 74. [x] Browser sends intent; agent generates 50 Hz setpoints itself
 75. [x] Heartbeat — auto-land after 0.5 s of silence
 76. [x] Bind to localhost by default; LAN only behind an explicit flag
-77. [x] Telemetry broadcast over the same socket
+77. [ ] Telemetry broadcast over the same socket (not built: the socket reports only `{state, thrust}`, and manual control starts no telemetry reader)
 78. [x] Tests: dropped heartbeat triggers land
 79. [x] Tests: malformed control frame is rejected, not crashed on
 
@@ -123,18 +123,18 @@ Legend: `[x]` done · `[ ]` not started · **⚠** blocked on something external
 85. [x] `lib/queries.ts` (`server-only` + React `cache`) and `lib/mutations.ts`
 86. [x] Zustand store — live telemetry, socket status, manual state only
 87. [x] Four async states on every surface: loading, empty, error+retry, content
-88. [x] PWA manifest + icons
+88. [ ] PWA manifest + icons (no manifest exists)
 
 ## Phase 10 — Web features
 
 89. [x] Dashboard — latest flight, battery, zone summary
-90. [ ] Live telemetry page via Supabase Realtime
-91. [ ] Flight path map from `lh_x`/`lh_y`
-92. [ ] Time series — selectable metrics
-93. [ ] Mission planner — click zones, review, queue
-94. [ ] Manual control page — nudge buttons, connects to the agent socket
-95. [ ] Run comparison across flights
-96. [ ] Zone health map with ML predictions
+90. [x] Live telemetry page via Supabase Realtime
+91. [x] Flight path map from `x_m`/`y_m`
+92. [x] Time series — one chart per unit, table view on each
+93. [x] Mission planner — click zones, review, queue
+94. [x] Manual control page — keyboard, connects to the agent socket
+95. [x] Run comparison across flights
+96. [x] Zone health map (renders predictions; none exist until 97–98)
 
 ### Added after review — the visitor-facing manual
 
@@ -145,17 +145,17 @@ the only instructions. Added:
       troubleshooting list written symptom-first from real bring-up failures
 - [x] `/setup/hardware` — every kit component photographed, including why most
       sensors are invisible
-- [ ] Download buttons wired to Supabase Storage (needs Phase 12 builds)
+- [x] Download buttons wired to Supabase Storage (show "coming soon" until CI uploads a build)
 
 ## Phase 11 — ML
 
 97. [ ] Port the notebook's feature extraction into `telemetry/features.py`
 98. [ ] Load `best_lnn_stable.pt`, infer after correction, write to `predictions`
 
-## Phase 12 — Desktop + ship  ⚠ needs `rustup`
+## Phase 12 — Desktop + ship
 
-99. [ ] Tauri app — manual control window, agent bundled as a PyInstaller sidecar
-100. [ ] GitHub Actions — build macOS `.dmg` + Windows `.exe` on tag
+99. [x] Tauri app — manual control window, agent bundled as a PyInstaller sidecar (macOS arm64 built and verified locally)
+100. [ ] GitHub Actions — build macOS `.dmg` + Windows `.exe` on tag (workflow written; never run)
 
 ### Keyboard control (Tauri manual window)
 
@@ -167,7 +167,7 @@ Keys mirror `keyboard_fly.py` from the bring-up session, which flew.
 | `←` `→` | roll — left / right |
 | `W` `S` | thrust — up / down |
 | `A` `D` | yaw — rotate left / right |
-| `Space` | **cut motors immediately** |
+| `P` | **cut motors immediately** |
 | `Q` | land gently and disarm |
 
 Rules the implementation must honour:
@@ -179,7 +179,7 @@ Rules the implementation must honour:
   keyboard brings the drone down rather than leaving it pinned at power.
 - **Heartbeat at 10 Hz; auto-land after 0.5 s of silence.** Covers a closed tab,
   a frozen browser, a lost socket.
-- `Space` is checked before anything else in the frame, so a panic stop is never
+- `P` is checked before anything else in the frame, so a panic stop is never
   queued behind a movement.
 - Keys are repeated OS-level while held — track key *state* (down/up events),
   not the repeat stream, or the rate is at the mercy of the OS repeat delay.

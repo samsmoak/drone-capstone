@@ -1,0 +1,69 @@
+AUDIT TRAIL — who did what, with which drone, and how it ended
+==============================================================
+
+WHAT IT IS
+
+Every operator action and every automatic safety decision is recorded, for all
+time, against the person who was signed in and the drone that was connected.
+The agent writes the events; the web dashboard reads them with filters.
+
+This is why sign-in exists in the desktop app at all: a flight with nobody's
+name on it is not an audit trail.
+
+
+WHERE IT LIVES
+
+  backend/agent/cropwatcher/audit.py        the events and their shape
+  backend/agent/cropwatcher/session.py      where they are raised
+  backend/supabase/migrations/…0006…sql     the append-only audit_events table
+  backend/agent/tests/test_audit.py
+
+
+THE EVENTS
+
+  sign_in, sign_out
+  session_start, session_end
+  mode_changed
+  checks                (with which check failed, and why)
+  area_confirmed
+  prop_test
+  program_run           auto: Hover test
+  mission_run
+  manual_arm, manual_flight
+  land
+  emergency_stop
+  guard_abort           with the guard's reason (see flight-safety.txt)
+
+Each carries an outcome: ok / refused / failed / aborted.
+
+  refused   the system declined — checks failed, wrong role
+  failed    it was attempted and went wrong
+  aborted   a guard or the operator ended it early
+
+
+DECISIONS
+
+- Events are written to the local outbox BEFORE any network call, so a flight
+  with no internet is still fully accounted for.
+- audit_events carries no foreign keys. It can therefore upload first and never
+  waits for a flight row that may not exist on the server yet — the event stands
+  on its own with the operator id, drone hardware id and session id as plain
+  columns.
+- Append-only in the database: there is no update or delete policy, and the
+  grants are explicitly revoked. Operators included. A trail somebody can edit
+  is not evidence.
+- The operator id comes from the signed-in Supabase session, not from anything
+  the window sends, so it cannot be spoofed by a local page.
+
+
+INVARIANTS
+
+- A policy without a GRANT is a 403 "permission denied", and a GRANT with no
+  policy is a silent hole. Both halves are checked by
+  backend/supabase/checks/rls_check.py — 15/15 must pass, against hosted as
+  well as local.
+- audit_events had an UPDATE grant that no policy used. That is not harmless:
+  add a policy later and the hole opens silently. The grants are revoked
+  explicitly in migration 0006.
+- Never log the password or a raw provider error. Sign-in failures surface as
+  plain, actionable words.

@@ -5,6 +5,13 @@ __pycache__/
 venv/
 *.egg-info/
 .pytest_cache/
+# cflib's TOC cache, keyed by firmware CRC. Machine-local, regenerated on
+# connect — and it is drone state, not source.
+.cache/
+
+# PyInstaller output — the sidecar is built, never committed.
+backend/agent/packaging/build/
+backend/agent/packaging/dist/
 .mypy_cache/
 .ruff_cache/
 

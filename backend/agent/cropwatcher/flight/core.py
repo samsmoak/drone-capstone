@@ -1,7 +1,10 @@
-"""The flight core.
+"""Opening and closing a link to a Crazyflie.
 
-One place that knows how to talk to a Crazyflie. Every caller — CLI, REST,
-WebSocket, mission queue — goes through this, passing parameters as arguments.
+The connection primitives. Everything that *flies* goes through
+:class:`cropwatcher.flight.link.DroneLink`, which owns the checks, the telemetry
+stream and the in-flight guards — there is deliberately no flight object here
+any more, because the one that lived here slept through its waits without
+watching anything and flew a drone into a wall.
 
 This exists because the previous implementation had no such layer: parameters
 reached the flight scripts by writing text into their ``input()`` prompts over
@@ -25,9 +28,6 @@ from dataclasses import dataclass
 import cflib.crtp
 from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
-
-from cropwatcher.flight import preflight
-from cropwatcher.flight.preflight import PreflightReport
 
 log = logging.getLogger(__name__)
 
@@ -70,110 +70,6 @@ def connect(uri: str = DEFAULT_URI) -> Iterator[SyncCrazyflie]:
             yield scf
         finally:
             _cut_motors(scf)
-
-
-class Flight:
-    """An armed flight session. Obtain one via :func:`session`.
-
-    Every altitude argument is metres above the ground reference captured during
-    preflight, so callers never deal with the lighthouse frame's offset.
-    """
-
-    def __init__(self, scf: SyncCrazyflie, report: PreflightReport) -> None:
-        # Public: the telemetry reader needs the link to open its own log
-        # subscription alongside this flight's.
-        self.scf = scf
-        self._cf = scf.cf
-        self._hlc = scf.cf.high_level_commander
-        self.report = report
-        self.ground_z = report.ground_z_m
-        self._airborne = False
-
-    @property
-    def airborne(self) -> bool:
-        return self._airborne
-
-    # ── commands ─────────────────────────────────────────────────────────
-
-    def takeoff(self, height_m: float, duration_s: float = TAKEOFF_TIME_S) -> None:
-        self._hlc.takeoff(self.ground_z + height_m, duration_s)
-        time.sleep(duration_s)
-        self._airborne = True
-
-    def goto(self, wp: Waypoint, duration_s: float = GOTO_DEFAULT_DURATION_S) -> None:
-        if not self._airborne:
-            raise FlightError("goto before takeoff")
-        self._hlc.go_to(wp.x, wp.y, self.ground_z + wp.z, 0.0, duration_s)
-        time.sleep(duration_s)
-
-    def hold(self, seconds: float) -> None:
-        time.sleep(seconds)
-
-    def land(self, duration_s: float = LAND_TIME_S) -> None:
-        self._hlc.land(self.ground_z, duration_s)
-        time.sleep(duration_s)
-        self._airborne = False
-
-    # ── telemetry ────────────────────────────────────────────────────────
-
-    def position(self) -> tuple[float, float, float]:
-        """Current position, metres, relative to the ground reference."""
-        row = preflight.sample(self.scf, [
-            ("stateEstimate.x", "float"),
-            ("stateEstimate.y", "float"),
-            ("stateEstimate.z", "float"),
-        ], n=1)[0]
-        return (
-            row["stateEstimate.x"],
-            row["stateEstimate.y"],
-            row["stateEstimate.z"] - self.ground_z,
-        )
-
-    def battery(self) -> float:
-        # cflib log rows are untyped dicts, so coerce at this boundary rather
-        # than letting Any leak into callers.
-        return float(preflight.sample(self.scf, [("pm.vbat", "float")], n=1)[0]["pm.vbat"])
-
-    def voltage_critical(self) -> bool:
-        return self.battery() < preflight.CRITICAL_VBAT
-
-
-@contextmanager
-def session(
-    uri: str = DEFAULT_URI,
-    *,
-    hold_seconds: float = 0.0,
-    require_positioning: bool = True,
-    force: bool = False,
-) -> Iterator[Flight]:
-    """Connect, run every preflight gate, and yield an armed :class:`Flight`.
-
-    Lands and cuts motors on exit, including on exception — a raised error must
-    never leave the drone hovering.
-    """
-    with connect(uri) as scf:
-        _configure(scf.cf)
-        report = preflight.run(
-            scf,
-            hold_seconds,
-            require_positioning=require_positioning,
-            force=force,
-        )
-        log.info(
-            "preflight ok — %.2f V, %d base stations, ground z=%+.3f m (spread %.1f cm)",
-            report.vbat, report.base_stations, report.ground_z_m,
-            report.estimate_spread_m * 100,
-        )
-
-        flight = Flight(scf, report)
-        try:
-            yield flight
-        finally:
-            try:
-                if flight.airborne:
-                    flight.land()
-            except Exception:
-                log.exception("landing failed during cleanup")
 
 
 def _configure(cf) -> None:

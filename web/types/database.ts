@@ -34,9 +34,63 @@ export type Database = {
   }
   public: {
     Tables: {
+      audit_events: {
+        Row: {
+          action: string
+          actor_email: string | null
+          actor_id: string
+          detail: Json
+          drone_hardware_id: string | null
+          flight_id: string | null
+          id: string
+          mission_id: string | null
+          occurred_at: string
+          result: string
+          session_id: string | null
+          source: string
+        }
+        Insert: {
+          action: string
+          actor_email?: string | null
+          actor_id?: string
+          detail?: Json
+          drone_hardware_id?: string | null
+          flight_id?: string | null
+          id: string
+          mission_id?: string | null
+          occurred_at?: string
+          result?: string
+          session_id?: string | null
+          source: string
+        }
+        Update: {
+          action?: string
+          actor_email?: string | null
+          actor_id?: string
+          detail?: Json
+          drone_hardware_id?: string | null
+          flight_id?: string | null
+          id?: string
+          mission_id?: string | null
+          occurred_at?: string
+          result?: string
+          session_id?: string | null
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_events_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       drones: {
         Row: {
           created_at: string
+          hardware_id: string | null
           id: string
           name: string
           notes: string | null
@@ -44,6 +98,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          hardware_id?: string | null
           id?: string
           name: string
           notes?: string | null
@@ -51,6 +106,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          hardware_id?: string | null
           id?: string
           name?: string
           notes?: string | null
@@ -60,6 +116,7 @@ export type Database = {
       }
       flights: {
         Row: {
+          abort_reason: string | null
           ambient_start: number | null
           created_by: string | null
           csv_path: string | null
@@ -68,11 +125,16 @@ export type Database = {
           error: string | null
           ground_z_m: number | null
           id: string
+          mode: string | null
+          outcome: string | null
+          program: string | null
+          session_id: string | null
           started_at: string
           status: Database["public"]["Enums"]["flight_status"]
           temp_unit: string
         }
         Insert: {
+          abort_reason?: string | null
           ambient_start?: number | null
           created_by?: string | null
           csv_path?: string | null
@@ -81,11 +143,16 @@ export type Database = {
           error?: string | null
           ground_z_m?: number | null
           id?: string
+          mode?: string | null
+          outcome?: string | null
+          program?: string | null
+          session_id?: string | null
           started_at?: string
           status?: Database["public"]["Enums"]["flight_status"]
           temp_unit?: string
         }
         Update: {
+          abort_reason?: string | null
           ambient_start?: number | null
           created_by?: string | null
           csv_path?: string | null
@@ -94,6 +161,10 @@ export type Database = {
           error?: string | null
           ground_z_m?: number | null
           id?: string
+          mode?: string | null
+          outcome?: string | null
+          program?: string | null
+          session_id?: string | null
           started_at?: string
           status?: Database["public"]["Enums"]["flight_status"]
           temp_unit?: string
@@ -111,6 +182,13 @@ export type Database = {
             columns: ["drone_id"]
             isOneToOne: false
             referencedRelation: "drones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "flights_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
             referencedColumns: ["id"]
           },
         ]
@@ -174,6 +252,93 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      project_members: {
+        Row: {
+          display_order: number
+          member_id: string
+          project_id: string
+        }
+        Insert: {
+          display_order?: number
+          member_id: string
+          project_id: string
+        }
+        Update: {
+          display_order?: number
+          member_id?: string
+          project_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_members_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "team_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_members_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      projects: {
+        Row: {
+          category: string
+          content: Json
+          cover_image_url: string | null
+          created_at: string
+          date_label: string
+          display_order: number
+          id: string
+          location: string
+          published_at: string | null
+          slug: string
+          status: string
+          subtitle: string
+          summary: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string
+          content?: Json
+          cover_image_url?: string | null
+          created_at?: string
+          date_label?: string
+          display_order?: number
+          id?: string
+          location?: string
+          published_at?: string | null
+          slug: string
+          status?: string
+          subtitle?: string
+          summary?: string
+          title?: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          content?: Json
+          cover_image_url?: string | null
+          created_at?: string
+          date_label?: string
+          display_order?: number
+          id?: string
+          location?: string
+          published_at?: string | null
+          slug?: string
+          status?: string
+          subtitle?: string
+          summary?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       predictions: {
         Row: {
@@ -253,8 +418,98 @@ export type Database = {
         }
         Relationships: []
       }
+      sessions: {
+        Row: {
+          agent_id: string | null
+          drone_id: string | null
+          end_reason: string | null
+          ended_at: string | null
+          id: string
+          mode_at_start: string | null
+          operator_id: string | null
+          started_at: string
+        }
+        Insert: {
+          agent_id?: string | null
+          drone_id?: string | null
+          end_reason?: string | null
+          ended_at?: string | null
+          id: string
+          mode_at_start?: string | null
+          operator_id?: string | null
+          started_at?: string
+        }
+        Update: {
+          agent_id?: string | null
+          drone_id?: string | null
+          end_reason?: string | null
+          ended_at?: string | null
+          id?: string
+          mode_at_start?: string | null
+          operator_id?: string | null
+          started_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sessions_drone_id_fkey"
+            columns: ["drone_id"]
+            isOneToOne: false
+            referencedRelation: "drones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sessions_operator_id_fkey"
+            columns: ["operator_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      team_members: {
+        Row: {
+          avatar_url: string | null
+          bio: string
+          created_at: string
+          display_order: number
+          email: string | null
+          full_name: string
+          id: string
+          role: string
+          updated_at: string
+          website_url: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          bio?: string
+          created_at?: string
+          display_order?: number
+          email?: string | null
+          full_name: string
+          id?: string
+          role?: string
+          updated_at?: string
+          website_url?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          bio?: string
+          created_at?: string
+          display_order?: number
+          email?: string | null
+          full_name?: string
+          id?: string
+          role?: string
+          updated_at?: string
+          website_url?: string | null
+        }
+        Relationships: []
+      }
       telemetry: {
         Row: {
+          acc_x_g: number | null
+          acc_y_g: number | null
+          acc_z_g: number | null
           air_density_kg_m3: number | null
           ambient_est: number | null
           battery_v: number | null
@@ -263,24 +518,41 @@ export type Database = {
           event: string | null
           expected_raw: number | null
           flight_id: string
+          gyro_x_deg_s: number | null
+          gyro_y_deg_s: number | null
+          gyro_z_deg_s: number | null
           id: number
           index: number
+          lighthouse_received: number | null
           mode: string | null
+          motor_m1: number | null
+          motor_m2: number | null
+          motor_m3: number | null
+          motor_m4: number | null
+          pitch_deg: number | null
           pressure_altitude_m: number | null
           raw_temp: number | null
           recorded_at: string
           roc_per_s: number | null
+          roll_deg: number | null
           sea_level_pressure_hpa: number | null
           station_pressure_hpa: number | null
           temp_unit: string
           thermal_offset: number | null
           thermal_state: string | null
           thrust: number | null
+          vx_m_s: number | null
+          vy_m_s: number | null
+          vz_m_s: number | null
           x_m: number | null
           y_m: number | null
+          yaw_deg: number | null
           z_m: number | null
         }
         Insert: {
+          acc_x_g?: number | null
+          acc_y_g?: number | null
+          acc_z_g?: number | null
           air_density_kg_m3?: number | null
           ambient_est?: number | null
           battery_v?: number | null
@@ -289,24 +561,41 @@ export type Database = {
           event?: string | null
           expected_raw?: number | null
           flight_id: string
+          gyro_x_deg_s?: number | null
+          gyro_y_deg_s?: number | null
+          gyro_z_deg_s?: number | null
           id?: number
           index: number
+          lighthouse_received?: number | null
           mode?: string | null
+          motor_m1?: number | null
+          motor_m2?: number | null
+          motor_m3?: number | null
+          motor_m4?: number | null
+          pitch_deg?: number | null
           pressure_altitude_m?: number | null
           raw_temp?: number | null
           recorded_at: string
           roc_per_s?: number | null
+          roll_deg?: number | null
           sea_level_pressure_hpa?: number | null
           station_pressure_hpa?: number | null
           temp_unit: string
           thermal_offset?: number | null
           thermal_state?: string | null
           thrust?: number | null
+          vx_m_s?: number | null
+          vy_m_s?: number | null
+          vz_m_s?: number | null
           x_m?: number | null
           y_m?: number | null
+          yaw_deg?: number | null
           z_m?: number | null
         }
         Update: {
+          acc_x_g?: number | null
+          acc_y_g?: number | null
+          acc_z_g?: number | null
           air_density_kg_m3?: number | null
           ambient_est?: number | null
           battery_v?: number | null
@@ -315,21 +604,35 @@ export type Database = {
           event?: string | null
           expected_raw?: number | null
           flight_id?: string
+          gyro_x_deg_s?: number | null
+          gyro_y_deg_s?: number | null
+          gyro_z_deg_s?: number | null
           id?: number
           index?: number
+          lighthouse_received?: number | null
           mode?: string | null
+          motor_m1?: number | null
+          motor_m2?: number | null
+          motor_m3?: number | null
+          motor_m4?: number | null
+          pitch_deg?: number | null
           pressure_altitude_m?: number | null
           raw_temp?: number | null
           recorded_at?: string
           roc_per_s?: number | null
+          roll_deg?: number | null
           sea_level_pressure_hpa?: number | null
           station_pressure_hpa?: number | null
           temp_unit?: string
           thermal_offset?: number | null
           thermal_state?: string | null
           thrust?: number | null
+          vx_m_s?: number | null
+          vy_m_s?: number | null
+          vz_m_s?: number | null
           x_m?: number | null
           y_m?: number | null
+          yaw_deg?: number | null
           z_m?: number | null
         }
         Relationships: [
@@ -377,6 +680,29 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      claim_mission: {
+        Args: { agent_id: string; mission_id: string }
+        Returns: {
+          claimed_at: string | null
+          claimed_by: string | null
+          created_at: string
+          created_by: string | null
+          error: string | null
+          flight_id: string | null
+          id: string
+          name: string
+          plan: Json
+          status: Database["public"]["Enums"]["mission_status"]
+          type: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "missions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       claim_next_mission: {
         Args: { agent_id: string }
         Returns: {

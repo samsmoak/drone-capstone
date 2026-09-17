@@ -1,0 +1,85 @@
+DESKTOP APP — the Tauri shell and the bundled agent
+===================================================
+
+WHAT IT IS
+
+A Tauri v2 window (React + Tailwind) that bundles the flight agent as a sidecar
+binary, so an operator installs one thing and never sees Python. It is not a
+second copy of the web app: this is the only surface that can command a drone,
+because it runs on the machine holding the radio.
+
+THE FOLDER IS `desktop/`.
+
+  desktop/src/          the React UI (see pages-and-windows.txt)
+  desktop/src-tauri/    the Rust shell
+  desktop/src-tauri/target/release/bundle/macos/CropWatcher.app   the built app
+
+
+WHERE IT LIVES
+
+  desktop/src-tauri/src/lib.rs            spawns the agent, holds the token
+  desktop/src/agent.ts                    typed REST + WebSocket client
+  desktop/src/main.tsx                    close = end the session tidily
+  backend/agent/packaging/                PyInstaller spec, build + verify
+  .github/workflows/desktop-release.yml   .dmg + .exe on a v* tag
+  web/components/ui/download-buttons.tsx  /setup buttons, live once a file exists
+
+Build:  backend/agent/packaging/build_sidecar.sh
+        cd desktop && pnpm tauri build
+Rust lives in ~/.cargo/bin, which a login shell may not have on PATH.
+
+
+DECISIONS
+
+- The sidecar is spawned from RUST, never from the webview. Granting the
+  frontend shell:allow-execute would let any script in the window start a
+  process; the window holds no such permission, and the only binary this app can
+  launch is the one compiled into externalBin.
+- A control token is generated per launch (Uuid::new_v4), passed to the agent in
+  its environment and to the window through the `agent_token` command. See
+  ../backend/agent-api.txt.
+- The Supabase project URL and PUBLISHABLE key are compiled into lib.rs, with
+  the environment able to override them. An installed .app is launched by Finder
+  with no shell profile, so reading them from the environment alone gives an
+  operator "sign-in is not configured" and no way to fix it. The SECRET key must
+  never appear here — this binary ships inside an installer.
+- One-file PyInstaller binary (27 MB; the .dmg is 30 MB). A folder of loose
+  libraries beside the app is worse to ship and to sign.
+- The whole CLI is frozen, not just `serve`, so `cropwatcher-agent check` is
+  available on a machine with no Python when a drone will not connect.
+- Installers go to a public bucket at stable paths (latest/CropWatcher-macos.dmg)
+  overwritten by CI, so the download buttons never need a redeploy.
+
+
+INVARIANTS
+
+- Pass --exit-with-parent, and never rely on killing the child. A one-file
+  PyInstaller binary is two processes. Measured from the built app:
+  desktop(43661) -> bootloader(43666) -> python(43670), and the LAST one holds
+  the port and the radio. Tauri kills only the bootloader; the Python process
+  was re-parented to launchd, kept the radio, and the next launch reported "no
+  drone found". Verified fixed on quit and on kill -9.
+- Verify the frozen binary, not the build. A binary missing libusb builds,
+  launches and serves /health; it fails only when a radio is plugged in.
+  verify_sidecar.py asserts cflib enumerated USB ("Looking for devices") and
+  that no bundling error appeared — "no drone found" is the CORRECT answer with
+  no dongle. Exit codes cannot tell these apart.
+- uvicorn's protocol modules are hidden imports; it selects them by string name,
+  so nothing imports them statically and the binary otherwise cannot upgrade a
+  WebSocket.
+- A probe WebSocket key must be exactly 16 bytes (RFC 6455). A 17-byte key gets
+  a 400 indistinguishable from "websockets not bundled" — that cost a build to
+  tell apart. verify_sidecar.py probes /ws/live; rename the socket and this
+  check must be renamed with it.
+- Closing the window ends the session (land, close the flight, let the upload
+  finish) rather than vanishing mid-flight. The agent's own dead-man landing
+  stays as the net beneath that.
+- Neither half cross-compiles: macOS builds the .dmg, Windows the .exe, each on
+  its own runner. macos-latest is Apple silicon, so there is no Intel build.
+
+
+NOT YET VERIFIED
+
+The CI workflow has never run and no Windows build exists. The bundled app has
+talked to the hosted Supabase project (sign-in verified 2026-09-16) but has not
+yet flown a drone from inside the bundle.

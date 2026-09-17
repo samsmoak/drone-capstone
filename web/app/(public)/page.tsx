@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { OPERATOR_HOME, PROJECT, TEAM } from "@/lib/routes";
+import { OPERATOR_HOME, PROJECTS, TEAM } from "@/lib/routes";
 
 export const metadata = {
   title: "CropWatcher — autonomous crop-health monitoring",
@@ -52,10 +52,10 @@ export default function LandingPage() {
 
         <div className="mt-8 flex flex-wrap gap-3">
           <Link
-            href={PROJECT}
+            href={PROJECTS}
             className="inline-flex min-h-11 items-center rounded-lg bg-[var(--primary)] px-5 font-medium text-[var(--on-primary)]"
           >
-            Read the project
+            See the projects
           </Link>
           <Link
             href={OPERATOR_HOME}

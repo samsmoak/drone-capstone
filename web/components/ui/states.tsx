@@ -131,15 +131,27 @@ const STATUS_META = {
   critical: { icon: "■", label: "Critical", color: "var(--status-critical)" },
 } as const;
 
-/** Status always ships icon + label. Colour never carries the meaning alone. */
-export function StatusBadge({ status }: { status: keyof typeof STATUS_META }) {
+/**
+ * Status always ships icon + label. Colour never carries the meaning alone.
+ *
+ * `label` overrides the default word. The defaults are crop-health vocabulary
+ * ("Healthy", "Watch"); a flight that completed is not "Healthy", so surfaces
+ * that reuse the tones for something else say what they mean.
+ */
+export function StatusBadge({
+  status,
+  label,
+}: {
+  status: keyof typeof STATUS_META;
+  label?: string;
+}) {
   const meta = STATUS_META[status];
   return (
     <span className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium">
       <span aria-hidden="true" style={{ color: meta.color }}>
         {meta.icon}
       </span>
-      <span className="text-[var(--foreground)]">{meta.label}</span>
+      <span className="text-[var(--foreground)]">{label ?? meta.label}</span>
     </span>
   );
 }

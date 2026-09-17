@@ -18,22 +18,25 @@ HONEST STATUS
 DONE and verified:
   - Python flight agent: flight core, preflight gates, thermal correction,
     geofence + occupancy, missions, CSV/Supabase sinks, REST + WebSocket API,
-    manual control loop.  162 tests passing, ruff + mypy clean.
+    manual control loop.  177 tests passing, ruff + mypy clean.
   - Supabase: 7 tables, RLS on all of them, atomic mission claiming, applied
     and verified on the HOSTED project.
+  - All 7 operator pages (Task 1), driven in a real browser against local
+    Supabase, light + dark, phone width. Gates: typecheck, lint, build pass.
+  - Tauri desktop app: macOS arm64 .dmg built locally; the PyInstaller agent
+    runs from inside the bundle, loads libusb, serves HTTP + WebSocket, and
+    exits with the app (including on kill -9).
   - Deployment: Vercel builds from web/ and auto-deploys on push to main.
 
 NOT done:
-  - 11 of 17 web pages.  Only 6 routes exist.
-  - The Tauri desktop app.  desktop/ is an empty folder. Nothing started.
-  - No installers have ever been built.
-  - ML inference is not wired in.
+  - Task 2 public pages (/project, /project/[slug], /gallery, /team, /admin).
+  - Task 3 partly: the CI workflow has never run, no Windows build exists,
+    and migration 0005 (installers bucket) is NOT on the hosted project yet.
+  - Task 4 ML.
+  - Nothing has ever talked to a real Crazyradio (no dongle yet).
 
-Roughly: backend complete, ~35% of the UI, 0% of the desktop app.
-
-Ignore any "N/100" counter in docs/ROADMAP.md — it over-reports, because one
-roadmap line can mean a whole page. Trust this file.
-
+Docs: docs/README.md routes to feature docs for everything above. Four
+platform docs it used to link never existed; the router now says so.
 
 --------------------------------------------------------------------------------
 BEFORE YOU START — THREE THINGS ONLY THE OWNER CAN DO
@@ -51,56 +54,25 @@ BEFORE YOU START — THREE THINGS ONLY THE OWNER CAN DO
    Email/password already works without this.
 
 3. TWO JUNK VERCEL PROJECTS EXIST: "agent" and "agent-kpqe".
-   Auto-created by a failed build that detected the Python agent. Nothing uses
-   them. Delete when convenient.
+   They are still connected to the repo and FAIL ON EVERY PUSH to main (Error:
+   "No FastAPI entrypoint found") — those are the failed deployment emails.
+   drone-capstone itself deploys fine. Delete both projects in the Vercel
+   dashboard to stop the failures.
 
 
 --------------------------------------------------------------------------------
-TASK 1 — OPERATOR PAGES  (biggest chunk, do first)
+TASK 1 — OPERATOR PAGES  (DONE)
 --------------------------------------------------------------------------------
 
-All under web/app/app/. The layout, nav, auth gate and design tokens already
-exist — these are pages, not foundations.
+  /app/live, /app/flights, /app/flights/[id], /app/compare, /app/zones,
+  /app/plan, /app/manual, /app/settings — all built.
+  See docs/features/frontend/operator-dashboard.txt and mission-planner.txt.
 
-  /app/live            Live telemetry via Supabase Realtime.
-                       Subscribe to the telemetry table; push rows into the
-                       Zustand store. Zustand holds ONLY live ephemeral state.
-
-  /app/flights         List of flights. lib/queries.ts::getRecentFlights.
-
-  /app/flights/[id]    One flight: time-series charts, flight path, raw rows.
-                       getFlightTelemetry is already written and capped at
-                       5000 rows.
-
-  /app/compare         Several flights on one chart. ONE Y-AXIS ONLY — never a
-                       dual-axis chart. Two measures of different scale means
-                       two charts.
-
-  /app/zones           Zone grid coloured by health. Plain SVG rectangles, no
-                       chart library.
-
-  /app/plan            Mission planner. Click zones -> waypoints -> validate ->
-                       queueMission() in lib/mutations.ts (already written).
-
-  /app/manual          Manual control. Connects to the agent over WebSocket at
-                       NEXT_PUBLIC_AGENT_URL. Keyboard map is in
-                       docs/ROADMAP.md under "Keyboard control".
-                       THE BROWSER SENDS HELD-KEY STATE, NOT ONE PACKET PER
-                       KEYPRESS. The agent already generates the 50 Hz stream
-                       and lands itself if the heartbeat stops. Do not
-                       reimplement that in the browser.
-
-  /app/settings        Geofence bounds, drone URI, agent reachability.
-
-Rules that already apply (see CLAUDE.md):
-  - Every async surface needs all four states. components/ui/states.tsx has
-    them. A failed fetch must SAY so — never render nothing.
-  - Read data through lib/queries.ts, write through lib/mutations.ts. Never
-    call createClient() inside a component.
-  - Chart colours come from the validated tokens in app/globals.css
-    (--series-1..4). Do not invent colours. Light-mode aqua and yellow are
-    under 3:1 contrast, so charts using them need direct labels or a table view.
-
+  Known limits:
+  - Zone health colours assume health_score is 0–1. Pin it when Task 4 lands.
+  - Planner leg timing assumes 0.5 m/s cruise; nothing measured that.
+  - Browser manual control needs the browser to allow https -> ws://127.0.0.1.
+    Not tried from the live site yet. The desktop app does not have this issue.
 
 --------------------------------------------------------------------------------
 TASK 2 — PUBLIC PAGES
@@ -117,30 +89,31 @@ Already built: /, /setup, /setup/hardware, /login, /auth/callback, /app.
 
 
 --------------------------------------------------------------------------------
-TASK 3 — TAURI DESKTOP APP  (highest risk — consider doing this FIRST)
+TASK 3 — TAURI DESKTOP APP  (mostly done)
 --------------------------------------------------------------------------------
 
-Rust 1.98.1 and create-tauri-app 4.7.4 are installed. desktop/ is empty.
+  Done: scaffold, three panels, PyInstaller sidecar, externalBin, release
+  workflow, installers bucket migration, /setup download buttons.
+  See docs/features/desktop/desktop-app.txt and pages-and-windows.txt.
 
-  a. Scaffold Tauri v2 in desktop/.
-  b. One window, three panels: status bar, manual control, log.
-     Not a second copy of the web app.
-  c. PyInstaller the agent into a single binary.
-  d. Bundle it as a Tauri sidecar (externalBin in tauri.conf.json).
-  e. GitHub Actions to build .dmg + .exe on tag — you CANNOT cross-compile
-     Tauri from macOS, so CI must build each on its own runner.
-  f. Upload installers to a public Supabase Storage bucket; wire the download
-     buttons on /setup (currently placeholders saying "coming soon").
+  Left:
+  a. Push a v* tag and watch .github/workflows/desktop-release.yml run. It has
+     never run. Add repo secrets SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY for
+     the upload step (it skips cleanly without them).
+  b. Apply migration 0005 to the hosted project: cd backend && supabase db push.
+  c. PROPOSED, NOT STARTED — vitals in the desktop app for manual AND
+     autonomous flights. Two gaps found while checking whether it can be done:
+       - `serve` does not run the mission poller, so the installed desktop app
+         would never fly missions queued on the website.
+       - manual control starts no TelemetryReader, so manual flights record
+         nothing at all.
+     Plan: run the poller inside the desktop agent; add an in-memory broadcast
+     sink + local /ws/telemetry; start the reader during manual control too.
+     Needs a lab check: logging and 50 Hz control share the radio.
 
-WHY DO THIS FIRST: bundling a PyInstaller binary that talks to USB inside a
-Mac app has never been tested here. It is the most likely thing to fail, and
-it is currently last in the plan. Prove it with a trivial build before
-investing more time in pages.
-
-macOS will warn "unidentified developer" on first launch. Either users
-right-click -> Open once, or pay Apple $99/yr to sign. /setup already explains
-this.
-
+  Build locally: backend/agent/packaging/build_sidecar.sh, then
+  cd desktop && pnpm tauri build.  Rust is in ~/.cargo/bin (not always on PATH).
+  PyInstaller is installed in backend/agent/.venv.
 
 --------------------------------------------------------------------------------
 TASK 4 — ML
@@ -180,7 +153,12 @@ GATES — RUN BEFORE EVERY COMMIT
     ruff check . && mypy cropwatcher && pytest
 
     cd web
-    pnpm exec tsc --noEmit && pnpm lint && pnpm build
+    pnpm typecheck && pnpm lint && pnpm build
+    # typecheck runs `next typegen` first: bare tsc fails on a fresh clone,
+    # because PageProps route types only exist after generation.
+
+    cd desktop
+    pnpm exec tsc --noEmit
 
 Report pass/fail/skipped honestly. Do not claim done on an unrun gate.
 
@@ -207,5 +185,12 @@ TRAPS THAT ALREADY COST TIME
 
 - Do not run `supabase db reset` against the hosted project. It drops
   everything. Use `db push`.
+
+- Cut motors is P, not Space (operator's decision). Space is blocked on keydown
+  AND keyup — WebKit activates a focused button on Space keyup.
+
+- The local Supabase database holds synthetic test data added while building
+  the pages: flights aaaaaaaa-…-0001 to -0004, their telemetry, 8 predictions
+  and a few missions. Local only; `supabase db reset` (LOCAL) clears it.
 
 ================================================================================

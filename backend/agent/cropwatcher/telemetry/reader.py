@@ -15,16 +15,14 @@ import logging
 import threading
 from collections.abc import Callable
 
-from cflib.crazyflie.log import LogConfig
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 
 from cropwatcher.telemetry.correction import ThermalEngine
 from cropwatcher.telemetry.row import TelemetryRow, TempUnit, build_row
 from cropwatcher.telemetry.sinks import TelemetrySink, utc_now_iso
+from cropwatcher.telemetry.stream import ALL_VARIABLES, Snapshot, TelemetryStream
 
 log = logging.getLogger(__name__)
-
-SAMPLE_PERIOD_MS = 100          # 10 Hz — plenty for environmental data
 
 # Candidate (temperature, pressure) names, most common first. Different
 # firmware builds expose the BMP388 under different group names.
@@ -39,11 +37,21 @@ class BarometerNotFound(RuntimeError):
     pass
 
 
+def has_log_variable(scf: SyncCrazyflie, complete_name: str) -> bool:
+    """Whether the drone's firmware publishes this log variable.
+
+    cflib's TOC is ``{group: {name: element}}``. Testing ``"baro.temp" in
+    toc.toc`` looks for a *group* called "baro.temp", which never exists — that
+    check refused a hover on the lab drone while ``baro.temp`` sat in its TOC.
+    """
+    group, _, name = complete_name.partition(".")
+    return name in scf.cf.log.toc.toc.get(group, {})
+
+
 def detect_baro_vars(scf: SyncCrazyflie) -> tuple[str, str]:
     """Find this firmware's barometer variable names from the drone's own TOC."""
-    toc = scf.cf.log.toc
     for temp_var, press_var in BARO_CANDIDATES:
-        if temp_var in toc.toc and press_var in toc.toc:
+        if has_log_variable(scf, temp_var) and has_log_variable(scf, press_var):
             log.info("barometer variables: %s / %s", temp_var, press_var)
             return temp_var, press_var
 
@@ -53,122 +61,137 @@ def detect_baro_vars(scf: SyncCrazyflie) -> tuple[str, str]:
     )
 
 
-def read_initial(scf: SyncCrazyflie, temp_var: str, press_var: str) -> tuple[float, float]:
-    """One reading, to seed the correction engine before flight."""
-    from cropwatcher.flight.preflight import sample
+def stream_variables_for(scf: SyncCrazyflie) -> tuple[str, ...]:
+    """The stream's variables, with this firmware's barometer names swapped in.
 
-    row = sample(scf, [(temp_var, "float"), (press_var, "float")], n=3)[-1]
-    return row[temp_var], row[press_var]
+    The stream lists ``baro.temp`` / ``baro.pressure`` (the lab drone's names).
+    Older builds publish the same sensor as ``bmp388.*``; without the swap the
+    environment window and the CSV would silently have no temperature.
+    """
+    try:
+        temp_var, press_var = detect_baro_vars(scf)
+    except BarometerNotFound:
+        return ALL_VARIABLES
+    swap = {"baro.temp": temp_var, "baro.pressure": press_var}
+    return tuple(swap.get(name, name) for name in ALL_VARIABLES)
 
 
-class TelemetryReader:
-    """Streams telemetry into a sink for the duration of a flight.
+class RecorderError(RuntimeError):
+    """The flight cannot be recorded. Raised before takeoff, never during."""
 
-    Start it before takeoff and stop it after landing, so the log captures the
-    full flight context — the original project deliberately recorded before,
-    during and through landing, and the correction engine needs the idle
-    samples either side to track its offset.
+
+class FlightRecorder:
+    """Turns the live stream into telemetry rows for the duration of a flight.
+
+    A subscriber of the session's one :class:`TelemetryStream` — it opens no
+    log subscription of its own. Start it before takeoff and stop it after
+    landing: the correction engine needs the idle samples either side of the
+    flight, and the original project recorded before, during and through
+    landing for the same reason.
+
+    Positions are stored relative to the ground reference captured by the
+    checks, so ``z_m`` is height above the floor. Readers must not subtract the
+    ground again.
     """
 
     def __init__(
         self,
-        scf: SyncCrazyflie,
+        stream: TelemetryStream,
         sink: TelemetrySink,
-        engine: ThermalEngine,
         *,
+        ambient_c: float,
         unit: TempUnit,
         ground_z: float,
-        flight_id: str | None = None,
+        flight_id: str | None,
+        temp_var: str = "baro.temp",
+        press_var: str = "baro.pressure",
         on_row: Callable[[TelemetryRow], None] | None = None,
     ) -> None:
-        self._scf = scf
+        self._stream = stream
         self._sink = sink
-        self._engine = engine
         self._unit = unit
         self._ground_z = ground_z
         self._flight_id = flight_id
+        self._temp_var = temp_var
+        self._press_var = press_var
         self._on_row = on_row
 
-        self._temp_var, self._press_var = detect_baro_vars(scf)
-        self._config: LogConfig | None = None
-        self._index = 0
+        seed = stream.snapshot().get(temp_var)
+        if seed is None:
+            raise RecorderError(
+                f"no barometer reading ({temp_var}) yet — cannot seed the temperature "
+                f"correction. Wait for live telemetry before starting the flight."
+            )
+        self._engine = ThermalEngine(seed, ambient_c)
+        self._unsubscribe: Callable[[], None] | None = None
         self._lock = threading.Lock()
+        self.rows_written = 0
         self.latest: TelemetryRow | None = None
 
     def start(self) -> None:
-        cfg = LogConfig(name="cropwatcher", period_in_ms=SAMPLE_PERIOD_MS)
-        cfg.add_variable(self._temp_var, "float")
-        cfg.add_variable(self._press_var, "float")
-        cfg.add_variable("pm.vbat", "float")
-        cfg.add_variable("stabilizer.thrust", "uint16_t")
-        cfg.add_variable("stateEstimate.x", "float")
-        cfg.add_variable("stateEstimate.y", "float")
-        cfg.add_variable("stateEstimate.z", "float")
-
-        cfg.data_received_cb.add_callback(self._on_data)
-        self._scf.cf.log.add_config(cfg)
-        cfg.start()
-        self._config = cfg
-        log.info("telemetry logging started at %d Hz", 1000 // SAMPLE_PERIOD_MS)
+        if self._unsubscribe is None:
+            self._unsubscribe = self._stream.subscribe(self._on_snapshot)
+            log.info("recording flight %s", self._flight_id)
 
     def stop(self) -> None:
-        if self._config is not None:
-            try:
-                self._config.stop()
-            except Exception:
-                log.debug("log config already stopped")
-            self._config = None
+        if self._unsubscribe is not None:
+            self._unsubscribe()
+            self._unsubscribe = None
         self._sink.close()
-        log.info("telemetry logging stopped after %d samples", self._index)
+        log.info("flight %s recorded: %d rows", self._flight_id, self.rows_written)
 
     # ── callback ─────────────────────────────────────────────────────────
 
-    def _on_data(self, _timestamp: int, data: dict, _logconf: LogConfig) -> None:
-        # Runs on cflib's callback thread. It must never raise: an exception
-        # here kills the log stream silently and the flight keeps going blind.
+    def _on_snapshot(self, snap: Snapshot) -> None:
+        # cflib's callback thread. Must never raise: an exception here would be
+        # swallowed by the stream, but the row it was building is lost.
         try:
-            row = self._build(data)
+            row = self._build(snap)
         except Exception:
             log.exception("failed to build telemetry row, dropping sample")
+            return
+        if row is None:
             return
 
         with self._lock:
             self.latest = row
-
         try:
             self._sink.write(row.to_dict())
         except Exception:
             log.exception("sink write failed, continuing")
-
         if self._on_row is not None:
             try:
                 self._on_row(row)
             except Exception:
-                log.exception("telemetry callback failed, continuing")
+                log.exception("telemetry row callback failed, continuing")
 
-    def _build(self, data: dict) -> TelemetryRow:
-        thrust = int(data["stabilizer.thrust"])
+    def _build(self, snap: Snapshot) -> TelemetryRow | None:
+        temp, pressure = snap.get(self._temp_var), snap.get(self._press_var)
+        x = snap.get("stateEstimate.x")
+        y = snap.get("stateEstimate.y")
+        z = snap.get("stateEstimate.z")
+        vbat, thrust = snap.get("pm.vbat"), snap.get("stabilizer.thrust")
+        # An incomplete first sample, before every block has arrived once.
+        if temp is None or pressure is None or vbat is None or thrust is None:
+            return None
+        if x is None or y is None or z is None:
+            return None
+
+        thrust_i = int(thrust)
         correction = self._engine.process(
-            raw_temp_c=data[self._temp_var],
-            thrust=thrust,
-            pressure_hpa=data[self._press_var],
+            raw_temp_c=temp, thrust=thrust_i, pressure_hpa=pressure,
         )
-
-        row = build_row(
-            index=self._index,
+        with self._lock:
+            index = self.rows_written
+            self.rows_written += 1
+        return build_row(
+            index=index,
             recorded_at=utc_now_iso(),
             flight_id=self._flight_id,
             correction=correction,
-            battery_v=data["pm.vbat"],
-            thrust=thrust,
-            position=(
-                data["stateEstimate.x"],
-                data["stateEstimate.y"],
-                # Ground-relative, so the stored altitude means what a reader
-                # expects it to mean.
-                data["stateEstimate.z"] - self._ground_z,
-            ),
+            battery_v=vbat,
+            thrust=thrust_i,
+            position=(x, y, z - self._ground_z),
             unit=self._unit,
+            sensors=snap.values,
         )
-        self._index += 1
-        return row

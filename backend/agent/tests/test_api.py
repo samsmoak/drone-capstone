@@ -1,8 +1,8 @@
-"""The agent's HTTP surface.
+"""The agent's HTTP and WebSocket surface.
 
-Tested with FastAPI's TestClient and no drone: the endpoints that matter here
-are the ones that must answer sensibly when hardware is absent or a request is
-malformed.
+Tested with FastAPI's TestClient and no drone. The endpoints that matter here
+are the ones that must refuse: an unauthorised caller, a command before the
+checks, and a flight before the operator confirms the area.
 """
 
 from __future__ import annotations
@@ -11,144 +11,244 @@ import pytest
 from fastapi.testclient import TestClient
 
 from cropwatcher.api import rest
-from cropwatcher.flight.missions import hover_mission, lawnmower_mission
+from cropwatcher.api.tokens import HEADER
+from cropwatcher.session import Session, State
+from cropwatcher.sync.cloud import Operator
+from cropwatcher.sync.outbox import Outbox
+from tests.test_session import FakeLink
+from tests.test_sync import FakeCloud
+
+COMMANDS = [
+    ("post", "/auth/sign-in", {"email": "a@b.c", "password": "x"}),
+    ("post", "/auth/sign-out", None),
+    ("post", "/session/start", None),
+    ("post", "/session/confirm", None),
+    ("post", "/session/prop-test", None),
+    ("post", "/session/program", {"height_m": 0.3, "hold_s": 5}),
+    ("post", "/session/manual/arm", {}),
+    ("post", "/session/land", None),
+    ("post", "/session/emergency-stop", None),
+    ("post", "/session/end", None),
+    ("post", "/session/mode", {"mode": "manual"}),
+    ("post", "/sync/now", None),
+    ("get", "/session", None),
+]
 
 
 @pytest.fixture
-def client(monkeypatch):
-    # No radio in CI, so scanning finds nothing. That is a valid state the API
-    # must handle, not an error.
-    monkeypatch.setattr(rest.core, "scan", lambda *a, **k: [])
-    rest.state.release()
-    rest.state.manual = None
-    return TestClient(rest.app)
+def client(tmp_path, monkeypatch):
+    monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+    cloud = FakeCloud()
+    cloud.sign_in = lambda email, password: Operator("user-1", email, "Ada", "operator")
+    cloud.sign_out = lambda: None
+    link = FakeLink()
+    session = Session(cloud=cloud, outbox=Outbox(tmp_path / "outbox"),
+                      link_factory=lambda: link, publish=rest.agent.hub.publish)
+    monkeypatch.setattr(rest.agent, "session", session)
+    monkeypatch.setattr(rest.agent, "cloud", cloud)
+    test_client = TestClient(rest.app)
+    test_client.link = link          # type: ignore[attr-defined]
+    return test_client
 
 
-class TestHealth:
-    def test_health_answers_without_a_drone(self, client):
-        """The web app polls this to decide whether the agent is installed, so
-        it must never depend on hardware."""
+def auth(client) -> dict[str, str]:
+    return {HEADER: rest.agent.token}
+
+
+class TestOpenEndpoints:
+    def test_health_needs_no_token_and_no_drone(self, client):
         response = client.get("/health")
-        assert response.status_code == 200
-        assert response.json()["ok"] is True
+        assert response.status_code == 200 and response.json()["ok"] is True
 
-    def test_status_reports_no_drone(self, client):
+    def test_status_is_a_summary_without_operator_details(self, client):
         body = client.get("/status").json()
-        assert body["drone_connected"] is False
-        assert body["busy"] is False
+        assert body["signed_in"] is False and body["drone_connected"] is False
+        assert "operator" not in body
 
 
-class TestMissionValidation:
-    def test_dry_run_validates_without_hardware(self, client):
-        mission = lawnmower_mission(1.0, 1.0, 0.5, 0.4)
-        response = client.post("/flight/mission", json={
-            "plan": mission.to_dict(), "fence_m": 2.0, "dry_run": True,
+class TestControlToken:
+    @staticmethod
+    def call(client, method, path, payload, headers=None):
+        if method == "get":
+            return client.get(path, headers=headers)
+        return client.post(path, json=payload, headers=headers)
+
+    @pytest.mark.parametrize(("method", "path", "payload"), COMMANDS)
+    def test_every_command_needs_the_token(self, client, method, path, payload):
+        assert self.call(client, method, path, payload).status_code == 401, path
+
+    @pytest.mark.parametrize(("method", "path", "payload"), COMMANDS)
+    def test_a_wrong_token_is_refused(self, client, method, path, payload):
+        response = self.call(client, method, path, payload, {HEADER: "guessed"})
+        assert response.status_code == 401, path
+
+    def test_the_right_token_is_accepted(self, client):
+        assert client.get("/session", headers=auth(client)).status_code == 200
+
+
+class TestSessionFlow:
+    def test_sign_in_then_checks_then_confirm_then_fly(self, client, monkeypatch):
+        from cropwatcher.flight.programs import Outcome, ProgramResult
+        from cropwatcher.safety.flight_guard import Reason
+
+        monkeypatch.setattr(
+            "cropwatcher.session.run_hover_test",
+            lambda flight, program: ProgramResult(Outcome.COMPLETED, Reason.NONE, "done"),
+        )
+        headers = auth(client)
+        assert client.post("/auth/sign-in", json={"email": "a@b.c", "password": "x"},
+                           headers=headers).json()["state"] == "idle"
+
+        client.post("/session/start", headers=headers)
+        rest.agent.session.wait_idle()
+        assert rest.agent.session.snapshot().state is State.AWAITING_CONFIRMATION
+
+        assert client.post("/session/confirm", headers=headers).json()["state"] == "ready"
+        client.post("/session/program", json={"height_m": 0.3, "hold_s": 5}, headers=headers)
+        rest.agent.session.wait_idle()
+        assert rest.agent.session.snapshot().state is State.READY
+
+    def test_flying_before_confirming_is_refused_with_a_reason(self, client):
+        headers = auth(client)
+        client.post("/auth/sign-in", json={"email": "a@b.c", "password": "x"}, headers=headers)
+        response = client.post("/session/program", json={}, headers=headers)
+        assert response.status_code == 409
+        assert "confirm the area" in response.json()["detail"]
+
+    def test_flying_without_signing_in_is_refused(self, client):
+        response = client.post("/session/start", headers=auth(client))
+        assert response.status_code == 409
+        assert "Sign in" in response.json()["detail"]
+
+    def test_a_viewer_cannot_sign_in_to_fly(self, client):
+        rest.agent.cloud.sign_in = lambda e, p: Operator("u", e, None, "viewer")
+        response = client.post("/auth/sign-in", json={"email": "v@b.c", "password": "x"},
+                               headers=auth(client))
+        assert response.status_code == 409 and "not fly" in response.json()["detail"]
+
+    def test_program_bounds_are_validated_at_the_boundary(self, client):
+        headers = auth(client)
+        too_high = client.post("/session/program", json={"height_m": 5.0}, headers=headers)
+        too_long = client.post("/session/program", json={"hold_s": 600}, headers=headers)
+        assert (too_high.status_code, too_long.status_code) == (422, 422)
+
+
+class TestLiveSocket:
+    def test_the_socket_needs_the_token_in_its_first_message(self, client):
+        with client.websocket_connect("/ws/live") as ws:
+            ws.send_json({"type": "auth", "token": "wrong"})
+            assert ws.receive_json()["type"] == "error"
+
+    def test_an_authorised_socket_receives_the_session_state(self, client):
+        with client.websocket_connect("/ws/live") as ws:
+            ws.send_json({"type": "auth", "token": rest.agent.token})
+            first = ws.receive_json()
+            assert first["type"] == "session" and first["state"] == "signed_out"
+
+    def test_an_unknown_origin_is_refused_before_anything_else(self, client):
+        from starlette.websockets import WebSocketDisconnect
+
+        with pytest.raises(WebSocketDisconnect), client.websocket_connect(
+            "/ws/live", headers={"origin": "https://evil.example"}
+        ) as ws:
+            ws.receive_json()
+
+    def test_the_desktop_origin_is_accepted(self, client):
+        with client.websocket_connect("/ws/live", headers={"origin": "tauri://localhost"}) as ws:
+            ws.send_json({"type": "auth", "token": rest.agent.token})
+            assert ws.receive_json()["type"] == "session"
+
+
+class TestCors:
+    def test_the_site_may_read_health(self, client):
+        response = client.get("/health", headers={"origin": "https://drone-capstone.vercel.app"})
+        assert response.headers["access-control-allow-origin"] == "https://drone-capstone.vercel.app"
+
+    def test_an_unknown_site_gets_no_grant(self, client):
+        response = client.get("/health", headers={"origin": "https://evil.example"})
+        assert "access-control-allow-origin" not in response.headers
+
+    def test_a_website_may_not_preflight_a_command(self, client):
+        response = client.options("/session/start", headers={
+            "origin": "https://drone-capstone.vercel.app",
+            "access-control-request-method": "POST",
+        })
+        assert response.status_code == 400
+
+    @pytest.mark.parametrize("origin", rest.DESKTOP_ORIGINS)
+    def test_the_desktop_window_may_preflight_a_command(self, client, origin):
+        """The window is a browser too.
+
+        Allowing GET alone broke every button in the app — WebKit refused the
+        preflight, so each command surfaced as "could not reach the agent" while
+        the WebSocket, which CORS does not cover, kept working. Nothing caught
+        it because the tests only checked that a *website* was refused.
+        """
+        response = client.options("/session/start", headers={
+            "origin": origin,
+            "access-control-request-method": "POST",
+            "access-control-request-headers": HEADER.lower(),
         })
         assert response.status_code == 200
-        body = response.json()
-        assert body["validated"] is True
-        assert body["flown"] is False
-        assert body["waypoints"] == len(mission.waypoints)
+        assert response.headers["access-control-allow-origin"] == origin
+        assert HEADER.lower() in response.headers["access-control-allow-headers"].lower()
 
-    def test_malformed_plan_is_422_not_500(self, client):
-        response = client.post("/flight/mission", json={
-            "plan": {"waypoints": [{"x": "not a number"}]}, "dry_run": True,
+    def test_a_desktop_command_still_needs_the_token(self, client):
+        """CORS is not the gate. The token is."""
+        response = client.post("/session/start", headers={"origin": rest.DESKTOP_ORIGINS[0]})
+        assert response.status_code == 401
+
+    def test_private_network_preflight_is_answered(self, client):
+        response = client.options("/health", headers={
+            "origin": "https://drone-capstone.vercel.app",
+            "access-control-request-method": "GET",
+            "access-control-request-private-network": "true",
         })
-        assert response.status_code == 422
-        assert "malformed plan" in response.json()["detail"]
-
-    def test_unsafe_plan_is_refused_with_the_reason(self, client):
-        mission = lawnmower_mission(20.0, 20.0, 1.0, 0.5)
-        response = client.post("/flight/mission", json={
-            "plan": mission.to_dict(), "fence_m": 1.0, "dry_run": True,
-        })
-        assert response.status_code == 422
-        assert "outside the permitted" in response.json()["detail"]
-
-    def test_empty_plan_is_rejected(self, client):
-        response = client.post("/flight/mission", json={
-            "plan": {"waypoints": []}, "dry_run": True,
-        })
-        assert response.status_code == 422
-
-    def test_absurd_fence_is_rejected_by_the_schema(self, client):
-        """Pydantic bounds stop a nonsense request before any flight code runs."""
-        response = client.post("/flight/mission", json={
-            "plan": hover_mission(0.5, 1.0).to_dict(), "fence_m": 9999, "dry_run": True,
-        })
-        assert response.status_code == 422
+        assert response.headers.get("access-control-allow-private-network") == "true"
 
 
-class TestHoverBounds:
-    @pytest.mark.parametrize("height", [0, -1, 99])
-    def test_implausible_heights_are_rejected(self, height):
-        """A 99 m ceiling on an indoor micro-drone is a typo, not a request."""
-        from pydantic import ValidationError
+class TestQuietHealthLog:
+    def test_health_is_logged_a_few_times_then_not(self):
+        import logging
 
-        with pytest.raises(ValidationError):
-            rest.HoverRequest(height_m=height)
+        health_filter = rest.QuietHealthFilter(keep=3)
+        record = logging.LogRecord("uvicorn.access", logging.INFO, "", 0,
+                                   '127.0.0.1 - "GET /health HTTP/1.1" 200', None, None)
+        assert [health_filter.filter(record) for _ in range(5)] == [True, True, True, False, False]
 
-    @pytest.mark.parametrize("secs", [0, -5, 10_000])
-    def test_implausible_durations_are_rejected(self, secs):
-        from pydantic import ValidationError
+    def test_other_requests_are_always_logged(self):
+        import logging
 
-        with pytest.raises(ValidationError):
-            rest.HoverRequest(secs=secs)
-
-    def test_sensible_values_are_accepted(self):
-        request = rest.HoverRequest(height_m=0.5, secs=30)
-        assert request.height_m == 0.5
+        health_filter = rest.QuietHealthFilter(keep=1)
+        record = logging.LogRecord("uvicorn.access", logging.INFO, "", 0,
+                                   '127.0.0.1 - "POST /session/start HTTP/1.1" 200', None, None)
+        assert all(health_filter.filter(record) for _ in range(5))
 
 
-class TestBusyState:
-    def test_second_flight_is_refused_while_one_is_running(self, client):
-        """One drone, so one flight. A second must be refused, not queued —
-        queueing would arm it the moment the first landed, unattended."""
-        from fastapi import HTTPException
+class TestHistoryApi:
+    def test_history_needs_the_token(self, client):
+        assert client.get("/history/sessions").status_code == 401
 
-        rest.state.claim("mission: first")
-        try:
-            with pytest.raises(HTTPException) as e:
-                rest.state.claim("mission: second")
-            assert e.value.status_code == 409
-            # The message must name what is holding the drone, so the UI can
-            # tell the operator rather than just saying "busy".
-            assert "mission: first" in str(e.value.detail)
-        finally:
-            rest.state.release()
+    def test_lists_sessions_and_reads_samples(self, client):
+        from cropwatcher.history import SessionLog, SessionMeta
 
-    def test_release_clears_the_claim(self, client):
-        rest.state.claim("something")
-        rest.state.release()
-        assert rest.state.busy is False
-        rest.state.claim("something else")   # would raise if still held
-        rest.state.release()
+        log_ = SessionLog(SessionMeta(
+            id="3f1c2a", operator_id="u", operator_email="ada@example.com", operator_name="Ada",
+            drone_hardware_id="cf-lab", mode="manual", assisted=False,
+            started_at="2026-09-16T20:00:00+00:00",
+        ))
+        from types import MappingProxyType, SimpleNamespace
+        log_.sample(SimpleNamespace(values=MappingProxyType({"pm.vbat": 3.9})))
+        log_.close("operator")
 
+        headers = auth(client)
+        listed = client.get("/history/sessions", headers=headers).json()
+        assert [s["id"] for s in listed] == ["3f1c2a"]
+        one = client.get("/history/sessions/3f1c2a", headers=headers).json()
+        assert one["operator_email"] == "ada@example.com"
+        rows = client.get("/history/sessions/3f1c2a/samples?vars=pm.vbat", headers=headers).json()
+        assert rows[0]["pm.vbat"] == 3.9
 
-class TestStop:
-    def test_stop_always_succeeds(self, client):
-        """A stop that can fail is not a stop."""
-        response = client.post("/flight/stop")
-        assert response.status_code == 200
-        assert response.json()["stopped"] is True
-
-    def test_stop_works_when_nothing_is_running(self, client):
-        assert client.post("/flight/stop").status_code == 200
-
-    def test_stop_panics_the_manual_controller(self, client):
-        from cropwatcher.api.manual import ManualController
-        from tests.test_manual import FakeCommander
-
-        controller = ManualController(FakeCommander())
-        rest.state.manual = controller
-        try:
-            client.post("/flight/stop")
-            assert controller.stats.panics == 1
-        finally:
-            rest.state.manual = None
-
-
-class TestBindingDefault:
-    def test_defaults_to_localhost(self):
-        """This API can arm a drone and has no auth of its own."""
-        assert rest.DEFAULT_HOST == "127.0.0.1"
+    def test_an_unknown_session_is_a_404(self, client):
+        response = client.get("/history/sessions/nope", headers=auth(client))
+        assert response.status_code == 404

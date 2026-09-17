@@ -1,0 +1,73 @@
+OPERATOR DASHBOARD — the signed-in web app
+==========================================
+
+WHAT IT IS
+
+The signed-in area of the web app, /app/*: live telemetry, recorded flights,
+zone health, flight comparison, mission planning and settings. It reads what the
+desktop app records — it cannot command a drone, because the radio is on the
+operator's laptop and not on Vercel.
+
+
+WHERE IT LIVES
+
+  /app/live          app/app/live/page.tsx
+                     components/live-view.tsx, lib/use-live-telemetry.ts, lib/store.ts
+  /app/flights       app/app/flights/
+                     components/ui/time-series.tsx, flight-path.tsx, raw-readings.tsx
+  /app/zones         app/app/zones/page.tsx, components/ui/zone-map.tsx
+  /app/compare       app/app/compare/page.tsx, lib/compare.ts
+  /app/plan          app/app/plan/page.tsx — see mission-planner.txt
+  /app/manual        app/app/manual/page.tsx — points to the desktop app
+  /app/settings      app/app/settings/page.tsx, components/agent-reachability.tsx
+
+  shared             app/app/error.tsx, app/app/loading.tsx,
+                     components/ui/page-header.tsx, local-time.tsx,
+                     lib/flight-format.ts, lib/queries.ts, lib/mutations.ts
+
+
+DECISIONS
+
+- One chart component, TimeSeries, with no second-axis seam. Different units are
+  different charts. It always ships a table view, because light-mode --series-3
+  and --series-4 measure under 3:1 (2.74 and 2.11).
+- Compare keeps each flight's colour in the URL (?f=<id>:<slot>), so removing one
+  flight never repaints the others. Four flights maximum — the four validated
+  series colours.
+- Settings is read-only. The geofence the drone obeys is the agent's --fence
+  flag; a value stored in a browser would change nothing while looking as though
+  it had. Each value says where it really lives.
+- Headings use --heading, a token separate from --primary, because a heading is
+  text and has to clear 4.5:1 on every surface. Measured: 6.63/6.07/6.46 light,
+  5.33/4.82/5.83 dark (surface / surface-2 / background).
+- All Supabase access goes through lib/queries.ts (reads) and lib/mutations.ts
+  (writes). Never createClient() inside a component.
+
+
+INVARIANTS
+
+- Reads throw; they never return `data ?? []`. An empty fallback rendered a
+  database error as "No flights recorded yet". QueryError logs the Postgres
+  message server-side and error.tsx offers a retry.
+- Set the Realtime token before subscribing. The SSR browser client loads its
+  session lazily, so a channel joined first subscribes as anon, RLS delivers
+  nothing, and the channel still reports SUBSCRIBED. Measured: 0 rows in 5 s from
+  the page versus 16/16 from a client that called realtime.setAuth().
+- Backfill after subscribing. Rows written between the server read and the socket
+  opening arrive on neither; useLiveTelemetry fetches everything after the last
+  index it holds once subscribed.
+- Format times in the browser (<LocalTime>). toLocaleString() in a Server
+  Component uses the server's zone — UTC on Vercel — so 4:45 PM Eastern rendered
+  as 8:45 PM with no label.
+- Y-axes fit the data with computed ticks. Recharts' zero baseline flattened
+  3.7–4.1 V into a line, its own ticks inside a domain were uneven, and a domain
+  *function* drew no axis at all for some ranges.
+- Chart text uses --muted, never --axis. --axis measures 2.86:1 light and 2.94:1
+  dark: it is for lines only. Legend text is forced to --foreground, because
+  Recharts colours it with the series by default.
+- Height is ground-relative or it is not shown as height. Without ground_z_m the
+  raw Lighthouse z is labelled as such, and Compare leaves that flight out —
+  floor level varied 0.85–1.40 m between runs. The agent already stores
+  ground-relative z, so never subtract it again here.
+- The nav marks the LONGEST matching route active. A prefix test marked /app
+  active on every page.

@@ -1,0 +1,78 @@
+OFFLINE SYNC — flying with no internet, and getting the data up anyway
+======================================================================
+
+WHAT IT IS
+
+A flight is written to this laptop first and uploaded afterwards. A laptop with
+no internet flies exactly as well as one with internet: records sit in a local
+outbox until a sync succeeds and are deleted only once the server has them.
+
+The laptop has to be the one that pushes — no server can reach into it. That is
+the same constraint as the radio.
+
+
+WHERE IT LIVES
+
+  backend/agent/cropwatcher/sync/outbox.py   records waiting, one file each
+  backend/agent/cropwatcher/sync/cloud.py    every call made to Supabase
+  backend/agent/cropwatcher/sync/syncer.py   when and in what order
+  backend/agent/cropwatcher/paths.py         where the data dir is
+  backend/agent/cropwatcher/telemetry/sinks.py  CSV first, then cloud
+  backend/agent/tests/test_outbox.py, test_syncer.py
+
+
+THE ORDER (records reference each other)
+
+  audit events -> drones -> sessions -> flights -> telemetry rows -> CSV file
+
+Audit events deliberately have NO foreign keys, so they can go first and never
+wait for a flight row that may not exist yet.
+
+The sync runs during a flight, when a flight ends, at sign-in, and every minute
+while anything is unsent. The window shows what is pending and will not report
+"all data synced" until the outbox is empty.
+
+
+CSV AND SERVER-SIDE BACKFILL
+
+Every row is appended to a CSV on this laptop as it arrives, flushed per row.
+The same rows upload as database rows while online. If a flight ends with rows
+still unsent, the gzipped CSV is uploaded to the private `flight-logs` bucket
+and the server backfills the remainder from that one file, rather than the
+laptop replaying thousands of inserts.
+
+Measured, so nobody has to guess: 202 bytes per row, about 470 KB for a
+full-battery flight, roughly 250 KB gzipped. One upload, not a cron job.
+
+
+DECISIONS
+
+- Ids are generated on the laptop, not by the database. A flight that happened
+  offline already has the id its telemetry rows reference, so uploading later
+  needs no translation and re-uploading changes nothing.
+- Everything is idempotent: records upsert on their own id, telemetry upserts on
+  (flight_id, index) with ignore-duplicates, and a CSV already in storage counts
+  as success rather than an error.
+- Resume asks the server for max_telemetry_index(flight_id) and continues from
+  there, instead of re-sending from row zero.
+- The agent signs in as a real operator account with the publishable key and
+  acts as `authenticated` under RLS. It NEVER carries the service-role key: this
+  code ships inside an installer, and that key would bypass every policy for
+  everyone who downloads it.
+
+
+INVARIANTS
+
+- Write the CSV first, then upload. A local write cannot fail; a flight cannot
+  be re-run (CLAUDE.md #6).
+- Write to the APPLICATION DATA DIRECTORY, never a relative path. Inside a
+  bundled .app the working directory is "/", where the write fails — paths.py
+  exists for exactly this.
+- Files are written atomically (temp file + rename), so a crash mid-write cannot
+  leave a half-record.
+- Sort the outbox by occurred_at, never by filename. Filenames are random UUIDs,
+  so ordering by name replayed history in arbitrary order.
+- Resolve type hints with get_type_hints(), not __annotations__. Under PEP 563
+  the annotations are strings, so `index + 1` concatenated instead of adding and
+  every resumed upload was wrong.
+- Flight data never goes in git.

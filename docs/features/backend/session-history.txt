@@ -1,0 +1,53 @@
+SESSION HISTORY — every session, kept on the laptop
+===================================================
+
+WHAT IT IS
+
+Each session leaves a folder the desktop app reads back, online or not: who ran
+it, which drone, when it started and ended, why it ended, its flights, a summary
+(battery, highest point, temperature range), and every stream variable once a
+second for the WHOLE session — checks, idling and aborted takeoffs included.
+
+The desktop app shows it three ways: recent sessions on Control, the Sessions
+page (list + detail), and a per-window log that groups readings by session.
+
+
+WHERE IT LIVES
+
+  backend/agent/cropwatcher/history.py      SessionLog, list/read/samples
+  backend/agent/cropwatcher/session.py      opens, samples, closes the log
+  backend/agent/cropwatcher/api/rest.py     GET /history/sessions[/{id}[/samples]]
+  desktop/src/HistoryPages.tsx              RecentSessions, SessionsPage, WindowLog
+
+  On disk:  <app data>/sessions/<session id>/meta.json
+            <app data>/sessions/<session id>/samples.csv
+
+
+DECISIONS
+
+- Kept separate from the outbox. The outbox deletes a record once Supabase has
+  it; an operator's own history must not vanish because the upload worked.
+- Kept separate from the flight CSVs, which cover flights only at 10 Hz. The
+  session log is 1 Hz for the whole session: about 1 MB an hour.
+- AUTO AND MANUAL ARE FILTERED PER READING, NOT PER SESSION. The mode can change
+  between flights inside one session, so every sample row carries the mode that
+  was active when it was taken, and meta.modes lists every mode used. A session
+  that used both appears under both filters, each showing only its own readings.
+  The desktop's Auto/Manual toggle chooses the filter on every history view;
+  live windows are never filtered — they show what the drone is doing now.
+- Readings load when a section is opened. React mounts a closed <details>'
+  children anyway, so the disclosure mounts its body on first open instead.
+
+
+INVARIANTS
+
+- meta.json is written atomically (temp file + rename): a crash leaves the last
+  whole record, never half of one. It is re-saved every ten samples.
+- A session id comes from a URL, so any id containing "/", "\" or "." is refused
+  before it touches the filesystem.
+- Height in a sample is relative to the reference the flight is using — the
+  checks' ground when assisted, the barometer ground when not, and blank before
+  either exists. A Kalman z with no base stations is noise and is never shown as
+  a height.
+- History endpoints need the control token like every command: they name people
+  and carry their flight data.

@@ -1,0 +1,75 @@
+DATA MODEL — the tables and what ties them together
+===================================================
+
+WHAT IT IS
+
+One Postgres schema in Supabase, written by the agent on the operator's laptop
+and read by the web dashboard. Nothing is written by the browser except mission
+plans.
+
+
+WHERE IT LIVES
+
+  backend/supabase/migrations/20260916000001_init.sql        base tables
+  backend/supabase/migrations/…0002_rls.sql                  policies
+  backend/supabase/migrations/…0003_grants.sql               grants
+  backend/supabase/migrations/…0004_revoke_platform_defaults.sql
+  backend/supabase/migrations/…0005_installers_bucket.sql
+  backend/supabase/migrations/…0006_sessions_audit_identity.sql
+  backend/supabase/migrations/…0007_portfolio.sql            projects, team
+  web/types/database.ts                                      generated types
+                                                             (0007's added by hand)
+
+Applied to the hosted project (fuwojlqpavvfgmqardfo) through 0007.
+
+
+THE TABLES
+
+  profiles      one row per account, created by the handle_new_user trigger,
+                carrying the role. See accounts-and-roles.txt.
+  drones        name, uri, and HARDWARE_ID — unique, "cf-<hex of cpu.id0..2>".
+                This is what ties sensor and flight data to the machine that
+                produced it when two people fly two drones.
+  sessions      one operation: who, which drone, which mode, when it started
+                and ended.
+  flights       belongs to a session. Carries mode, program, outcome,
+                abort_reason, ground_z_m, ambient_start, temp_unit, csv_path.
+  telemetry     one row per 10 Hz sample, UNIQUE (flight_id, index), with the
+                position, attitude, motion, power and environment columns the
+                stream publishes.
+  audit_events  append-only history. No foreign keys — see ../backend/audit-trail.txt
+  zones         the greenhouse areas a mission visits.
+  missions      a queued plan, claimed by the agent through claim_mission().
+  predictions   zone-level crop-health estimates.
+  projects      the public portfolio: slug, title, summary, cover, a BlockNote
+                write-up, draft/published. See ../frontend/portfolio.txt.
+  team_members  people on /team and beside projects: name, role, photo,
+                website, email, display order.
+  project_members  who worked on which project, in order.
+
+
+DECISIONS
+
+- Ids are generated on the laptop, not by the database, so a flight that
+  happened offline already has the id its telemetry references.
+- telemetry is unique on (flight_id, index) rather than on a timestamp: it makes
+  re-sending free, and resuming an upload a matter of asking for the highest
+  index the server holds.
+- The ambient temperature unit is stored in the row, not converted at write
+  time — the operator chose it at launch and the record should say which.
+- claim_mission(uuid, text) is a function, not an UPDATE from the client, so
+  claiming is atomic and a second agent cannot claim the same mission.
+
+
+INVARIANTS
+
+- flights.ground_z_m is the floor captured at takeoff, and telemetry z is
+  ALREADY relative to it. Lighthouse z = 0 is not the floor: measured floor
+  level ranged 0.85–1.40 m in the same room across runs. Subtracting ground_z_m
+  again on read (the web did this) shows heights that are wrong by the floor
+  offset.
+- After applying a migration by hand, reload PostgREST's schema cache
+  (`notify pgrst, 'reload schema'`). Until then new tables answer 404
+  PGRST205 "could not find the table" even though they exist.
+- Never run `supabase db reset` against the hosted project.
+- Flight data never goes in git.

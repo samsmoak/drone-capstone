@@ -63,15 +63,22 @@ class TestCriticalVoltage:
 
 @pytest.mark.hardware
 class TestAgainstRealDrone:
-    """Run with `pytest -m hardware` and a drone powered on."""
+    """Run with `pytest -m hardware`, a radio plugged in and a drone powered on.
 
-    def test_preflight_passes_on_a_charged_drone(self):
-        from cropwatcher.flight import core
+    Never spins a motor: these are the same checks the desktop app runs before
+    it asks the operator to confirm the area.
+    """
 
-        with core.connect() as scf:
-            from cropwatcher.flight import preflight
+    def test_the_checks_pass_on_a_ready_drone(self):
+        from cropwatcher.flight.checks import collect
+        from cropwatcher.flight.link import DroneLink
 
-            report = preflight.run(scf, hold_seconds=3.0)
-            assert report.can_fly
-            assert report.base_stations > 0
-            assert report.estimate_spread_m < 0.02
+        with DroneLink() as link:
+            report = collect(link.checks(), lambda step: print(step.to_dict()))
+
+        assert report.hardware_id.startswith("cf-")
+        assert report.vbat > 3.0
+        assert report.estimate_spread_m < 0.02
+        # The lab crash of 2026-09-16: stations stored is not stations received.
+        assert len(report.positioning.usable) >= 2
+        assert report.positioning.ready

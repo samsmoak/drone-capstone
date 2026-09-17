@@ -1,0 +1,62 @@
+TELEMETRY STREAM — one subscription, many readers
+=================================================
+
+WHAT IT IS
+
+A single persistent 10 Hz log subscription to the drone. The safety guards, the
+CSV writer, the desktop app's live windows and the Supabase upload all read the
+same frames. One subscription, many readers — so what the operator sees on
+screen is exactly what the flight recorded.
+
+It replaced a pattern that hurt the hover: the old Flight.position() built a
+brand-new log subscription on every call, four times a second during a hover,
+adding radio traffic at the moment the link matters most.
+
+
+WHERE IT LIVES
+
+  backend/agent/cropwatcher/telemetry/stream.py   TelemetryStream, pack_blocks
+  backend/agent/cropwatcher/telemetry/row.py      frame -> CSV row
+  backend/agent/cropwatcher/telemetry/sinks.py    CSV and cloud sinks
+  backend/agent/tests/test_stream.py
+
+
+THE WINDOWS (WINDOWS in stream.py; the desktop pages mirror them one-to-one)
+
+  flight       stateEstimate x/y/z, vx/vy/vz, stabilizer roll/pitch/yaw,
+               thrust, supervisor.info
+  power        pm.vbat, pm.state, sys.canfly, motor.m1..m4
+  environment  baro.temp, baro.pressure
+  motion       acc.x/y/z, gyro.x/y/z
+  positioning  lighthouse.bsReceive, bsActive, bsCalVal, bsGeoVal, bsAvailable,
+               kalman.varPX/varPY/varPZ
+
+Measured on the lab drone (2026-09-16): 34 variables, packed into 5 blocks,
+none missing.
+
+
+DECISIONS
+
+- 10 Hz, not faster. It is enough for the guards (a fault is caught within
+  100 ms), enough for readable charts, and leaves radio headroom for the 50 Hz
+  manual setpoint stream.
+- Variables the firmware does not publish are collected in .missing rather than
+  failing the connection. The UI says "not available on this drone" instead of
+  showing a confident zero.
+- Readers subscribe (push) or snapshot (pull). The guards pull per sample; the
+  WebSocket pushes to the window.
+
+
+INVARIANTS
+
+- A log block carries at most 26 bytes (cflib LogConfig.MAX_LEN). pack_blocks
+  packs by the byte width the DRONE reports for each variable, not by a width
+  assumed here. Over-fill and the block is silently rejected by the firmware.
+- The log TOC is keyed by GROUP, not by full name. `"baro.temp" in toc.toc` is
+  always False and cost real debugging time — it reported BarometerNotFound on a
+  drone that publishes baro.temp. Use has_log_variable(toc, "group.name").
+- Only ONE process may hold the radio. A second one gets [Errno 19] No such
+  device and can wedge the first. The agent is the only process that touches it.
+- z in a frame is already ground-relative (ground captured at takeoff). Do not
+  subtract the ground reference again downstream — the web dashboard did, and
+  showed heights that were wrong by the floor offset.

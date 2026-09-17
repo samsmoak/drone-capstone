@@ -1,0 +1,68 @@
+RLS AND GRANTS — authorization, enforced by the database
+========================================================
+
+WHAT IT IS
+
+Every table has row-level security, and every client — the web app, the desktop
+agent, a curl command — acts as a real account under it. Client-side role checks
+exist only for what they show; the database is the gate.
+
+The app is publicly reachable and commands a physical drone, so the rule is
+fail-closed: no policy means no access.
+
+
+WHERE IT LIVES
+
+  backend/supabase/migrations/…0002_rls.sql                policies
+  backend/supabase/migrations/…0003_grants.sql             grants
+  backend/supabase/migrations/…0004_revoke_platform_defaults.sql
+  backend/supabase/migrations/…0006_sessions_audit_identity.sql
+  backend/supabase/checks/rls_check.py                     the proof
+
+
+THE CHECK
+
+rls_check.py signs in as a real operator and asserts BOTH directions — what must
+be allowed and what must be refused. It creates and deletes its own rows, so it
+is safe to run against hosted:
+
+  SUPABASE_API=https://<ref>.supabase.co \
+  SUPABASE_ANON=<publishable key> SUPABASE_SERVICE=<secret key> \
+  CHECK_EMAIL=<operator email> CHECK_PASSWORD=<password> \
+  python backend/supabase/checks/rls_check.py
+
+15/15 must pass. Last run against the hosted project on 2026-09-16, after
+migration 0006: 15/15.
+
+  operator registers a drone                     201
+  operator records their own session              201
+  cannot record a session for someone else        403
+  audit event with no flight row yet              201
+  cannot write history as another person          403
+  cannot edit an audit event                      403
+  cannot delete an audit event                    403
+  operator reads the audit trail                  200
+  anonymous cannot read the audit trail           401
+  re-sending an audit event is ignored            201
+  operator records a flight in a session          201
+  telemetry row stored                            201
+  the same row twice is rejected                  409
+  re-sending with ignore-duplicates is harmless   201
+  stored exactly once                             1 row
+
+
+INVARIANTS
+
+- A POLICY WITHOUT A GRANT IS A 403. They are separate systems: the policy says
+  which rows, the grant says whether the role may touch the table at all. The
+  drones insert policy looked complete and every insert failed with "permission
+  denied" — migration 0004 had revoked the grant. Add both, together.
+- A GRANT WITHOUT A POLICY IS A SILENT HOLE waiting for someone to add a policy.
+  audit_events carried an UPDATE grant no policy used; 0006 revokes update and
+  delete explicitly so the append-only rule cannot be undone by accident.
+- The agent NEVER carries the service-role key. It ships inside a desktop
+  installer, so that key would hand every downloader unrestricted access and
+  bypass every policy. It signs in as a real operator with the publishable key
+  and acts as `authenticated`.
+- Authorization is enforced server-side on every request. A client-side role
+  check is UX.

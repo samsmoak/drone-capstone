@@ -1,0 +1,67 @@
+ACCOUNTS AND ROLES — one account, both apps
+===========================================
+
+WHAT IT IS
+
+One Supabase account signs in to BOTH the web dashboard and the desktop app.
+They are the same project, the same profiles row and the same role; only the
+sessions are separate, so signing in on the laptop does not sign you in in the
+browser.
+
+Why two sign-ins at all: the desktop app is where a person and a drone meet, so
+that is where a flight gets a name on it. The web app is where that history is
+read. Both need to know who is asking.
+
+
+WHERE IT LIVES
+
+  backend/supabase/migrations/…0001_init.sql     profiles, handle_new_user
+  backend/agent/cropwatcher/sync/cloud.py        the agent's sign-in
+  desktop/src/ControlPage.tsx                    the desktop sign-in form
+  web/components/ui/login-form.tsx               the web sign-in form
+  desktop/src-tauri/src/lib.rs                   which project the app points at
+
+
+ROLES
+
+  operator   may register drones, record sessions, flights and telemetry, queue
+             missions, and read the audit trail
+  viewer     read-only
+
+profiles.role is what RLS reads. The handle_new_user trigger creates the profile
+row on sign-up; the role is set on that row afterwards.
+
+
+CREATING AN OPERATOR
+
+Sign the person up (Supabase Studio, or the admin API with the secret key), then
+set the role:
+
+  update public.profiles set role = 'operator' where email = '<their email>';
+
+Existing account: zebachsmoak@gmail.com, role operator, created 2026-09-16 on
+the hosted project. Verified end to end: sign-in through the bundled desktop app
+moved the session from signed_out to idle, and rls_check.py passed 15/15 signed
+in as that account.
+
+
+DECISIONS
+
+- One account for both surfaces, not two. Two accounts would split the same
+  person's history in the audit trail, which is the one thing it must not do.
+- The desktop app compiles in the project URL and the PUBLISHABLE key, with the
+  environment able to override them. An installed .app has no shell profile, so
+  reading them from the environment alone left an operator with "sign-in is not
+  configured" and no way to fix it.
+- Sign-in needs internet; the flight after it does not. The agent keeps the
+  session and uploads what it recorded when the laptop is back online.
+
+
+INVARIANTS
+
+- The publishable (anon) key is public by design and safe to ship. The SECRET
+  key is not, and never goes near the agent or the desktop bundle.
+- The role lives in the database, not in a token claim the client can shape, and
+  every policy reads it there.
+- Never log a password or a raw provider error. Sign-in failures surface as
+  plain words the operator can act on.

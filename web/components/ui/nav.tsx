@@ -24,6 +24,17 @@ export function Nav({
 }) {
   const pathname = usePathname();
 
+  // The most specific match wins. A plain prefix test marks "/app" active on
+  // every page beneath it, so the dashboard and the real page both claim
+  // aria-current and the operator cannot tell where they are.
+  const activeHref = items
+    .filter(
+      (item) =>
+        pathname === item.href ||
+        (item.href !== "/" && pathname.startsWith(item.href + "/")),
+    )
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
+
   return (
     <header className="border-b border-[var(--border)] bg-[var(--surface)]">
       <nav
@@ -36,9 +47,7 @@ export function Nav({
 
         <ul className="flex flex-wrap items-center gap-x-1 gap-y-1">
           {items.map((item) => {
-            const active =
-              pathname === item.href ||
-              (item.href !== "/" && pathname.startsWith(item.href + "/"));
+            const active = item.href === activeHref;
             return (
               <li key={item.href}>
                 <Link

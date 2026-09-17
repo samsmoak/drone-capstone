@@ -1,16 +1,48 @@
-"""Manual control loop.
+"""Manual control loop — assisted, gentle, and landed gracefully.
 
-The rule this file exists to enforce: **the browser sends intent; the agent
-generates the setpoint stream.** A design that sends one packet per keypress
-breaks the first time a packet is late, because the Crazyflie commander stops
-accepting control below roughly 10 Hz and the drone drops.
+The rule this file exists to enforce is unchanged: **the operator sends intent;
+the agent generates the setpoint stream.** A design that sends one packet per
+keypress breaks the first time a packet is late, because the Crazyflie
+commander stops accepting control below roughly 10 Hz and the drone drops. The
+app reports which keys are held; this loop turns that into setpoints at 50 Hz
+on its own, and lands if the app goes quiet.
 
-So the browser says "forward is held" and this loop repeats that setpoint at
-50 Hz on its own. If the browser goes quiet — closed tab, dead Wi-Fi, frozen
-page — the heartbeat lapses and the drone lands itself.
+What changed from the first version, and why:
 
-Deliberately independent of WebSockets and of cflib, so the dangerous parts
-(heartbeat expiry, thrust decay, panic) can be tested without either.
+- **Assisted, not raw thrust.** Up/down used to add 900 thrust per tick —
+  about 45,000 a second, zero to full in one second — and releasing the keys
+  bled thrust off so the drone sank. Keys now move a *target height* gently
+  (:data:`CLIMB_RATE_M_S`), sent as a hover setpoint, and the drone's own
+  position controller holds that height when nothing is pressed.
+- **Armed idle.** After Start, the props turn gently on the ground
+  (:data:`IDLE_THRUST`, just above cflib's "10001 = next to no power") so the
+  operator can see the drone is live before it lifts.
+- **Graceful landing, not a thrust fade.** Land hands over to the high-level
+  commander's landing, which descends under position control. Emergency stop
+  is separate and deliberate — the app requires holding a button for it.
+
+**Two control laws, chosen by whether the drone knows where it is.**
+
+  assisted    base stations usable. W and S move a target *height*; the drone
+              holds it, and releasing every key holds position.
+  unassisted  no base stations. The height comes from the BAROMETER (the
+              firmware's complementary estimator) and is held with a z-distance
+              setpoint: W and S move a target height gently, letting go holds
+              it, and Land lowers the target to the floor at a fixed rate. The
+              arrows tilt the drone, because there is no position to move to.
+
+The first unassisted law drove raw thrust. In the lab (2026-09-16) the slow
+ramp through liftoff let the drone skid sideways on a leg and tumble, and
+letting go of W did not hold anything. A barometer height is noisy — tens of
+centimetres indoors — but it is a height, and the firmware can close the loop
+on it where a person on a keyboard cannot.
+
+Unassisted exists because the operator standing over the drone is allowed to
+say it is fine to fly. It is offered only after the checks say assistance is
+unavailable and the operator accepts that in as many words.
+
+Deliberately independent of WebSockets and of cflib, so the safety behaviour
+(heartbeat expiry, landing, stop) is testable without either.
 """
 
 from __future__ import annotations
@@ -19,6 +51,7 @@ import dataclasses
 import logging
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
@@ -28,29 +61,60 @@ log = logging.getLogger(__name__)
 TICK_HZ = 50.0
 TICK_S = 1.0 / TICK_HZ
 
-# The browser is expected to ping ~10x/second. Half a second of silence is
-# several missed pings, not a hiccup.
+# The app is expected to ping ~10x/second. Half a second of silence is several
+# missed pings, not a hiccup.
 HEARTBEAT_TIMEOUT_S = 0.5
 
-THRUST_MAX = 50000
-THRUST_STEP = 900          # per tick while climbing
-THRUST_DECAY = 350         # per tick when the operator is not asking to climb
+# cflib's send_setpoint docs: thrust 10001 is "next to no power". A little
+# above that turns the props gently without lift — far below hover thrust.
+IDLE_THRUST = 11000
 
-ANGLE_DEG = 12.0
-YAW_RATE_DEG_S = 70.0
+CLIMB_RATE_M_S = 0.15               # gentle rise and fall while W / S are held
+LIFTOFF_HEIGHT_M = 0.05             # target above this means "flying"
+TOUCHDOWN_HEIGHT_M = 0.05           # lowering below this lands
+MAX_HEIGHT_M = 1.00
+MOVE_SPEED_M_S = 0.20               # arrows, body frame
+YAW_RATE_DEG_S = 30.0
+LAND_S = 3.0
+
+# ── unassisted flight (barometer height hold) ────────────────────────────
+#
+# No base stations: the firmware estimates height from the barometer and holds
+# a z-distance setpoint. Lower ceiling than assisted flight, because a baro
+# height wanders by tens of centimetres and the operator has less margin.
+MAX_UNASSISTED_HEIGHT_M = 0.80
+MAX_TILT_DEG = 5.0                  # arrows: gentle, there is no position hold
+# The generic z-distance packet and the legacy rpyt packet disagree on the sign
+# of pitch (cfclient negates it for its height-hold mode). VERIFY IN THE LAB:
+# if the up arrow moves the drone backwards, flip this.
+PITCH_SIGN = -1.0
+LAND_RATE_M_S = 0.25                # target lowered to the floor at this rate
+TOUCHDOWN_HOLD_S = 0.6              # settle on the floor before the motors stop
 
 
 class ControlState(StrEnum):
-    IDLE = "idle"
+    IDLE = "idle"                   # disarmed, motors off
+    ARMED = "armed"                 # props idling on the ground
     FLYING = "flying"
     LANDING = "landing"
-    STOPPED = "stopped"
+    LANDED = "landed"               # down and disarmed; can arm again
+    STOPPED = "stopped"             # emergency stop; needs a reset
 
 
 class Commander(Protocol):
     """The subset of cflib's commander this loop needs."""
 
     def send_setpoint(self, roll: float, pitch: float, yaw_rate: float, thrust: int) -> None: ...
+
+    def send_hover_setpoint(
+        self, vx: float, vy: float, yawrate: float, zdistance: float
+    ) -> None: ...
+
+    def send_zdistance_setpoint(
+        self, roll: float, pitch: float, yawrate: float, zdistance: float
+    ) -> None: ...
+
+    def send_notify_setpoint_stop(self, remain_valid_milliseconds: int = 0) -> None: ...
 
     def send_stop_setpoint(self) -> None: ...
 
@@ -59,8 +123,8 @@ class Commander(Protocol):
 class Intent:
     """What the operator is currently asking for.
 
-    Held-key *state*, not an event stream. The browser reports which controls
-    are down; how often it reports has no bearing on how fast the drone is
+    Held-key *state*, not an event stream. The app reports which controls are
+    down; how often it reports has no bearing on how fast the drone is
     commanded.
     """
 
@@ -75,7 +139,7 @@ class Intent:
 
     @classmethod
     def from_payload(cls, payload: dict) -> Intent:
-        """Build from a browser frame, ignoring anything unrecognised.
+        """Build from an app frame, ignoring anything unrecognised.
 
         Unknown keys are dropped rather than raising: a newer client sending an
         extra field must not knock the drone out of the air.
@@ -91,7 +155,7 @@ class Intent:
 class ManualStats:
     ticks: int = 0
     heartbeat_timeouts: int = 0
-    panics: int = 0
+    emergency_stops: int = 0
     rejected_frames: int = 0
 
 
@@ -102,20 +166,37 @@ class ManualController:
         self,
         commander: Commander,
         *,
+        ground_z: float,
+        land: Callable[[float, float], None],
+        assisted: bool = True,
         heartbeat_timeout_s: float = HEARTBEAT_TIMEOUT_S,
         tick_s: float = TICK_S,
-        clock=time.monotonic,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
+        """
+        `ground_z` is the estimator z of the floor, captured by the checks.
+        `land(z, duration_s)` is the high-level commander's landing.
+        `assisted` is False when the drone has no usable position estimate: W
+        and S then drive the throttle directly and the operator holds the
+        height by eye, because there is no height for the drone to hold.
+        """
         self._commander = commander
+        self._ground_z = ground_z
+        self._land = land
+        self._assisted = assisted
+        self._touchdown_at: float | None = None
         self._heartbeat_timeout = heartbeat_timeout_s
         self._tick_s = tick_s
         self._clock = clock
 
         self._lock = threading.Lock()
         self._intent = Intent()
-        self._thrust = 0.0
+        self._target_height = 0.0
         self._last_heartbeat = clock()
+        self._last_tick = clock()
         self._state = ControlState.IDLE
+        self._landing_until: float | None = None
+        self._landing_started = False
         self._thread: threading.Thread | None = None
         self._running = False
         self.stats = ManualStats()
@@ -128,39 +209,77 @@ class ManualController:
             return self._state
 
     @property
-    def thrust(self) -> int:
+    def target_height(self) -> float:
         with self._lock:
-            return int(self._thrust)
+            return self._target_height
+
+    @property
+    def assisted(self) -> bool:
+        return self._assisted
+
+    @property
+    def ground_z(self) -> float:
+        """The floor, in the estimator's frame. Barometric when unassisted."""
+        return self._ground_z
 
     # ── operator input ───────────────────────────────────────────────────
+
+    def arm(self) -> None:
+        """Start: props idle on the ground. Refused after an emergency stop."""
+        with self._lock:
+            if self._state is ControlState.STOPPED:
+                raise RuntimeError("emergency stop is active — run the checks again first")
+            if self._state not in (ControlState.IDLE, ControlState.LANDED):
+                return
+            self._intent = Intent()
+            self._target_height = 0.0
+            self._last_heartbeat = self._clock()
+            self._last_tick = self._clock()
+            self._state = ControlState.ARMED
+        # The firmware locks thrust until it receives one setpoint with thrust
+        # 0 (crtp_commander_rpyt). Without this every setpoint after it is
+        # silently held at zero: the props never idle and the keys do nothing.
+        # The lab's working scripts do the same (hop_test.py, keyboard_fly.py).
+        self._commander.send_setpoint(0.0, 0.0, 0.0, 0)
+        log.info("manual control: armed")
 
     def set_intent(self, intent: Intent) -> None:
         with self._lock:
             self._intent = intent
             self._last_heartbeat = self._clock()
-            if self._state is ControlState.IDLE:
-                self._state = ControlState.FLYING
 
     def heartbeat(self) -> None:
         """Refresh liveness without changing what the operator is asking for."""
         with self._lock:
             self._last_heartbeat = self._clock()
 
-    def panic(self) -> None:
-        """Cut motors immediately. Checked before anything else each tick."""
+    def land(self) -> None:
+        """Graceful landing when airborne; disarm when only idling."""
         with self._lock:
-            self._thrust = 0.0
+            state = self._state
+            if state is ControlState.FLYING:
+                self._begin_landing_locked()
+                return
+            if state is ControlState.ARMED:
+                self._state = ControlState.IDLE
+        if state is ControlState.ARMED:
+            self._commander.send_stop_setpoint()
+            log.info("manual control: disarmed on the ground")
+
+    def emergency_stop(self) -> None:
+        """Stop the motors now. Acts immediately, not on the next tick."""
+        with self._lock:
             self._intent = Intent()
             self._state = ControlState.STOPPED
-            self.stats.panics += 1
+            self.stats.emergency_stops += 1
         self._commander.send_stop_setpoint()
-        log.warning("manual control: PANIC — motors cut")
+        log.warning("manual control: EMERGENCY STOP")
 
-    def land(self) -> None:
-        """Decay thrust to zero and stop."""
+    def reset(self) -> None:
+        """Clear an emergency stop. The session calls this only after re-checking."""
         with self._lock:
-            self._intent = Intent()
-            self._state = ControlState.LANDING
+            if self._state is ControlState.STOPPED:
+                self._state = ControlState.IDLE
 
     # ── loop ─────────────────────────────────────────────────────────────
 
@@ -172,66 +291,166 @@ class ManualController:
         self._thread.start()
 
     def stop(self) -> None:
+        """Shut the loop down. Lands first if airborne — never just stops sending."""
+        if self.state is ControlState.FLYING:
+            self.land()
+            landing_s = (LAND_S if self._assisted
+                         else MAX_UNASSISTED_HEIGHT_M / LAND_RATE_M_S + TOUCHDOWN_HOLD_S)
+            deadline = time.monotonic() + landing_s + 1.0
+            while self.state is ControlState.LANDING and time.monotonic() < deadline:
+                time.sleep(0.05)
         self._running = False
         if self._thread is not None:
             self._thread.join(timeout=2.0)
             self._thread = None
-        self._commander.send_stop_setpoint()
+        if self.state is not ControlState.LANDED:
+            self._commander.send_stop_setpoint()
 
     def _run(self) -> None:
+        """Tick on a fixed schedule, not a fixed sleep.
+
+        Sleeping `tick_s` after each tick adds the tick's own cost and the OS
+        timer slack to every period: measured at 38 Hz, not 50. Sleeping until
+        the next deadline holds the rate, and resyncs rather than bursting if
+        the loop falls a whole tick behind.
+        """
+        next_tick = time.monotonic()
         while self._running:
             self.tick()
-            time.sleep(self._tick_s)
+            next_tick += self._tick_s
+            delay = next_tick - time.monotonic()
+            if delay > 0:
+                time.sleep(delay)
+            elif delay < -self._tick_s:
+                next_tick = time.monotonic()
 
     def tick(self) -> None:
         """One control frame. Separated from the loop so tests can drive it."""
+        send: Callable[[], None] | None = None
         with self._lock:
-            if self._state is ControlState.STOPPED:
-                return
-
             now = self._clock()
-            silent_for = now - self._last_heartbeat
-
-            if silent_for > self._heartbeat_timeout and self._state is ControlState.FLYING:
-                # The operator is gone. Do not hold the drone at power waiting
-                # for them to come back.
-                self._state = ControlState.LANDING
-                self.stats.heartbeat_timeouts += 1
-                log.warning(
-                    "manual control: no heartbeat for %.2fs — landing", silent_for
-                )
-
-            intent = self._intent
-            landing = self._state is ControlState.LANDING
-
-            if landing:
-                self._thrust = max(0.0, self._thrust - THRUST_DECAY)
-                roll = pitch = yaw = 0.0
-                if self._thrust <= 0.0:
-                    self._state = ControlState.STOPPED
-            else:
-                if intent.up:
-                    self._thrust = min(THRUST_MAX, self._thrust + THRUST_STEP)
-                elif intent.down:
-                    self._thrust = max(0.0, self._thrust - THRUST_STEP)
-                else:
-                    # Thrust bleeds off when nobody is asking to climb, so
-                    # letting go of the keyboard brings the drone down rather
-                    # than leaving it pinned at power.
-                    self._thrust = max(0.0, self._thrust - THRUST_DECAY)
-
-                pitch = ANGLE_DEG if intent.forward else -ANGLE_DEG if intent.back else 0.0
-                roll = ANGLE_DEG if intent.right else -ANGLE_DEG if intent.left else 0.0
-                yaw = (
-                    YAW_RATE_DEG_S if intent.yaw_right
-                    else -YAW_RATE_DEG_S if intent.yaw_left
-                    else 0.0
-                )
-
-            thrust = int(self._thrust)
-            stopped = self._state is ControlState.STOPPED
+            dt = min(max(now - self._last_tick, 0.0), 0.1)
+            self._last_tick = now
             self.stats.ticks += 1
+            state = self._state
+            silent = now - self._last_heartbeat > self._heartbeat_timeout
 
-        self._commander.send_setpoint(roll, pitch, yaw, thrust)
-        if stopped:
-            self._commander.send_stop_setpoint()
+            if state is ControlState.ARMED:
+                if silent:
+                    self.stats.heartbeat_timeouts += 1
+                    self._state = ControlState.IDLE
+                    log.warning("manual control: app went quiet while armed — disarming")
+                    send = self._commander.send_stop_setpoint
+                elif self._assisted:
+                    intent = self._intent
+                    if intent.up:
+                        self._target_height = min(
+                            MAX_HEIGHT_M, self._target_height + CLIMB_RATE_M_S * dt)
+                    if self._target_height > LIFTOFF_HEIGHT_M:
+                        self._state = ControlState.FLYING
+                        send = self._hover_setpoint_locked(intent)
+                    else:
+                        send = lambda: self._commander.send_setpoint(0.0, 0.0, 0.0, IDLE_THRUST)  # noqa: E731
+                else:
+                    intent = self._intent
+                    if intent.up:
+                        self._target_height = min(
+                            MAX_UNASSISTED_HEIGHT_M, self._target_height + CLIMB_RATE_M_S * dt)
+                    if self._target_height > LIFTOFF_HEIGHT_M:
+                        self._state = ControlState.FLYING
+                        send = self._zdistance_setpoint_locked(intent)
+                    else:
+                        send = lambda: self._commander.send_setpoint(0.0, 0.0, 0.0, IDLE_THRUST)  # noqa: E731
+
+            elif state is ControlState.FLYING:
+                if silent:
+                    self.stats.heartbeat_timeouts += 1
+                    log.warning("manual control: app went quiet — landing")
+                    self._begin_landing_locked()
+                elif self._assisted:
+                    intent = self._intent
+                    climb = (1 if intent.up else 0) - (1 if intent.down else 0)
+                    self._target_height = min(
+                        MAX_HEIGHT_M, max(0.0, self._target_height + climb * CLIMB_RATE_M_S * dt)
+                    )
+                    if intent.down and self._target_height <= TOUCHDOWN_HEIGHT_M:
+                        self._begin_landing_locked()
+                    else:
+                        send = self._hover_setpoint_locked(intent)
+                else:
+                    intent = self._intent
+                    climb = (1 if intent.up else 0) - (1 if intent.down else 0)
+                    self._target_height = min(
+                        MAX_UNASSISTED_HEIGHT_M,
+                        max(0.0, self._target_height + climb * CLIMB_RATE_M_S * dt),
+                    )
+                    if intent.down and self._target_height <= TOUCHDOWN_HEIGHT_M:
+                        self._begin_landing_locked()
+                    else:
+                        send = self._zdistance_setpoint_locked(intent)
+
+            if self._state is ControlState.LANDING:
+                if self._assisted:
+                    if self._landing_until is not None and now >= self._landing_until:
+                        self._state = ControlState.LANDED
+                        self._landing_until = None
+                        send = self._commander.send_stop_setpoint
+                    elif not self._landing_started:
+                        self._landing_started = True
+                        send = self._start_landing_commands
+                else:
+                    # Lower the target at a fixed rate — a controlled descent on
+                    # the barometer, not a throttle cut — then settle and stop.
+                    self._landing_started = True
+                    self._target_height = max(0.0, self._target_height - LAND_RATE_M_S * dt)
+                    if self._target_height <= 0.0:
+                        if self._touchdown_at is None:
+                            self._touchdown_at = now
+                        if now - self._touchdown_at >= TOUCHDOWN_HOLD_S:
+                            self._state = ControlState.LANDED
+                            self._touchdown_at = None
+                            send = self._commander.send_stop_setpoint
+                        else:
+                            send = self._zdistance_setpoint_locked(Intent())
+                    else:
+                        send = self._zdistance_setpoint_locked(Intent())
+
+        if send is not None:
+            send()
+
+    # ── helpers (lock held) ──────────────────────────────────────────────
+
+    def _hover_setpoint_locked(self, intent: Intent) -> Callable[[], None]:
+        forward = (1 if intent.forward else 0) - (1 if intent.back else 0)
+        # cflib MotionCommander: left is +vy, turning left is +yawrate.
+        left = (1 if intent.left else 0) - (1 if intent.right else 0)
+        yaw = (1 if intent.yaw_left else 0) - (1 if intent.yaw_right else 0)
+        z = self._ground_z + self._target_height
+        vx, vy, rate = forward * MOVE_SPEED_M_S, left * MOVE_SPEED_M_S, yaw * YAW_RATE_DEG_S
+        return lambda: self._commander.send_hover_setpoint(vx, vy, rate, z)
+
+    def _zdistance_setpoint_locked(self, intent: Intent) -> Callable[[], None]:
+        """Level attitude from the arrows, height held by the firmware on the
+        barometer — the unassisted law."""
+        forward = (1 if intent.forward else 0) - (1 if intent.back else 0)
+        pitch = forward * MAX_TILT_DEG * PITCH_SIGN
+        # Positive roll is to the right in the firmware's setpoint frame.
+        roll = ((1 if intent.right else 0) - (1 if intent.left else 0)) * MAX_TILT_DEG
+        yaw = ((1 if intent.yaw_left else 0) - (1 if intent.yaw_right else 0)) * YAW_RATE_DEG_S
+        z = self._ground_z + self._target_height
+        return lambda: self._commander.send_zdistance_setpoint(roll, pitch, yaw, z)
+
+    def _begin_landing_locked(self) -> None:
+        self._intent = Intent()
+        self._state = ControlState.LANDING
+        self._landing_started = False
+        self._landing_until = self._clock() + LAND_S
+        self._touchdown_at = None
+
+    def _start_landing_commands(self) -> None:
+        # Low-level setpoints hold priority over the high-level commander
+        # until released (CLAUDE.md #2). Without this the landing command is
+        # ignored and the drone keeps hovering at its last setpoint.
+        self._commander.send_notify_setpoint_stop()
+        self._land(self._ground_z, LAND_S)
+        log.info("manual control: landing")
