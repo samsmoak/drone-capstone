@@ -179,6 +179,19 @@ export default async function AppDownloadPage({ params }: PageProps<"/apps/[slug
         </p>
       )}
 
+      {/* Always shown, not only when a build is missing: the download above is
+          Apple silicon and 64-bit Windows, and anybody else — an Intel Mac, a
+          Linux laptop — needs this sentence rather than a dead end. */}
+      <p className="mt-6 max-w-3xl text-sm leading-relaxed text-[var(--muted)]">
+        Not the computer you have?{" "}
+        <Link href={setupPath(product.slug)} className="underline underline-offset-4">
+          Clone the repository and build it yourself
+        </Link>
+        . Each build is made on the machine it is for — the flight agent is frozen with
+        PyInstaller, which does not cross-compile — so your own computer produces the one it
+        needs in about ten minutes.
+      </p>
+
       <section className={`${PROSE_COLUMN} mt-12 border-t border-[var(--border)] pt-8`}>
         <h2 className="font-display text-xl font-semibold tracking-tight">{text(content, "unsignedTitle")}</h2>
         <p className="mt-3 leading-relaxed text-[var(--muted)]">{text(content, "unsignedIntro")}</p>

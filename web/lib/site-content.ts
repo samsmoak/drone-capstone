@@ -450,6 +450,36 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
         linkHardware: false,
       },
       {
+        title: "No download for your computer? Build it from the source",
+        paragraphs: [
+          "Every build is made on the machine it is for. The flight agent is frozen with "
+          + "PyInstaller, which does not cross-compile, so a Mac cannot produce the Windows "
+          + "installer and a PC cannot produce the Mac one. If the download you need is not on "
+          + "the Apps page, your own computer can build it in about ten minutes.",
+          "You need, on any system: Rust (from rustup.rs), Node 24, pnpm 10, Python 3.11 or "
+          + "newer, and Git. On Windows, also Microsoft C++ Build Tools with the \"Desktop "
+          + "development with C++\" workload, and Microsoft Edge WebView2 — already present on "
+          + "Windows 10 version 1803 and later. On macOS, also the Xcode Command Line Tools: "
+          + "xcode-select --install. On Debian or Ubuntu, also libwebkit2gtk-4.1-dev, "
+          + "build-essential, curl, wget, file, libxdo-dev, libssl-dev, "
+          + "libayatana-appindicator3-dev and librsvg2-dev.",
+          "Then four commands from a terminal. The last one runs the app straight away; swap it "
+          + "for pnpm tauri build to write an installer instead.",
+        ],
+        bullets: [
+          "git clone https://github.com/samsmoak/drone-capstone.git && cd drone-capstone",
+          "cd backend/agent && python3 -m venv .venv && .venv/bin/pip install -e . pyinstaller",
+          "bash packaging/build_sidecar.sh",
+          "cd ../../desktop && pnpm install && pnpm tauri dev",
+        ],
+        note: "Windows: a virtual environment puts its tools in .venv\\Scripts, not .venv/bin, so "
+              + "use .venv\\Scripts\\pip install -e . pyinstaller and run the sidecar script from "
+              + "Git Bash or WSL. pnpm tauri build leaves the installer in "
+              + "desktop/src-tauri/target/release/bundle/.",
+        showDownloads: false,
+        linkHardware: false,
+      },
+      {
         title: "Plug in the radio",
         paragraphs: [
           "The Crazyradio goes into your laptop, not the drone. It is a USB-A plug, so most " +

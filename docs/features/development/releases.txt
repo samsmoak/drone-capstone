@@ -69,7 +69,11 @@ INVARIANTS
 
 - Neither half cross-compiles. PyInstaller freezes for the platform it runs on
   and Tauri bundles for the platform it runs on: the .exe cannot be produced on
-  a Mac. That is why the matrix has two runners, not one.
+  a Mac. That is why the matrix has two runners, not one. Tauri alone can be
+  cross-built with cargo-xwin, which does not help — the sidecar it would
+  package cannot be. The way out for anyone on a platform CI does not publish
+  is in the desktop setup guide: clone and build, because their own machine is
+  the right machine. Same commands as the workflow, in the same order.
 - The sidecar is verified before Tauri bundles it (build_sidecar.sh runs
   verify_sidecar.py). A frozen agent that cannot load libusb still builds and
   still launches — it fails only when a radio is plugged in, on a user's desk.

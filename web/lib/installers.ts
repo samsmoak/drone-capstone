@@ -34,8 +34,12 @@ export type Manifest = {
 };
 
 const MANIFEST_OBJECT = "latest/manifest.json";
-/** An hour: a release is not urgent, and every visitor would otherwise HEAD the bucket. */
-const REVALIDATE = 3600;
+/**
+ * Five minutes. Long enough that visitors are not each HEADing the bucket,
+ * short enough that a build published by CI shows up while the person who
+ * pushed it is still looking — an hour made the page contradict the pipeline.
+ */
+const REVALIDATE = 300;
 
 export function installerUrl(object: string): string | null {
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
