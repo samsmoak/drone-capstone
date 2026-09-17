@@ -19,6 +19,8 @@
 
 use std::sync::Mutex;
 
+use uuid::Uuid;
+
 use tauri::{Emitter, Manager, RunEvent, State};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
@@ -27,9 +29,46 @@ use tauri_plugin_shell::ShellExt;
 /// the agent binds localhost only.
 const AGENT_PORT: u16 = 8765;
 
+/// Which Supabase project the operator signs in to.
+///
+/// Compiled in rather than read from the environment: an installed `.app` is
+/// launched by Finder with no shell profile, so an operator who has never seen
+/// a terminal would get "sign-in is not configured" and no way to fix it.
+///
+/// The publishable key is public by design — every table is behind RLS and the
+/// agent signs in as a real operator account (`sync/cloud.py`). **The secret
+/// key must never appear here**: this binary ships inside an installer.
+const SUPABASE_URL: &str = "https://fuwojlqpavvfgmqardfo.supabase.co";
+const SUPABASE_ANON_KEY: &str = "sb_publishable_FKtbEKeHIuSOcPNDBGUfwQ_U74hme33";
+
+/// The compiled-in default, unless this machine sets one — which is how a
+/// developer points the app at a local Supabase without a rebuild.
+fn configured(name: &str, fallback: &str) -> String {
+    std::env::var(name)
+        .map(|value| value.trim().to_string())
+        .ok()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| fallback.to_string())
+}
+
 /// The running agent, so it can be stopped on exit.
 #[derive(Default)]
 struct AgentProcess(Mutex<Option<CommandChild>>);
+
+/// The local control token.
+///
+/// Binding the agent to localhost keeps other machines out but not other
+/// programs or web pages on this one, and its API can arm a drone. This token
+/// is generated per launch, handed to the agent in its environment, and given
+/// to this window through `agent_token` — a page on the internet cannot know
+/// it, so it cannot fly the drone.
+struct ControlToken(String);
+
+fn new_token() -> String {
+    // Random, not derived from the clock or the process id: a local page that
+    // could guess those could fly the drone.
+    Uuid::new_v4().simple().to_string()
+}
 
 /// A line of agent output, forwarded to the log panel.
 #[derive(Clone, serde::Serialize)]
@@ -43,17 +82,22 @@ fn agent_port() -> u16 {
     AGENT_PORT
 }
 
-/// Cut the motors, whatever is happening.
-///
-/// Routed through the agent's own `/flight/stop`, which is documented as
-/// always succeeding — a stop that can fail is not a stop. The button must
-/// work even when the manual socket is the thing that has wedged, so it
-/// deliberately does not go over that socket.
 #[tauri::command]
-async fn panic_stop() -> Result<(), String> {
-    let url = format!("http://127.0.0.1:{AGENT_PORT}/flight/stop");
+fn agent_token(token: State<'_, ControlToken>) -> String {
+    token.0.clone()
+}
+
+/// Stop the motors, whatever is happening.
+///
+/// Kept in Rust as a last resort: it reaches the agent's REST endpoint even if
+/// the window's own fetch layer is wedged. The normal path is the window's
+/// hold-to-activate Emergency stop, which calls `/session/emergency-stop`.
+#[tauri::command]
+async fn stop_motors(token: State<'_, ControlToken>) -> Result<(), String> {
+    let url = format!("http://127.0.0.1:{AGENT_PORT}/session/emergency-stop");
     let response = tauri_plugin_http::reqwest::Client::new()
         .post(&url)
+        .header("X-Agent-Token", token.0.clone())
         .send()
         .await
         .map_err(|e| format!("could not reach the agent: {e}"))?;
@@ -66,10 +110,14 @@ async fn panic_stop() -> Result<(), String> {
 
 /// Start the bundled agent and stream its output into the log panel.
 fn spawn_agent(app: &tauri::AppHandle) -> Result<(), String> {
+    let token = app.state::<ControlToken>().0.clone();
     let (mut rx, child) = app
         .shell()
         .sidecar("cropwatcher-agent")
         .map_err(|e| format!("the bundled agent is missing: {e}"))?
+        .env("CROPWATCHER_AGENT_TOKEN", token)
+        .env("SUPABASE_URL", configured("SUPABASE_URL", SUPABASE_URL))
+        .env("SUPABASE_ANON_KEY", configured("SUPABASE_ANON_KEY", SUPABASE_ANON_KEY))
         // `--exit-with-parent` is what actually stops the agent. Killing the
         // child below only reaches PyInstaller's bootloader; the real Python
         // process is its child and survives, orphaned onto launchd, still
@@ -135,7 +183,8 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_http::init())
         .manage(AgentProcess::default())
-        .invoke_handler(tauri::generate_handler![agent_port, panic_stop])
+        .manage(ControlToken(new_token()))
+        .invoke_handler(tauri::generate_handler![agent_port, agent_token, stop_motors])
         .setup(|app| {
             if let Err(message) = spawn_agent(app.handle()) {
                 // A window that silently has no agent behind it is worse than
