@@ -122,14 +122,14 @@ export function LiveView({
   const last = latestRow(rows);
   const unit = flight.temp_unit;
   const battery = last?.battery_v ?? null;
-  const height =
-    last?.z_m != null && flight.ground_z_m != null ? last.z_m - flight.ground_z_m : null;
+  // `z_m` is already height above the floor — see telemetry/reader.py.
+  const height = last?.z_m ?? null;
   const first = rows[0]?.recorded_at;
 
   const series = rows.map((r) => ({
     t: first ? Math.round((Date.parse(r.recorded_at) - Date.parse(first)) / 100) / 10 : 0,
     corrected_temp: r.corrected_temp,
-    height_m: r.z_m != null && flight.ground_z_m != null ? r.z_m - flight.ground_z_m : null,
+    height_m: r.z_m,
     battery_v: r.battery_v,
   }));
 
@@ -142,7 +142,9 @@ export function LiveView({
           label="Height above ground"
           value={height !== null ? height.toFixed(2) : null}
           unit="m"
-          hint={flight.ground_z_m == null ? "No ground reference captured" : undefined}
+          hint={flight.ground_z_m != null
+            ? `Floor at Lighthouse z ${flight.ground_z_m.toFixed(2)} m`
+            : undefined}
         />
         <Stat
           label="Battery"
@@ -169,7 +171,7 @@ export function LiveView({
       ) : (
         <div className="grid gap-10 lg:grid-cols-2">
           <section aria-labelledby="live-height" className="space-y-3">
-            <h2 id="live-height" className="text-lg font-semibold">
+            <h2 id="live-height" className="text-lg font-semibold text-[var(--heading)]">
               Height above ground (m)
             </h2>
             <TimeSeries
@@ -183,13 +185,13 @@ export function LiveView({
             />
           </section>
           <section aria-labelledby="live-path" className="space-y-3">
-            <h2 id="live-path" className="text-lg font-semibold">
+            <h2 id="live-path" className="text-lg font-semibold text-[var(--heading)]">
               Position
             </h2>
             <FlightPath rows={rows} zones={zones} />
           </section>
           <section aria-labelledby="live-temp" className="space-y-3">
-            <h2 id="live-temp" className="text-lg font-semibold">
+            <h2 id="live-temp" className="text-lg font-semibold text-[var(--heading)]">
               Temperature (°{unit})
             </h2>
             <TimeSeries
@@ -202,7 +204,7 @@ export function LiveView({
             />
           </section>
           <section aria-labelledby="live-battery" className="space-y-3">
-            <h2 id="live-battery" className="text-lg font-semibold">
+            <h2 id="live-battery" className="text-lg font-semibold text-[var(--heading)]">
               Battery (V)
             </h2>
             <TimeSeries

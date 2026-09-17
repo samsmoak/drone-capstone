@@ -310,7 +310,7 @@ export function ManualControl() {
       </div>
 
       <section aria-labelledby="keys-heading" className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
-        <h2 id="keys-heading" className="mb-4 text-lg font-semibold">
+        <h2 id="keys-heading" className="mb-4 text-lg font-semibold text-[var(--heading)]">
           Keys
         </h2>
         <dl className="grid gap-3 sm:grid-cols-2">

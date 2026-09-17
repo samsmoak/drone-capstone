@@ -93,7 +93,7 @@ export default async function ComparePage(props: PageProps<"/app/compare">) {
       </nav>
 
       <section aria-labelledby="chart-heading" className="space-y-3">
-        <h2 id="chart-heading" className="text-lg font-semibold">
+        <h2 id="chart-heading" className="text-lg font-semibold text-[var(--heading)]">
           {meta.label} ({unit})
         </h2>
 
@@ -110,12 +110,6 @@ export default async function ComparePage(props: PageProps<"/app/compare">) {
                 this chart.
               </p>
             )}
-            {metric === "height_m" && selected.some((s) => s.flight.ground_z_m == null) && (
-              <p role="status" className="text-sm text-[var(--muted)]">
-                Flights without a ground reference are left out of height: raw Lighthouse z
-                cannot be compared between flights.
-              </p>
-            )}
             <TimeSeries
               rows={rows}
               series={series}
@@ -130,7 +124,7 @@ export default async function ComparePage(props: PageProps<"/app/compare">) {
       </section>
 
       <section aria-labelledby="pick-heading" className="space-y-3">
-        <h2 id="pick-heading" className="text-lg font-semibold">
+        <h2 id="pick-heading" className="text-lg font-semibold text-[var(--heading)]">
           Flights{" "}
           <span className="text-sm font-normal text-[var(--muted)]">
             {selection.length} of {MAX_COMPARE} selected

@@ -1,8 +1,11 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Fraunces, Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
+// Inter for reading, Fraunces for titles — the portfolio's pairing, shared with
+// the desktop app so the two read as one product.
+const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
+const fraunces = Fraunces({ variable: "--font-fraunces", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
@@ -29,7 +32,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body className={`${inter.variable} ${fraunces.variable} ${geistMono.variable} antialiased`}>
         {/* Keyboard users land here first — WCAG 2.2 AA. */}
         <a
           href="#main"

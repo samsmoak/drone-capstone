@@ -30,14 +30,14 @@ export default async function SettingsPage() {
       />
 
       <section aria-labelledby="agent-heading" className="space-y-3">
-        <h2 id="agent-heading" className="text-lg font-semibold">
+        <h2 id="agent-heading" className="text-lg font-semibold text-[var(--heading)]">
           Agent
         </h2>
         <AgentReachability />
       </section>
 
       <section aria-labelledby="fence-heading" className="space-y-3">
-        <h2 id="fence-heading" className="text-lg font-semibold">
+        <h2 id="fence-heading" className="text-lg font-semibold text-[var(--heading)]">
           Geofence
         </h2>
         <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
@@ -76,7 +76,7 @@ export default async function SettingsPage() {
       </section>
 
       <section aria-labelledby="drones-heading" className="space-y-3">
-        <h2 id="drones-heading" className="text-lg font-semibold">
+        <h2 id="drones-heading" className="text-lg font-semibold text-[var(--heading)]">
           Drones
         </h2>
         {drones.length === 0 ? (

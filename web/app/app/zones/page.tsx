@@ -62,7 +62,7 @@ export default async function ZonesPage() {
 
       {/* The table view: every figure on the map, readable without colour. */}
       <section aria-labelledby="table-heading" className="space-y-3">
-        <h2 id="table-heading" className="text-lg font-semibold">
+        <h2 id="table-heading" className="text-lg font-semibold text-[var(--heading)]">
           All zones
         </h2>
         <div className="overflow-x-auto rounded-lg border border-[var(--border)]">

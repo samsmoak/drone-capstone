@@ -211,3 +211,105 @@ export const getDashboardSummary = cache(async () => {
     telemetry,
   };
 });
+
+// ── portfolio ────────────────────────────────────────────────────────────
+//
+// Ported from ../doctor-portfolio. The public pages must never blank: Vercel
+// deploys code before a hand-run migration reaches the database, so the public
+// readers return an empty list when the tables are missing (Postgres 42P01 /
+// PostgREST PGRST205) and throw on anything else.
+
+export type ProjectRow = Database["public"]["Tables"]["projects"]["Row"];
+export type TeamMemberRow = Database["public"]["Tables"]["team_members"]["Row"];
+export type ProjectCard = Omit<ProjectRow, "content">;
+export type ProjectWithTeam = ProjectRow & { team: TeamMemberRow[] };
+
+const CARD_COLUMNS =
+  "id, slug, title, subtitle, summary, cover_image_url, category, date_label, location, status, display_order, published_at, created_at, updated_at";
+
+function missingTable(error: { code?: string }): boolean {
+  return error.code === "42P01" || error.code === "PGRST205";
+}
+
+export const getPublishedProjects = cache(async (): Promise<ProjectCard[]> => {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("projects")
+    .select(CARD_COLUMNS)
+    .eq("status", "published")
+    .order("display_order", { ascending: true })
+    .order("created_at", { ascending: false });
+  if (error) {
+    if (missingTable(error)) return [];
+    throw new QueryError("projects", error);
+  }
+  return data;
+});
+
+/** Team members, in display order. */
+export const getTeamMembers = cache(async (): Promise<TeamMemberRow[]> => {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("team_members")
+    .select("*")
+    .order("display_order", { ascending: true })
+    .order("created_at", { ascending: true });
+  if (error) {
+    if (missingTable(error)) return [];
+    throw new QueryError("the team", error);
+  }
+  return data;
+});
+
+async function teamFor(projectId: string): Promise<TeamMemberRow[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("project_members")
+    .select("display_order, team_members(*)")
+    .eq("project_id", projectId)
+    .order("display_order", { ascending: true });
+  if (error) throw new QueryError("this project's team", error);
+  return data
+    .map((row) => row.team_members as TeamMemberRow | null)
+    .filter((m): m is TeamMemberRow => m !== null);
+}
+
+export const getPublishedProjectBySlug = cache(
+  async (slug: string): Promise<ProjectWithTeam | null> => {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("projects")
+      .select("*")
+      .eq("slug", slug)
+      .eq("status", "published")
+      .maybeSingle();
+    if (error) {
+      if (missingTable(error)) return null;
+      throw new QueryError("this project", error);
+    }
+    if (!data) return null;
+    return { ...data, team: await teamFor(data.id) };
+  },
+);
+
+/** Admin: every project, drafts included. RLS shows drafts to operators only. */
+export const getAllProjectsAdmin = cache(async (): Promise<ProjectCard[]> => {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("projects")
+    .select(CARD_COLUMNS)
+    .order("display_order", { ascending: true })
+    .order("created_at", { ascending: false });
+  if (error) throw new QueryError("projects", error);
+  return data;
+});
+
+export const getProjectByIdAdmin = cache(
+  async (id: string): Promise<ProjectWithTeam | null> => {
+    const supabase = await createClient();
+    const { data, error } = await supabase.from("projects").select("*").eq("id", id).maybeSingle();
+    if (error) throw new QueryError("this project", error);
+    if (!data) return null;
+    return { ...data, team: await teamFor(data.id) };
+  },
+);

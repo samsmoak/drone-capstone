@@ -86,10 +86,10 @@ export function mergeForChart(
 ): Record<string, number | null>[] {
   const buckets = new Map<number, Record<string, number | null>>();
 
-  for (const { flight, slot, telemetry } of flights) {
+  for (const { slot, telemetry } of flights) {
     const first = telemetry[0] ? Date.parse(telemetry[0].recorded_at) : 0;
     for (const row of telemetry) {
-      const value = metricValue(row, flight, metric, displayUnit);
+      const value = metricValue(row, metric, displayUnit);
       if (value === null) continue;
       const t = Math.round((Date.parse(row.recorded_at) - first) / 1000 / BUCKET_S) * BUCKET_S;
       const key = Math.round(t * 10) / 10;
@@ -102,12 +102,7 @@ export function mergeForChart(
   return [...buckets.values()].sort((a, b) => (a.t as number) - (b.t as number));
 }
 
-function metricValue(
-  row: TelemetryRow,
-  flight: FlightRow,
-  metric: Metric,
-  displayUnit: string,
-): number | null {
+function metricValue(row: TelemetryRow, metric: Metric, displayUnit: string): number | null {
   switch (metric) {
     case "corrected_temp":
     case "raw_temp": {
@@ -115,10 +110,10 @@ function metricValue(
       return v == null ? null : convertTemp(v, row.temp_unit, displayUnit);
     }
     case "height_m":
-      // Ground-relative only. Without a ground reference, raw Lighthouse z is
-      // not comparable across flights — floor level varied 0.85–1.40 m between
-      // runs in the same room — so the flight contributes nothing here.
-      return row.z_m == null || flight.ground_z_m == null ? null : row.z_m - flight.ground_z_m;
+      // Already ground-relative: the agent stores `z_m` as metres above the
+      // floor captured at takeoff, so flights in rooms with different
+      // Lighthouse origins are directly comparable.
+      return row.z_m;
     case "battery_v":
       return row.battery_v;
     case "station_pressure_hpa":

@@ -28,7 +28,7 @@ export default async function PlanPage() {
       )}
 
       <section aria-labelledby="queue-heading" className="space-y-3">
-        <h2 id="queue-heading" className="text-lg font-semibold">
+        <h2 id="queue-heading" className="text-lg font-semibold text-[var(--heading)]">
           Recent missions
         </h2>
         <MissionQueue missions={missions} canQueue={operator} />

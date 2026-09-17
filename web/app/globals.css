@@ -27,6 +27,10 @@
   --muted: #52514e;        /* labels only — never a figure that matters */
 
   --primary: #1c5cab;
+  /* Headings. A separate token from --primary because a title is text and
+     must clear 4.5:1 on every surface it sits on: measured 6.63:1 on
+     --surface, 6.07:1 on --surface-2, 6.46:1 on --background. */
+  --heading: #1c5cab;
   --on-primary: #ffffff;
   --ring: #1c5cab33;
 
@@ -70,6 +74,9 @@
     --muted: #c3c2b7;
 
     --primary: #3987e5;
+    /* Not --primary: #3987e5 measures 4.38:1 on --surface and 3.95:1 on
+       --surface-2, both under 4.5:1. This one measures 5.33 / 4.82 / 5.83. */
+    --heading: #5598e7;
     --on-primary: #0b0b0b;
     --ring: #3987e555;
 
@@ -103,6 +110,7 @@
   --muted: #c3c2b7;
 
   --primary: #3987e5;
+  --heading: #5598e7;
   --on-primary: #0b0b0b;
   --ring: #3987e555;
 
@@ -145,7 +153,8 @@
   --color-serious: var(--status-serious);
   --color-critical: var(--status-critical);
 
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-fraunces);
   --font-mono: var(--font-geist-mono);
 }
 
@@ -175,3 +184,61 @@ body {
   font-variant-numeric: tabular-nums;
   font-family: var(--font-mono), ui-monospace, monospace;
 }
+
+/* ── portfolio typography ────────────────────────────────────────────── */
+
+.font-display {
+  font-family: var(--font-fraunces), Georgia, serif;
+  font-optical-sizing: auto;
+  letter-spacing: -0.015em;
+}
+
+.eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Project write-ups: BlockNote's lossy HTML, styled here rather than shipping
+   the editor's CSS to public pages. Adapted from ../doctor-portfolio. */
+.portfolio-prose {
+  font-size: 1.0625rem;
+  line-height: 1.75;
+}
+.portfolio-prose > * + * { margin-top: 1.1em; }
+.portfolio-prose h1,
+.portfolio-prose h2,
+.portfolio-prose h3 {
+  font-family: var(--font-fraunces), Georgia, serif;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--heading);
+  scroll-margin-top: 6rem;
+}
+.portfolio-prose h1 { font-size: 1.75rem; margin-top: 2em; }
+.portfolio-prose h2 { font-size: 1.5rem; margin-top: 1.9em; }
+.portfolio-prose h3 { font-size: 1.2rem; margin-top: 1.6em; }
+.portfolio-prose a { color: var(--heading); text-decoration: underline; text-underline-offset: 3px; }
+.portfolio-prose ul { list-style: disc; padding-left: 1.4em; }
+.portfolio-prose ol { list-style: decimal; padding-left: 1.4em; }
+.portfolio-prose li + li { margin-top: 0.35em; }
+.portfolio-prose blockquote {
+  border-left: 3px solid var(--primary);
+  padding-left: 1em;
+  color: var(--muted);
+  font-style: italic;
+}
+.portfolio-prose code {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.9em;
+  background: var(--surface-2);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+.portfolio-prose img { border-radius: 8px; border: 1px solid var(--border); max-width: 100%; height: auto; }
+.portfolio-prose table { width: 100%; border-collapse: collapse; font-size: 0.95em; }
+.portfolio-prose th,
+.portfolio-prose td { border: 1px solid var(--border); padding: 0.5em 0.75em; text-align: left; }
+.portfolio-prose th { background: var(--surface-2); font-weight: 600; }

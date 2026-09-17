@@ -44,19 +44,16 @@ export default async function FlightPage(props: PageProps<"/app/flights/[id]">) 
 
   const unit = flight.temp_unit;
   const first = telemetry[0]?.recorded_at;
-  const groundKnown = flight.ground_z_m != null;
-
   // Only the columns the charts use cross into the client bundle.
   const series = telemetry.map((r) => ({
     t: first ? Math.round(elapsedSeconds(r.recorded_at, first) * 10) / 10 : 0,
     raw_temp: r.raw_temp,
     corrected_temp: r.corrected_temp,
     ambient_est: r.ambient_est,
-    // Lighthouse z = 0 is not the floor — ground is captured at takeoff and
-    // altitude is relative to it. Without a ground reference, plot z as-is and
-    // say so in the label rather than presenting it as height.
-    height_m:
-      r.z_m == null ? null : groundKnown ? r.z_m - (flight.ground_z_m as number) : r.z_m,
+    // `z_m` is already metres above the ground reference captured at takeoff —
+    // the agent subtracts it when it writes the row (telemetry/reader.py).
+    // Subtracting it again here made every height wrong by the floor's offset.
+    height_m: r.z_m,
     battery_v: r.battery_v,
     station_pressure_hpa: r.station_pressure_hpa,
   }));
@@ -116,7 +113,7 @@ export default async function FlightPage(props: PageProps<"/app/flights/[id]">) 
       </section>
 
       <section aria-labelledby="temp-heading" className="space-y-3">
-        <h2 id="temp-heading" className="text-lg font-semibold">
+        <h2 id="temp-heading" className="text-lg font-semibold text-[var(--heading)]">
           Temperature (°{unit})
         </h2>
         <p className="text-sm text-[var(--muted)]">
@@ -140,14 +137,9 @@ export default async function FlightPage(props: PageProps<"/app/flights/[id]">) 
       {/* Different units, so different charts — never a second y-axis. */}
       <div className="grid gap-10 lg:grid-cols-2">
         <section aria-labelledby="alt-heading" className="space-y-3">
-          <h2 id="alt-heading" className="text-lg font-semibold">
-            {groundKnown ? "Height above ground (m)" : "Lighthouse z (m)"}
+          <h2 id="alt-heading" className="text-lg font-semibold text-[var(--heading)]">
+            Height above ground (m)
           </h2>
-          {!groundKnown && (
-            <p className="text-sm text-[var(--muted)]">
-              No ground reference was captured, so this is raw Lighthouse z, not height.
-            </p>
-          )}
           <TimeSeries
             rows={series}
             xKey="t"
@@ -155,12 +147,12 @@ export default async function FlightPage(props: PageProps<"/app/flights/[id]">) 
             xFormat="seconds"
             yLabel="m"
             digits={3}
-            series={[{ key: "height_m", label: groundKnown ? "Height" : "z", slot: 1, unit: "m" }]}
+            series={[{ key: "height_m", label: "Height", slot: 1, unit: "m" }]}
           />
         </section>
 
         <section aria-labelledby="battery-heading" className="space-y-3">
-          <h2 id="battery-heading" className="text-lg font-semibold">
+          <h2 id="battery-heading" className="text-lg font-semibold text-[var(--heading)]">
             Battery (V)
           </h2>
           <TimeSeries
@@ -174,7 +166,7 @@ export default async function FlightPage(props: PageProps<"/app/flights/[id]">) 
         </section>
 
         <section aria-labelledby="pressure-heading" className="space-y-3">
-          <h2 id="pressure-heading" className="text-lg font-semibold">
+          <h2 id="pressure-heading" className="text-lg font-semibold text-[var(--heading)]">
             Station pressure (hPa)
           </h2>
           <TimeSeries
@@ -188,7 +180,7 @@ export default async function FlightPage(props: PageProps<"/app/flights/[id]">) 
         </section>
 
         <section aria-labelledby="path-heading" className="space-y-3">
-          <h2 id="path-heading" className="text-lg font-semibold">
+          <h2 id="path-heading" className="text-lg font-semibold text-[var(--heading)]">
             Flight path
           </h2>
           <FlightPath rows={telemetry} zones={zones} />
@@ -196,7 +188,7 @@ export default async function FlightPage(props: PageProps<"/app/flights/[id]">) 
       </div>
 
       <section aria-labelledby="health-heading" className="space-y-3">
-        <h2 id="health-heading" className="text-lg font-semibold">
+        <h2 id="health-heading" className="text-lg font-semibold text-[var(--heading)]">
           Zone health
         </h2>
         {predictions.length === 0 ? (
@@ -237,7 +229,7 @@ export default async function FlightPage(props: PageProps<"/app/flights/[id]">) 
       </section>
 
       <section aria-labelledby="raw-heading" className="space-y-3">
-        <h2 id="raw-heading" className="text-lg font-semibold">
+        <h2 id="raw-heading" className="text-lg font-semibold text-[var(--heading)]">
           Raw readings
         </h2>
         <RawReadings rows={telemetry} unit={unit} />

@@ -36,7 +36,7 @@ export default async function DashboardPage() {
     <div className="space-y-8">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-[var(--heading)]">Dashboard</h1>
           <p className="mt-1 text-sm text-[var(--muted)]">
             Last flight{" "}
             <LocalTime iso={latest.started_at} />

@@ -10,6 +10,10 @@
     "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
+    "@blocknote/core": "^0.51.4",
+    "@blocknote/mantine": "^0.51.4",
+    "@blocknote/react": "^0.51.4",
+    "@blocknote/server-util": "^0.51.4",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.116.0",
     "next": "16.3.5",
