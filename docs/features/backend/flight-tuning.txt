@@ -54,8 +54,9 @@ THE TRACE
 One row per telemetry sample: the keys held, the eased height target and climb
 speed the agent commanded, the firmware's own target (posCtl.targetZ), the
 barometer estimator's height and climb rate, thrust, attitude, gyro z, the four
-motors, battery, base stations received, and the tuning in force. The first
-diagnosis had to infer held keys from motion because nothing recorded them.
+motors, battery, pm.state, supervisor.info, base stations received, and the
+tuning in force. The first diagnosis had to infer held keys from motion because
+nothing recorded them; the second had to infer a locked supervisor the same way.
 
 
 INVARIANTS
@@ -72,8 +73,41 @@ INVARIANTS
 - Tuning is applied before the estimator switch, so the barometer ground is read
   under the gains the flight will use.
 
-STILL NEEDS THE LAB
+WHAT THE LAB SHOWED — the tuning flew, and did not fix it
 
-None of this has flown. Expect the bounce to be much smaller and the spin to
-stop; horizontal drift will remain until the base stations are seen, because
-nothing else on this drone measures horizontal position.
+Three barometer flights with these profiles, 2026-09-17 03:37–03:39:
+
+  Still bang-bang   30–47 % of airborne motor samples pinned at 0 or 65,535;
+                    logged thrust swung +324,720 to −180,446 within 300 ms.
+                    One flight flipped (roll 175°).
+  The estimate      At rest on the floor, props idling, stateEstimate.vz read
+                    up to 1.8 m/s (sd 0.4–0.66). Barometer height wandered sd
+                    0.05–0.14 m, a 0.2–0.43 m range over 3 s — correlated drift,
+                    not white noise. In the air, ±4.7 m/s.
+  No base stations  lighthouse.bsReceive 0 throughout.
+
+Scaling the gains was not enough, because the input — the vertical speed the
+barometer estimate reports — is mostly noise at any gain that holds height.
+
+A HEIGHT HOLD IN THE AGENT WAS TRIED AND REJECTED (simulated, never flown).
+The idea: the agent sends bounded, slew-limited thrust and closes the height
+loop itself. Simulated against the measured noise, 10 Hz telemetry and 120 ms
+of radio delay:
+
+  perfect hover knowledge, measured noise   ±0.2 m (0.44 m peak-to-peak)
+  hover off by 3 % (a minute of sag)         0.6 m swings, even with no noise
+  hover off by 6 %                           1.5–2 m offsets
+  automatic liftoff on the barometer         detected 0.8 s late; launched 5 m
+
+The barometer reaches the agent too slowly and too noisily for any hold built
+there to be steady. The on-board loop has the sensors at full rate; the agent
+never will.
+
+WHAT WILL MAKE IT STEADY
+
+  Base stations seen       assisted flight: Kalman position, hover setpoints —
+                           the path that is built and correct, and unchanged.
+  A Flow deck v2 fitted    laser height + optical flow: steady height and
+                           position with no base stations.
+  Barometer only           will wander tens of centimetres however it is coded.
+                           Treat it as flying by eye.

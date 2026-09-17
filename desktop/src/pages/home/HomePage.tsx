@@ -58,8 +58,9 @@ function steps(mode: Mode): Step[] {
     {
       title: "Let the checks run",
       detail:
-        "Battery, radio, positioning and a still drone. Nothing arms until " +
-        "they all pass — keep the drone still while they run.",
+        "Radio, motors, battery, positioning and a still drone. Nothing arms " +
+        "until they pass — keep the drone still while they run. After a crash, " +
+        "Retry runs them all again.",
     },
     {
       title: "Confirm the area is clear",
@@ -67,16 +68,16 @@ function steps(mode: Mode): Step[] {
     },
     mode === "auto"
       ? {
-          title: "Run Start test, then Hover test",
+          title: "Run the battery & motor test, then Hover test",
           detail:
-            "Start test spins each motor on the ground. Hover test rises, holds a " +
-            "steady height, and lands where it started.",
+            "The test spins each motor on the ground and checks the battery under " +
+            "load. Hover test rises, holds a steady height, and lands where it started.",
         }
       : {
           title: "Press Start, then hold W to rise",
           detail:
-            "Start turns the propellers gently on the ground. The drone only leaves " +
-            "it while you hold W; let go and it holds its height.",
+            "Run the battery & motor test first. Start turns the propellers gently " +
+            "on the ground; the drone only leaves it while you hold W.",
         },
   ];
 }
@@ -91,7 +92,11 @@ function greeting(session: Session | null): string {
 }
 
 export function HomePage({ session, telemetry, sync, connected, run, onGo }: Props) {
-  const progress = session ? PROGRESS[session.state] : 0;
+  // After an abnormal end the next thing in front of the operator is the checks
+  // again, not flying — Retry puts them back there.
+  const progress = session
+    ? session.state === "ready" && session.retry_required ? PROGRESS.starting : PROGRESS[session.state]
+    : 0;
   const mode = session?.mode ?? "auto";
   const vbat = telemetry?.values["pm.vbat"] ?? session?.drone?.battery_v ?? null;
   const pending = sync ? sync.pending_flights + sync.pending_events : 0;
@@ -203,7 +208,7 @@ export function HomePage({ session, telemetry, sync, connected, run, onGo }: Pro
               </button>
               .
             </li>
-            <li>Propellers are undamaged. Start test is the quick way to check.</li>
+            <li>Propellers are undamaged and the battery holds up. The battery &amp; motor test on Control checks both.</li>
           </ul>
         </Panel>
 

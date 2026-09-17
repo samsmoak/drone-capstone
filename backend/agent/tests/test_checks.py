@@ -6,13 +6,19 @@ from types import MappingProxyType, SimpleNamespace
 
 import pytest
 
+from cropwatcher.flight import supervisor
 from cropwatcher.flight.checks import (
+    BATTERY_TEST_WAIT_S,
+    BatteryTestResult,
     CheckKey,
     ChecksFailed,
     CheckStatus,
+    HealthTestResult,
+    PropTestResult,
     battery_percent,
     collect,
     read_hardware_id,
+    run_battery_test,
     run_checks,
     run_prop_test,
 )
@@ -36,6 +42,7 @@ class FakeClock:
 def healthy(clock: FakeClock, **overrides: float) -> Snapshot:
     values = {
         "pm.vbat": 4.05, "sys.canfly": 1,
+        "supervisor.info": supervisor.CAN_BE_ARMED | supervisor.CAN_FLY,
         "lighthouse.bsReceive": 0b11, "lighthouse.bsCalVal": 0b11,
         "lighthouse.bsGeoVal": 0b11, "lighthouse.bsAvailable": 0b1111,
         "kalman.varPX": 0.0004, "kalman.varPY": 0.0004, "kalman.varPZ": 0.0004,
@@ -193,3 +200,95 @@ class TestPropTest:
         clock = FakeClock()
         with pytest.raises(TimeoutError):
             run_prop_test(make_cf(), lambda: (7, 0), clock=clock, sleep=clock.sleep)
+
+
+class TestMotors:
+    """The supervisor holding the motors after a crash (flight/supervisor.py)."""
+
+    def test_a_crashed_drone_is_recovered_and_the_checks_carry_on(self):
+        clock = FakeClock()
+        bits = {"value": supervisor.IS_CRASHED | supervisor.CAN_BE_ARMED}
+        requests: list[bool] = []
+
+        def recover():
+            requests.append(True)
+            bits["value"] = supervisor.CAN_BE_ARMED | supervisor.CAN_FLY
+
+        report, steps = run(make_cf(), lambda: healthy(clock, **{"supervisor.info": bits["value"]}),
+                            clock, request_recovery=recover)
+        motors = next(s for s in steps
+                      if s.key is CheckKey.MOTORS and s.status is not CheckStatus.RUNNING)
+        assert requests == [True]
+        assert motors.status is CheckStatus.PASSED
+        assert "recovered" in motors.detail
+        assert report.hardware_id
+
+    def test_a_locked_drone_fails_with_restart_advice_and_no_recovery_attempt(self):
+        clock = FakeClock()
+        requests: list[bool] = []
+        with pytest.raises(ChecksFailed) as err:
+            run(make_cf(), lambda: healthy(clock, **{"supervisor.info": supervisor.IS_LOCKED}),
+                clock, request_recovery=lambda: requests.append(True))
+        assert err.value.result.key is CheckKey.MOTORS
+        assert "restart" in err.value.result.detail
+        assert requests == []
+
+    def test_a_drone_that_stays_tumbled_says_stand_it_up(self):
+        clock = FakeClock()
+        with pytest.raises(ChecksFailed) as err:
+            run(make_cf(), lambda: healthy(clock, **{"supervisor.info": supervisor.IS_TUMBLED}),
+                clock, request_recovery=lambda: None)
+        assert "not upright" in err.value.result.detail
+
+    def test_a_crash_that_does_not_clear_fails_after_the_timeout(self):
+        clock = FakeClock()
+        with pytest.raises(ChecksFailed) as err:
+            run(make_cf(), lambda: healthy(clock, **{"supervisor.info": supervisor.IS_CRASHED}),
+                clock, request_recovery=lambda: None)
+        assert "off and on" in err.value.result.detail
+        assert clock.now >= supervisor.RECOVERY_TIMEOUT_S
+
+    def test_firmware_without_the_supervisor_variable_is_not_blocked(self):
+        clock = FakeClock()
+
+        def source():
+            snap = healthy(clock)
+            values = {k: v for k, v in snap.values.items() if k != "supervisor.info"}
+            return Snapshot(MappingProxyType(values), updated_at=clock.now)
+
+        _, steps = run(make_cf(), source, clock)
+        motors = next(s for s in steps
+                      if s.key is CheckKey.MOTORS and s.status is not CheckStatus.RUNNING)
+        assert motors.status is CheckStatus.WARNING
+
+
+class TestBatteryTest:
+    def test_runs_the_firmware_test_and_reports_its_own_verdict(self):
+        clock = FakeClock()
+        cf = make_cf(**{"health.batTestPWMRatio": "0.0"})
+        result = run_battery_test(cf, lambda: (0.18, 1), lambda: healthy(clock), sleep=clock.sleep)
+        assert ("health.startBatTest", "1") in cf.param.writes
+        assert clock.now >= BATTERY_TEST_WAIT_S                  # waited for it to run
+        assert result == BatteryTestResult(sag_v=0.18, passed=True, idle_vbat=4.05, pwm_ratio=0.0)
+
+    def test_a_failing_battery_is_the_firmware_saying_so(self):
+        clock = FakeClock()
+        result = run_battery_test(make_cf(**{"health.batTestPWMRatio": "0.0"}),
+                                  lambda: (0.72, 0), lambda: healthy(clock), sleep=clock.sleep)
+        assert not result.passed and result.sag_v == pytest.approx(0.72)
+
+    def test_an_unreadable_ratio_is_recorded_as_unknown_not_invented(self):
+        clock = FakeClock()
+        result = run_battery_test(make_cf(), lambda: (0.2, 1), lambda: healthy(clock),
+                                  sleep=clock.sleep)
+        assert result.pwm_ratio is None
+
+    def test_the_health_test_is_ok_only_when_both_halves_pass(self):
+        motors_ok = PropTestResult((1, 2, 3, 4), ())
+        battery_ok = BatteryTestResult(0.2, True, 4.1, 0.0)
+        assert HealthTestResult(motors_ok, battery_ok).ok
+        assert not HealthTestResult(PropTestResult((1, 2, 4), (3,)), battery_ok).ok
+        assert not HealthTestResult(motors_ok, BatteryTestResult(0.7, False, 4.1, 0.0)).ok
+        assert not HealthTestResult(motors_ok, None, "did not report").ok
+        assert HealthTestResult(motors_ok, battery_ok).to_dict()["battery"]["sag_v"] == 0.2
+

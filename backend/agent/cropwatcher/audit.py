@@ -26,6 +26,8 @@ class Action(StrEnum):
     CHECKS = "checks"
     AREA_CONFIRMED = "area_confirmed"
     PROP_TEST = "prop_test"
+    HEALTH_TEST = "health_test"
+    SESSION_RETRY = "session_retry"
     MODE_CHANGED = "mode_changed"
     PROGRAM_RUN = "program_run"
     MISSION_RUN = "mission_run"

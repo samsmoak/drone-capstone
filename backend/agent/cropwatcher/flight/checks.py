@@ -19,7 +19,8 @@ is a recommendation, because the person standing over the drone can see it and
 decide. What a warning changes is what the drone is trusted to do: the report
 comes back ``assisted=False``, which costs the height hold, the preset programs
 and every guard that reads a position. Only the two things the drone itself
-refuses — no telemetry, and ``sys.canfly`` — still stop a session outright.
+refuses — no telemetry, ``sys.canfly``, and a supervisor holding the motors
+after a crash — still stop a session outright.
 
 The governing rule is unchanged: where the drone publishes its own verdict
 (``sys.canfly``), read it; never re-derive it from an invented threshold.
@@ -34,6 +35,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
+from cropwatcher.flight import supervisor
 from cropwatcher.flight.preflight import (
     SETTLE_TIMEOUT_S,
     SETTLE_TOLERANCE_M,
@@ -56,6 +58,7 @@ SETTLE_POLL_S = 0.15
 class CheckKey(StrEnum):
     IDENTITY = "identity"
     TELEMETRY = "telemetry"
+    MOTORS = "motors"
     BATTERY = "battery"
     DECK = "deck"
     POSITIONING = "positioning"
@@ -65,6 +68,7 @@ class CheckKey(StrEnum):
 LABELS: dict[CheckKey, str] = {
     CheckKey.IDENTITY: "Drone identified",
     CheckKey.TELEMETRY: "Live telemetry",
+    CheckKey.MOTORS: "Motors unlocked",
     CheckKey.BATTERY: "Battery",
     CheckKey.DECK: "Positioning deck",
     CheckKey.POSITIONING: "Base stations",
@@ -159,10 +163,14 @@ def run_checks(
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
     reset_estimator: Callable[[], None] | None = None,
+    request_recovery: Callable[[], None] | None = None,
 ) -> Generator[CheckResult, None, ReadyReport]:
     """Yield each check's progress. Raises :class:`ChecksFailed` on the first
     failure, after yielding it. Returns a :class:`ReadyReport` via
     ``StopIteration.value`` — use :func:`collect` to get it.
+
+    ``request_recovery`` asks the firmware to clear a crash. Without it a
+    crashed drone fails the motors check instead of being recovered.
     """
 
     def running(key: CheckKey, detail: str = "") -> CheckResult:
@@ -211,7 +219,31 @@ def run_checks(
         snap = snapshot()
     yield CheckResult(CheckKey.TELEMETRY, CheckStatus.PASSED, "Receiving at 10 Hz")
 
-    # 3. Battery — the firmware's verdict, plus endurance for information.
+    # 3. Motors — is the firmware holding them after a crash? Recover if that is
+    #    all it is. A retry runs exactly this, so a crashed drone is never armed
+    #    into a flight whose motors cannot spin (flight/supervisor.py).
+    yield running(CheckKey.MOTORS, "Asking the drone")
+
+    def read_bits() -> int | None:
+        value = snapshot().get("supervisor.info")
+        return None if value is None else int(value)
+
+    motors = supervisor.ensure_motors_unlocked(
+        read_bits, request_recovery, clock=clock, sleep=sleep
+    )
+    motor_data = {"state": str(motors.state), "bits": motors.bits}
+    if not motors.ok:
+        result = fail(CheckKey.MOTORS, motors.message, **motor_data)
+        yield result
+        raise ChecksFailed(result)
+    yield CheckResult(
+        CheckKey.MOTORS,
+        (CheckStatus.WARNING if motors.state is supervisor.MotorState.UNKNOWN
+         else CheckStatus.PASSED),
+        motors.message, motor_data,
+    )
+
+    # 4. Battery — the firmware's verdict, plus endurance for information.
     yield running(CheckKey.BATTERY)
     vbat, canfly = snap.get("pm.vbat"), snap.get("sys.canfly")
     if vbat is None or canfly is None:
@@ -236,7 +268,7 @@ def run_checks(
         battery_data,
     )
 
-    # 4. Positioning deck fitted — ask the drone, never infer (CLAUDE.md #5).
+    # 5. Positioning deck fitted — ask the drone, never infer (CLAUDE.md #5).
     #
     # From here on nothing blocks the flight. Positioning decides how much the
     # drone can do for itself, and the operator standing over it decides whether
@@ -258,7 +290,7 @@ def run_checks(
         )
     yield CheckResult(CheckKey.DECK, CheckStatus.PASSED, "Lighthouse deck fitted")
 
-    # 5. Base stations received, calibrated, with geometry, and a confident filter.
+    # 6. Base stations received, calibrated, with geometry, and a confident filter.
     yield running(CheckKey.POSITIONING, "Waiting for base station signal")
     deadline = clock() + POSITIONING_TIMEOUT_S
     status = assess_positioning(snapshot())
@@ -288,7 +320,7 @@ def run_checks(
         positioning_data,
     )
 
-    # 6. Settled on all three axes, after a filter reset (CLAUDE.md #3).
+    # 7. Settled on all three axes, after a filter reset (CLAUDE.md #3).
     yield running(CheckKey.ESTIMATE, "Keep the drone still")
     if reset_estimator is not None:
         reset_estimator()
@@ -397,3 +429,80 @@ def run_prop_test(
             failed = tuple(m + 1 for m in range(4) if not passed_bits >> m & 1)
             return PropTestResult(passed, failed)
     raise TimeoutError("the propeller test did not report a result")
+
+
+# ── battery test ─────────────────────────────────────────────────────────
+#
+# The firmware's own (health.c): it records the resting voltage, runs all four
+# motors briefly at ``health.batTestPWMRatio``, records the lowest loaded
+# voltage, and publishes the difference as ``health.batterySag`` with its own
+# pass/fail as ``health.batteryPass``. The threshold is the firmware's; nothing
+# here invents a voltage (CLAUDE.md #1).
+#
+# The test does not report "finished" the way the propeller test does, and its
+# load lasts well under a second — too short to catch reliably on a 10 Hz
+# stream. So the result is read after a fixed wait that covers it, and the
+# ratio the drone actually used is read and recorded beside it.
+
+BATTERY_TEST_WAIT_S = 3.0
+
+
+@dataclass(frozen=True)
+class BatteryTestResult:
+    sag_v: float
+    passed: bool
+    idle_vbat: float | None
+    #: `health.batTestPWMRatio` as the drone reported it; 0 means the
+    #: firmware's built-in default.
+    pwm_ratio: float | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"sag_v": round(self.sag_v, 3), "passed": self.passed,
+                "idle_vbat": None if self.idle_vbat is None else round(self.idle_vbat, 2),
+                "pwm_ratio": self.pwm_ratio}
+
+
+def run_battery_test(
+    cf: Any,
+    read_result: Callable[[], tuple[float, int]],
+    snapshot: Callable[[], Snapshot],
+    *,
+    sleep: Callable[[float], None] = time.sleep,
+) -> BatteryTestResult:
+    """Spins all four motors briefly. The caller must already hold the
+    operator's confirmation that the drone is on the floor and clear.
+
+    ``read_result`` returns ``(health.batterySag, health.batteryPass)``.
+    """
+    try:
+        ratio: float | None = float(cf.param.get_value("health.batTestPWMRatio"))
+    except Exception:
+        ratio = None
+    idle = snapshot().get("pm.vbat")
+    cf.param.set_value("health.startBatTest", "1")
+    sleep(BATTERY_TEST_WAIT_S)
+    sag, passed = read_result()
+    return BatteryTestResult(sag_v=float(sag), passed=bool(passed), idle_vbat=idle, pwm_ratio=ratio)
+
+
+@dataclass(frozen=True)
+class HealthTestResult:
+    """The motors one at a time, then the battery under all four."""
+
+    motors: PropTestResult
+    battery: BatteryTestResult | None
+    #: Why the battery half has no result, when it has none.
+    battery_error: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.motors.ok and self.battery is not None and self.battery.passed
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "ok": self.ok,
+            "motors": self.motors.to_dict(),
+            "battery": None if self.battery is None else self.battery.to_dict(),
+            "battery_error": self.battery_error,
+        }
+

@@ -14,7 +14,8 @@ and hit a wall. It had no position at all. See INVARIANTS below.
 
 WHERE IT LIVES
 
-  backend/agent/cropwatcher/flight/checks.py      the pre-flight steps
+  backend/agent/cropwatcher/flight/checks.py      the pre-flight steps, the tests
+  backend/agent/cropwatcher/flight/supervisor.py  motors held after a crash
   backend/agent/cropwatcher/safety/flight_guard.py the in-flight guards
   backend/agent/cropwatcher/flight/control.py     GuardedFlight, FlightAborted
   backend/agent/cropwatcher/flight/programs.py    HoverTest
@@ -25,15 +26,21 @@ THE CHECKS (in order, each yields a CheckResult the UI renders live)
 
   radio        the drone answered on the radio; its hardware id is read from
                cpu.id0..2 as "cf-<hex>" and is how a flight ties to a drone
+  telemetry    the 10 Hz stream is flowing
+  motors       supervisor.info: crashed -> ask the firmware to recover and
+               wait for it; tumbled -> stand it up; locked -> restart it
   battery      sys.canfly is the authority, not a voltage this code invented;
                the voltage is shown for the operator, never used as the gate
-  motors       optional propeller test (health.startPropTest) — on request
   positioning  base stations RECEIVED and calibrated and with geometry
   still        the Kalman estimate has settled in x, y AND z
-  tumbled      supervisor.info bit 5 is clear
 
-Only two results BLOCK a session: no telemetry, and the firmware refusing to
-arm (sys.canfly = 0). Deck, base stations and settling WARN instead — the person
+On request, once the area is confirmed: the BATTERY & MOTOR TEST — the
+firmware's propeller test (each motor alone, health.motorPass) then its battery
+test (all four under load, health.batterySag / batteryPass). Both verdicts are
+the firmware's own; the agent records batTestPWMRatio beside the result.
+
+Only three results BLOCK a session: no telemetry, the firmware refusing to
+arm (sys.canfly = 0), and motors the supervisor will not release. Deck, base stations and settling WARN instead — the person
 standing over the drone decides whether to fly (decided 2026-09-16). A warning
 returns the report with assisted = False, which means:
 
@@ -72,7 +79,15 @@ DECISIONS
   with no position there is nothing to steer by, so cutting is the safer end.
   Every other fault lands gracefully.
 - Battery low uses the firmware's own pm.state, not a voltage threshold. A
-  guessed 3.70 V refused flights the drone would have allowed.
+  guessed 3.70 V refused flights the drone would have allowed. The firmware's
+  low point is pm.lowVoltage (Bitcraze default 3.2 V; critical 3.0 V). The
+  agent's own 3.10 V backstop, held past a 1 s grace, sits BELOW that — it only
+  catches a firmware that never reports. Lowering either buys seconds: under
+  hover load a 1S LiPo collapses fast below ~3.2 V, and the unassisted landing
+  needs about four. The juice that was actually lost went to the bang-bang
+  thrust: a full-throttle slam sagged 4.14 V to 3.57 V in 100 ms (2026-09-17).
+- An abnormal end requires a Retry that re-runs the checks (sessions-and-
+  modes.txt). The motors check is what makes the retry mean something.
 - "Cut motors" as an operator control was removed. The normal control is Land
   (graceful); Emergency stop is hold-for-one-second and has no key binding.
 - The guard verdict is data (Action + Reason enums), not a callback. The same
@@ -102,6 +117,10 @@ INVARIANTS
   when reading telemetry back.
 - Read sys.canfly before commanding flight. The supervisor refuses to arm below
   roughly 3.75 V and reports this itself.
+- After a tumble the supervisor holds every motor at zero until told to
+  recover. On 2026-09-17 the flight after a tumble reported "flying" for 19 s
+  with thrust 0 and all four motors at 0. Never arm without reading
+  supervisor.info first; the checks do, and a retry runs the checks.
 - Call send_notify_setpoint_stop() before the high-level commander. Any earlier
   low-level setpoint in the same power cycle holds priority and silently locks
   the high-level commander out: takeoff() returns success with motors at 0.

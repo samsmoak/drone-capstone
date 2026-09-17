@@ -5,7 +5,8 @@ This is what the desktop app drives, and the only thing that flies a drone.
     sign_in            who is responsible for what follows
     start              connect, then the checks, one step at a time
     confirm_area       the operator says the drone is on the floor and clear
-    prop_test          the firmware's own motor test (motors spin, briefly)
+    health_test        the firmware's motor and battery tests (motors spin, briefly)
+    retry              after an abnormal end: every check again, same session
     run_program        Auto: a preset flight, e.g. the hover test
     arm_manual         Manual: props idle, then assisted flight from the keys
     land / stop        graceful landing, or the deliberate emergency stop
@@ -23,6 +24,8 @@ Rules this file exists to hold in one place:
   produced `[Errno 19] No such device` in the lab).
 - **A flight always ends in a landing or a stop**, including when an exception
   escapes: the drone must never be left in the air.
+- **After an abnormal end, nothing flies until Retry.** A tumble leaves the
+  firmware holding the motors; arming past that is a flight with no thrust.
 """
 
 from __future__ import annotations
@@ -90,7 +93,8 @@ class Snapshot:
     session_id: str | None = None
     activity: str | None = None
     checks: list[dict[str, Any]] = field(default_factory=list)
-    prop_test: dict[str, Any] | None = None
+    #: The last battery & motor test (flight/checks.py HealthTestResult).
+    health_test: dict[str, Any] | None = None
     flight: dict[str, Any] | None = None
     message: str | None = None
     can_fly: bool = False
@@ -102,14 +106,20 @@ class Snapshot:
     assisted: bool = True
     #: Why assistance is unavailable, in words, or None.
     unassisted_reason: str | None = None
+    #: The last flight ended abnormally — a tumble, a guard, an emergency stop.
+    #: Nothing flies until Retry has re-run the checks in this same session:
+    #: after a tumble the firmware holds the motors at zero, and a flight armed
+    #: into that reports "flying" with nothing turning (2026-09-17).
+    retry_required: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "state": str(self.state), "mode": str(self.mode), "operator": self.operator,
             "drone": self.drone, "session_id": self.session_id, "activity": self.activity,
-            "checks": self.checks, "prop_test": self.prop_test, "flight": self.flight,
+            "checks": self.checks, "health_test": self.health_test, "flight": self.flight,
             "message": self.message, "can_fly": self.can_fly, "restoring": self.restoring,
             "assisted": self.assisted, "unassisted_reason": self.unassisted_reason,
+            "retry_required": self.retry_required,
         }
 
 
@@ -323,56 +333,21 @@ class Session:
         with self._lock:
             if self._snapshot.state not in (State.IDLE, State.CHECKS_FAILED):
                 raise SessionError("A session is already running.")
-        self._set(state=State.STARTING, checks=[], message=None, prop_test=None)
+            if self._snapshot.session_id is not None:
+                raise SessionError("This session is still open. Press Retry to check the "
+                                   "drone again, or end the session first.")
+        self._set(state=State.STARTING, checks=[], message=None, health_test=None)
         self._start_worker("start", self._do_start)
 
     def _do_start(self) -> None:
         operator, audit = self._require_operator()
         session_id = new_id()
-        steps: list[dict[str, Any]] = []
-
-        def on_step(step: CheckResult) -> None:
-            nonlocal steps
-            steps = [s for s in steps if s["key"] != str(step.key)] + [step.to_dict()]
-            self._set(checks=steps)
-
-        try:
-            link = self._link_factory()
-            link.open()
-            self.link = link
-        except LinkError as e:
-            audit.record(Action.SESSION_START, Result.REFUSED, detail={"reason": str(e)})
-            self._set(state=State.CHECKS_FAILED, message=str(e))
+        report = self._connect_and_check(audit, on_refused=lambda detail: audit.record(
+            Action.SESSION_START, Result.REFUSED, detail=detail))
+        if report is None:
             return
-
-        # Live telemetry reaches the app's windows from the moment the link is
-        # open — before, during and after a flight.
-        if link.stream is not None:
-            self._unsubscribe_telemetry = link.stream.subscribe(self._publish_telemetry)
-
-        try:
-            report = collect(link.checks(), on_step)
-        except ChecksFailed as e:
-            audit.record(Action.CHECKS, Result.REFUSED,
-                         detail={"check": str(e.result.key), "reason": e.result.detail})
-            self._close_link()
-            self._set(state=State.CHECKS_FAILED, message=e.result.detail)
-            return
-
-        # The geofence is centred on the Lighthouse origin; a drone parked
-        # outside it would be landed by the guard the moment it took off.
-        # Unassisted there is no origin and no fence — those coordinates are the
-        # accelerometer integrating — so there is nothing to compare against.
-        x, y = report.takeoff_xy
-        if report.assisted and max(abs(x), abs(y)) > self._fence:
-            message = (
-                f"The drone is at ({x:+.2f}, {y:+.2f}) m, outside the {self._fence:.1f} m "
-                f"flight area. Move it nearer the middle of the room."
-            )
-            audit.record(Action.CHECKS, Result.REFUSED, detail={"reason": "outside_fence"})
-            self._close_link()
-            self._set(state=State.CHECKS_FAILED, message=message)
-            return
+        link = self.link
+        assert link is not None
 
         self.report = report
         self._outbox.put(Kind.DRONE, report.hardware_id, {
@@ -415,6 +390,109 @@ class Session:
         )
         if self._syncer is not None:
             self._syncer.trigger()
+
+    def _connect_and_check(
+        self, audit: AuditLog, *, on_refused: Callable[[dict[str, Any]], object]
+    ) -> ReadyReport | None:
+        """Open the link if it is not open, then run every check.
+
+        The one path a new session and a retry both take — so a retry is the
+        same steps as starting afresh, not a shortcut past them. On any failure
+        the link is closed (a power-cycled drone needs a fresh one) and the
+        state says why; the caller gets None.
+        """
+        steps: list[dict[str, Any]] = []
+
+        def on_step(step: CheckResult) -> None:
+            nonlocal steps
+            steps = [s for s in steps if s["key"] != str(step.key)] + [step.to_dict()]
+            self._set(checks=steps)
+
+        link = self.link
+        if link is None or not link.is_open:
+            try:
+                link = self._link_factory()
+                link.open()
+                self.link = link
+            except LinkError as e:
+                on_refused({"reason": str(e)})
+                self._set(state=State.CHECKS_FAILED, message=str(e))
+                return None
+            # Live telemetry reaches the app's windows from the moment the link
+            # is open — before, during and after a flight.
+            if link.stream is not None:
+                self._unsubscribe_telemetry = link.stream.subscribe(self._publish_telemetry)
+
+        try:
+            report = collect(link.checks(), on_step)
+        except ChecksFailed as e:
+            audit.record(Action.CHECKS, Result.REFUSED, session_id=self._snapshot.session_id,
+                         detail={"check": str(e.result.key), "reason": e.result.detail})
+            self._close_link()
+            self._set(state=State.CHECKS_FAILED, message=e.result.detail)
+            return None
+
+        # The geofence is centred on the Lighthouse origin; a drone parked
+        # outside it would be landed by the guard the moment it took off.
+        # Unassisted there is no origin and no fence — those coordinates are the
+        # accelerometer integrating — so there is nothing to compare against.
+        x, y = report.takeoff_xy
+        if report.assisted and max(abs(x), abs(y)) > self._fence:
+            message = (
+                f"The drone is at ({x:+.2f}, {y:+.2f}) m, outside the {self._fence:.1f} m "
+                f"flight area. Move it nearer the middle of the room."
+            )
+            audit.record(Action.CHECKS, Result.REFUSED, session_id=self._snapshot.session_id,
+                         detail={"reason": "outside_fence"})
+            self._close_link()
+            self._set(state=State.CHECKS_FAILED, message=message)
+            return None
+        return report
+
+    # ── retry ────────────────────────────────────────────────────────────
+
+    def retry(self) -> None:
+        """Check the drone again in this same session, as if it were new.
+
+        After a crash: recover the motors, run every check, ask for the area to
+        be confirmed again. The session, its history and its audit trail carry
+        on — the operator does not lose the record of what happened.
+        """
+        self._require_operator()
+        with self._lock:
+            snap = self._snapshot
+            if snap.session_id is None:
+                raise SessionError("There is no session to retry. Start one.")
+            if snap.state not in (State.READY, State.CHECKS_FAILED, State.AWAITING_CONFIRMATION):
+                raise SessionError("Wait for the drone to land before retrying.")
+        self._set(state=State.STARTING, checks=[], health_test=None, flight=None,
+                  message="Checking the drone again, as for a new session.")
+        self._start_worker("retry", self._do_retry)
+
+    def _do_retry(self) -> None:
+        _, audit = self._require_operator()
+        session_id = self._snapshot.session_id
+        was_required = self._snapshot.retry_required
+        audit.record(Action.SESSION_RETRY, session_id=session_id,
+                     detail={"after_abnormal_end": was_required})
+        report = self._connect_and_check(audit, on_refused=lambda detail: audit.record(
+            Action.SESSION_RETRY, Result.REFUSED, session_id=session_id, detail=detail))
+        if report is None:
+            return                                  # still retry_required; Retry again
+        self.report = report
+        self._height_reference = report.ground_z_m if report.assisted else None
+        self._set(
+            state=State.AWAITING_CONFIRMATION, retry_required=False,
+            drone={"hardware_id": report.hardware_id, "battery_v": round(report.vbat, 2),
+                   "endurance_s": round(report.endurance_s)},
+            assisted=report.assisted, unassisted_reason=report.unassisted_reason,
+            message=(
+                "Checked again. Put the drone on a flat, clear surface, then confirm."
+                if report.assisted else
+                "Checked again. The drone cannot hold a height by itself right now — put it "
+                "on a flat, clear surface and confirm both boxes to fly it by hand."
+            ),
+        )
 
     def _publish_telemetry(self, snap: Any) -> None:
         ground = self._height_reference
@@ -459,31 +537,40 @@ class Session:
                      detail={"assisted": report.assisted})
         self._set(state=State.READY, message=None)
 
-    # ── prop test ────────────────────────────────────────────────────────
+    # ── battery & motor test ─────────────────────────────────────────────
 
-    def prop_test(self) -> None:
-        self._require_ready("the propeller test")
-        self._set(state=State.BUSY, activity="prop_test", message=None)
-        self._start_worker("prop-test", self._do_prop_test)
+    def health_test(self) -> None:
+        self._require_ready("the battery & motor test")
+        self._set(state=State.BUSY, activity="health_test", message=None)
+        self._start_worker("health-test", self._do_health_test)
 
-    def _do_prop_test(self) -> None:
+    #: The old name, for an app build that still calls it.
+    prop_test = health_test
+
+    def _do_health_test(self) -> None:
         _, audit = self._require_operator()
         link = self._require_link()
         try:
-            result = link.prop_test()
+            result = link.health_test()
         except Exception as e:
-            audit.record(Action.PROP_TEST, Result.FAILED, session_id=self._snapshot.session_id,
+            audit.record(Action.HEALTH_TEST, Result.FAILED, session_id=self._snapshot.session_id,
                          detail={"error": type(e).__name__})
             self._set(state=State.READY, activity=None,
-                      message="The propeller test did not report a result.")
+                      message="The battery & motor test did not report a result.")
             return
-        audit.record(Action.PROP_TEST, Result.OK if result.ok else Result.FAILED,
+        audit.record(Action.HEALTH_TEST, Result.OK if result.ok else Result.FAILED,
                      session_id=self._snapshot.session_id, detail=result.to_dict())
-        message = None if result.ok else (
-            f"Motor(s) {', '.join(str(m) for m in result.failed)} did not pass. "
-            f"Check for a bent or loose propeller before flying."
-        )
-        self._set(state=State.READY, activity=None, prop_test=result.to_dict(), message=message)
+        problems = []
+        if result.motors.failed:
+            problems.append(f"Motor(s) {', '.join(str(m) for m in result.motors.failed)} did not "
+                            f"pass — check for a bent or loose propeller.")
+        if result.battery is None:
+            problems.append(result.battery_error or "The battery test did not report.")
+        elif not result.battery.passed:
+            problems.append(f"The battery sagged {result.battery.sag_v:.2f} V under load, more "
+                            f"than the drone accepts — charge it or use another battery.")
+        self._set(state=State.READY, activity=None, health_test=result.to_dict(),
+                  message=" ".join(problems) or None)
 
     # ── auto: programs ───────────────────────────────────────────────────
 
@@ -535,7 +622,9 @@ class Session:
             self._finish_flight(status="failed", error=f"{type(e).__name__}: {e}")
             audit.record(Action.PROGRAM_RUN, Result.FAILED, session_id=self._snapshot.session_id,
                          flight_id=flight_id, detail={"program": program.key})
-            self._set(state=State.READY, activity=None, message="The flight failed. See the log.")
+            self._set(state=State.READY, activity=None, retry_required=True,
+                      message="The flight failed. Press Retry to check the drone again "
+                              "before flying.")
             return
         finally:
             self.flight = None
@@ -550,7 +639,10 @@ class Session:
             session_id=self._snapshot.session_id, flight_id=flight_id,
             detail={"program": program.key, **result.to_dict()},
         )
-        self._set(state=State.READY, activity=None, message=result.message)
+        completed = result.outcome is Outcome.COMPLETED
+        self._set(state=State.READY, activity=None, retry_required=not completed,
+                  message=result.message if completed else
+                  f"{result.message} Press Retry to check the drone again before flying.")
 
     # ── manual ───────────────────────────────────────────────────────────
 
@@ -697,13 +789,16 @@ class Session:
             self._set(message="The battery ran low, so the drone landed and the session ended. "
                               "Charge or swap the battery, then start a new session.")
             return
+        abnormal = verdict is not None or stopped
         message = (
-            verdict.message + " The flight has ended — you can fly again or end the session."
-            if verdict is not None else
-            "Motors stopped. Check the drone before flying again." if stopped else
+            verdict.message + " The flight ended early — press Retry to check the drone "
+            "again before flying." if verdict is not None else
+            "Motors stopped. Check the drone, then press Retry to run the checks again."
+            if stopped else
             "Landed. Fly again, or end the session."
         )
-        self._set(state=State.READY, activity=None, flight=None, message=message)
+        self._set(state=State.READY, activity=None, flight=None,
+                  retry_required=abnormal, message=message)
 
     # ── land and stop ────────────────────────────────────────────────────
 
@@ -784,7 +879,8 @@ class Session:
         if self._syncer is not None:
             self._syncer.trigger()
         self._set(state=State.IDLE, activity=None, session_id=None, drone=None, checks=[],
-                  prop_test=None, flight=None, assisted=True, unassisted_reason=None,
+                  health_test=None, flight=None, assisted=True, unassisted_reason=None,
+                  retry_required=False,
                   message="Session ended. Data is uploading in the background.")
 
     # ── flight records ───────────────────────────────────────────────────
@@ -859,6 +955,11 @@ class Session:
             raise SessionError("Something is already running. Wait for it to finish.")
         if state is not State.READY:
             raise SessionError(f"Run the checks and confirm the area before starting {what}.")
+        if self._snapshot.retry_required:
+            raise SessionError(
+                "The last flight ended abnormally. Press Retry to check the drone again "
+                f"before starting {what}."
+            )
 
     def _require_link(self) -> DroneLink:
         if self.link is None or not self.link.is_open:

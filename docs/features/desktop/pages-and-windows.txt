@@ -9,8 +9,9 @@ Land and Emergency stop.
 
   Home         where you are and what to do next; the sign-in form when signed
                out. Opens first.
-  Control      checks, confirmation, the controls for the mode, End session,
-               and the recent sessions for the selected mode
+  Control      checks, confirmation, the battery & motor test, the controls
+               for the mode, Retry after an abnormal end, End session, and the
+               recent sessions for the selected mode
   Sessions     every session (who, when, how it ended) and one session's detail
   Flight       position, speed, attitude, thrust
   Power        battery, will-it-arm, per-motor

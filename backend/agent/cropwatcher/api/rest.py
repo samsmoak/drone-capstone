@@ -331,9 +331,18 @@ def confirm_area(request: ConfirmRequest | None = None) -> dict:
     return _run(lambda: agent.session.confirm_area(accept_unassisted=accept))
 
 
-@app.post("/session/prop-test", dependencies=[Command])
-def prop_test() -> dict:
-    return _run(agent.session.prop_test)
+@app.post("/session/health-test", dependencies=[Command])
+def health_test() -> dict:
+    return _run(agent.session.health_test)
+
+
+# The propeller-only test's old path, now the full battery & motor test.
+app.post("/session/prop-test", dependencies=[Command])(health_test)
+
+
+@app.post("/session/retry", dependencies=[Command])
+def retry() -> dict:
+    return _run(agent.session.retry)
 
 
 @app.post("/session/program", dependencies=[Command])

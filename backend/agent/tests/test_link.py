@@ -148,3 +148,47 @@ class TestFlightFactories:
         link, _, _ = make_link()
         link.open()
         assert link.manual(REPORT)._ground_z == 0.5
+
+
+class TestCrashRecovery:
+    """cflib moved the request from `cf.platform` to `cf.supervisor`; either works."""
+
+    def test_uses_the_supervisor_when_cflib_has_one(self):
+        calls: list[str] = []
+        cf = SimpleNamespace(
+            supervisor=SimpleNamespace(
+                send_crash_recovery_request=lambda: calls.append("supervisor")),
+            platform=SimpleNamespace(send_crash_recovery_request=lambda: calls.append("platform")),
+        )
+        DroneLink._request_crash_recovery(cf)
+        assert calls == ["supervisor"]
+
+    def test_falls_back_to_the_platform_service(self):
+        calls: list[str] = []
+        cf = SimpleNamespace(
+            platform=SimpleNamespace(send_crash_recovery_request=lambda: calls.append("platform")))
+        DroneLink._request_crash_recovery(cf)
+        assert calls == ["platform"]
+
+    def test_a_cflib_without_either_does_not_raise(self):
+        DroneLink._request_crash_recovery(SimpleNamespace())
+
+
+class TestHealthTest:
+    def test_a_failing_battery_half_still_returns_the_motor_result(self, monkeypatch):
+        from cropwatcher.flight.checks import PropTestResult
+
+        link, _, _ = make_link()
+        motors = PropTestResult((1, 2, 3, 4), ())
+        monkeypatch.setattr(link, "prop_test", lambda: motors)
+
+        def broken():
+            raise TimeoutError
+
+        monkeypatch.setattr(link, "battery_test", broken)
+        result = link.health_test()
+        assert result.motors is motors
+        assert result.battery is None
+        assert "did not report" in result.battery_error
+        assert not result.ok
+
