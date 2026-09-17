@@ -1,0 +1,58 @@
+RUNNING THE AGENT FROM SOURCE — for working on flight code
+==========================================================
+
+WHAT IT IS
+
+The desktop app bundles the flight agent as a frozen sidecar, so nobody who only
+flies the drone ever starts it by hand. This is for developers: changing flight
+code, running the tests, reading a trace, or bringing up a drone from a terminal.
+
+It used to be a setup guide on the website (/setup/flight-agent). It moved here
+because the website is for the people who fly the drone, and a second card on
+/setup read like a second thing they had to install.
+
+
+SET IT UP
+
+On the laptop the Crazyradio is plugged into. Python 3.11 or newer.
+
+  cd backend/agent
+  python3 -m venv .venv
+  source .venv/bin/activate        (Windows, Git Bash: source .venv/Scripts/activate)
+  pip install -e .
+
+Editable install: changes are live without reinstalling.
+
+  cropwatcher serve                starts the local API on 127.0.0.1:8765
+  pytest                           the gate — guards and checks need no drone
+  pytest -k guard                  just the in-flight guards
+
+Open http://127.0.0.1:8765/health to check it answers. Every command needs the
+control token, even on localhost (agent-api.txt).
+
+
+WHEN IT WILL NOT RUN
+
+- No Crazyradio found
+  Usually: another program holds the dongle, or the process cannot see it.
+  Close cfclient and any script using the radio, re-plug the dongle. On Linux,
+  add the udev rule from Bitcraze's install guide.
+
+- The drone connects but the motors never spin
+  Usually: a low-level setpoint earlier in the same power cycle still holds
+  priority over the high-level commander. Call send_notify_setpoint_stop()
+  first, or power-cycle the drone. takeoff() returns successfully either way,
+  which is what makes this slow to spot. (CLAUDE.md flight invariant 2.)
+
+- It refuses to arm and blames the battery
+  Usually: the firmware supervisor will not arm below roughly 3.75 V. Charge
+  it. Read sys.canfly rather than guessing a threshold. (Invariant 1.)
+
+
+INVARIANTS
+
+- Docker cannot reach USB on macOS: Docker Desktop runs a Linux VM with no USB
+  passthrough. The agent runs bare in a venv; the Dockerfile is for CI and
+  Linux teammates only.
+- To build the frozen sidecar the desktop app ships, see the desktop setup
+  guide's build steps and backend/agent/packaging/build_sidecar.sh.

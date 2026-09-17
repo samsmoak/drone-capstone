@@ -51,6 +51,10 @@ const SETUP_FIELDS: FieldSpec[] = [
     fields: [
       { type: "text", key: "title", label: "Step title" },
       { type: "strings", key: "paragraphs", label: "Paragraphs", itemLabel: "Paragraph" },
+      { type: "strings", key: "needs", label: "What you need", itemLabel: "Requirement",
+        hint: "A checklist, one thing per line, shown before the commands." },
+      { type: "strings", key: "commands", label: "Terminal commands", itemLabel: "Command",
+        hint: "One command per line, in order. Each gets its own copy button." },
       { type: "strings", key: "bullets", label: "Bullet points", itemLabel: "Bullet" },
       { type: "textarea", key: "note", label: "Highlighted note", hint: "Shown in a shaded box. Leave empty for none." },
       { type: "boolean", key: "showDownloads", label: "Show this product's download buttons" },
@@ -143,13 +147,6 @@ export const PAGE_SPECS = {
     path: "/setup/desktop-app",
     fields: SETUP_FIELDS,
   },
-  "setup-agent": {
-    key: "setup-agent",
-    title: "Set Up — flight agent",
-    description: "Running the agent from source, for anyone working on flight code.",
-    path: "/setup/flight-agent",
-    fields: SETUP_FIELDS,
-  },
   "setup-web": {
     key: "setup-web",
     title: "Set Up — dashboard",
@@ -182,7 +179,7 @@ export const PAGE_SPECS = {
 
 export type PageKey =
   | "site" | "home" | "projects" | "team" | "gallery" | "apps"
-  | "setup-index" | "setup" | "setup-agent" | "setup-web" | "hardware";
+  | "setup-index" | "setup" | "setup-web" | "hardware";
 export const PAGE_KEYS = Object.keys(PAGE_SPECS) as PageKey[];
 
 export function isPageKey(value: string): value is PageKey {
@@ -274,83 +271,8 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
     eyebrow: "Set Up",
     title: "Set up the system",
     intro:
-      "Three pieces, set up one at a time: the app that flies the drone, the agent it bundles, " +
-      "and the dashboard that reads what they record. Start with the desktop app — it is the " +
-      "only one you need to fly.",
-  },
-  "setup-agent": {
-    title: "Run the flight agent from source",
-    intro:
-      "The desktop app already bundles the agent. Do this only when you are working on flight " +
-      "code, reading a trace, or bringing up a drone from a terminal. About 10 minutes.",
-    steps: [
-      {
-        title: "Install it into a virtual environment",
-        paragraphs: [
-          "Python 3.11 or newer, on the laptop the Crazyradio is plugged into. The agent is "
-          + "installed in editable mode, so your changes are live without reinstalling.",
-        ],
-        bullets: [
-          "cd backend/agent",
-          "python3 -m venv .venv && source .venv/bin/activate",
-          "pip install -e .",
-        ],
-        note: "Docker cannot reach USB on macOS — Docker Desktop runs a Linux VM with no USB "
-              + "passthrough. The agent runs bare in a venv; the Dockerfile is for CI and Linux only.",
-        showDownloads: false,
-        linkHardware: false,
-      },
-      {
-        title: "Plug in the radio and serve",
-        paragraphs: [
-          "`cropwatcher serve` starts the local API on 127.0.0.1:8765 and prints the control "
-          + "token. Every command needs that token, even on localhost: an unauthenticated local "
-          + "API that can arm a drone is reachable from any page you have open.",
-        ],
-        bullets: [
-          "cropwatcher serve",
-          "Open http://127.0.0.1:8765/health in a browser to check it answers",
-        ],
-        note: "",
-        showDownloads: false,
-        linkHardware: true,
-      },
-      {
-        title: "Run the checks before you fly anything",
-        paragraphs: [
-          "pytest is the gate. The flight guards and the pre-flight checks have tests that do "
-          + "not need a drone, and they are the parts worth trusting.",
-        ],
-        bullets: ["pytest", "pytest -k guard   # just the in-flight guards"],
-        note: "",
-        showDownloads: false,
-        linkHardware: false,
-      },
-    ],
-    troubleTitle: "When it will not run",
-    troubleIntro: "The three that cost the most time here.",
-    troubles: [
-      {
-        symptom: "No Crazyradio found",
-        cause: "The dongle is not visible to the process, or another program holds it.",
-        fix: "Close cfclient and any other script using the radio, then re-plug the dongle. On "
-             + "Linux you also need the udev rule from Bitcraze's install guide.",
-      },
-      {
-        symptom: "The drone connects but the motors never spin",
-        cause: "A low-level setpoint was sent earlier in the same power cycle and still holds "
-               + "priority over the high-level commander.",
-        fix: "Call send_notify_setpoint_stop() before using the high-level commander, or power-"
-             + "cycle the drone. takeoff() returns successfully either way, which is what makes "
-             + "this so slow to spot.",
-      },
-      {
-        symptom: "It refuses to arm and blames the battery",
-        cause: "The firmware supervisor will not arm below roughly 3.75 V and says so itself.",
-        fix: "Charge it. Read sys.canfly rather than guessing a voltage threshold — a guessed "
-             + "3.70 V refused flights the drone would have allowed.",
-      },
-    ],
+      "Two pieces: the desktop app that flies the drone, and the dashboard that reads what it " +
+      "records. Start with the desktop app — it is the only one you need to fly.",
   },
   "setup-web": {
     title: "Run the dashboard",
@@ -450,32 +372,64 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
         linkHardware: false,
       },
       {
-        title: "No download for your computer? Build it from the source",
+        title: "No download for your Mac? Build it yourself",
         paragraphs: [
-          "Every build is made on the machine it is for. The flight agent is frozen with "
-          + "PyInstaller, which does not cross-compile, so a Mac cannot produce the Windows "
-          + "installer and a PC cannot produce the Mac one. If the download you need is not on "
-          + "the Apps page, your own computer can build it in about ten minutes.",
-          "You need, on any system: Rust (from rustup.rs), Node 24, pnpm 10, Python 3.11 or "
-          + "newer, and Git. On Windows, also Microsoft C++ Build Tools with the \"Desktop "
-          + "development with C++\" workload, and Microsoft Edge WebView2 — already present on "
-          + "Windows 10 version 1803 and later. On macOS, also the Xcode Command Line Tools: "
-          + "xcode-select --install. On Debian or Ubuntu, also libwebkit2gtk-4.1-dev, "
-          + "build-essential, curl, wget, file, libxdo-dev, libssl-dev, "
-          + "libayatana-appindicator3-dev and librsvg2-dev.",
-          "Then four commands from a terminal. The last one runs the app straight away; swap it "
-          + "for pnpm tauri build to write an installer instead.",
+          "Only needed if the macOS download above is missing or does not suit your Mac. "
+          + "Your own computer builds the app for itself, in about ten minutes.",
         ],
-        bullets: [
-          "git clone https://github.com/samsmoak/drone-capstone.git && cd drone-capstone",
-          "cd backend/agent && python3 -m venv .venv && .venv/bin/pip install -e . pyinstaller",
+        needs: [
+          "Xcode Command Line Tools — run xcode-select --install",
+          "Rust — from rustup.rs",
+          "Node.js 24",
+          "pnpm 10 — run npm install -g pnpm@10",
+          "Python 3.11 or newer",
+          "Git",
+        ],
+        commands: [
+          "git clone https://github.com/samsmoak/drone-capstone.git",
+          "cd drone-capstone/backend/agent",
+          "python3 -m venv .venv",
+          ".venv/bin/python -m pip install -e . pyinstaller",
           "bash packaging/build_sidecar.sh",
-          "cd ../../desktop && pnpm install && pnpm tauri dev",
+          "cd ../../desktop",
+          "pnpm install",
+          "pnpm tauri dev",
         ],
-        note: "Windows: a virtual environment puts its tools in .venv\\Scripts, not .venv/bin, so "
-              + "use .venv\\Scripts\\pip install -e . pyinstaller and run the sidecar script from "
-              + "Git Bash or WSL. pnpm tauri build leaves the installer in "
-              + "desktop/src-tauri/target/release/bundle/.",
+        bullets: [],
+        note: "The last command opens the app straight away. To make an installer instead, run "
+              + "pnpm tauri build — the .dmg lands in desktop/src-tauri/target/release/bundle/dmg.",
+        showDownloads: false,
+        linkHardware: false,
+      },
+      {
+        title: "No download for your PC? Build it yourself",
+        paragraphs: [
+          "Only needed if the Windows download above is missing or does not suit your PC. "
+          + "Run every command in Git Bash, which comes with Git for Windows — the build script "
+          + "is a bash script, and Git Bash is the shell our own Windows build uses.",
+        ],
+        needs: [
+          "Git for Windows — includes Git Bash",
+          "Microsoft C++ Build Tools, with \"Desktop development with C++\" ticked",
+          "Microsoft Edge WebView2 — already installed on Windows 10 (1803 or later) and 11",
+          "Rust — from rustup.rs",
+          "Node.js 24",
+          "pnpm 10 — run npm install -g pnpm@10",
+          "Python 3.11 or newer — tick \"Add python.exe to PATH\" in the installer",
+        ],
+        commands: [
+          "git clone https://github.com/samsmoak/drone-capstone.git",
+          "cd drone-capstone/backend/agent",
+          "python -m venv .venv",
+          ".venv/Scripts/python.exe -m pip install -e . pyinstaller",
+          "bash packaging/build_sidecar.sh",
+          "cd ../../desktop",
+          "pnpm install",
+          "pnpm tauri dev",
+        ],
+        bullets: [],
+        note: "The last command opens the app straight away. To make an installer instead, run "
+              + "pnpm tauri build — the .exe lands in desktop/src-tauri/target/release/bundle/nsis.",
         showDownloads: false,
         linkHardware: false,
       },
