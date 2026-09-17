@@ -186,6 +186,8 @@ export type SampleRow = { recorded_at: string } & Record<string, number | string
 
 export type LiveHandlers = {
   onSession: (session: Session) => void;
+  /** The agent answered but refused this window — see `onError` callers. */
+  onRefused: (message: string) => void;
   onSync: (status: SyncStatus) => void;
   onTelemetry: (telemetry: Telemetry) => void;
   onConnection: (connected: boolean) => void;
@@ -218,6 +220,18 @@ export class LiveConnection {
 
     socket.addEventListener("message", (event) => {
       const message = JSON.parse(String(event.data));
+      if (message.type === "error") {
+        // The agent is up but will not talk to this window: almost always
+        // another copy of the app already holds the port, so this window is
+        // talking to that copy's agent with a token it does not know.
+        this.closed = true;
+        this.handlers.onRefused(
+          "Another copy of CropWatcher is already running on this computer. " +
+          "Quit it, then reopen this window.",
+        );
+        socket.close();
+        return;
+      }
       if (message.type === "session") this.handlers.onSession(message as Session);
       else if (message.type === "sync") this.handlers.onSync(message as SyncStatus);
       else if (message.type === "telemetry") this.handlers.onTelemetry(message as Telemetry);

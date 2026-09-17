@@ -8,9 +8,19 @@
  * the page's shape and says what it is waiting for.
  */
 
-import { Skeleton, SkeletonPanel, Spinner } from "./ui";
+import { useEffect, useState } from "react";
+import { Message, Skeleton, SkeletonPanel, Spinner } from "./ui";
+
+/** How long to wait before saying that this is taking longer than it should. */
+const PATIENCE_MS = 12000;
 
 export function StartupPage({ connected }: { connected: boolean }) {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setSlow(true), PATIENCE_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <div className="grid gap-6">
       <header className="grid gap-2">
@@ -22,6 +32,17 @@ export function StartupPage({ connected }: { connected: boolean }) {
         {connected ? "Signing you back in" : "Starting the flight agent"}
       </p>
       <Spinner label={connected ? "Signing you back in…" : "Starting the flight agent on this computer…"} />
+
+      {slow && (
+        <Message
+          tone="warning"
+          text={
+            connected
+              ? "Signing back in is taking longer than usual. Check this computer's internet connection — you can still sign in by hand once this clears."
+              : "The flight agent has not answered. It may not have started, or another copy of CropWatcher may already be running. Quit any other copy and reopen this window."
+          }
+        />
+      )}
 
       <section aria-hidden="true" className="grid grid-cols-2 gap-4 md:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
