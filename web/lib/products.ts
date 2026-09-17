@@ -1,11 +1,14 @@
 /**
  * What this capstone ships, as things you can set up and download.
  *
- * Three pieces, because the radio is a USB dongle (see the repo's CLAUDE.md):
- * the desktop app on the laptop that holds it, the flight agent it bundles, and
- * the website that reads what they record. Each has its own setup guide at
- * /setup/<slug>, and the ones with installers have their downloads at
- * /apps/<slug>.
+ * Two pieces, because the radio is a USB dongle (see the repo's CLAUDE.md): the
+ * desktop app on the laptop that holds it, and the website that reads what it
+ * records. Each has its own setup guide at /setup/<slug>, and the ones with
+ * installers have their downloads at /apps/<slug>.
+ *
+ * The flight agent is not listed. It ships inside the desktop app, so nobody who
+ * flies the drone ever sets it up; running it from source is developer work,
+ * documented in docs/features/backend/running-from-source.txt.
  *
  * This list is code, not a database row, because every field describes an
  * artifact CI produces — an object path in the bucket is only meaningful next
@@ -86,24 +89,6 @@ export const PRODUCTS: Product[] = [
         unsigned: SMARTSCREEN,
       },
     ],
-  },
-  {
-    slug: "flight-agent",
-    name: "Flight agent",
-    summary:
-      "The only process that touches the radio: checks, the 50 Hz control loop, the flight " +
-      "recorder and a local API. It ships inside the desktop app.",
-    category: "systems",
-    runsOn: "The same laptop, from a terminal",
-    points: [
-      "Run it from source when you are working on flight code or reading a trace.",
-      "Serves the local API the desktop app talks to, on 127.0.0.1 with a control token.",
-      "Writes every flight to CSV first and uploads afterwards, so nothing is lost offline.",
-    ],
-    setupPage: "setup-agent",
-    source: "backend/agent/",
-    platforms: [],
-    instead: "Inside the desktop app",
   },
   {
     slug: "dashboard",

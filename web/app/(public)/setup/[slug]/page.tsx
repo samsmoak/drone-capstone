@@ -2,6 +2,7 @@ import { PROSE_COLUMN, SITE_CONTAINER } from "@/lib/layout";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { CommandList } from "@/components/site/CommandList";
 import { AgentStatus } from "@/components/ui/agent-status";
 import { DownloadButtons } from "@/components/ui/download-buttons";
 import { categoryColor } from "@/lib/categories";
@@ -73,6 +74,8 @@ export default async function SetupGuidePage({ params }: PageProps<"/setup/[slug
           <ol className="mt-10 space-y-10">
             {items(setup, "steps").map((step, i) => {
               const bullets = strings(step, "bullets");
+              const needs = strings(step, "needs");
+              const commands = strings(step, "commands");
               const note = text(step, "note");
               return (
                 <li key={`${text(step, "title")}-${i}`} className="flex gap-4 sm:gap-5">
@@ -86,6 +89,28 @@ export default async function SetupGuidePage({ params }: PageProps<"/setup/[slug
                       {strings(step, "paragraphs").map((para, j) => (
                         <p key={j} className="text-[var(--muted)]">{para}</p>
                       ))}
+                      {needs.length > 0 && (
+                        <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
+                          <h3 className="eyebrow mb-2.5">What you need</h3>
+                          <ul className="grid gap-2 text-sm">
+                            {needs.map((need, j) => (
+                              <li key={j} className="flex gap-2.5">
+                                <span aria-hidden="true"
+                                      className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[var(--border)] text-[10px] text-[var(--heading)]">
+                                  ✓
+                                </span>
+                                <span>{need}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {commands.length > 0 && (
+                        <div>
+                          <h3 className="eyebrow mb-2.5">Then run, in order</h3>
+                          <CommandList commands={commands} />
+                        </div>
+                      )}
                       {bullets.length > 0 && (
                         <ul className="space-y-1.5 text-sm">
                           {bullets.map((item, j) => (
