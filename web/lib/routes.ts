@@ -6,6 +6,7 @@ export const projectPath = (slug: string) => `${PROJECTS}/${encodeURIComponent(s
 export const SETUP = "/setup";
 export const HARDWARE = "/setup/hardware";
 export const GALLERY = "/gallery";
+export const galleryPath = (slug: string) => `${GALLERY}/${encodeURIComponent(slug)}`;
 export const TEAM = "/team";
 
 export const LOGIN = "/login";
@@ -23,6 +24,8 @@ export const SETTINGS = "/app/settings";
 export const ADMIN = "/admin";
 export const ADMIN_PROJECTS = "/admin/projects";
 export const ADMIN_TEAM = "/admin/team";
+export const ADMIN_GALLERY = "/admin/gallery";
+export const adminAlbumPath = (id: string) => `${ADMIN_GALLERY}/${id}`;
 export const adminProjectPath = (id: string) => `${ADMIN_PROJECTS}/${id}`;
 
 /** Everything under these needs a session. */
@@ -57,4 +60,5 @@ export const OPERATOR_NAV = [
 export const ADMIN_NAV = [
   { href: ADMIN_PROJECTS, label: "Projects" },
   { href: ADMIN_TEAM, label: "Team" },
+  { href: ADMIN_GALLERY, label: "Gallery" },
 ] as const;

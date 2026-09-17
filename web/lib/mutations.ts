@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { ADMIN_PROJECTS, ADMIN_TEAM, FLIGHTS, PLAN, PROJECTS, TEAM } from "@/lib/routes";
+import { ADMIN_GALLERY, ADMIN_PROJECTS, ADMIN_TEAM, FLIGHTS, GALLERY, PLAN, PROJECTS, TEAM } from "@/lib/routes";
+import { youtubeId } from "@/lib/video";
 import type { Json } from "@/types/database";
 import { getZones } from "@/lib/queries";
 import { buildPlan, parsePlanInput, validatePlan } from "@/lib/mission-plan";
@@ -320,5 +321,140 @@ export async function reorderMembers(order: { id: string; position: number }[]):
     if (error) return { ok: false, error: "Could not reorder the team." };
   }
   revalidatePortfolio();
+  return { ok: true, data: undefined };
+}
+
+// ── gallery (admin) ──────────────────────────────────────────────────────
+
+function revalidateGallery(slug?: string) {
+  revalidatePath(GALLERY);
+  if (slug) revalidatePath(`${GALLERY}/${slug}`);
+  revalidatePath(ADMIN_GALLERY);
+}
+
+export async function createAlbum(input: { title: string }): Promise<PortfolioResult<{ id: string }>> {
+  const title = input.title.trim();
+  if (!title) return { ok: false, error: "Give the album a title." };
+  const supabase = await createClient();
+  const base = slugify(title);
+  const { data: taken } = await supabase.from("gallery_albums").select("slug").like("slug", `${base}%`);
+  const used = new Set((taken ?? []).map((r) => r.slug));
+  let slug = base;
+  for (let n = 2; used.has(slug); n++) slug = `${base}-${n}`;
+  const { data, error } = await supabase
+    .from("gallery_albums").insert({ title, slug, status: "draft" }).select("id").single();
+  if (error) return { ok: false, error: "Could not create the album. Are you signed in as an operator?" };
+  revalidateGallery();
+  return { ok: true, data: { id: data.id } };
+}
+
+export type AlbumUpdate = {
+  title: string;
+  summary: string;
+  category: string;
+  date_label: string;
+  cover_image_url: string | null;
+  status: "draft" | "published";
+};
+
+export async function updateAlbum(id: string, input: AlbumUpdate): Promise<PortfolioResult> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("gallery_albums")
+    .update({ ...input, title: input.title.trim(), updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select("slug")
+    .single();
+  if (error) return { ok: false, error: "Could not save the album." };
+  revalidateGallery(data.slug);
+  return { ok: true, data: undefined };
+}
+
+export async function setAlbumStatus(id: string, status: "draft" | "published"): Promise<PortfolioResult> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("gallery_albums").update({ status }).eq("id", id).select("slug").single();
+  if (error) return { ok: false, error: "Could not change the album's status." };
+  revalidateGallery(data.slug);
+  return { ok: true, data: undefined };
+}
+
+export async function deleteAlbum(id: string): Promise<PortfolioResult> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("gallery_albums").delete().eq("id", id);
+  if (error) return { ok: false, error: "Could not delete the album." };
+  revalidateGallery();
+  return { ok: true, data: undefined };
+}
+
+export async function reorderAlbums(order: { id: string; position: number }[]): Promise<PortfolioResult> {
+  const supabase = await createClient();
+  for (const { id, position } of order) {
+    const { error } = await supabase.from("gallery_albums").update({ display_order: position }).eq("id", id);
+    if (error) return { ok: false, error: "Could not reorder the albums." };
+  }
+  revalidateGallery();
+  return { ok: true, data: undefined };
+}
+
+export type NewGalleryItem =
+  | { kind: "image"; url: string; width: number | null; height: number | null; caption?: string }
+  | { kind: "video"; url: string; caption?: string };
+
+export async function addGalleryItems(albumId: string, items: NewGalleryItem[]): Promise<PortfolioResult> {
+  if (items.length === 0) return { ok: true, data: undefined };
+  for (const item of items) {
+    if (item.kind === "video" && !youtubeId(item.url)) {
+      return { ok: false, error: "That is not a YouTube link. Paste a youtube.com or youtu.be address." };
+    }
+  }
+  const supabase = await createClient();
+  const { data: last } = await supabase
+    .from("gallery_items").select("display_order").eq("album_id", albumId)
+    .order("display_order", { ascending: false }).limit(1);
+  const start = (last?.[0]?.display_order ?? -1) + 1;
+  const { error } = await supabase.from("gallery_items").insert(
+    items.map((item, i) => ({
+      album_id: albumId,
+      kind: item.kind,
+      url: item.url.trim(),
+      caption: item.caption?.trim() ?? "",
+      width: item.kind === "image" ? item.width : null,
+      height: item.kind === "image" ? item.height : null,
+      display_order: start + i,
+    })),
+  );
+  if (error) return { ok: false, error: "Could not add to the album." };
+  const { data: album } = await supabase.from("gallery_albums").select("slug").eq("id", albumId).maybeSingle();
+  revalidateGallery(album?.slug);
+  return { ok: true, data: undefined };
+}
+
+export async function updateGalleryItem(
+  id: string, input: { caption: string; credit: string },
+): Promise<PortfolioResult> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("gallery_items").update({ caption: input.caption.trim(), credit: input.credit.trim() }).eq("id", id);
+  if (error) return { ok: false, error: "Could not save the caption." };
+  revalidateGallery();
+  return { ok: true, data: undefined };
+}
+
+export async function deleteGalleryItem(id: string): Promise<PortfolioResult> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("gallery_items").delete().eq("id", id);
+  if (error) return { ok: false, error: "Could not remove that item." };
+  revalidateGallery();
+  return { ok: true, data: undefined };
+}
+
+export async function reorderGalleryItems(order: { id: string; position: number }[]): Promise<PortfolioResult> {
+  const supabase = await createClient();
+  for (const { id, position } of order) {
+    const { error } = await supabase.from("gallery_items").update({ display_order: position }).eq("id", id);
+    if (error) return { ok: false, error: "Could not reorder the album." };
+  }
+  revalidateGallery();
   return { ok: true, data: undefined };
 }

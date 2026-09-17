@@ -17,10 +17,11 @@ WHERE IT LIVES
   backend/supabase/migrations/…0005_installers_bucket.sql
   backend/supabase/migrations/…0006_sessions_audit_identity.sql
   backend/supabase/migrations/…0007_portfolio.sql            projects, team
+  backend/supabase/migrations/20260917000008_gallery.sql     albums, items
   web/types/database.ts                                      generated types
                                                              (0007's added by hand)
 
-Applied to the hosted project (fuwojlqpavvfgmqardfo) through 0007.
+Applied to the hosted project (fuwojlqpavvfgmqardfo) through 0008.
 
 
 THE TABLES
@@ -46,6 +47,9 @@ THE TABLES
   team_members  people on /team and beside projects: name, role, photo,
                 website, email, display order.
   project_members  who worked on which project, in order.
+  gallery_albums   public albums: slug, title, category, cover, draft/published.
+  gallery_items    an album's photos (storage URL + width/height) and videos
+                   (YouTube links), in order. See ../frontend/gallery.txt.
 
 
 DECISIONS
