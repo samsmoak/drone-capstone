@@ -5,7 +5,7 @@
  * covered. Readings load when a section is opened, not all at once.
  */
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { AgentError, api, type Mode, type SampleRow, type SessionRecord } from "@/lib/agent";
 import { endReasonLabel, formatDateTime, formatDuration, formatNumber, formatTime } from "@/lib/format";
 import { openDashboard } from "@/lib/web";
@@ -159,14 +159,26 @@ export function LoadState<T>({ state, reload, empty, emptyText, children }: {
  * React renders a closed <details>' children anyway, so a plain one would fetch
  * every session's readings the moment the list appeared.
  */
-export function Disclosure({ summary, summaryClassName, children }: {
+export function Disclosure({ summary, summaryClassName, children, open = false }: {
   summary: ReactNode;
   summaryClassName: string;
   children: () => ReactNode;
+  /** Open from the start: a log the operator asked to see should not need a
+   *  second click to show anything. */
+  open?: boolean;
 }) {
-  const [opened, setOpened] = useState(false);
+  const [opened, setOpened] = useState(open);
+  // Opened once, on mount. Held as a prop instead, React would reopen it on
+  // every re-render and the operator could never close it.
+  const started = useRef(false);
   return (
     <details
+      ref={(el) => {
+        if (el && open && !started.current) {
+          started.current = true;
+          el.open = true;
+        }
+      }}
       className="group rounded-xl border border-[var(--border)] bg-[var(--surface)]"
       onToggle={(e) => { if (e.currentTarget.open) setOpened(true); }}
     >
@@ -177,10 +189,14 @@ export function Disclosure({ summary, summaryClassName, children }: {
 }
 
 /** A time-stamped table of readings, fetched when its section is first opened. */
-export function ReadingsTable({ sessionId, variables, mode }: {
+/** Rows shown per session in a log. The rest are a click away in the dashboard. */
+export const READINGS_SHOWN = 25;
+
+export function ReadingsTable({ sessionId, variables, mode, limit = READINGS_SHOWN }: {
   sessionId: string;
   variables: Variable[];
   mode: Mode | null;
+  limit?: number;
 }) {
   const [state, setState] = useState<Load<SampleRow[]>>({ kind: "loading" });
   const load = useCallback(async () => {
@@ -205,45 +221,53 @@ export function ReadingsTable({ sessionId, variables, mode }: {
   }
   if (state.data.length === 0) {
     return (
-      <div className="grid gap-3">
-        <p className="text-sm text-[var(--muted)]">
-          No readings were recorded in this session{mode ? ` in ${MODE_LABEL[mode].toLowerCase()} mode` : ""}.
-        </p>
-        <div><DashboardLink>Look in the dashboard</DashboardLink></div>
-      </div>
+      <p className="text-sm text-[var(--muted)]">
+        No readings were recorded in this session{mode ? ` in ${MODE_LABEL[mode].toLowerCase()} mode` : ""}.
+      </p>
     );
   }
+  // The latest readings: what happened most recently is what is asked about.
+  const rows = state.data.slice(-limit);
   return (
-    <div className="max-h-[28rem] overflow-auto rounded-lg border border-[var(--border)]">
-      <table className="w-full text-sm">
-        <caption className="sr-only">Readings, one per second</caption>
-        <thead className="sticky top-0 bg-[var(--surface-2)]">
-          <tr>
-            <th scope="col" className="px-3 py-2 text-left font-semibold">Time</th>
-            {variables.map((v) => (
-              <th key={v.name} scope="col" className="px-3 py-2 text-right font-semibold">
-                {v.label}
-                {v.unit ? <span className="font-normal text-[var(--muted)]"> {v.unit}</span> : null}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-[var(--border)]">
-          {state.data.map((row, i) => (
-            <tr key={`${row.recorded_at}-${i}`}>
-              <td className="tabular whitespace-nowrap px-3 py-1.5">{formatTime(row.recorded_at)}</td>
-              {variables.map((v) => {
-                const raw = row[v.name];
-                return (
-                  <td key={v.name} className="tabular px-3 py-1.5 text-right">
-                    {formatNumber(typeof raw === "number" ? raw : null, v.digits ?? 2)}
-                  </td>
-                );
-              })}
+    <div className="grid gap-2">
+      {state.data.length > rows.length && (
+        // Above the table, not below it: inside the scroll box the operator
+        // would have to reach the end to learn there was more.
+        <p className="text-xs text-[var(--muted)]">
+          The latest {rows.length} of {state.data.length} readings — the dashboard has them all.
+        </p>
+      )}
+      <div className="max-h-[28rem] overflow-auto rounded-lg border border-[var(--border)]">
+        <table className="w-full text-sm">
+          <caption className="sr-only">Readings, one per second</caption>
+          <thead className="sticky top-0 bg-[var(--surface-2)]">
+            <tr>
+              <th scope="col" className="px-3 py-2 text-left font-semibold">Time</th>
+              {variables.map((v) => (
+                <th key={v.name} scope="col" className="px-3 py-2 text-right font-semibold">
+                  {v.label}
+                  {v.unit ? <span className="font-normal text-[var(--muted)]"> {v.unit}</span> : null}
+                </th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-[var(--border)]">
+            {rows.map((row, i) => (
+              <tr key={`${row.recorded_at}-${i}`}>
+                <td className="tabular whitespace-nowrap px-3 py-1.5">{formatTime(row.recorded_at)}</td>
+                {variables.map((v) => {
+                  const raw = row[v.name];
+                  return (
+                    <td key={v.name} className="tabular px-3 py-1.5 text-right">
+                      {formatNumber(typeof raw === "number" ? raw : null, v.digits ?? 2)}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

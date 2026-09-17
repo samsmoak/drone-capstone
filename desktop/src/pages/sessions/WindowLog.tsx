@@ -6,8 +6,15 @@ import { formatDateTime, formatDuration } from "@/lib/format";
 import { PageHeader } from "@/components/ui";
 import { WINDOWS, WINDOW_VARIABLES, type WindowKey } from "@/pages/windows/SensorWindow";
 import {
-  DashboardLink, Disclosure, HiddenByMode, LoadState, MODE_LABEL, ReadingsTable, Who, useSessions,
+  DashboardLink, Disclosure, HiddenByMode, LoadState, MODE_LABEL, READINGS_SHOWN, ReadingsTable,
+  Who, useSessions,
 } from "./parts";
+
+/** Sessions listed before the dashboard takes over. */
+const SESSIONS_SHOWN = 10;
+
+/** Opened on arrival, so the log shows readings without another click. */
+const OPEN_ON_ARRIVAL = 3;
 
 export function WindowLog({ windowKey, refreshKey, mode, onBack }: {
   windowKey: WindowKey;
@@ -18,7 +25,7 @@ export function WindowLog({ windowKey, refreshKey, mode, onBack }: {
   const page = WINDOWS.find((w) => w.key === windowKey)!;
   const [allModes, setAllModes] = useState(false);
   const filter = allModes ? null : mode;
-  const { state, hidden, reload } = useSessions(200, refreshKey, filter);
+  const { state, hidden, reload } = useSessions(SESSIONS_SHOWN, refreshKey, filter);
 
   return (
     <div className="grid gap-6">
@@ -31,10 +38,11 @@ export function WindowLog({ windowKey, refreshKey, mode, onBack }: {
 
       <div className="flex flex-wrap items-end justify-between gap-4">
         <PageHeader title={`${page.label} log${allModes ? "" : ` · ${MODE_LABEL[mode]}`}`}>
-          Every {page.label.toLowerCase()} reading this computer recorded, grouped by session — each
-          scoped to the person who ran it and the time it ran.
+          Past sessions on this computer — the latest {SESSIONS_SHOWN}, with their most recent
+          {" "}{READINGS_SHOWN} {page.label.toLowerCase()} readings each. The live page shows what
+          the drone is doing right now.
         </PageHeader>
-        <DashboardLink>More in the dashboard</DashboardLink>
+        <DashboardLink>View all in the dashboard</DashboardLink>
       </div>
 
       <HiddenByMode mode={mode} hidden={hidden} onShowAll={() => setAllModes(true)} />
@@ -43,18 +51,14 @@ export function WindowLog({ windowKey, refreshKey, mode, onBack }: {
         state={state}
         reload={reload}
         empty={state.kind === "ready" && state.data.length === 0}
-        emptyText={
-          <div className="grid gap-3">
-            <p>No sessions recorded on this computer yet.</p>
-            <div><DashboardLink>See flights from other computers</DashboardLink></div>
-          </div>
-        }
+        emptyText={<p>No sessions recorded on this computer yet.</p>}
       >
         {(records) => (
           <div className="grid gap-3">
-            {records.map((r) => (
+            {records.map((r, i) => (
               <Disclosure
                 key={r.id}
+                open={i < OPEN_ON_ARRIVAL}
                 summaryClassName="grid cursor-pointer list-none gap-1 px-5 py-4 sm:grid-cols-[1fr_auto] sm:items-center"
                 summary={
                   <>

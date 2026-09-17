@@ -31,7 +31,7 @@ export function SessionsPage({ refreshKey, mode, selectedId, onSelect }: {
           Every session run on this computer: who ran it, when it started and ended, and what the
           drone reported. Open one for its flights and readings.
         </PageHeader>
-        <DashboardLink>Every flight, in the dashboard</DashboardLink>
+        <DashboardLink>View all in the dashboard</DashboardLink>
       </div>
 
       <HiddenByMode mode={mode} hidden={hidden} onShowAll={() => setAllModes(true)} />
@@ -41,12 +41,7 @@ export function SessionsPage({ refreshKey, mode, selectedId, onSelect }: {
           state={state}
           reload={reload}
           empty={state.kind === "ready" && state.data.length === 0}
-          emptyText={
-            <div className="grid gap-3">
-              <p>No sessions on this computer yet.</p>
-              <div><DashboardLink>See flights from other computers</DashboardLink></div>
-            </div>
-          }
+          emptyText={<p>No sessions on this computer yet.</p>}
         >
           {(records) => (
             <ul className="-mx-4 divide-y divide-[var(--border)]">
@@ -141,9 +136,10 @@ function SessionDetailBody({ record, mode }: { record: SessionRecord; mode: Mode
         )}
       </Panel>
 
-      {WINDOWS.map((w) => (
+      {WINDOWS.map((w, index) => (
         <Disclosure
           key={w.key}
+          open={index === 0}
           summaryClassName="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4"
           summary={
             <>

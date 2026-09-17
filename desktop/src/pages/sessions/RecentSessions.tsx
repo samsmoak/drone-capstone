@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { Mode } from "@/lib/agent";
 import { Button, Panel } from "@/components/ui";
-import { DashboardLink, HiddenByMode, LoadState, MODE_LABEL, SessionRow, useSessions } from "./parts";
+import { HiddenByMode, LoadState, MODE_LABEL, SessionRow, useSessions } from "./parts";
 
 export function RecentSessions({ refreshKey, mode, onOpen, onOpenAll }: {
   refreshKey: unknown;
@@ -28,11 +28,8 @@ export function RecentSessions({ refreshKey, mode, onOpen, onOpenAll }: {
           reload={reload}
           empty={state.kind === "ready" && state.data.length === 0}
           emptyText={
-            <div className="grid gap-3">
-              <p>No sessions on this computer yet. Start one from Control — it will be listed here
-                with who ran it and when.</p>
-              <div><DashboardLink>See flights from other computers</DashboardLink></div>
-            </div>
+            <p>No sessions on this computer yet. Start one from Control — it will be listed here
+              with who ran it and when.</p>
           }
         >
           {(records) => (
