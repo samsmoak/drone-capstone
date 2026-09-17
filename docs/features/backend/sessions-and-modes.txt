@@ -22,9 +22,11 @@ THE STATES
   signed_out            -> sign_in
   idle                  -> start           (signed in, no drone session)
   starting              -> checks running
-  checks_failed         -> start again   (only: no telemetry, or sys.canfly = 0)
+  checks_failed         -> start again, or retry inside an open session
+                           (only: no telemetry, sys.canfly = 0, or motors held)
   awaiting_confirmation -> confirm_area    (drone on the floor, area clear)
-  ready                 -> prop_test / run_program / arm_manual
+  ready                 -> health_test / run_program / arm_manual
+                           or, when retry_required, only: retry
   busy                  -> land / emergency_stop
   ending                -> land if needed, close the flight, flush the upload
 
@@ -32,8 +34,9 @@ MODE is auto or manual, chosen in the top bar, and defaults to AUTO. It cannot
 change while busy: swapping controller mid-air would hand the drone to a
 different command source with no warning.
 
-  auto    Start test (spins each motor on the ground) and Hover test (rise,
-          hold a steady height, land where it started)
+  auto    Hover test (rise, hold a steady height, land where it started)
+  both    Battery & motor test (each motor on its own, then the battery under
+          all four — the firmware's two health tests)
   manual  Start (props idle on the ground), then held keys fly it — see
           manual-control.txt
 
@@ -47,6 +50,15 @@ S to the floor, the heartbeat, a guard, Emergency stop — the watcher closes th
 flight record and returns the session to READY, so End session and the mode
 toggle work again. Before this a tumble left the app "busy" with no way out. A
 low-battery landing goes further and ends the session.
+
+AN ABNORMAL END NEEDS A RETRY. A guard abort, a tumble or an emergency stop (and
+an Auto program that aborts or fails) sets retry_required. Nothing flies and no
+test runs until Retry, which runs the exact path a new session takes — open the
+link if it is closed, every check including the motors, then confirm the area
+again — inside the SAME session: same id, same history, same audit trail. A
+retry that fails leaves the session open in checks_failed with the link closed,
+so a power-cycled drone gets a fresh link on the next Retry; Start is refused
+while that session is open. A normal landing does not require a retry.
 
 STAYING SIGNED IN. Signing in saves the Supabase refresh token in the app data
 folder (session.json, mode 0600). At startup the agent restores it in the

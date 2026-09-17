@@ -74,8 +74,12 @@ class FakeLink:
         self.report = REPORT
         self.open_error: Exception | None = None
         self.check_failure: CheckResult | None = None
-        self.prop_result: Any = SimpleNamespace(ok=True, failed=(), to_dict=lambda: {"ok": True})
-        self.prop_error: Exception | None = None
+        self.health_result: Any = SimpleNamespace(
+            ok=True, motors=SimpleNamespace(failed=()),
+            battery=SimpleNamespace(passed=True, sag_v=0.2),
+            battery_error=None, to_dict=lambda: {"ok": True})
+        self.health_error: Exception | None = None
+        self.checks_runs = 0
         self.flight = FakeFlight()
         self.manual_controller = FakeManual()
         self.closed = False
@@ -94,6 +98,7 @@ class FakeLink:
         return self.stream.snapshot()
 
     def checks(self):
+        self.checks_runs += 1
         yield CheckResult(CheckKey.IDENTITY, CheckStatus.PASSED, "cf-lab")
         if self.check_failure is not None:
             yield self.check_failure
@@ -101,10 +106,10 @@ class FakeLink:
         yield CheckResult(CheckKey.ESTIMATE, CheckStatus.PASSED, "steady")
         return self.report
 
-    def prop_test(self):
-        if self.prop_error:
-            raise self.prop_error
-        return self.prop_result
+    def health_test(self):
+        if self.health_error:
+            raise self.health_error
+        return self.health_result
 
     def guarded_flight(self, report, **kwargs):
         return self.flight
@@ -252,21 +257,57 @@ class TestFlyingRequiresConfirmation:
         assert rig.session.snapshot().can_fly
 
 
-class TestPropTest:
+class TestHealthTest:
+    def result(self, *, failed=(), battery_passed=True, sag=0.2, battery=True):
+        return SimpleNamespace(
+            ok=not failed and battery and battery_passed,
+            motors=SimpleNamespace(failed=failed),
+            battery=SimpleNamespace(passed=battery_passed, sag_v=sag) if battery else None,
+            battery_error=None if battery else "The battery test did not report (TimeoutError).",
+            to_dict=lambda: {"ok": False},
+        )
+
     def test_a_passing_test_returns_to_ready(self, rig):
         start_and_confirm(rig)
-        rig.session.prop_test()
+        rig.session.health_test()
         rig.session.wait_idle()
         assert rig.session.snapshot().state is State.READY
-        assert rig.session.snapshot().prop_test == {"ok": True}
+        assert rig.session.snapshot().health_test == {"ok": True}
+        assert rig.session.snapshot().message is None
 
     def test_a_failing_motor_is_reported_in_words(self, rig):
         start_and_confirm(rig)
-        rig.link.prop_result = SimpleNamespace(
-            ok=False, failed=(3,), to_dict=lambda: {"ok": False, "failed": [3]})
-        rig.session.prop_test()
+        rig.link.health_result = self.result(failed=(3,))
+        rig.session.health_test()
         rig.session.wait_idle()
         assert "Motor(s) 3" in rig.session.snapshot().message
+
+    def test_a_sagging_battery_is_reported_with_the_sag(self, rig):
+        start_and_confirm(rig)
+        rig.link.health_result = self.result(battery_passed=False, sag=0.61)
+        rig.session.health_test()
+        rig.session.wait_idle()
+        assert "sagged 0.61 V" in rig.session.snapshot().message
+
+    def test_a_battery_half_with_no_result_says_so(self, rig):
+        start_and_confirm(rig)
+        rig.link.health_result = self.result(battery=False)
+        rig.session.health_test()
+        rig.session.wait_idle()
+        assert "did not report" in rig.session.snapshot().message
+
+    def test_the_old_prop_test_name_runs_the_full_test(self, rig):
+        start_and_confirm(rig)
+        rig.session.prop_test()
+        rig.session.wait_idle()
+        assert rig.session.snapshot().health_test == {"ok": True}
+
+    def test_it_is_audited(self, rig):
+        start_and_confirm(rig)
+        rig.session.health_test()
+        rig.session.wait_idle()
+        actions = [r.payload["action"] for r in rig.outbox.pending(Kind.AUDIT)]
+        assert "health_test" in actions
 
 
 class TestProgram:
@@ -541,6 +582,129 @@ class TestManualFinishes:
         rig.session.end()
         assert rig.session.snapshot().state is State.IDLE
         assert "stop" in rig.link.manual_controller.events
+
+
+class TestRetry:
+    """After a crash, the same session checks the drone again before anything flies.
+
+    2026-09-17: a flight tumbled, the session went straight back to "fly
+    again", and the next flight reported flying for 19 s with thrust 0 — the
+    firmware was still holding the motors. Retry re-runs every check (which
+    now includes recovering the motors) in the same session.
+    """
+
+    def crash(self, rig):
+        start_and_confirm(rig)
+        rig.session.set_mode(Mode.MANUAL)
+        rig.link.guard_verdict = Verdict(GuardAction.STOP, Reason.TUMBLED, "Tumbled.")
+        rig.session.arm_manual()
+        assert wait_for(lambda: "emergency_stop" in rig.link.manual_controller.events)
+        rig.link.manual_controller.state = "stopped"
+        assert wait_for(lambda: rig.session.snapshot().state is State.READY)
+        rig.link.guard_verdict = None
+
+    def test_a_tumble_requires_a_retry_before_flying_again(self, rig):
+        self.crash(rig)
+        snap = rig.session.snapshot()
+        assert snap.retry_required
+        assert "Retry" in snap.message
+        rig.link.manual_controller = FakeManual()
+        with pytest.raises(SessionError, match="Press Retry"):
+            rig.session.arm_manual()
+
+    def test_the_battery_and_motor_test_waits_for_the_retry_too(self, rig):
+        self.crash(rig)
+        with pytest.raises(SessionError, match="Press Retry"):
+            rig.session.health_test()
+
+    def test_an_emergency_stop_requires_a_retry(self, rig):
+        start_and_confirm(rig)
+        rig.session.set_mode(Mode.MANUAL)
+        rig.session.arm_manual()
+        rig.session.emergency_stop()
+        rig.link.manual_controller.state = "stopped"
+        assert wait_for(lambda: rig.session.snapshot().state is State.READY)
+        assert rig.session.snapshot().retry_required
+
+    def test_a_normal_landing_does_not(self, rig):
+        start_and_confirm(rig)
+        rig.session.set_mode(Mode.MANUAL)
+        rig.session.arm_manual()
+        rig.link.manual_controller.state = "landed"
+        assert wait_for(lambda: rig.session.snapshot().state is State.READY)
+        assert not rig.session.snapshot().retry_required
+
+    def test_retry_runs_every_check_again_in_the_same_session(self, rig):
+        self.crash(rig)
+        session_id = rig.session.snapshot().session_id
+        runs = rig.link.checks_runs
+        rig.session.retry()
+        rig.session.wait_idle()
+        snap = rig.session.snapshot()
+        assert rig.link.checks_runs == runs + 1
+        assert snap.state is State.AWAITING_CONFIRMATION     # confirm again, as new
+        assert snap.session_id == session_id
+        assert not snap.retry_required
+        rig.session.confirm_area()
+        rig.link.manual_controller = FakeManual()
+        rig.session.arm_manual()                             # and it may fly
+        assert rig.session.snapshot().state is State.BUSY
+
+    def test_a_failed_retry_keeps_the_session_and_can_be_retried(self, rig):
+        self.crash(rig)
+        session_id = rig.session.snapshot().session_id
+        rig.link.check_failure = CheckResult(
+            CheckKey.MOTORS, CheckStatus.FAILED,
+            "The drone has locked its motors and needs a restart.")
+        rig.session.retry()
+        rig.session.wait_idle()
+        snap = rig.session.snapshot()
+        assert snap.state is State.CHECKS_FAILED
+        assert snap.session_id == session_id
+        assert snap.retry_required
+        assert "restart" in snap.message
+        assert rig.link.closed                               # a power-cycled drone needs a new link
+
+        rig.link.check_failure = None
+        rig.session.retry()
+        rig.session.wait_idle()
+        assert rig.session.snapshot().state is State.AWAITING_CONFIRMATION
+        assert rig.link.is_open
+
+    def test_start_is_refused_while_the_session_is_still_open(self, rig):
+        self.crash(rig)
+        rig.link.check_failure = CheckResult(CheckKey.MOTORS, CheckStatus.FAILED, "locked")
+        rig.session.retry()
+        rig.session.wait_idle()
+        with pytest.raises(SessionError, match="Press Retry"):
+            rig.session.start()
+
+    def test_retry_needs_a_session(self, rig):
+        sign_in(rig)
+        with pytest.raises(SessionError, match="no session"):
+            rig.session.retry()
+
+    def test_retry_is_audited(self, rig):
+        self.crash(rig)
+        rig.session.retry()
+        rig.session.wait_idle()
+        retries = [r.payload for r in rig.outbox.pending(Kind.AUDIT)
+                   if r.payload["action"] == "session_retry"]
+        assert retries and retries[0]["detail"] == {"after_abnormal_end": True}
+
+    def test_an_aborted_program_requires_a_retry(self, rig, monkeypatch):
+        monkeypatch.setattr(
+            "cropwatcher.session.run_hover_test",
+            lambda flight, program: ProgramResult(Outcome.ABORTED, Reason.TUMBLED, "Tumbled."),
+        )
+        start_and_confirm(rig)
+        run_program(rig, height_m=0.3, hold_s=5)
+        assert rig.session.snapshot().retry_required
+
+    def test_ending_the_session_clears_it(self, rig):
+        self.crash(rig)
+        rig.session.end()
+        assert not rig.session.snapshot().retry_required
 
 
 class TestHistory:

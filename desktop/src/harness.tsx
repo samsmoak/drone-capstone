@@ -37,7 +37,13 @@ const session: Session = {
       detail: "Only 0 of 4 base stations are being received. Stored geometry is not signal — re-run geometry estimation in cfclient before flying.",
     },
   ],
-  prop_test: { ok: false, failed: [2, 3] },
+  health_test: {
+    ok: false,
+    motors: { passed: [1, 4], failed: [2, 3], ok: false },
+    battery: { sag_v: 0.61, passed: false, idle_vbat: 4.12, pwm_ratio: 0 },
+    battery_error: null,
+  },
+  retry_required: false,
   flight: null,
   message: "The checks did not pass, so the drone will not arm.",
   can_fly: false,
@@ -91,6 +97,17 @@ createRoot(document.getElementById("root")!).render(
     <StartupPage connected={false} />
     <HomePage session={session} telemetry={telemetry} sync={null} connected run={noop} onGo={() => {}} />
     <ControlPage session={{ ...session, state: "awaiting_confirmation" }} telemetry={telemetry} intent={EMPTY_INTENT} flying={false} run={noop} historyKey="h" onOpenSession={() => {}} onOpenSessions={() => {}} />
+    <ControlPage
+      session={{ ...session, state: "ready", retry_required: true,
+                 message: "The drone reports it has tumbled — motors stopped. The flight ended early — press Retry to check the drone again before flying." }}
+      telemetry={telemetry} intent={EMPTY_INTENT} flying={false} run={noop}
+      historyKey="h" onOpenSession={() => {}} onOpenSessions={() => {}}
+    />
+    <ControlPage
+      session={{ ...session, state: "ready", mode: "auto", assisted: true, message: null }}
+      telemetry={telemetry} intent={EMPTY_INTENT} flying={false} run={noop}
+      historyKey="h" onOpenSession={() => {}} onOpenSessions={() => {}}
+    />
     <ControlPage
       session={{ ...session, state: "ready", mode: "manual" }}
       telemetry={telemetry} intent={EMPTY_INTENT} flying={false} run={noop}

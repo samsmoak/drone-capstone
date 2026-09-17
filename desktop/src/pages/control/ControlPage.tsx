@@ -6,12 +6,16 @@
  *
  *   signed out → idle → checks → confirm the area → ready → flying
  *
+ * A flight that ends abnormally (a tumble, a guard, an emergency stop) puts
+ * Retry in place of the flying controls: every check again, in this session,
+ * before anything can fly — the drone holds its motors after a tumble.
+ *
  * Auto shows the preset programs; Manual shows arming and the keys. Both run
  * the same checks and need the same confirmation, because the risk is the same.
  */
 
 import { useState, type FormEvent, type InputHTMLAttributes } from "react";
-import { api, KEY_LABELS, type Intent, type Session, type Telemetry } from "@/lib/agent";
+import { api, KEY_LABELS, type HealthTest, type Intent, type Session, type Telemetry } from "@/lib/agent";
 import { RecentSessions } from "@/pages/sessions/RecentSessions";
 import { Button, Message, PageHeader, Panel, Spinner, Stat, StatusDot } from "@/components/ui";
 
@@ -46,7 +50,7 @@ export function ControlPage({
 
       {session.message && (
         <Message
-          tone={session.state === "checks_failed" ? "critical" : "idle"}
+          tone={session.state === "checks_failed" ? "critical" : session.retry_required ? "warning" : "idle"}
           text={session.message}
         />
       )}
@@ -57,10 +61,16 @@ export function ControlPage({
         session.state === "awaiting_confirmation") && (
         <Checklist session={session} run={run} />
       )}
-      {(session.state === "ready" || session.state === "busy") && (
-        session.mode === "auto"
-          ? <AutoControls session={session} run={run} />
-          : <ManualControls session={session} telemetry={telemetry} intent={intent} run={run} />
+      {session.state === "ready" && session.retry_required && (
+        <RetryPanel run={run} />
+      )}
+      {(session.state === "ready" || session.state === "busy") && !session.retry_required && (
+        <>
+          <HealthTestPanel session={session} run={run} />
+          {session.mode === "auto"
+            ? <AutoControls session={session} run={run} />
+            : <ManualControls session={session} telemetry={telemetry} intent={intent} run={run} />}
+        </>
       )}
       {session.state === "ending" && (
         <Panel title="Ending the session">
@@ -180,7 +190,11 @@ function Checklist({ session, run }: { session: Session; run: Props["run"] }) {
     <Panel
       title="Checks"
       note={session.state === "starting" ? "Keep the drone still while these run." : undefined}
-      action={failed ? <Button onClick={() => void run(api.start)}>Try again</Button> : undefined}
+      action={failed ? (
+        session.session_id
+          ? <Button variant="primary" onClick={() => void run(api.retry)}>Retry</Button>
+          : <Button onClick={() => void run(api.start)}>Try again</Button>
+      ) : undefined}
     >
       <ol className="grid gap-2">
         {session.checks.map((check) => (
@@ -243,6 +257,97 @@ function Checklist({ session, run }: { session: Session; run: Props["run"] }) {
   );
 }
 
+// ── after an abnormal end ────────────────────────────────────────────
+
+function RetryPanel({ run }: { run: Props["run"] }) {
+  return (
+    <Panel
+      title="Check the drone again"
+      note="The last flight ended early. After a tumble the drone holds its motors at zero, so a flight started now could report flying with nothing turning."
+    >
+      <div className="grid gap-4">
+        <ol className="grid list-decimal gap-1.5 pl-5 text-sm">
+          <li>Pick the drone up and look it over: propellers seated, nothing bent or loose.</li>
+          <li>Stand it level on a flat surface, clear of anything it could hit.</li>
+          <li>Press Retry. It frees the motors if the drone locked them, then runs every check again — the same steps as a new session, in this one.</li>
+        </ol>
+        <div>
+          <Button variant="primary" onClick={() => void run(api.retry)}>
+            Retry — check the drone again
+          </Button>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+// ── battery & motor test ─────────────────────────────────────────────
+
+function HealthTestPanel({ session, run }: { session: Session; run: Props["run"] }) {
+  const busy = session.state === "busy";
+  const testing = session.activity === "health_test";
+  const result = session.health_test;
+
+  return (
+    <Panel
+      title="Battery & motor test"
+      note="The drone's own two tests, on the ground. Each motor spins briefly on its own to find a bent propeller or a damaged motor; then all four run for a moment under load to see how far the battery voltage sags. The drone does not take off — keep hands clear."
+      action={result && (
+        <StatusDot tone={result.ok ? "good" : "critical"}>
+          {result.ok ? "Motors and battery passed" : "Something did not pass"}
+        </StatusDot>
+      )}
+    >
+      <div className="grid gap-5">
+        {result && <HealthTestResult result={result} />}
+        <div>
+          <Button onClick={() => void run(api.healthTest)} disabled={busy}>
+            {testing ? "Testing…" : result ? "Run the test again" : "Run battery & motor test"}
+          </Button>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function HealthTestResult({ result }: { result: HealthTest }) {
+  const failed = new Set(result.motors.failed);
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-4">
+        <h3 className="text-sm font-semibold">Motors</h3>
+        <ul className="mt-3 grid grid-cols-2 gap-2 text-sm">
+          {[1, 2, 3, 4].map((motor) => (
+            <li key={motor}>
+              <StatusDot tone={failed.has(motor) ? "critical" : "good"}>
+                {`Motor ${motor} ${failed.has(motor) ? "failed" : "passed"}`}
+              </StatusDot>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-4">
+        <h3 className="text-sm font-semibold">Battery</h3>
+        {result.battery ? (
+          <div className="mt-3 grid gap-1.5 text-sm">
+            <StatusDot tone={result.battery.passed ? "good" : "critical"}>
+              {result.battery.passed ? "Holds up under load" : "Sags too far under load"}
+            </StatusDot>
+            <p className="tabular text-[var(--muted)]">
+              Sagged {result.battery.sag_v.toFixed(2)} V
+              {result.battery.idle_vbat !== null && ` from ${result.battery.idle_vbat.toFixed(2)} V at rest`}
+            </p>
+          </div>
+        ) : (
+          <p className="mt-3 text-sm">
+            <StatusDot tone="warning">{result.battery_error ?? "No result"}</StatusDot>
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── auto ─────────────────────────────────────────────────────────────
 
 function AutoControls({ session, run }: { session: Session; run: Props["run"] }) {
@@ -254,24 +359,6 @@ function AutoControls({ session, run }: { session: Session; run: Props["run"] })
 
   return (
     <>
-      <Panel
-        title="Start test"
-        note="Spins each motor briefly and reports it — the fastest way to find a bent propeller or a motor damaged in a knock. The drone does not lift."
-        action={
-          session.prop_test && (
-            <StatusDot tone={session.prop_test.ok ? "good" : "critical"}>
-              {session.prop_test.ok
-                ? "All four motors passed"
-                : `Motor(s) ${(session.prop_test.failed ?? []).join(", ")} failed`}
-            </StatusDot>
-          )
-        }
-      >
-        <Button onClick={() => void run(api.propTest)} disabled={busy}>
-          {session.activity === "prop_test" ? "Testing…" : "Start test"}
-        </Button>
-      </Panel>
-
       <Panel
         title="Hover test"
         note="Rises straight up, holds a steady height, then lands where it started. The checks run again in the air: it lands by itself on low battery, lost positioning or drift."

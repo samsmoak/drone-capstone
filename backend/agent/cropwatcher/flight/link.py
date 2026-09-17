@@ -8,6 +8,7 @@ anything. Now there is one path:
     DroneLink.open()            connect, configure, start the telemetry stream
       .checks()                 the live preflight checklist → ReadyReport
       .prop_test()              the firmware's propeller test
+      .health_test()            propellers, then the battery under load
       .guarded_flight(report)   autonomous flight, every wait watched
       .manual(report)           the assisted manual controller
     DroneLink.close()           stop the stream, stop the motors, close the link
@@ -26,9 +27,12 @@ from typing import Any
 from cropwatcher.api.manual import ManualController
 from cropwatcher.flight import core, preflight
 from cropwatcher.flight.checks import (
+    BatteryTestResult,
     CheckResult,
+    HealthTestResult,
     PropTestResult,
     ReadyReport,
+    run_battery_test,
     run_checks,
     run_prop_test,
 )
@@ -183,7 +187,19 @@ class DroneLink:
         return run_checks(
             scf.cf, stream.snapshot,
             reset_estimator=lambda: preflight.reset_estimator(scf.cf),
+            request_recovery=lambda: self._request_crash_recovery(scf.cf),
         )
+
+    @staticmethod
+    def _request_crash_recovery(cf: Any) -> None:
+        """cflib 0.1.33 moved this to ``cf.supervisor``; older builds had it on
+        ``cf.platform``. Whichever this cflib has."""
+        target = getattr(cf, "supervisor", None) or getattr(cf, "platform", None)
+        if target is None or not hasattr(target, "send_crash_recovery_request"):
+            log.warning("this cflib cannot request crash recovery")
+            return
+        target.send_crash_recovery_request()
+        log.info("crash recovery requested")
 
     def prop_test(self) -> PropTestResult:
         """Spins the motors briefly. The caller must hold the operator's
@@ -197,6 +213,33 @@ class DroneLink:
             return int(row["health.motorTestCount"]), int(row["health.motorPass"])
 
         return run_prop_test(scf.cf, read_health)
+
+    def battery_test(self) -> BatteryTestResult:
+        """Spins all four motors briefly under load. Same precondition."""
+        scf, stream = self._require_open()
+
+        def read_result() -> tuple[float, int]:
+            row = preflight.sample(
+                scf, [("health.batterySag", "float"), ("health.batteryPass", "uint8_t")], n=1
+            )[0]
+            return float(row["health.batterySag"]), int(row["health.batteryPass"])
+
+        return run_battery_test(scf.cf, read_result, stream.snapshot)
+
+    def health_test(self) -> HealthTestResult:
+        """Propellers one at a time, then the battery under all four.
+
+        A motor that fails its own test still lets the battery half run: the two
+        answer different questions, and the operator needs both to decide.
+        """
+        motors = self.prop_test()
+        try:
+            battery = self.battery_test()
+        except Exception as e:
+            log.exception("battery test did not report")
+            return HealthTestResult(
+                motors, None, f"The battery test did not report ({type(e).__name__}).")
+        return HealthTestResult(motors, battery)
 
     # ── flying ───────────────────────────────────────────────────────────
 

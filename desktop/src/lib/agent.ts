@@ -36,7 +36,7 @@ export type Session = {
   session_id: string | null;
   activity: string | null;
   checks: Check[];
-  prop_test: { ok: boolean; passed?: number[]; failed?: number[] } | null;
+  health_test: HealthTest | null;
   flight: { id: string; phase: string; detail: string } | null;
   message: string | null;
   can_fly: boolean;
@@ -47,6 +47,23 @@ export type Session = {
    *  programs, and the position guards cannot run. */
   assisted: boolean;
   unassisted_reason: string | null;
+  /** The last flight ended abnormally. Nothing flies until Retry has run every
+   *  check again in this session — after a tumble the drone holds its motors. */
+  retry_required: boolean;
+};
+
+/** The firmware's propeller test, then its battery test under load. */
+export type HealthTest = {
+  ok: boolean;
+  motors: { passed: number[]; failed: number[]; ok: boolean };
+  battery: {
+    sag_v: number;
+    passed: boolean;
+    idle_vbat: number | null;
+    /** What the drone reported for health.batTestPWMRatio; 0 = firmware default. */
+    pwm_ratio: number | null;
+  } | null;
+  battery_error: string | null;
 };
 
 export type SyncStatus = {
@@ -122,7 +139,8 @@ export const api = {
   start: () => command<Session>("/session/start"),
   confirmArea: (acceptUnassisted = false) =>
     command<Session>("/session/confirm", { accept_unassisted: acceptUnassisted }),
-  propTest: () => command<Session>("/session/prop-test"),
+  healthTest: () => command<Session>("/session/health-test"),
+  retry: () => command<Session>("/session/retry"),
   runProgram: (height_m: number, hold_s: number, ambient: string) =>
     command<Session>("/session/program", { height_m, hold_s, ambient }),
   armManual: (ambient: string) => command<Session>("/session/manual/arm", { ambient }),

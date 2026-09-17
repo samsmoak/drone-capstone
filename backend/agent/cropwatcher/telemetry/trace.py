@@ -6,6 +6,10 @@ records control — which keys were held, the eased height target and climb spee
 the agent commanded, the firmware's own height target and barometer estimate,
 thrust, attitude, the four motors and the tuning in force.
 
+`supervisor.info` and `pm.state` were added after the same day's dead flight —
+thrust 0 for 19 s after a tumble — could only be *inferred* to be the firmware
+holding the motors. With them in the trace it can be read.
+
 It exists because the bounce of 2026-09-17 could only be diagnosed after the
 fact from thrust and motor columns; the keys held and the target commanded were
 not recorded anywhere, so whether a spin was a held key or a saturated yaw loop
@@ -31,7 +35,7 @@ STREAM_COLUMNS = (
     "posCtl.targetZ", "posCtl.targetVZ", "posEstAlt.estimatedZ", "posEstAlt.velocityZ",
     "stabilizer.thrust", "stabilizer.roll", "stabilizer.pitch", "stabilizer.yaw", "gyro.z",
     "motor.m1", "motor.m2", "motor.m3", "motor.m4",
-    "pm.vbat", "lighthouse.bsReceive",
+    "pm.vbat", "pm.state", "supervisor.info", "lighthouse.bsReceive",
 )
 
 
