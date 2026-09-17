@@ -1,0 +1,77 @@
+PORTFOLIO — projects, the team, and the website admin
+=====================================================
+
+WHAT IT IS
+
+The public side of the website: /projects lists the projects, /projects/<slug>
+shows one with its write-up and the team who built it beside it, and /team shows
+everyone. Operators edit all of it at /admin — no code, no deploy.
+
+A DOMAIN PORT of ../doctor-portfolio (projects, BlockNote write-ups, admin CMS).
+Same stack, different subject; structure and idiom kept, vocabulary adapted.
+
+
+WHERE IT LIVES
+
+  public    app/(public)/projects/page.tsx, projects/[slug]/page.tsx, team/page.tsx
+            components/portfolio/ProjectCard, TeamCard, TeamSidebar, TableOfContents
+  admin     app/admin/layout.tsx (operator gate), admin/projects, admin/team
+            components/admin/ProjectsManager, ProjectEditor, TeamManager,
+            ImagePicker, ui.tsx
+  editor    components/editor/BlockEditor.tsx (+ Client), lib/blocknote/*
+  data      lib/queries.ts, lib/mutations.ts (portfolio sections), lib/upload.ts
+  database  backend/supabase/migrations/20260916000007_portfolio.sql
+  seed      backend/supabase/seed/portfolio.py
+
+  Source it was copied from: ../doctor-portfolio app/projects/*,
+  components/public/ProjectCard|ProjectsSidebar, app/components/TableOfContents,
+  components/admin/ProjectsManager|ProjectEditor|ImagePicker|ui,
+  components/editor/*, lib/blocknote/*, lib/upload.ts.
+
+
+WHAT CHANGED IN THE PORT, AND WHY
+
+  multi-tenant sites + site_id      one site: dropped
+  Google OAuth allow-list admin     the existing operator role (is_operator())
+  owner photo in the sidebar        the project's team, photo + name + website
+                                    + email under each card
+  highlights, covers carousel,      dropped — not asked for; one cover image
+  screenshots, videos, documents
+  theme toggle (ThemeProvider)      system colour scheme, as the rest of the site
+  (new) team_members + project_members tables, TeamManager, a team picker in the
+  project editor
+
+
+DECISIONS
+
+- Public reads of the portfolio return empty when the tables are missing
+  (42P01 / PGRST205) instead of throwing. Vercel ships code before a hand-run
+  migration reaches the database; a public page must not blank. The admin reads
+  still throw — an operator should see that something is wrong.
+- The team is replaced as a set when a project is saved, in the order ticked.
+- published_at is stamped on first publish only, so re-publishing an edit does
+  not move a project.
+- Fonts: Inter (body) and Fraunces (titles), via next/font — the portfolio's
+  pairing, shared with the desktop app.
+- The seed uses the SECRET key and runs on a developer machine only. Team roles,
+  emails and websites not provided were left blank rather than invented; the
+  projects are starter text drawn from this repo's own docs, to be rewritten in
+  /admin. Re-running the seed overwrites the fields it sets.
+
+
+INVARIANTS
+
+- BlockNote renders on the client only (next/dynamic, ssr: false), and
+  @blocknote/server-util must stay in serverExternalPackages or the build pulls a
+  DOM implementation into the server bundle.
+- The write-up HTML is injected with dangerouslySetInnerHTML. That is safe only
+  because only operators can write projects (RLS) and BlockNote's lossy export
+  escapes text. Never let a non-operator write `projects.content`.
+- Images are public URLs in a public bucket and cannot be revoked. Never upload
+  anything private through the admin.
+- next/image only loads from this project's Supabase storage host
+  (next.config.ts remotePatterns). A different bucket host needs adding there.
+- Verified 2026-09-16 against the hosted project: anon reads team and published
+  projects (200) and cannot write (401) or upload (400); the operator account
+  inserts, updates, deletes and uploads (200/204); /projects, /projects/<slug>
+  and /team render with no horizontal overflow at 390, 768 and 1280 px.

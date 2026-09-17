@@ -1,0 +1,107 @@
+FLIGHT SAFETY — the checks before a flight and the guards during one
+====================================================================
+
+WHAT IT IS
+
+Nothing arms until a stepwise check run passes, and nothing stays in the air
+once the drone's own data says it should not be. Both halves read the same
+10 Hz telemetry stream (see telemetry-stream.txt), so a guard and the flight
+recorder can never disagree about what happened.
+
+This exists because of a crash on 2026-09-16: the drone took off, flew right,
+and hit a wall. It had no position at all. See INVARIANTS below.
+
+
+WHERE IT LIVES
+
+  backend/agent/cropwatcher/flight/checks.py      the pre-flight steps
+  backend/agent/cropwatcher/safety/flight_guard.py the in-flight guards
+  backend/agent/cropwatcher/flight/control.py     GuardedFlight, FlightAborted
+  backend/agent/cropwatcher/flight/programs.py    HoverTest
+  backend/agent/tests/test_checks.py, test_flight_guard.py
+
+
+THE CHECKS (in order, each yields a CheckResult the UI renders live)
+
+  radio        the drone answered on the radio; its hardware id is read from
+               cpu.id0..2 as "cf-<hex>" and is how a flight ties to a drone
+  battery      sys.canfly is the authority, not a voltage this code invented;
+               the voltage is shown for the operator, never used as the gate
+  motors       optional propeller test (health.startPropTest) — on request
+  positioning  base stations RECEIVED and calibrated and with geometry
+  still        the Kalman estimate has settled in x, y AND z
+  tumbled      supervisor.info bit 5 is clear
+
+Only two results BLOCK a session: no telemetry, and the firmware refusing to
+arm (sys.canfly = 0). Deck, base stations and settling WARN instead — the person
+standing over the drone decides whether to fly (decided 2026-09-16). A warning
+returns the report with assisted = False, which means:
+
+  - no preset programs (Hover test is refused: it would fly blind)
+  - manual flight is UNASSISTED: W/S move the throttle, not a height
+  - the position guards are off (see below); tumble, battery, stale telemetry
+    and the heartbeat still run
+  - confirming needs a second, explicit acknowledgement
+
+Manual mode runs exactly the same checks as auto — the risk is identical.
+
+
+THE GUARDS (checked on every sample while flying)
+
+  TUMBLED          supervisor bit 5            -> STOP
+  POSITION_LOST    usable stations < 2         -> STOP
+  RECEPTION_LOST   no reception past 0.5 s     -> LAND
+  BATTERY_LOW      pm.state == 3 (lowPower)    -> LAND
+  DRIFT            > 0.30 m from the target    -> LAND
+  HEIGHT_ERROR     > 0.25 m from commanded     -> LAND
+  OUTSIDE_FENCE    beyond the takeoff fence    -> LAND
+  TELEMETRY_STALE  the stream stopped          -> LAND
+
+Unassisted (GuardContext.assisted = False) only TUMBLED, BATTERY_LOW and
+TELEMETRY_STALE apply. Every other guard reads a position, and without base
+stations that "position" is the accelerometer integrating — they would fire on
+noise and steer a landing by nothing.
+
+An abort raises FlightAborted(verdict); the reason is stored on the flight row
+(flights.abort_reason) and written to the audit trail.
+
+
+DECISIONS
+
+- Lost position means STOP, not land. A landing steers by a position estimate;
+  with no position there is nothing to steer by, so cutting is the safer end.
+  Every other fault lands gracefully.
+- Battery low uses the firmware's own pm.state, not a voltage threshold. A
+  guessed 3.70 V refused flights the drone would have allowed.
+- "Cut motors" as an operator control was removed. The normal control is Land
+  (graceful); Emergency stop is hold-for-one-second and has no key binding.
+- The guard verdict is data (Action + Reason enums), not a callback. The same
+  verdict drives the abort, the audit event and the message on screen.
+
+
+INVARIANTS
+
+- Advisory is not the same as trusted. A positioning warning must always
+  return assisted = False. The 2026-09-16 crash was a blind drone told it could
+  hold a position; tests pin that the crash readings come back unassisted.
+- Lost position still outranks low battery in an assisted flight: landing steers
+  by the estimate, so with no estimate the motors stop instead.
+- lighthouse.bsAvailable is STORED geometry, not received signal. On the day of
+  the crash it read 4 stations while bsReceive read 0: the preflight passed on
+  stored data and the drone flew blind. Count only stations that are received
+  AND calibrated (bsCalVal) AND have geometry (bsGeoVal), and require at least
+  two. This one line is the whole reason the drone hit a wall.
+- Settle on x, y and z. The old check watched z alone, so a wandering horizontal
+  estimate passed as "still". Require the spread across the window under about
+  2 cm on all three.
+- Never sleep a fixed time after a Kalman reset. The estimate keeps converging
+  for seconds; sampling early put a ground reference 0.14 m wrong.
+- Lighthouse z = 0 is not the floor. Measured floor level ranged 0.85–1.40 m in
+  the same room across runs. Capture ground at takeoff; commanded height is
+  relative to it. The agent stores ground-relative z — do not subtract it again
+  when reading telemetry back.
+- Read sys.canfly before commanding flight. The supervisor refuses to arm below
+  roughly 3.75 V and reports this itself.
+- Call send_notify_setpoint_stop() before the high-level commander. Any earlier
+  low-level setpoint in the same power cycle holds priority and silently locks
+  the high-level commander out: takeoff() returns success with motors at 0.

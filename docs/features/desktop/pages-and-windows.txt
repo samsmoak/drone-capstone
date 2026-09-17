@@ -1,0 +1,92 @@
+PAGES AND WINDOWS — what the desktop app shows
+==============================================
+
+WHAT IT IS
+
+A top bar and one page at a time. The top bar carries the Auto/Manual toggle,
+the pages, who is signed in, the sync state, and — whenever a session is live —
+Land and Emergency stop.
+
+  Home         where you are and what to do next; the sign-in form when signed
+               out. Opens first.
+  Control      checks, confirmation, the controls for the mode, End session,
+               and the recent sessions for the selected mode
+  Sessions     every session (who, when, how it ended) and one session's detail
+  Flight       position, speed, attitude, thrust
+  Power        battery, will-it-arm, per-motor
+  Environment  temperature and pressure
+  Motion       accelerometer and gyroscope
+  Positioning  base stations received vs. calibrated vs. geometry
+
+
+WHERE IT LIVES
+
+  desktop/src/App.tsx          the shell, the nav, the keyboard, Land/Stop
+  desktop/src/HomePage.tsx     status and the next step
+  desktop/src/ControlPage.tsx  the session flow and both modes
+  desktop/src/windows.tsx      the five live sensor windows
+  desktop/src/LiveChart.tsx    the chart, copy-adapted from the web
+  desktop/src/ui.tsx           PageHeader, Panel, Stat, StatusDot, Button
+  desktop/src/harness.tsx      the layout harness (see below)
+
+
+TOP BAR
+
+One container width and side padding (max-w-6xl, px-6) for the bar and the page,
+so their edges line up. It carries the brand (Home), the Auto/Manual toggle, the
+pages, the sync state, Land and Emergency stop while flying, End session while a
+session is running and nothing is flying, and the profile menu: an initial in a
+circle, opening to name, email and role with Sign in or Sign out. The bar never
+shows a bare email address.
+
+Every chart in a sensor window opens that window's log: one collapsible section
+per session, a time-stamped table of that window's readings. Every history view
+follows the Auto/Manual toggle (see ../backend/session-history.txt).
+
+
+DECISIONS
+
+- Home opens first, not Control. An operator who has just installed this needs
+  the next step, not six tabs. Its steps are derived from the agent's own state
+  machine, so the page cannot claim a step the agent would refuse.
+- The Auto/Manual toggle lives in the top bar and changes which controls Control
+  shows. It is locked while busy: switching mid-air would hand the drone to a
+  different command source with no warning.
+- Land is always visible during a session and bound to L. Emergency stop is
+  hold-for-one-second with no key binding, because cutting the motors drops the
+  drone.
+- The live windows read the same 10 Hz stream as the guards and the CSV. There
+  is no second, prettier source of truth.
+- Headings use --heading, a token separate from --primary: a title is text, so
+  it must clear 4.5:1 on every surface. Measured 6.63/6.07/6.46 light and
+  5.33/4.82/5.83 dark (surface / surface-2 / background). --primary itself
+  measures 4.38 and 3.95 in dark, which is why it is not used for text.
+- Values that are text (an email, a hardware id) render smaller and break
+  anywhere; figures keep the tabular numerals and the large size.
+- Fraunces for page titles, Inter for everything else — the portfolio site's
+  pairing. Bundled with @fontsource, never fetched: the window's CSP allows no
+  remote fonts, and a lab laptop may be offline.
+- Closing the window ends the session, but waits at most 8 s: a close that can
+  hang is a window that will not close. The agent still lands the drone itself
+  when the window stops answering.
+
+
+INVARIANTS
+
+- The close button needs core:window:allow-destroy in capabilities/default.json.
+  Without it destroy() is refused and the window ignores the close button
+  entirely — which is what happened.
+- The window never generates a setpoint stream. It reports which keys are held
+  and pings; the agent runs the 50 Hz loop and lands the drone if the window
+  goes quiet for half a second.
+- Space is blocked on keydown AND keyup, because WebKit activates a focused
+  button on Space keyup.
+- Losing focus releases every key: a window that loses focus never sees keyup,
+  and a stuck key means a drifting drone.
+- Measure the layout, do not eyeball it. `harness.html` renders every page with
+  worst-case data in an ordinary browser (the app itself cannot be measured in
+  one — it reaches the agent through Tauri's `invoke`). Checked at 720 px (the
+  window's minimum), 1000 and 1280: no element crosses the viewport, in both
+  themes. It is not shipped; `vite build` only builds index.html.
+- A value that is missing says so. A blank panel where a battery voltage belongs
+  reads as "fine" to an operator about to fly.

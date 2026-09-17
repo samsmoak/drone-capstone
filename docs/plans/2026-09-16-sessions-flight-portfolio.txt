@@ -1,0 +1,121 @@
+PLAN — sessions, steady manual flight, desktop redesign, projects portfolio
+==========================================================================
+2026-09-16. Four waves, built together and gated once per wave.
+
+
+DECISIONS LOCKED IN
+
+1. Steady climb and height hold without base stations uses the BAROMETER.
+   The unassisted throttle law is replaced: the firmware's complementary
+   estimator gives a baro height, and send_zdistance_setpoint(roll, pitch,
+   yawrate, z) holds it. W/S move a target height gently; letting go holds it;
+   landing descends under control. EXPERIMENTAL — baro height is noisy indoors
+   (tens of cm) and prop wash disturbs it. Base stations remain the real fix.
+2. The session history lives on the laptop (sessions/<id>/meta.json + a 1 Hz
+   samples.csv covering the WHOLE session). Offline-first; never deleted by sync.
+3. "Stay signed in" stores the Supabase refresh token in the app data folder,
+   file mode 0600. Not the OS keychain (one fewer native dependency to bundle).
+4. Fonts: Fraunces (display) + Inter (body), matching the portfolio. Bundled
+   offline in the desktop app (@fontsource — the window's CSP blocks remote
+   fonts, and the lab has no guarantee of internet); next/font on the web.
+5. The web portfolio is a DOMAIN PORT of ../doctor-portfolio: single site (no
+   multi-tenancy), admin gated by the existing operator role (no Google OAuth),
+   team members as their own table shown beside each project.
+6. Team names are the ones given: Yordanos, Hannah, Kevin, Reagan, and Samuel
+   Enam Zih (last, with photo and https://samuelzih.savorar.com/). Roles and
+   emails not given are left blank, not invented.
+
+
+WAVE A — AGENT (backend/agent)
+
+ 1. Session: finish the manual activity when the controller lands or stops,
+    whatever caused it (operator, guard, heartbeat) -> state READY, End works.
+ 2. Session: a low-battery guard verdict lands, then ENDS the session.
+ 3. Session: a tumble stops the motors, finishes the flight as aborted, READY.
+ 4. manual.py: unassisted law -> barometer height hold (zdistance setpoint).
+ 5. manual.py: W/S move target height at CLIMB_RATE; release holds it.
+ 6. manual.py: gentle liftoff — target starts at 0, climbs from the ground.
+ 7. manual.py: landing descends the target at a fixed rate, then stops.
+ 8. manual.py: keep the thrust unlock before the first setpoint.
+ 9. link.py: switch to the complementary estimator for unassisted flight,
+    wait for it to settle, capture the baro ground height.
+10. link.py: restore the Kalman estimator when the manual flight ends.
+11. history.py: SessionLog — meta.json on start, samples.csv at 1 Hz.
+12. history.py: summary at end (duration, flights, battery min/max, max
+    height, outcome, abort reasons, samples).
+13. history.py: list / read / samples-by-variable readers.
+14. session.py: open the log on start, record flights, close on end.
+15. cloud.py: restore a session from a stored refresh token.
+16. auth store: save / load / clear the token, 0600, in the data folder.
+17. session.py: restore_sign_in() at startup; sign_out clears the token.
+18. rest.py: GET /history/sessions, /history/sessions/{id},
+    /history/sessions/{id}/samples.
+19. rest.py: POST /auth/restore; profile info in the session snapshot.
+20. Tests: manual finish paths, battery end, baro law, estimator switch.
+21. Tests: history log, summary, readers, API.
+22. Tests: token store and restore.
+23. Gates: pytest, ruff, mypy.
+
+WAVE B — DESKTOP (desktop/)
+
+24. Capability core:window:allow-destroy; close handler with a timeout.
+25. Fonts: @fontsource Fraunces + Inter; type scale tokens.
+26. Layout: one container width and padding shared by nav and body.
+27. Profile menu: initial avatar; dropdown with name, email, role,
+    Sign in / Sign out.
+28. Remove the bare email from the nav.
+29. Home: sign-in form inline when signed out.
+30. agent.ts: history + restore endpoints and types.
+31. Control: End session button whenever a session exists.
+32. Control: recent sessions (last 5) with start, end, who, brief stats.
+33. Sessions page: full list.
+34. Session detail: summary, flights, per-variable readings.
+35. Sensor windows: every chart opens that window's detail page.
+36. Window detail: one collapsible section per session, time-stamped log of
+    that window's readings, scoped to the session's person and time range.
+37. Unassisted Manual UI: height (baro) shown again, labelled as barometric.
+38. Spacing and type pass across every page.
+39. Harness updated; overflow measured at 720/1000/1280, both themes.
+40. Gates: tsc + vite build, clippy.
+
+WAVE C — WEB PORTFOLIO (web/)
+
+41. Migration 0007: team_members, projects, project_members, RLS + grants.
+42. Migration 0007: storage bucket portfolio-images (public read, operator
+    write).
+43. Types in web/types/database.ts.
+44. Dependencies: @blocknote/core|react|mantine|server-util.
+45. lib/blocknote/content.ts + render.ts (copied).
+46. queries: published projects, project by slug with team, team list,
+    admin reads.
+47. mutations: create/update/delete/publish/reorder projects; set project
+    team; create/update/delete/reorder team members.
+48. lib/upload.ts (copied, single-site).
+49. Fonts: Fraunces + Inter via next/font; prose styles for write-ups.
+50. Public /projects: grid of project cards.
+51. Public /projects/[slug]: TOC, write-up card, team sidebar with photo,
+    name, website link, email.
+52. Public /team: every member card, Samuel last.
+53. Nav + routes: Projects replaces the dead /project link.
+54. Components copied: ProjectCard, TeamSidebar (from ProjectsSidebar),
+    TableOfContents, AnimateOnScroll.
+55. Admin layout + sidebar under /admin, operator-gated.
+56. Admin projects list (create, publish, reorder, delete).
+57. Admin project editor (fields, cover, BlockNote write-up, team picker).
+58. Admin team manager (photo, name, role, website, email, order).
+59. Seed script: team members, Samuel's photo uploaded to storage.
+60. Seed script: dummy projects drawn from this project's own docs.
+61. Apply 0007 + seed to the hosted project; verify with reads.
+62. Gates: typecheck, lint, build.
+
+WAVE D — DOCS, BUILD, VERIFY
+
+63. docs/features/backend: manual-control, sessions-and-modes, new
+    session-history.txt.
+64. docs/features/desktop: pages-and-windows (profile, sessions, detail).
+65. docs/features/frontend: new portfolio.txt; admin.
+66. docs/features/supabase: data-model (0007), storage.
+67. docs/README.md router; NEXT-STEPS.txt.
+68. Rebuild sidecar (verified) + desktop app once.
+69. Relaunch; verify restore sign-in, history endpoints, CORS, close.
+70. Honest report: what passed, what needs the lab (baro height hold).

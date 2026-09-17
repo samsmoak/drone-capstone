@@ -66,7 +66,7 @@ TASK 1 — OPERATOR PAGES  (DONE)
 
   /app/live, /app/flights, /app/flights/[id], /app/compare, /app/zones,
   /app/plan, /app/manual, /app/settings — all built.
-  See docs/features/operator-dashboard.md and mission-planner.md.
+  See docs/features/frontend/operator-dashboard.txt and mission-planner.txt.
 
   Known limits:
   - Zone health colours assume health_score is 0–1. Pin it when Task 4 lands.
@@ -94,7 +94,7 @@ TASK 3 — TAURI DESKTOP APP  (mostly done)
 
   Done: scaffold, three panels, PyInstaller sidecar, externalBin, release
   workflow, installers bucket migration, /setup download buttons.
-  See docs/features/desktop-app.md.
+  See docs/features/desktop/desktop-app.txt and pages-and-windows.txt.
 
   Left:
   a. Push a v* tag and watch .github/workflows/desktop-release.yml run. It has

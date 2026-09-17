@@ -1,0 +1,67 @@
+STORAGE AND BACKFILL — the buckets, and the CSV that closes the gap
+===================================================================
+
+WHAT IT IS
+
+Three buckets:
+
+  installers    PUBLIC. The .dmg and .exe CI publishes, at stable paths
+                (latest/CropWatcher-macos.dmg). The /setup download buttons HEAD
+                the object, so a new build needs no redeploy.
+  flight-logs   PRIVATE. The gzipped CSV of a flight, uploaded when rows are
+                still unsent, so the server can finish the job from one file.
+  portfolio-images  PUBLIC read, operator write (migration 0007). Project
+                covers, team photos and images inside write-ups.
+
+
+WHERE IT LIVES
+
+  backend/supabase/migrations/…0005_installers_bucket.sql
+  backend/supabase/migrations/…0006_sessions_audit_identity.sql   flight-logs
+  backend/agent/cropwatcher/sync/cloud.py                         the upload
+  web/components/ui/download-buttons.tsx                          the buttons
+
+
+THE BACKFILL
+
+A flight writes a CSV locally as it goes and uploads rows as it goes. If it ends
+with rows unsent — the laptop was offline, or is about to be closed — the agent
+uploads the gzipped CSV and asks the server to import the remainder rather than
+replaying thousands of inserts from a laptop that may be shut at any moment.
+
+  agent -> flight-logs/<flight id>.csv.gz
+  agent -> functions/v1/import-flight-log  {"flight_id": ...}
+  server -> reads the object, upserts telemetry on (flight_id, index)
+
+Sizes are measured, not estimated: 202 bytes per row, about 470 KB for a
+full-battery flight, roughly 250 KB gzipped. One upload of a quarter of a
+megabyte — no cron job, no queue.
+
+
+DECISIONS
+
+- CSV first, always. A local write cannot fail; a flight cannot be re-run. The
+  upload is best-effort and retried, never in the critical path (CLAUDE.md #6).
+- The import is idempotent: it upserts on (flight_id, index) with
+  ignore-duplicates, so a CSV already partly uploaded row by row costs nothing
+  to re-import, and a CSV already in storage counts as success.
+- flight-logs is private. It carries an operator's flight record, and nothing in
+  the web app needs the raw file.
+- Installers are public and overwritten in place. A versioned path would mean a
+  code change per release for no benefit to an operator clicking Download.
+
+
+STATUS
+
+The `import-flight-log` Edge Function is NOT WRITTEN YET. Until it is, a flight
+whose rows did not all upload is complete on the laptop and in storage, and its
+missing rows are filled in by the agent's own retry when the laptop is next
+online. The CSV upload and the bucket are in place.
+
+
+INVARIANTS
+
+- Never put the service-role key in the agent: it ships inside an installer.
+  The Edge Function runs server-side, which is where that key belongs.
+- A bucket policy is not a table policy. Storage has its own RLS on
+  storage.objects, and 0006 grants the operator insert on flight-logs only.

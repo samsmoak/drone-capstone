@@ -1,0 +1,88 @@
+SESSIONS AND MODES — who is flying, in which mode, and how it ends
+==================================================================
+
+WHAT IT IS
+
+One state machine in the agent that owns everything an operation does: signing
+in, connecting to the drone, running the checks, taking the operator's
+confirmation, flying, and ending cleanly. The desktop window renders this state
+and nothing else — it never decides what is allowed.
+
+
+WHERE IT LIVES
+
+  backend/agent/cropwatcher/session.py       the state machine
+  backend/agent/cropwatcher/flight/link.py   DroneLink: the only radio chokepoint
+  backend/agent/cropwatcher/api/rest.py      the commands that drive it
+  backend/agent/tests/test_session.py
+
+
+THE STATES
+
+  signed_out            -> sign_in
+  idle                  -> start           (signed in, no drone session)
+  starting              -> checks running
+  checks_failed         -> start again   (only: no telemetry, or sys.canfly = 0)
+  awaiting_confirmation -> confirm_area    (drone on the floor, area clear)
+  ready                 -> prop_test / run_program / arm_manual
+  busy                  -> land / emergency_stop
+  ending                -> land if needed, close the flight, flush the upload
+
+MODE is auto or manual, chosen in the top bar, and defaults to AUTO. It cannot
+change while busy: swapping controller mid-air would hand the drone to a
+different command source with no warning.
+
+  auto    Start test (spins each motor on the ground) and Hover test (rise,
+          hold a steady height, land where it started)
+  manual  Start (props idle on the ground), then held keys fly it — see
+          manual-control.txt
+
+Both modes run the same checks and take the same confirmation. When the checks
+warn about positioning, the session is UNASSISTED (snapshot.assisted = False,
+with unassisted_reason): confirm_area needs accept_unassisted = True, Auto
+programs are refused, and Manual flies on barometer height hold (manual-control.txt).
+
+A MANUAL FLIGHT THAT COMES DOWN GIVES THE SESSION BACK. However it ended — Land,
+S to the floor, the heartbeat, a guard, Emergency stop — the watcher closes the
+flight record and returns the session to READY, so End session and the mode
+toggle work again. Before this a tumble left the app "busy" with no way out. A
+low-battery landing goes further and ends the session.
+
+STAYING SIGNED IN. Signing in saves the Supabase refresh token in the app data
+folder (session.json, mode 0600). At startup the agent restores it in the
+background; an expired or revoked token is deleted and the sign-in form shows.
+Signing out deletes it.
+
+
+TURNING IT ON AND OFF
+
+"Start session" is the single on switch for both modes; "End session" is the
+single off switch. Ending always lands first if the drone is in the air, then
+closes the flight row, writes the audit event and lets the upload finish.
+Closing the window does the same thing rather than vanishing mid-flight.
+
+
+DECISIONS
+
+- The agent, not the UI, owns what is allowed. A window can be refreshed,
+  crashed or replaced; the drone's permission to fly must not depend on it.
+- Sign-in is required before anything arms, because a flight with no name on it
+  is not much of an audit trail (see audit-trail.txt).
+- A low battery mid-flight ends the operation in BOTH modes: the guard lands the
+  drone and the session ends itself, rather than returning to "ready" with a
+  battery that cannot fly again.
+- Endurance is reported at the start ("about N seconds of flying left") so the
+  operator plans the flight instead of discovering the limit in the air.
+
+
+INVARIANTS
+
+- Every command carries the control token (X-Agent-Token). The agent binds
+  localhost, which keeps other machines out but not other programs or web pages
+  on this one — and its API arms a drone.
+- The radio scan is cached and never runs while busy. Scanning every 2 seconds
+  from /status wedged the agent with [Errno 19] No such device; the window polls
+  /health instead.
+- The drone is identified by hardware id (cpu.id0..2 as "cf-<hex>"), so sensor
+  and flight data tie to the machine that produced it even when two people fly
+  two drones on different days.

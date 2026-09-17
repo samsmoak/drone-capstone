@@ -1,0 +1,65 @@
+DEVELOPMENT SKILLS — /preflight and /adapt
+==========================================
+
+WHAT IT IS
+
+Two Claude Code slash commands that shape how work on this repository is
+planned and built. They are committed with the project, so anyone who opens the
+repo in Claude Code can run them — they no longer depend on one person's machine.
+
+
+WHERE IT LIVES
+
+  .claude/commands/preflight.md   /preflight <task>
+  .claude/commands/adapt.md       /adapt <task>
+
+Claude Code loads commands from `.claude/commands/` in the project automatically.
+A copy in ~/.claude/commands with the same name is the personal version; the
+project copy is the shared one. Edit the project copy and commit it.
+
+
+/preflight — the general execution checklist
+
+  1. Orient in THIS repo: read CLAUDE.md and docs/README.md, pin versions from
+     the lockfiles, name the invariants that apply.
+  2. Apply the standards: reuse before writing, tokens only, WCAG 2.2 AA
+     measured not eyeballed, four async states, server-side authorization,
+     typed errors, no secrets in logs.
+  3. Pre-flight ritual per point of the request — current state (verified),
+     agreement, objection, industry standard, recommendation — then a short
+     lock-in list of decisions, and WAIT for "go".
+  4. On go: implement, run every gate, report pass/fail honestly.
+  5. Update docs/features/* with what actually shipped.
+  6. Ship only on explicit approval (standing approval for this repo: commit,
+     push and merge after every build — see CLAUDE.md "Git").
+
+
+/adapt — copy, then adapt only what the target forces
+
+  - Find the most-hardened source; say which and why.
+  - Decide: DOMAIN port (same stack, new subject) or PLATFORM port (same
+    subject, new stack). They adapt along opposite axes.
+  - Copy structure, visuals and code shape faithfully; change only routes,
+    models, vocabulary, business rules and data source.
+  - Port the whole feature: UI, state, data access and the server side.
+  - Residue sweep: no leftover names, copy, routes or comments from the source.
+  - Report the adaptation delta, citing the source file for each piece.
+
+
+HOW THEY WERE USED HERE
+
+  - docs/features/frontend/portfolio.txt is a /adapt domain port of
+    ../doctor-portfolio: its "What changed in the port" table is the delta.
+  - The desktop UI primitives (desktop/src/ui.tsx) were copy-adapted from
+    web/components/ui/states.tsx, a platform port.
+  - docs/plans/ keeps the plan written before a large /preflight run, as a
+    record of what was decided and in what order.
+
+
+INVARIANTS
+
+- A skill in ~/.claude/commands is invisible to everyone else. If the project
+  depends on it, it belongs in .claude/commands/ and in git.
+- The skills discover project rules from the repo; they never carry another
+  project's conventions. Keep project facts in CLAUDE.md and docs/, not in the
+  skill files.

@@ -116,6 +116,10 @@ blanking the site — but sign-in will not work until they are set.
 - Commit as **`samsmoaky@gmail.com`**.
 - **No Claude co-author or footer lines.** Author is the user only.
 - Branch: `main`. Web deploys via Vercel on push.
+- **After every build that passes its gates: commit, push and merge** — on a
+  short-lived branch, merged into `main` through a pull request.
+- Project skills `/preflight` and `/adapt` live in `.claude/commands/` — see
+  `docs/features/development/skills.txt`.
 
 ## Out of scope
 
