@@ -31,6 +31,16 @@
      must clear 4.5:1 on every surface it sits on: measured 6.63:1 on
      --surface, 6.07:1 on --surface-2, 6.46:1 on --background. */
   --heading: #1c5cab;
+  /* Project categories, as in the portfolio's per-category accents. Used for
+     bars, dots and tints only — never as text, so no contrast pairing applies. */
+  --cat-1: #2a78d6;
+  --cat-2: #eb6834;
+  --cat-3: #1baf7a;
+  --cat-4: #d99100;
+  --cat-5: #7c3aed;
+  --cat-6: #db2777;
+  --cat-7: #0d9488;
+  --cat-8: #64748b;
   --on-primary: #ffffff;
   --ring: #1c5cab33;
 
@@ -77,6 +87,14 @@
     /* Not --primary: #3987e5 measures 4.38:1 on --surface and 3.95:1 on
        --surface-2, both under 4.5:1. This one measures 5.33 / 4.82 / 5.83. */
     --heading: #5598e7;
+    --cat-1: #3987e5;
+    --cat-2: #f07a4a;
+    --cat-3: #2cc48c;
+    --cat-4: #eaa51a;
+    --cat-5: #9061f9;
+    --cat-6: #ec4899;
+    --cat-7: #14b8a6;
+    --cat-8: #94a3b8;
     --on-primary: #0b0b0b;
     --ring: #3987e555;
 
@@ -111,6 +129,14 @@
 
   --primary: #3987e5;
   --heading: #5598e7;
+  --cat-1: #3987e5;
+  --cat-2: #f07a4a;
+  --cat-3: #2cc48c;
+  --cat-4: #eaa51a;
+  --cat-5: #9061f9;
+  --cat-6: #ec4899;
+  --cat-7: #14b8a6;
+  --cat-8: #94a3b8;
   --on-primary: #0b0b0b;
   --ring: #3987e555;
 
@@ -242,3 +268,8 @@ body {
 .portfolio-prose th,
 .portfolio-prose td { border: 1px solid var(--border); padding: 0.5em 0.75em; text-align: left; }
 .portfolio-prose th { background: var(--surface-2); font-weight: 600; }
+
+@keyframes team-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}

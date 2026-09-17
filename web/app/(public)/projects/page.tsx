@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ProjectCard } from "@/components/portfolio/ProjectCard";
-import { getPublishedProjects } from "@/lib/queries";
+import { PageIntro } from "@/components/site/PageIntro";
+import { getPageContent, getPublishedProjects } from "@/lib/queries";
 
 export const metadata: Metadata = {
   title: "Projects",
@@ -8,16 +9,11 @@ export const metadata: Metadata = {
 };
 
 export default async function ProjectsPage() {
-  const projects = await getPublishedProjects();
+  const [projects, intro] = await Promise.all([getPublishedProjects(), getPageContent("projects")]);
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-16 md:py-20">
-      <p className="eyebrow text-[var(--heading)]">Portfolio</p>
-      <h1 className="font-display mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">Projects</h1>
-      <p className="mt-4 max-w-2xl text-lg leading-relaxed text-[var(--muted)]">
-        The pieces that make CropWatcher fly, sense and stay safe — each written up by the people who
-        built it.
-      </p>
+      <PageIntro content={intro} />
 
       {projects.length === 0 ? (
         <div className="mt-16 rounded-xl border border-dashed border-[var(--border)] p-16 text-center">

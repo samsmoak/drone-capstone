@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { ADMIN_GALLERY, ADMIN_PROJECTS, ADMIN_TEAM, FLIGHTS, GALLERY, PLAN, PROJECTS, TEAM } from "@/lib/routes";
 import { youtubeId } from "@/lib/video";
+import { PAGE_SPECS, isPageKey, normalizeContent } from "@/lib/site-content";
 import type { Json } from "@/types/database";
 import { getZones } from "@/lib/queries";
 import { buildPlan, parsePlanInput, validatePlan } from "@/lib/mission-plan";
@@ -456,5 +457,40 @@ export async function reorderGalleryItems(order: { id: string; position: number 
     if (error) return { ok: false, error: "Could not reorder the album." };
   }
   revalidateGallery();
+  return { ok: true, data: undefined };
+}
+
+// ── editable page wording (admin) ────────────────────────────────────────
+
+/**
+ * Save a page's wording. The content is normalised against the page's spec
+ * before it is stored, so only declared fields of the declared type reach the
+ * database, whatever the request carried. RLS still decides who may write.
+ */
+export async function savePageContent(key: string, content: unknown): Promise<PortfolioResult> {
+  if (!isPageKey(key)) return { ok: false, error: "There is no such page." };
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const { error } = await supabase.from("site_pages").upsert({
+    key,
+    content: normalizeContent(key, content),
+    updated_at: new Date().toISOString(),
+    updated_by: user.id,
+  });
+  if (error) return { ok: false, error: "Could not save the page. Are you signed in as an operator?" };
+  revalidatePath(PAGE_SPECS[key].path);
+  revalidatePath("/", "layout");            // the footer is on every page
+  return { ok: true, data: undefined };
+}
+
+/** Back to the wording the page shipped with. */
+export async function resetPageContent(key: string): Promise<PortfolioResult> {
+  if (!isPageKey(key)) return { ok: false, error: "There is no such page." };
+  const supabase = await createClient();
+  const { error } = await supabase.from("site_pages").delete().eq("key", key);
+  if (error) return { ok: false, error: "Could not reset the page." };
+  revalidatePath(PAGE_SPECS[key].path);
+  revalidatePath("/", "layout");
   return { ok: true, data: undefined };
 }

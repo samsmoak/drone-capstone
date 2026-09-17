@@ -1,5 +1,6 @@
 import { Nav } from "@/components/ui/nav";
-import { OPERATOR_NAV, HOME } from "@/lib/routes";
+import Link from "next/link";
+import { HOME, OPERATOR_HOME, OPERATOR_NAV } from "@/lib/routes";
 import { getCurrentProfile } from "@/lib/queries";
 import { signOut } from "@/lib/mutations";
 
@@ -14,10 +15,17 @@ export default async function OperatorLayout({
     <>
       <Nav
         brand="CropWatcher"
-        brandHref={HOME}
+        // Home of this view: the dashboard, not the visitor site.
+        brandHref={OPERATOR_HOME}
         items={OPERATOR_NAV}
         trailing={
           <form action={signOut} className="flex items-center gap-3">
+            <Link
+              href={HOME}
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-md border border-[var(--border)] px-3 text-sm font-medium"
+            >
+              <span aria-hidden="true">←</span> Visitor site
+            </Link>
             {profile && (
               <span className="hidden text-sm text-[var(--muted)] sm:inline">
                 {profile.full_name ?? profile.email}

@@ -42,6 +42,18 @@ WHAT CHANGED IN THE PORT, AND WHY
   project editor
 
 
+THE PROJECT PAGE SIDEBAR
+
+Sticky like the contents column on the left. The team is a stack of cards —
+the first three layered behind each other — and clicking it fans every card out
+in a panel floating over the project list (z-40), closed again by the stack,
+Escape or a click elsewhere. Keeping the team stacked is what keeps the column
+short enough to stay in view. Every project in the list carries its category's
+colour (bar, dot and tint), as in the doctor portfolio; colours come from the
+--cat-1..8 tokens via lib/categories.ts — known categories fixed, new ones a
+stable colour from their name. The colours are never used for text.
+
+
 DECISIONS
 
 - Public reads of the portfolio return empty when the tables are missing

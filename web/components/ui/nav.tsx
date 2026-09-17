@@ -16,11 +16,14 @@ export function Nav({
   brand,
   brandHref = "/",
   trailing,
+  width = "max-w-6xl px-6",
 }: {
   items: readonly NavItem[];
   brand: string;
   brandHref?: string;
   trailing?: React.ReactNode;
+  /** Container width and padding — must match the page below so the edges line up. */
+  width?: string;
 }) {
   const pathname = usePathname();
 
@@ -39,7 +42,7 @@ export function Nav({
     <header className="border-b border-[var(--border)] bg-[var(--surface)]">
       <nav
         aria-label="Main"
-        className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-6 py-3"
+        className={`mx-auto flex ${width} flex-wrap items-center gap-x-6 gap-y-2 py-3`}
       >
         <Link href={brandHref} className="font-semibold tracking-tight">
           {brand}

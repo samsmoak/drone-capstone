@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { ADMIN_PROJECTS } from "@/lib/routes";
+import { ADMIN_PAGES } from "@/lib/routes";
 
 export default function AdminHome() {
-  redirect(ADMIN_PROJECTS);
+  redirect(ADMIN_PAGES);
 }

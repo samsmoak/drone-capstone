@@ -18,10 +18,11 @@ WHERE IT LIVES
   backend/supabase/migrations/…0006_sessions_audit_identity.sql
   backend/supabase/migrations/…0007_portfolio.sql            projects, team
   backend/supabase/migrations/20260917000008_gallery.sql     albums, items
+  backend/supabase/migrations/20260917000009_site_pages.sql  editable wording
   web/types/database.ts                                      generated types
                                                              (0007's added by hand)
 
-Applied to the hosted project (fuwojlqpavvfgmqardfo) through 0008.
+Applied to the hosted project (fuwojlqpavvfgmqardfo) through 0009.
 
 
 THE TABLES
@@ -50,6 +51,8 @@ THE TABLES
   gallery_albums   public albums: slug, title, category, cover, draft/published.
   gallery_items    an album's photos (storage URL + width/height) and videos
                    (YouTube links), in order. See ../frontend/gallery.txt.
+  site_pages       per-page wording overrides (JSON), keyed by page. See
+                   ../frontend/site-pages-and-views.txt.
 
 
 DECISIONS

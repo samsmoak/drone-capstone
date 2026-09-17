@@ -555,6 +555,27 @@ export type Database = {
           },
         ]
       }
+      site_pages: {
+        Row: {
+          content: Json
+          key: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          content?: Json
+          key: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          content?: Json
+          key?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       team_members: {
         Row: {
           avatar_url: string | null

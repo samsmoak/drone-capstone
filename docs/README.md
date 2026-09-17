@@ -31,6 +31,7 @@ Feature docs are plain `.txt`, grouped by the surface they describe.
 | [features/frontend/mission-planner.txt](features/frontend/mission-planner.txt) | Building, validating, queuing and cancelling missions |
 | [features/frontend/portfolio.txt](features/frontend/portfolio.txt) | Public projects and team pages, and the /admin that edits them |
 | [features/frontend/gallery.txt](features/frontend/gallery.txt) | Albums of photos and videos, and the admin that manages them |
+| [features/frontend/site-pages-and-views.txt](features/frontend/site-pages-and-views.txt) | Editable wording for every page; visitor vs. operator view, Dashboard |
 
 ## Supabase — the database (`backend/supabase/`)
 

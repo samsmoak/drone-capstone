@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
-import { OPERATOR_HOME } from "@/lib/routes";
+import { OPERATOR_HOME, safeNext } from "@/lib/routes";
 import { ErrorState } from "@/components/ui/states";
 
 /**
@@ -20,7 +20,9 @@ export function LoginForm({ next }: { next?: string }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
-  const destination = next ?? OPERATOR_HOME;
+  // Back to where sign-in started: the visitor page for Sign in, the dashboard
+  // for Dashboard. A missing or foreign `next` falls back to the dashboard.
+  const destination = safeNext(next) ?? OPERATOR_HOME;
 
   if (!isSupabaseConfigured()) {
     return (

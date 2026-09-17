@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { OPERATOR_HOME } from "@/lib/routes";
+import { OPERATOR_HOME, safeNext } from "@/lib/routes";
 
 /** OAuth lands here. Exchanges the code for a session, then sends them on. */
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? OPERATOR_HOME;
+  const next = safeNext(searchParams.get("next")) ?? OPERATOR_HOME;
 
   if (code) {
     const supabase = await createClient();

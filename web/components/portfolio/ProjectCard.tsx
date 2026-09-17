@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { categoryColor } from "@/lib/categories";
 import type { ProjectCard as ProjectCardData } from "@/lib/queries";
 import { projectPath } from "@/lib/routes";
 
@@ -31,7 +32,8 @@ export function ProjectCard({ project, priority = false }: { project: ProjectCar
           </div>
         )}
         {project.category && (
-          <span className="absolute left-3 top-3 rounded-md bg-[var(--surface)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--heading)] shadow-sm">
+          <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-md bg-[var(--surface)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider shadow-sm">
+            <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ background: categoryColor(project.category) }} />
             {project.category}
           </span>
         )}

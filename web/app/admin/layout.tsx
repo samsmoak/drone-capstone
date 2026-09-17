@@ -18,19 +18,24 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <>
       <Nav
         brand="CropWatcher"
-        brandHref={HOME}
+        brandHref={OPERATOR_HOME}
         items={OPERATOR_NAV}
+        width="w-full max-w-[110rem] px-6 lg:px-10"
         trailing={
-          <form action={signOut}>
+          <form action={signOut} className="flex items-center gap-3">
+            <Link href={HOME} className="inline-flex min-h-11 items-center gap-1.5 rounded-md border border-[var(--border)] px-3 text-sm font-medium">
+              <span aria-hidden="true">←</span> Visitor site
+            </Link>
             <button type="submit" className="min-h-11 rounded-md border border-[var(--border)] px-3 text-sm">
               Sign out
             </button>
           </form>
         }
       />
-      <main id="main" className="mx-auto max-w-6xl px-6 py-8">
+      {/* Wide on purpose: editors carry a form, a write-up and a media list side by side. */}
+      <main id="main" className="mx-auto w-full max-w-[110rem] px-6 py-8 lg:px-10">
         {allowed ? (
-          <div className="grid gap-8 lg:grid-cols-[12rem_minmax(0,1fr)]">
+          <div className="grid gap-8 lg:grid-cols-[13rem_minmax(0,1fr)] xl:gap-12">
             <nav aria-label="Admin" className="lg:sticky lg:top-8 lg:self-start">
               <p className="eyebrow mb-3">Website admin</p>
               <ul className="flex gap-1 lg:grid">
