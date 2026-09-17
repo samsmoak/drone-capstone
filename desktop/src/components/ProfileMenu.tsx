@@ -7,8 +7,8 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import type { Session } from "./agent";
-import { initialOf } from "./format";
+import type { Session } from "@/lib/agent";
+import { initialOf } from "@/lib/format";
 
 type Props = {
   session: Session | null;

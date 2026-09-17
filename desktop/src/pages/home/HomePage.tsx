@@ -11,10 +11,10 @@
  * state it is already being sent rather than tracking progress of its own.
  */
 
-import type { Page } from "./App";
-import type { Mode, Session, SyncStatus, Telemetry } from "./agent";
-import { SignIn } from "./ControlPage";
-import { Button, PageHeader, Panel, Stat, StatusDot } from "./ui";
+import type { Page } from "@/App";
+import type { Mode, Session, SyncStatus, Telemetry } from "@/lib/agent";
+import { SignIn } from "@/pages/control/ControlPage";
+import { Button, PageHeader, Panel, Stat, StatusDot } from "@/components/ui";
 
 type Props = {
   session: Session | null;
@@ -81,6 +81,15 @@ function steps(mode: Mode): Step[] {
   ];
 }
 
+/** "Welcome back, Ada" — or just "Welcome back": the account row carries the
+ *  email, and repeating it in a title reads as a mistake. */
+function greeting(session: Session | null): string {
+  const operator = session?.operator;
+  if (!operator) return "CropWatcher flight control";
+  const name = operator.name && operator.name !== operator.email ? operator.name : null;
+  return name ? `Welcome back, ${name}` : "Welcome back";
+}
+
 export function HomePage({ session, telemetry, sync, connected, run, onGo }: Props) {
   const progress = session ? PROGRESS[session.state] : 0;
   const mode = session?.mode ?? "auto";
@@ -89,13 +98,7 @@ export function HomePage({ session, telemetry, sync, connected, run, onGo }: Pro
 
   return (
     <div className="grid gap-6">
-      <PageHeader
-        title={
-          session?.operator
-            ? `Welcome back, ${session.operator.name ?? session.operator.email}`
-            : "CropWatcher flight control"
-        }
-      >
+      <PageHeader title={greeting(session)}>
         This computer holds the radio, so this is the only app that can fly the
         drone. It records every flight and uploads it to the dashboard.
       </PageHeader>
@@ -112,6 +115,7 @@ export function HomePage({ session, telemetry, sync, connected, run, onGo }: Pro
         <Stat
           label="Signed in"
           value={session?.operator?.email ?? "No one"}
+          fit
           tone={session?.operator ? "good" : "warning"}
           hint={session?.operator ? "Flights recorded to this account" : "Required before flying"}
         />

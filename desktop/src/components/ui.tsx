@@ -37,7 +37,7 @@ export function StatusDot({ tone, children }: { tone: Tone; children: ReactNode 
 }
 
 export function Stat({
-  label, value, unit, tone, hint, digits = 2,
+  label, value, unit, tone, hint, digits = 2, fit = false,
 }: {
   label: string;
   value: number | string | null | undefined;
@@ -45,6 +45,9 @@ export function Stat({
   tone?: Tone;
   hint?: string;
   digits?: number;
+  /** Hold a long value (an email) to one line, with the full text on hover.
+   *  Wrapping an address across three lines makes a card look broken. */
+  fit?: boolean;
 }) {
   const missing = value === null || value === undefined || value === "";
   const shown = typeof value === "number" ? value.toFixed(digits) : value;
@@ -56,10 +59,11 @@ export function Stat({
   return (
     <div className="min-w-0 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
       <p className="eyebrow">{label}</p>
-      <p className="mt-2 flex flex-wrap items-baseline gap-x-1">
+      <p className="mt-2.5 flex flex-wrap items-baseline gap-x-1.5">
         <span
-          className={`font-semibold ${
-            isText ? "text-lg wrap-anywhere" : "tabular text-2xl"
+          title={fit && typeof value === "string" ? value : undefined}
+          className={`min-w-0 font-bold ${
+            isText ? (fit ? "block truncate text-[15px]" : "text-base wrap-anywhere") : "tabular text-[26px] leading-none"
           } ${missing ? "text-[var(--muted)]" : "text-[var(--foreground)]"}`}
         >
           {missing ? "—" : shown}
@@ -88,10 +92,10 @@ export function Stat({
 export function PageHeader({ title, children }: { title: string; children?: ReactNode }) {
   return (
     <header className="grid gap-2">
-      <h1 className="font-display wrap-anywhere text-3xl font-semibold leading-tight text-[var(--heading)]">
+      <h1 className="font-display wrap-anywhere text-[26px] font-bold leading-tight text-[var(--heading)]">
         {title}
       </h1>
-      {children && <p className="max-w-2xl text-[15px] leading-relaxed text-[var(--muted)]">{children}</p>}
+      {children && <p className="max-w-2xl text-sm leading-relaxed text-[var(--muted)]">{children}</p>}
     </header>
   );
 }
@@ -109,7 +113,7 @@ export function Panel({
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] pb-4">
         {/* The rule is decorative (it carries no meaning colour has to convey);
             the title's own colour is the measured --heading token. */}
-        <h2 className="flex min-w-0 items-center gap-2.5 text-lg font-semibold tracking-tight text-[var(--heading)]">
+        <h2 className="flex min-w-0 items-center gap-2.5 text-base font-bold tracking-tight text-[var(--heading)]">
           <span aria-hidden="true" className="h-4 w-1 shrink-0 rounded-full bg-[var(--primary)]" />
           {title}
         </h2>

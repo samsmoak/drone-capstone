@@ -26,14 +26,15 @@ import {
   type Session,
   type SyncStatus,
   type Telemetry,
-} from "./agent";
-import { ControlPage } from "./ControlPage";
-import { HomePage } from "./HomePage";
-import { ProfileMenu } from "./ProfileMenu";
-import { SessionsPage, WindowLog } from "./HistoryPages";
-import { StartupPage } from "./StartupPage";
-import { SensorWindow, WINDOWS, type WindowKey } from "./windows";
-import { Button, Message, StatusDot } from "./ui";
+} from "@/lib/agent";
+import { ControlPage } from "@/pages/control/ControlPage";
+import { HomePage } from "@/pages/home/HomePage";
+import { ProfileMenu } from "@/components/ProfileMenu";
+import { SessionsPage } from "@/pages/sessions/SessionsPage";
+import { WindowLog } from "@/pages/sessions/WindowLog";
+import { StartupPage } from "@/pages/startup/StartupPage";
+import { SensorWindow, WINDOWS, type WindowKey } from "@/pages/windows/SensorWindow";
+import { Button, Message, StatusDot } from "@/components/ui";
 
 /** One width and one side padding for the bar and the page, so their edges line up. */
 export const CONTAINER = "mx-auto w-full max-w-6xl px-6";

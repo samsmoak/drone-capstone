@@ -14,10 +14,10 @@
  */
 
 import type { ReactNode } from "react";
-import type { History } from "./App";
-import { LiveChart, type Sample } from "./LiveChart";
-import type { Session, Telemetry } from "./agent";
-import { Button, PageHeader, Panel, Stat, StatusDot } from "./ui";
+import type { History } from "@/App";
+import { LiveChart, type Sample } from "@/pages/windows/LiveChart";
+import type { Session, Telemetry } from "@/lib/agent";
+import { Button, PageHeader, Panel, Stat, StatusDot } from "@/components/ui";
 
 export type WindowKey = "flight" | "power" | "environment" | "motion" | "positioning";
 
