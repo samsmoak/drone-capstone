@@ -28,6 +28,10 @@ desktop/src-tauri/target/
 desktop/src-tauri/bin/
 
 # ── Secrets ───────────────────────────────────────────────
+# The repository is public. .env.team holds every team secret (admin keys
+# included) and is named explicitly, so no later change to the patterns
+# below can un-ignore it.
+.env.team
 .env
 .env.local
 .env*.local

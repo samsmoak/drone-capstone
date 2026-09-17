@@ -12,3 +12,8 @@ backend/
 docs/
 *.md
 !web/**
+
+# Team secrets — never uploaded by a local `vercel` deploy either.
+.env.team
+.env*
+!web/.env.example
