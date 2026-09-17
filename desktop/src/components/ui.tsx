@@ -37,7 +37,7 @@ export function StatusDot({ tone, children }: { tone: Tone; children: ReactNode 
 }
 
 export function Stat({
-  label, value, unit, tone, hint, digits = 2, fit = false,
+  label, value, unit, tone, hint, digits = 2, fit = false, className = "",
 }: {
   label: string;
   value: number | string | null | undefined;
@@ -45,9 +45,11 @@ export function Stat({
   tone?: Tone;
   hint?: string;
   digits?: number;
-  /** Hold a long value (an email) to one line, with the full text on hover.
-   *  Wrapping an address across three lines makes a card look broken. */
+  /** A long value (an email): shown whole at a smaller size, never cut short.
+   *  Give the card the room — see the wider cell on Home. */
   fit?: boolean;
+  /** Layout from the caller — a wider cell for a value that needs the room. */
+  className?: string;
 }) {
   const missing = value === null || value === undefined || value === "";
   const shown = typeof value === "number" ? value.toFixed(digits) : value;
@@ -57,13 +59,13 @@ export function Stat({
   const isText = typeof value === "string";
 
   return (
-    <div className="min-w-0 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
+    <div className={`min-w-0 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 ${className}`}>
       <p className="eyebrow">{label}</p>
       <p className="mt-2.5 flex flex-wrap items-baseline gap-x-1.5">
         <span
-          title={fit && typeof value === "string" ? value : undefined}
+
           className={`min-w-0 font-bold ${
-            isText ? (fit ? "block truncate text-[15px]" : "text-base wrap-anywhere") : "tabular text-[26px] leading-none"
+            isText ? (fit ? "wrap-anywhere text-[15px] leading-snug" : "text-base wrap-anywhere") : "tabular text-[26px] leading-none"
           } ${missing ? "text-[var(--muted)]" : "text-[var(--foreground)]"}`}
         >
           {missing ? "—" : shown}

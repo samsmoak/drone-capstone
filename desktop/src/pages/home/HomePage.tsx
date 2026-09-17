@@ -105,7 +105,7 @@ export function HomePage({ session, telemetry, sync, connected, run, onGo }: Pro
 
       {session?.state === "signed_out" && <SignIn run={run} />}
 
-      <section aria-label="Status" className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      <section aria-label="Status" className="grid grid-cols-2 gap-4 md:grid-cols-5">
         <Stat
           label="Flight agent"
           value={connected ? "Running" : "Not running"}
@@ -114,6 +114,7 @@ export function HomePage({ session, telemetry, sync, connected, run, onGo }: Pro
         />
         <Stat
           label="Signed in"
+          className="col-span-2"
           value={session?.operator?.email ?? "No one"}
           fit
           tone={session?.operator ? "good" : "warning"}
