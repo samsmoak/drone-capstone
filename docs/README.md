@@ -3,6 +3,12 @@
 One line per doc. Read this first, then open only what your work touches.
 Feature docs are plain `.txt`, grouped by the surface they describe.
 
+## Start here — the whole system
+
+| Doc | What it covers |
+|---|---|
+| [features/architecture.txt](features/architecture.txt) | Every piece, how they connect, the flows end to end, and which arrows are designed but not wired |
+
 ## Backend — the flight agent (`backend/agent/`)
 
 | Doc | What it covers |

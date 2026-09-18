@@ -1,0 +1,337 @@
+ARCHITECTURE — the whole system, and why it is shaped this way
+==============================================================
+
+WHAT IT IS
+
+CropWatcher is four programs and one database. A drone flies a greenhouse and
+records what it senses; a laptop commands it and keeps the record; a website
+turns that record into something a grower can read; a build pipeline puts the
+laptop software in people's hands.
+
+This file is the map: what each piece is, how they connect, what crosses each
+boundary, and which arrows are designed but not yet wired. Every per-feature
+doc under docs/features/ goes one level deeper.
+
+
+THE CONSTRAINT EVERYTHING FOLLOWS FROM
+
+The Crazyradio is a USB dongle. Only the machine it is plugged into can command
+the drone. No cloud service can reach it, and no service ever should — a
+command travelling over the internet to a flying aircraft is a hazard with no
+benefit.
+
+So the system splits in two:
+
+  LOCAL CONTROL PLANE   the laptop: the only thing that can fly the drone, and
+                        the only thing that must keep working offline
+  CLOUD DATA PLANE      Supabase and the website: where flights go afterwards,
+                        and where people who are not in the room read them
+
+Every decision below is downstream of that line.
+
+
+THE FIVE PIECES
+
+  Drone            Crazyflie 2.1 + Lighthouse deck (positioning) + AI deck
+                   (fitted, diagnostic only — its camera link is out of scope)
+  Flight agent     backend/agent/ — Python 3.11, FastAPI, cflib. The only
+                   process that touches the radio
+  Desktop app      desktop/ — Tauri v2 (Rust shell + React webview). The
+                   operator's window; ships and supervises the agent
+  Supabase         backend/supabase/ — Postgres with row-level security, Auth,
+                   and object storage
+  Web app          web/ — Next.js 16 on Vercel. Public site, operator
+                   dashboard, admin CMS
+  Release pipeline .github/workflows/desktop-release.yml — builds the desktop
+                   app on macOS and Windows runners, publishes the installers
+
+  Crazyradio PA    the USB dongle. Hardware, but architecturally the pivot:
+                   it is why the agent exists at all
+
+
+IN ONE PICTURE
+
+  ┌─ operator's laptop ───────────────────────────────────────┐
+  │                                                           │
+  │   Desktop app  ──REST + WebSocket (127.0.0.1:8765)──▶ Flight agent
+  │   (Tauri)      ◀──session state, telemetry 10 Hz────      │   │
+  │       │                                                   │   │ USB
+  │       └── spawns the agent as a sidecar at launch         │   ▼
+  │                                                           │ Crazyradio
+  └───────────────────────────────────────────────────────────┘   │ radio
+                          │                                       ▼
+                          │ outbox: flights, sessions, audit    Drone
+                          │ CSV.gz to storage (retried)
+                          ▼
+                     ┌─ Supabase ──────────────┐
+                     │ Postgres + RLS          │
+                     │ Auth                    │
+                     │ Storage: flight-logs,   │
+                     │   portfolio-images,     │
+                     │   installers            │
+                     └─────────────────────────┘
+                          ▲                  ▲
+       server-side reads  │                  │ CI publishes installers
+       and Server Actions │                  │
+                     ┌─ Web app (Vercel) ┐   └── GitHub Actions
+                     │ public site       │       (macOS + Windows runners)
+                     │ /app  dashboard   │
+                     │ /admin CMS        │
+                     └───────────────────┘
+                          ▲
+                          │ HTTPS
+                     Visitors, operators
+
+
+ARCHITECTURAL STYLE
+
+Not one style — four, each chosen for the problem in front of it.
+
+  LOCAL-FIRST CONTROL       The agent is authoritative for anything that moves
+                            the drone. It needs no network to fly, check, guard
+                            or record. The cloud is where data goes afterwards.
+
+  LAYERED AGENT             api → session → link → flight / telemetry / safety,
+                            with sync alongside. Each layer only knows the one
+                            below it. session.py is the only orchestrator.
+
+  PORTS AND ADAPTERS        The parts that must be trusted take their
+                            dependencies as arguments: the manual loop takes a
+                            Commander, the checks take a snapshot function and
+                            a clock, the guards take a context. That is why the
+                            safety behaviour has 422 tests and needs no drone.
+
+  OUTBOX + WRITE-AHEAD      Local write first, upload after, retried, idempotent
+                            (sync/outbox.py, sync/syncer.py). A local write
+                            cannot fail; a flight cannot be re-run.
+
+  DATABASE-ENFORCED AUTH    Row-level security on every table is the real
+                            authorization boundary. The web app's checks are
+                            for the user interface; Postgres is what refuses.
+
+  SIDECAR PACKAGING         The desktop installer contains the agent as a
+                            frozen binary. One install, no Python, no terminal.
+
+
+THE AGENT, LAYER BY LAYER
+
+Entry point:
+
+  cropwatcher serve                 pyproject [project.scripts]
+    └─ cli.py main()                arguments, logging, the server
+         └─ api/rest.py             app = FastAPI(...), agent = Agent()
+              └─ session.py         the state machine everything calls
+
+api/  the surface, and nothing else
+  rest.py      REST endpoints and one WebSocket, /ws/live. Origin-checked,
+               token-checked. 8765 on 127.0.0.1 only.
+  tokens.py    the local control token: proof the caller is the app
+  events.py    the in-process hub that fans session and telemetry events out
+               to every connected socket
+
+session.py  the rulebook — one operator, one drone, one session
+  States:  signed_out → idle → starting → checks_failed
+                            → awaiting_confirmation → ready → busy → ending
+  Plus retry_required, set when a flight ends abnormally: nothing flies and no
+  test runs until Retry has run the checks again in the same session.
+  It owns: the link, the report, the history, the audit log, the flight record,
+  the trace, and the guard watcher.
+
+flight/  everything about commanding a drone
+  link.py       DroneLink — one connection, one drone, the single gateway.
+                Opens the radio, runs the checks, hands out a guarded flight or
+                a manual controller, applies and restores tuning.
+  checks.py     the pre-flight steps, in order, each yielded so the app can
+                draw a live checklist; also the battery & motor tests
+  supervisor.py the firmware's own verdict on whether the motors may run, and
+                crash recovery after a tumble
+  manual.py     the 50 Hz control loop: held keys → setpoints
+  control.py    GuardedFlight — every autonomous wait is watched
+  programs.py   the preset flights (the hover test)
+  tuning.py     per-flight firmware gains, restored exactly afterwards
+  preflight.py  sampling, settling, endurance estimates
+  missions.py   mission/waypoint model (used by the planner; see NOT WIRED)
+
+telemetry/  everything coming back
+  stream.py     ONE 10 Hz subscription (PERIOD_MS = 100). The windows, the
+                guards, the recorder, the trace and the history all read it.
+                A second subscription would be a second version of the truth.
+  reader.py     FlightRecorder: stream → rows, for one flight
+  sinks.py      fan-out: CsvSink (disk, first) and LiveUploadSink (cloud)
+  trace.py      the 10 Hz control trace beside the flight CSV
+  correction.py the temperature model (the board heats itself)
+  row.py        units and the row shape
+
+safety/  the rules that end a flight
+  flight_guard.py  tumble, battery, positioning, fence, drift, height error,
+                   stale telemetry — each a verdict with an action and a reason
+  geofence.py      the box the drone may fly in (default ±2.0 m, 1.0 m ceiling)
+  occupancy.py     the obstacle map a plan is checked against
+
+sync/  getting it to Supabase
+  outbox.py     the local queue: drones, sessions, flights, audit events
+  syncer.py     a background loop, every 60 s or on demand, draining the outbox
+                and uploading the gzipped flight CSV
+  cloud.py      the only file that talks to Supabase
+  auth_store.py the saved refresh token (mode 0600)
+
+Beside them:
+  history.py    this laptop's own record: sessions/<id>/meta.json + samples.csv,
+                once a second for the WHOLE session. Deliberately not the
+                outbox, which deletes records once they are uploaded.
+  audit.py      who did what: signed in, confirmed, armed, aborted, stopped
+  paths.py      where files live per platform. Relative paths broke when the
+                agent ran as a sidecar with "/" as its working directory.
+
+
+THE FLOWS
+
+1. LAUNCH
+   Tauri's setup hook spawns the agent (desktop/src-tauri/src/lib.rs), passing
+   the control token in the environment, with --exit-with-parent so closing the
+   window really stops it. The window shows a startup placeholder until the
+   agent answers /health and the saved sign-in has been tried. No radio is
+   touched yet.
+
+2. SIGN IN
+   POST /auth/sign-in → session.sign_in → Supabase Auth. The profile's role
+   must be operator. The refresh token is written to the app data folder, so
+   the next launch restores it in the background.
+
+3. START A SESSION
+   POST /session/start → DroneLink.open(): scan for the dongle, connect, start
+   the 10 Hz stream. Then the checks, each yielded to the app as it happens:
+   identity → telemetry → motors (crash recovery) → battery → deck →
+   base stations → estimate settled. Only three results block: no telemetry,
+   sys.canfly = 0, and motors the supervisor will not release. Positioning
+   problems WARN, and the session becomes unassisted.
+
+4. CONFIRM
+   POST /session/confirm. Unassisted needs a second, explicit acknowledgement —
+   without base stations the drone holds nothing and the position guards cannot
+   run. State becomes ready.
+
+5. MANUAL FLIGHT
+   The app opens /ws/live, authenticates in the first message, and from then on
+   reports WHICH KEYS ARE HELD about ten times a second. The agent runs the
+   50 Hz loop and generates every setpoint. If the app goes quiet for 0.5 s the
+   agent lands. Meanwhile the guard watcher checks a verdict every 0.1 s.
+
+6. AUTONOMOUS FLIGHT
+   POST /session/program → GuardedFlight: takeoff, hold, land, with every wait
+   watched by the same guards. Refused when the drone has no position estimate.
+
+7. RECORDING
+   From the same stream: the flight CSV on disk, the 10 Hz control trace beside
+   it, and the session's samples.csv. Flight rows, session rows and audit events
+   go into the outbox.
+
+8. UPLOAD
+   The syncer drains the outbox every 60 s (or when triggered), inserts rows,
+   then uploads the gzipped CSV to the flight-logs bucket and marks it sent.
+   Offline, nothing is lost and nothing blocks.
+
+9. AFTER A CRASH
+   A tumble, a guard abort, an emergency stop or a failed program sets
+   retry_required. Retry runs the same path a new session takes — link, every
+   check including motor recovery, confirmation — inside the SAME session id,
+   history and audit trail.
+
+10. READING IT BACK
+    In the app: /history/* reads this laptop's own session folders, so the log
+    works offline. On the web: server components call lib/queries.ts, RLS
+    decides what is visible, and the dashboard renders flights, zones and
+    crop-health estimates.
+
+11. RELEASE
+    A push to main touching desktop/ or backend/agent/ builds both installers
+    on their own runners, uploads them to the installers bucket with a
+    manifest, and /apps shows them — no redeploy of the website.
+
+
+WHAT CROSSES EACH BOUNDARY
+
+  app ↔ agent        JSON over localhost. Every request carries the control
+                     token; the socket authenticates in its first message.
+                     Origins are checked (desktop origins may POST; websites
+                     may only GET).
+  agent → Supabase   The operator's own session, never a service key. What the
+                     operator may write is what RLS allows.
+  browser → Supabase The anon key plus the user's session cookie. RLS again.
+  CI → Supabase      The service role, in GitHub Actions secrets, writing to
+                     the installers bucket only.
+  agent ↔ drone      CRTP over the radio: setpoints out, telemetry in.
+
+
+DATA
+
+  Flight data        flights, telemetry, sessions, audit_events, drones, zones,
+                     missions, predictions, profiles
+  Website content    site_pages, projects, project_members, team_members,
+                     gallery_albums, gallery_items
+  Buckets            flight-logs (private), portfolio-images (public read),
+                     installers (public read, CI-only write)
+  Local only         flights/<date>/*.csv, trace_*.csv, sessions/<id>/*,
+                     outbox/, session.json. Flight data never goes in git.
+
+
+NOT WIRED — designed, present in code, not running
+
+Both would otherwise be drawn as working arrows:
+
+  Web-queued missions   sync/cloud.py has queued_missions() and claim_mission(),
+                        and the SQL function exists, but nothing calls them.
+                        Auto programs are started from the desktop app only.
+  Browser manual flight web/components/manual-control.tsx opens ws://…/ws/manual
+                        and the agent serves only /ws/live. That page cannot
+                        connect.
+
+Also out of scope by decision: the AI deck's camera link, Docker for the agent,
+real-time stick control over the internet.
+
+
+DECISIONS
+
+- The agent is a server, not a library the app calls. It outlives any one
+  window, keeps flying and recording if the UI stalls, and can be driven from a
+  terminal for flight-code work.
+- The app reports intent, never setpoints. The Crazyflie drops out of the air
+  below ~10 Hz of commands; a window hiccup must not become a fall.
+- One telemetry subscription, shared. Two would be two versions of the truth.
+- The session history is separate from the outbox. The outbox deletes what it
+  uploads; the operator's own record should not vanish because the upload
+  worked.
+- Authorization lives in Postgres. The app is publicly reachable and commands a
+  physical drone; a client-side check is a suggestion.
+- The desktop app bundles the agent rather than asking for Python. The people
+  flying this are not all developers.
+- Installers live at fixed paths in a bucket, so a release needs no redeploy.
+
+
+INVARIANTS
+
+- Only the agent touches the radio. Nothing else — ever.
+- Write the CSV first, then upload. Local writes cannot fail; flights cannot be
+  re-run.
+- Read the drone's own verdicts (sys.canfly, supervisor.info) rather than
+  inventing thresholds. A guessed 3.70 V refused flights the drone allowed.
+- A flight always ends in a landing or a stop, including when an exception
+  escapes.
+- Never arm without reading supervisor.info: after a tumble the firmware holds
+  the motors, and the flight "flies" with nothing turning.
+- The running system is the authority — not this document. Where they disagree,
+  the system is right and this file is a bug.
+
+
+WHERE TO GO NEXT
+
+  backend/flight-safety.txt        the checks and the guards — read first
+  backend/sessions-and-modes.txt   the state machine and retry
+  backend/manual-control.txt       the 50 Hz loop
+  backend/telemetry-stream.txt     the single subscription
+  backend/offline-sync.txt         outbox, CSV-first, idempotent upload
+  backend/flight-tuning.txt        why the drone bounces, and what is not fixed
+  desktop/desktop-app.txt          the shell, the sidecar, installers
+  frontend/site-pages-and-views.txt  visitor vs operator, editable pages
+  supabase/data-model.txt          tables, RLS, grants
+  development/releases.txt         merge → build → bucket → /apps
