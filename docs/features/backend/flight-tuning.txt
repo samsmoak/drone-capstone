@@ -32,7 +32,7 @@ WHERE IT LIVES
   backend/agent/cropwatcher/flight/link.py        applied at manual(), restored
                                                   by restore_estimator()
   backend/agent/cropwatcher/telemetry/trace.py    the 10 Hz control trace
-  backend/agent/cropwatcher/api/manual.py         the glide (see manual-control.txt)
+  backend/agent/cropwatcher/flight/manual.py      the glide (see manual-control.txt)
   backend/agent/tests/test_tuning.py
 
   On disk:  <app data>/flights/<date>/trace_<flight id>.csv

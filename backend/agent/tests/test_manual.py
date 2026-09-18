@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from cropwatcher.api.manual import (
+from cropwatcher.flight.manual import (
     CLIMB_ACCEL_M_S2,
     CLIMB_RATE_M_S,
     HEARTBEAT_TIMEOUT_S,

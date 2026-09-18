@@ -701,7 +701,7 @@ class Session:
     def set_intent(self, keys: dict[str, Any]) -> None:
         if self.manual is None:
             return
-        from cropwatcher.api.manual import Intent
+        from cropwatcher.flight.manual import Intent
 
         self.manual.set_intent(Intent.from_payload(keys))
 

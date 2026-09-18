@@ -17,7 +17,7 @@ WHERE IT LIVES
   backend/agent/cropwatcher/api/rest.py     routes, auth, the live socket
   backend/agent/cropwatcher/api/tokens.py   the control token
   backend/agent/cropwatcher/api/events.py   EventHub, the in-process fan-out
-  backend/agent/cropwatcher/api/manual.py   the 50 Hz loop
+  backend/agent/cropwatcher/flight/manual.py  the 50 Hz loop
   backend/agent/tests/test_api.py
 
 
