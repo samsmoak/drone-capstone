@@ -7,7 +7,8 @@ Feature docs are plain `.txt`, grouped by the surface they describe.
 
 | Doc | What it covers |
 |---|---|
-| [features/architecture.txt](features/architecture.txt) | Every piece, how they connect, the flows end to end, and which arrows are designed but not wired |
+| [features/architecture-at-a-glance.txt](features/architecture-at-a-glance.txt) | **The short version**: components, tech, connections, the numbers. One screen |
+| [features/architecture.txt](features/architecture.txt) | The long version: the flows end to end, the layers, the decisions, and which arrows are designed but not wired |
 
 ## Backend — the flight agent (`backend/agent/`)
 
