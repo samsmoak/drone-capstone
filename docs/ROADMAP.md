@@ -105,7 +105,7 @@ Legend: `[x]` done · `[ ]` not started · **⚠** blocked on something external
 
 71. [x] `api/rest.py` — FastAPI app, `/health`, `/status`, `/preflight`
 72. [x] `POST /flight/mission`, `POST /flight/stop`
-73. [x] Manual control socket — `/ws/manual` in `api/rest.py`, loop in `api/manual.py`
+73. [x] Manual control socket — `/ws/live` in `api/rest.py`, loop in `flight/manual.py`
 74. [x] Browser sends intent; agent generates 50 Hz setpoints itself
 75. [x] Heartbeat — auto-land after 0.5 s of silence
 76. [x] Bind to localhost by default; LAN only behind an explicit flag

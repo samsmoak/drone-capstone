@@ -24,7 +24,6 @@ import time
 from collections.abc import Callable, Generator
 from typing import Any
 
-from cropwatcher.api.manual import ManualController
 from cropwatcher.flight import core, preflight
 from cropwatcher.flight.checks import (
     BatteryTestResult,
@@ -37,6 +36,7 @@ from cropwatcher.flight.checks import (
     run_prop_test,
 )
 from cropwatcher.flight.control import GuardedFlight, PhaseEvent
+from cropwatcher.flight.manual import ManualController
 from cropwatcher.flight.tuning import BAROMETER_PROFILE, BASE_PROFILE, Applied, FlightTuning
 from cropwatcher.paths import cflib_cache_dir
 from cropwatcher.safety.flight_guard import FlightGuard, GuardContext

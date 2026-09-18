@@ -15,7 +15,7 @@ operator can see the drone is live. It leaves the ground only while W is held.
 
 WHERE IT LIVES
 
-  backend/agent/cropwatcher/api/manual.py   the loop and the control state
+  backend/agent/cropwatcher/flight/manual.py  the loop and the control state
   backend/agent/cropwatcher/api/rest.py     /ws/live carries the intent
   desktop/src/App.tsx                       key state -> intent
   backend/agent/tests/test_manual.py
