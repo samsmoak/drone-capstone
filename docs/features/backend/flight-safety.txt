@@ -73,6 +73,21 @@ An abort raises FlightAborted(verdict); the reason is stored on the flight row
 (flights.abort_reason) and written to the audit trail.
 
 
+WATCHING THE BASE STATIONS FROM THE LAB
+
+  cropwatcher stations          live, once a second, until Ctrl-C
+
+Prints what the DRONE reports — received, calibrated, geometry, its estimate
+and the verdict — while someone powers or re-aims a station. A station's own
+LED says it is running; it does not say the drone can see it, and the second
+station is the difference between a drone that holds position and one that
+hops sideways. Reads only: no arming, no motors.
+
+Stored geometry is not signal, again. A station can show under calibrated and
+geometry — it was seen once, from that position — while not being received at
+all. That was the lab's state on 2026-09-21: received 0, calibrated 0 and 1.
+
+
 DECISIONS
 
 - Lost position means STOP, not land. A landing steers by a position estimate;
