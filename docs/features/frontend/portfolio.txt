@@ -76,6 +76,39 @@ colour (bar, dot and tint), as in the doctor portfolio; colours come from the
 stable colour from their name. The colours are never used for text.
 
 
+WHERE EACH FIELD IS SEEN
+
+Audited against every visitor component, 2026-09-21. A field an operator can
+edit and no visitor can see is a field that will be written once and never
+again.
+
+  full_name      /team card · the person's page · beside each project
+  role           all three
+  bio            beside each project (the stack on a project page) and under
+                 the name on their own page. It used to be a FALLBACK for
+                 About — `about || bio` — so a bio written next to a filled-in
+                 About appeared nowhere, which is what an operator hit.
+  headline       their page, under the name
+  location       their page
+  about          their page, the long section
+  current_work   their page, "Working on now"
+  hobbies        their page, cards
+  photos         their page, the photo wall
+  links, email,  their page as pills; website and email also on the /team card
+  website_url    and beside a project
+  avatar_url     everywhere a person appears
+
+  projects: title, subtitle, summary (the card), category, date_label,
+  location, cover_image_url and the write-up are all rendered; summary is
+  deliberately the card blurb and does not repeat on the detail page.
+
+  gallery: album title, summary, category, date_label and cover; every item's
+  caption and credit, photos and videos alike.
+
+Every page-wording field in lib/site-content.ts is rendered by its page —
+checked field by field against each page component, not by eye.
+
+
 DECISIONS
 
 - Public reads of the portfolio return empty when the tables are missing

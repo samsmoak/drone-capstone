@@ -103,7 +103,12 @@ Three things, after an operator lost a page of writing on 2026-09-21.
                        save comes back CONFIRMED. On return the editor OFFERS
                        it — "You have unsaved changes… Put them back / Discard
                        them" — rather than restoring silently over the saved
-                       version.
+                       version. The project draft carries the WRITE-UP too, not
+                       only the fields around it: the body lives in a ref so a
+                       save always reads the current document, and in state so
+                       the draft can watch it. Restoring re-mounts the editor
+                       (a changed key), because BlockNote reads its content
+                       once.
   The reason           lib/mutations.ts reason() maps the failure: an expired
                        sign-in, an account without the operator role, a
                        duplicate, an unreachable database. The raw PostgREST

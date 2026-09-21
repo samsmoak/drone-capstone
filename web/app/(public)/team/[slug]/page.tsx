@@ -50,7 +50,11 @@ export default async function TeamMemberPage({ params }: PageProps<"/team/[slug]
     getProjectsForMember(member.id),
   ]);
 
-  const about = paragraphs(member.about || member.bio);
+  // The short bio leads; About is the long version underneath. Falling back
+  // from one to the other hid whichever came second — a bio written beside a
+  // filled-in About was never rendered anywhere.
+  const about = paragraphs(member.about);
+  const lead = member.bio.trim();
   const theirHobbies = hobbies(member.hobbies);
   const theirPhotos = photos(member.photos);
   const theirLinks = links(member.links);
@@ -63,7 +67,8 @@ export default async function TeamMemberPage({ params }: PageProps<"/team/[slug]
 
   const initial = member.full_name.trim().charAt(0).toUpperCase();
   const nothingYet =
-    about.length === 0 && theirHobbies.length === 0 && theirPhotos.length === 0 && !member.current_work;
+    about.length === 0 && !lead && theirHobbies.length === 0 && theirPhotos.length === 0
+    && !member.current_work;
 
   return (
     <main className={`${SITE_CONTAINER} py-10 md:py-14`}>
@@ -89,6 +94,9 @@ export default async function TeamMemberPage({ params }: PageProps<"/team/[slug]
                 </h1>
                 {member.headline && (
                   <p className="mt-3 text-lg leading-relaxed text-[var(--muted)]">{member.headline}</p>
+                )}
+                {lead && lead !== member.headline && (
+                  <p className="mt-3 leading-relaxed text-[var(--muted)]">{lead}</p>
                 )}
                 {member.location && <p className="eyebrow mt-4">{member.location}</p>}
                 <div className="mt-6">

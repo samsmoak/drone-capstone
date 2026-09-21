@@ -26,7 +26,12 @@ function Avatar({ member, size }: { member: TeamMemberRow; size: number }) {
   );
 }
 
-/** One person, laid out as a row: photo, name, role, and their links. */
+/** One person, laid out as a row: photo, name, role, the short bio, and links.
+ *
+ * The bio belongs here. The admin has always called it "Short bio — used
+ * beside projects", and this is beside the project — but nothing rendered it,
+ * so a bio written here appeared nowhere once the long About was filled in.
+ * Clamped to two lines: the column has to stay short enough to stay in view. */
 function MemberRow({ member }: { member: TeamMemberRow }) {
   return (
     <div className="flex items-center gap-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3.5">
@@ -34,6 +39,9 @@ function MemberRow({ member }: { member: TeamMemberRow }) {
       <div className="min-w-0">
         <p className="font-display truncate text-[15px] font-semibold">{member.full_name}</p>
         {member.role && <p className="truncate text-xs text-[var(--muted)]">{member.role}</p>}
+        {member.bio && (
+          <p className="mt-1 line-clamp-2 text-xs leading-snug text-[var(--muted)]">{member.bio}</p>
+        )}
         {member.website_url && (
           <a href={member.website_url} target="_blank" rel="noopener noreferrer"
              className="mt-0.5 block truncate text-xs font-medium text-[var(--heading)] underline-offset-2 hover:underline">
