@@ -21,6 +21,7 @@ import argparse
 import json
 import logging
 import sys
+import time
 from pathlib import Path
 
 from cropwatcher.flight import core
@@ -30,6 +31,7 @@ from cropwatcher.flight.link import DroneLink, LinkError
 from cropwatcher.flight.missions import Mission, MissionValidationError, execute, lawnmower_mission
 from cropwatcher.flight.programs import HoverTest, run_hover_test
 from cropwatcher.paths import flights_dir
+from cropwatcher.safety.flight_guard import assess_positioning
 from cropwatcher.safety.geofence import Geofence
 from cropwatcher.telemetry.reader import FlightRecorder
 from cropwatcher.telemetry.row import parse_ambient
@@ -61,6 +63,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     check = sub.add_parser("check", help="run every gate; never spins a motor")
     _add_common(check)
+
+    stations = sub.add_parser(
+        "stations", help="watch which base stations the drone can see, live")
+    _add_common(stations)
+    stations.add_argument("--seconds", type=float, default=0.0,
+                          help="stop after this long (default: until Ctrl-C)")
 
     proptest = sub.add_parser("proptest", help="the firmware's propeller test — motors spin")
     _add_common(proptest)
@@ -141,6 +149,49 @@ def cmd_check(args: argparse.Namespace) -> int:
         print(f"  ground z   {report.ground_z_m:+.3f} m "
               f"(settled to {report.estimate_spread_m * 100:.1f} cm)")
         print("\n  READY")
+    return 0
+
+
+def cmd_stations(args: argparse.Namespace) -> int:
+    """Watch the Lighthouse, live, while someone moves or powers a station.
+
+    Written in the lab (2026-09-21) with one station reaching the drone and the
+    other set up but unseen. Standing at the drone, reading what the DRONE
+    reports, is the only way to tell "the LED is on" from "the drone can see
+    it" — and two received stations is the difference between a drone that
+    holds position and one that hops sideways.
+
+    Reads only. No motors, no arming.
+    """
+    def which(mask: float | None) -> str:
+        if mask is None:
+            return "—"
+        bits = [str(i) for i in range(16) if int(mask) >> i & 1]
+        return ", ".join(bits) if bits else "none"
+
+    with DroneLink(args.uri) as link:
+        print("\n  Watching the Lighthouse. Ctrl-C to stop.\n")
+        print("   received   calibrated   geometry   estimate (x, y, z)        verdict")
+        deadline = time.monotonic() + args.seconds if args.seconds else None
+        try:
+            while deadline is None or time.monotonic() < deadline:
+                snap = link.snapshot()
+                status = assess_positioning(snap)
+                x = snap.get("stateEstimate.x")
+                y = snap.get("stateEstimate.y")
+                z = snap.get("stateEstimate.z")
+                where = (f"{x:+.2f} {y:+.2f} {z:+.2f}"
+                         if None not in (x, y, z) else "      —      ")
+                verdict = ("READY — hold position"
+                           if status.ready else
+                           " ".join(status.problems())[:46])
+                print(f"   {which(snap.get('lighthouse.bsReceive')):<10} "
+                      f"{which(snap.get('lighthouse.bsCalVal')):<12} "
+                      f"{which(snap.get('lighthouse.bsGeoVal')):<10} "
+                      f"{where:<24} {verdict}")
+                time.sleep(1.0)
+        except KeyboardInterrupt:
+            print("\n  stopped\n")
     return 0
 
 
@@ -248,6 +299,7 @@ def main(argv: list[str] | None = None) -> int:
 
     handlers = {
         "check": cmd_check,
+        "stations": cmd_stations,
         "proptest": cmd_proptest,
         "hover": cmd_hover,
         "mission": cmd_mission,
