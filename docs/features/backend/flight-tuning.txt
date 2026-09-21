@@ -40,9 +40,18 @@ WHERE IT LIVES
 
 THE PROFILES
 
-  every manual flight   posCtlPid.thrustBase = 48500 (measured hover)
+  every manual flight   stabilizer.controller = 1 (PID), thrustBase = 48500
   barometer flights     velCtlPid.vzKp ×0.40, velCtlPid.vzKi ×0.30,
                         posCtlPid.zKp ×0.75, posCtlPid.zKi ×0.50
+
+THE CONTROLLER IS PINNED, AND THAT MATTERS MORE THAN THE GAINS. The lab drone
+was found on 2026-09-21 running stabilizer.controller = 2 — Mellinger, a
+trajectory controller that wants an excellent position estimate, lurches
+without one, and reads NONE of the gains in this file. Every tuning run before
+that date was writing parameters the active controller ignored, which is why
+they changed nothing. It was a leftover in RAM (a battery swap put it back to
+1), so nothing in this repo had set it — which is exactly why it is now pinned
+at arm time and restored afterwards.
 
 Values are SCALED FROM WHAT THE DRONE REPORTS, never assumed, and the exact
 originals are written back when the flight ends. These are starting values from

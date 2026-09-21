@@ -39,6 +39,9 @@ log = logging.getLogger(__name__)
 #: Mean unsaturated motor output while airborne, lab traces 2026-09-17.
 MEASURED_HOVER_THRUST = 48_500
 
+#: `stabilizer.controller`: 1 PID, 2 Mellinger, 3 INDI (firmware stabilizer.h).
+CONTROLLER_PID = 1
+
 
 class Kind(StrEnum):
     SET = "set"          # write this value
@@ -53,8 +56,17 @@ class Adjustment:
     why: str
 
 
-#: Every manual flight: start the height loop from where this drone hovers.
+#: Every manual flight: fly on the controller these gains belong to, and start
+#: the height loop from where this drone hovers.
 BASE_PROFILE: tuple[Adjustment, ...] = (
+    # Found set to 2 (Mellinger) on the lab drone, 2026-09-21 — left in RAM by
+    # something earlier in the day; a battery swap put it back to 1. Mellinger
+    # is a trajectory controller: it wants an excellent position estimate,
+    # lurches without one, and reads NONE of the gains below, which is why
+    # tuning them changed nothing. Pinned so a leftover cannot decide how the
+    # drone flies. Restored, like everything here, when the flight ends.
+    Adjustment("stabilizer.controller", Kind.SET, CONTROLLER_PID,
+               "the PID controller — the one every gain in this file belongs to"),
     Adjustment("posCtlPid.thrustBase", Kind.SET, MEASURED_HOVER_THRUST,
                "measured hover thrust; the default assumes a lighter stock drone"),
 )
