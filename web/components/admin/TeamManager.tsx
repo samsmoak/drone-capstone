@@ -8,8 +8,10 @@ import type { TeamMemberRow } from "@/lib/queries";
 import {
   EMPTY_MEMBER, hobbies, LIMITS, links, photos, slugify, type MemberInput,
 } from "@/lib/team-profile";
+import { DraftNotice, EditorBar, type EditorState } from "./EditorBar";
 import { ImagePicker } from "./ImagePicker";
 import { ListEditor } from "./ListEditor";
+import { useDraft } from "./useDraft";
 import { Button, Card, Input, Label, Textarea } from "./ui";
 
 function toInput(m: TeamMemberRow): MemberInput {
@@ -38,10 +40,15 @@ export function TeamManager({ initial }: { initial: TeamMemberRow[] }) {
   const [editing, setEditing] = useState<string | "new" | null>(null);
   const [draft, setDraft] = useState<MemberInput>(EMPTY_MEMBER);
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
   const [pending, startTransition] = useTransition();
+  // `draft` here is the member form's own state; this is the browser copy of
+  // it, so a failed save or a page that goes away does not lose the writing.
+  const kept = useDraft(`member:${editing ?? "none"}`, draft, editing !== null);
 
   function open(member: TeamMemberRow | null) {
     setError(null);
+    setSaved(false);
     setEditing(member ? member.id : "new");
     setDraft(member ? toInput(member) : EMPTY_MEMBER);
   }
@@ -51,6 +58,8 @@ export function TeamManager({ initial }: { initial: TeamMemberRow[] }) {
     startTransition(async () => {
       const res = editing === "new" ? await createMember(draft) : await updateMember(editing!, draft);
       if (!res.ok) { setError(res.error); return; }
+      kept.markSaved();                    // only after a confirmed write
+      setSaved(true);
       setEditing(null);
       router.refresh();
     });
@@ -83,15 +92,36 @@ export function TeamManager({ initial }: { initial: TeamMemberRow[] }) {
 
   return (
     <div className="grid gap-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="font-display text-3xl font-semibold">Team</h1>
-          <p className="mt-1 text-sm text-[var(--muted)]">The people on /team and beside each project. The order here is the order shown.</p>
-        </div>
-        <Button onClick={() => open(null)} disabled={pending}>+ Add member</Button>
-      </header>
+      <EditorBar
+        title="Team"
+        description="The people on /team and beside each project. The order here is the order shown."
+        state={
+          error ? { kind: "error", text: error }
+            : pending ? { kind: "saving" }
+              : saved ? { kind: "saved" }
+                : kept.dirty ? { kind: "dirty" }
+                  : { kind: "idle" } satisfies EditorState
+        }
+      >
+        {editing ? (
+          <>
+            <Button variant="ghost" onClick={() => setEditing(null)} disabled={pending}>Cancel</Button>
+            <Button onClick={save} disabled={pending || !draft.full_name.trim()}>
+              {pending ? "Saving…" : "Save"}
+            </Button>
+          </>
+        ) : (
+          <Button onClick={() => open(null)} disabled={pending}>+ Add member</Button>
+        )}
+      </EditorBar>
 
-      {error && <p role="alert" className="text-sm text-[var(--status-critical)]">{error}</p>}
+      {editing && kept.pending && (
+        <DraftNotice
+          savedAt={kept.pending.savedAt}
+          onRestore={() => { setDraft(kept.pending!.value); kept.discard(); }}
+          onDiscard={kept.discard}
+        />
+      )}
 
       {editing && (
         <Card className="grid gap-8 p-6">

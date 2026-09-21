@@ -8,7 +8,9 @@ import { deleteProject, updateProject } from "@/lib/mutations";
 import type { ProjectWithTeam, TeamMemberRow } from "@/lib/queries";
 import { ADMIN_PROJECTS, ADMIN_TEAM, projectPath } from "@/lib/routes";
 import type { Json } from "@/types/database";
+import { DraftNotice, EditorBar, type EditorState } from "./EditorBar";
 import { ImagePicker } from "./ImagePicker";
+import { useDraft } from "./useDraft";
 import { Button, Card, Input, Label, StatusChip, Textarea } from "./ui";
 
 type SaveState = { kind: "idle" | "saved" | "error"; message?: string };
@@ -32,6 +34,18 @@ export function ProjectEditor({ project, allMembers }: { project: ProjectWithTea
   const contentRef = useRef<Json>(project.content);
   const [state, setState] = useState<SaveState>({ kind: "idle" });
   const [pending, startTransition] = useTransition();
+  // Every field the form holds, mirrored to this browser as it is typed. The
+  // write-up lives in a ref (BlockNote owns it), so it is read on each change
+  // rather than tracked in state.
+  const fields = { title, subtitle, summary, category, dateLabel, location, coverUrl, status, memberIds };
+  const draft = useDraft(`project:${project.id}`, fields);
+
+  function restore(value: typeof fields) {
+    setTitle(value.title); setSubtitle(value.subtitle); setSummary(value.summary);
+    setCategory(value.category); setDateLabel(value.dateLabel); setLocation(value.location);
+    setCoverUrl(value.coverUrl); setStatus(value.status); setMemberIds(value.memberIds);
+    draft.discard();
+  }
 
   function save(nextStatus?: "draft" | "published") {
     setState({ kind: "idle" });
@@ -45,6 +59,7 @@ export function ProjectEditor({ project, allMembers }: { project: ProjectWithTea
       });
       if (res.ok) {
         if (nextStatus) setStatus(nextStatus);
+        draft.markSaved();                 // only after a confirmed write
         setState({ kind: "saved" });
         router.refresh();
       } else {
@@ -61,33 +76,45 @@ export function ProjectEditor({ project, allMembers }: { project: ProjectWithTea
     if (!confirm(`Delete “${title || "this project"}”? This cannot be undone.`)) return;
     startTransition(async () => {
       const res = await deleteProject(project.id);
-      if (res.ok) router.push(ADMIN_PROJECTS);
+      if (res.ok) { draft.discard(); router.push(ADMIN_PROJECTS); }
       else setState({ kind: "error", message: res.error });
     });
   }
 
   return (
     <div className="grid gap-6">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <Link href={ADMIN_PROJECTS} className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]">← Projects</Link>
-          <StatusChip status={status} />
-          {state.kind === "saved" && <span role="status" className="text-sm font-medium">Saved ✓</span>}
-          {state.kind === "error" && <span role="alert" className="text-sm font-medium text-[var(--status-critical)]">{state.message}</span>}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {status === "published" && (
-            <Link href={projectPath(project.slug)} target="_blank"
-                  className="inline-flex min-h-11 items-center rounded-lg border border-[var(--border)] px-4 text-sm font-semibold">
-              View ↗
-            </Link>
-          )}
-          <Button variant="outline" onClick={() => save()} disabled={pending}>{pending ? "Saving…" : "Save"}</Button>
-          {status === "published"
-            ? <Button variant="ghost" onClick={() => save("draft")} disabled={pending}>Unpublish</Button>
-            : <Button onClick={() => save("published")} disabled={pending}>Publish</Button>}
-        </div>
-      </header>
+      <EditorBar
+        back={ADMIN_PROJECTS}
+        backLabel="Projects"
+        title={title || "Untitled project"}
+        state={
+          state.kind === "error" ? { kind: "error", text: state.message ?? "" }
+            : pending ? { kind: "saving" }
+              : state.kind === "saved" ? { kind: "saved" }
+                : draft.dirty ? { kind: "dirty" }
+                  : { kind: "idle" } satisfies EditorState
+        }
+      >
+        <StatusChip status={status} />
+        {status === "published" && (
+          <Link href={projectPath(project.slug)} target="_blank"
+                className="inline-flex min-h-11 items-center rounded-lg border border-[var(--border)] px-4 text-sm font-semibold">
+            View ↗
+          </Link>
+        )}
+        {status === "published"
+          ? <Button variant="ghost" onClick={() => save("draft")} disabled={pending}>Unpublish</Button>
+          : <Button variant="ghost" onClick={() => save("published")} disabled={pending}>Publish</Button>}
+        <Button onClick={() => save()} disabled={pending}>{pending ? "Saving…" : "Save"}</Button>
+      </EditorBar>
+
+      {draft.pending && (
+        <DraftNotice
+          savedAt={draft.pending.savedAt}
+          onRestore={() => restore(draft.pending!.value)}
+          onDiscard={draft.discard}
+        />
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="grid content-start gap-6">

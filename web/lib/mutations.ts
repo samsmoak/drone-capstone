@@ -142,6 +142,62 @@ export type PortfolioResult<T = undefined> =
   | { ok: true; data: T }
   | { ok: false; error: string };
 
+type WriteError = { message?: string; code?: string; details?: string } | null;
+
+/**
+ * Why a write failed, in words an operator can act on.
+ *
+ * Every failure used to read the same: "Could not save the page. Are you
+ * signed in as an operator?" — which covers an expired sign-in, a viewer
+ * account and an unreachable database identically, and tells the person
+ * nothing about which one they are in.
+ *
+ * The raw message never reaches the browser. PostgREST errors carry column
+ * names, policy names and table structure, and this is a public site.
+ */
+function reason(error: WriteError, action: string): string {
+  const code = error?.code ?? "";
+  const message = (error?.message ?? "").toLowerCase();
+  console.error(`admin write failed: ${action}`, code, error?.message, error?.details);
+
+  if (code === "PGRST301" || message.includes("jwt expired") || message.includes("token is expired")) {
+    return "Your sign-in expired while this page was open, so nothing was saved. " +
+      "Sign in again in another tab, come back, and press Save — what you typed is still here.";
+  }
+  if (code === "42501" || message.includes("row-level security")) {
+    return "Your account is not allowed to change this. It needs the operator role — " +
+      "ask an operator to grant it.";
+  }
+  if (code === "23505") {
+    return "Something with that name or address already exists. Give this one a different one.";
+  }
+  if (code === "23503") {
+    return "This refers to something that no longer exists. Reload the page and try again.";
+  }
+  if (code === "PGRST116" || message.includes("no rows")) {
+    return `Could not ${action}: it no longer exists. Someone may have deleted it — reload the page.`;
+  }
+  if (message.includes("fetch failed") || message.includes("network") || code === "") {
+    return `Could not reach the database, so nothing was saved. Check your connection and ` +
+      `press Save again — what you typed is still here.`;
+  }
+  return `Could not ${action}. Nothing was saved; what you typed is still here.`;
+}
+
+/**
+ * A write that changed nothing is a failure, however quietly it returns.
+ *
+ * Row-level security does not raise on UPDATE — a row the policy hides simply
+ * does not match, so PostgREST answers "no error, no rows" and the old code
+ * reported success. An operator whose role had been changed, or whose row had
+ * been deleted, was told "Saved ✓" over work that never left the browser.
+ */
+function changedNothing(action: string): string {
+  return `Nothing was saved when trying to ${action}. Either it no longer exists, or your ` +
+    `account no longer has permission to change it. Reload the page — what you typed is ` +
+    `still here.`;
+}
+
 function revalidatePortfolio(slug?: string) {
   revalidatePath(PROJECTS);
   if (slug) revalidatePath(`${PROJECTS}/${slug}`);
@@ -187,7 +243,7 @@ export async function createProject(input: { title: string }): Promise<Portfolio
     .insert({ title, slug, status: "draft", content: [] })
     .select("id")
     .single();
-  if (error) return { ok: false, error: "Could not create the project. Are you signed in as an operator?" };
+  if (error) return { ok: false, error: reason(error, "create the project") };
   revalidatePortfolio();
   return { ok: true, data: { id: data.id } };
 }
@@ -211,7 +267,7 @@ export async function updateProject(id: string, input: ProjectUpdate): Promise<P
     .from("projects").select("slug, published_at").eq("id", id).maybeSingle();
 
   const { member_ids, ...fields } = input;
-  const { error } = await supabase
+  const { data: saved, error } = await supabase
     .from("projects")
     .update({
       ...fields,
@@ -221,17 +277,23 @@ export async function updateProject(id: string, input: ProjectUpdate): Promise<P
       published_at:
         input.status === "published" ? before?.published_at ?? new Date().toISOString() : before?.published_at ?? null,
     })
-    .eq("id", id);
-  if (error) return { ok: false, error: "Could not save the project." };
+    .eq("id", id)
+    .select("id");
+  if (error) return { ok: false, error: reason(error, "save the project") };
+  if (!saved?.length) return { ok: false, error: changedNothing("save the project") };
 
   // The team is replaced as a set, in the order chosen.
   const { error: clearError } = await supabase.from("project_members").delete().eq("project_id", id);
-  if (clearError) return { ok: false, error: "Saved the project, but could not update its team." };
+  if (clearError) {
+    return { ok: false, error: reason(clearError, "update the project's team") };
+  }
   if (member_ids.length > 0) {
     const { error: teamError } = await supabase.from("project_members").insert(
       member_ids.map((member_id, i) => ({ project_id: id, member_id, display_order: i })),
     );
-    if (teamError) return { ok: false, error: "Saved the project, but could not update its team." };
+    if (teamError) {
+      return { ok: false, error: reason(teamError, "update the project's team") };
+    }
   }
 
   revalidatePortfolio(before?.slug);
@@ -241,14 +303,16 @@ export async function updateProject(id: string, input: ProjectUpdate): Promise<P
 export async function setProjectStatus(id: string, status: "draft" | "published"): Promise<PortfolioResult> {
   const supabase = await createClient();
   const { data: before } = await supabase.from("projects").select("slug, published_at").eq("id", id).maybeSingle();
-  const { error } = await supabase
+  const { data: saved, error } = await supabase
     .from("projects")
     .update({
       status,
       published_at: status === "published" ? before?.published_at ?? new Date().toISOString() : before?.published_at ?? null,
     })
-    .eq("id", id);
-  if (error) return { ok: false, error: "Could not change the project's status." };
+    .eq("id", id)
+    .select("id");
+  if (error) return { ok: false, error: reason(error, "change the project's status") };
+  if (!saved?.length) return { ok: false, error: changedNothing("change the project's status") };
   revalidatePortfolio(before?.slug);
   return { ok: true, data: undefined };
 }
@@ -256,7 +320,7 @@ export async function setProjectStatus(id: string, status: "draft" | "published"
 export async function deleteProject(id: string): Promise<PortfolioResult> {
   const supabase = await createClient();
   const { error } = await supabase.from("projects").delete().eq("id", id);
-  if (error) return { ok: false, error: "Could not delete the project." };
+  if (error) return { ok: false, error: reason(error, "delete the project") };
   revalidatePortfolio();
   return { ok: true, data: undefined };
 }
@@ -265,7 +329,7 @@ export async function reorderProjects(order: { id: string; position: number }[])
   const supabase = await createClient();
   for (const { id, position } of order) {
     const { error } = await supabase.from("projects").update({ display_order: position }).eq("id", id);
-    if (error) return { ok: false, error: "Could not reorder the projects." };
+    if (error) return { ok: false, error: reason(error, "reorder the projects") };
   }
   revalidatePortfolio();
   return { ok: true, data: undefined };
@@ -361,7 +425,7 @@ export async function updateMember(id: string, input: MemberInput): Promise<Port
 export async function deleteMember(id: string): Promise<PortfolioResult> {
   const supabase = await createClient();
   const { error } = await supabase.from("team_members").delete().eq("id", id);
-  if (error) return { ok: false, error: "Could not remove the team member." };
+  if (error) return { ok: false, error: reason(error, "remove the team member") };
   revalidatePortfolio();
   return { ok: true, data: undefined };
 }
@@ -370,7 +434,7 @@ export async function reorderMembers(order: { id: string; position: number }[]):
   const supabase = await createClient();
   for (const { id, position } of order) {
     const { error } = await supabase.from("team_members").update({ display_order: position }).eq("id", id);
-    if (error) return { ok: false, error: "Could not reorder the team." };
+    if (error) return { ok: false, error: reason(error, "reorder the team") };
   }
   revalidatePortfolio();
   return { ok: true, data: undefined };
@@ -395,7 +459,7 @@ export async function createAlbum(input: { title: string }): Promise<PortfolioRe
   for (let n = 2; used.has(slug); n++) slug = `${base}-${n}`;
   const { data, error } = await supabase
     .from("gallery_albums").insert({ title, slug, status: "draft" }).select("id").single();
-  if (error) return { ok: false, error: "Could not create the album. Are you signed in as an operator?" };
+  if (error) return { ok: false, error: reason(error, "create the album") };
   revalidateGallery();
   return { ok: true, data: { id: data.id } };
 }
@@ -417,7 +481,7 @@ export async function updateAlbum(id: string, input: AlbumUpdate): Promise<Portf
     .eq("id", id)
     .select("slug")
     .single();
-  if (error) return { ok: false, error: "Could not save the album." };
+  if (error) return { ok: false, error: reason(error, "save the album") };
   revalidateGallery(data.slug);
   return { ok: true, data: undefined };
 }
@@ -426,7 +490,7 @@ export async function setAlbumStatus(id: string, status: "draft" | "published"):
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("gallery_albums").update({ status }).eq("id", id).select("slug").single();
-  if (error) return { ok: false, error: "Could not change the album's status." };
+  if (error) return { ok: false, error: reason(error, "change the album's status") };
   revalidateGallery(data.slug);
   return { ok: true, data: undefined };
 }
@@ -434,7 +498,7 @@ export async function setAlbumStatus(id: string, status: "draft" | "published"):
 export async function deleteAlbum(id: string): Promise<PortfolioResult> {
   const supabase = await createClient();
   const { error } = await supabase.from("gallery_albums").delete().eq("id", id);
-  if (error) return { ok: false, error: "Could not delete the album." };
+  if (error) return { ok: false, error: reason(error, "delete the album") };
   revalidateGallery();
   return { ok: true, data: undefined };
 }
@@ -522,14 +586,19 @@ export async function savePageContent(key: string, content: unknown): Promise<Po
   if (!isPageKey(key)) return { ok: false, error: "There is no such page." };
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Not signed in." };
-  const { error } = await supabase.from("site_pages").upsert({
+  if (!user) {
+    return { ok: false, error:
+      "Your sign-in expired while this page was open, so nothing was saved. Sign in again in " +
+      "another tab, come back, and press Save — what you typed is still here." };
+  }
+  const { data: saved, error } = await supabase.from("site_pages").upsert({
     key,
     content: normalizeContent(key, content),
     updated_at: new Date().toISOString(),
     updated_by: user.id,
-  });
-  if (error) return { ok: false, error: "Could not save the page. Are you signed in as an operator?" };
+  }).select("key");
+  if (error) return { ok: false, error: reason(error, "save the page") };
+  if (!saved?.length) return { ok: false, error: changedNothing("save the page") };
   revalidatePath(PAGE_SPECS[key].path);
   revalidatePath("/", "layout");            // the footer is on every page
   return { ok: true, data: undefined };
@@ -540,7 +609,7 @@ export async function resetPageContent(key: string): Promise<PortfolioResult> {
   if (!isPageKey(key)) return { ok: false, error: "There is no such page." };
   const supabase = await createClient();
   const { error } = await supabase.from("site_pages").delete().eq("key", key);
-  if (error) return { ok: false, error: "Could not reset the page." };
+  if (error) return { ok: false, error: reason(error, "reset the page") };
   revalidatePath(PAGE_SPECS[key].path);
   revalidatePath("/", "layout");
   return { ok: true, data: undefined };
