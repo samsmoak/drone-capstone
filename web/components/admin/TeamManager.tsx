@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { createMember, deleteMember, reorderMembers, updateMember } from "@/lib/mutations";
+import { attempt } from "@/lib/save";
 import type { TeamMemberRow } from "@/lib/queries";
 import {
   EMPTY_MEMBER, hobbies, LIMITS, links, photos, slugify, type MemberInput,
@@ -56,7 +57,8 @@ export function TeamManager({ initial }: { initial: TeamMemberRow[] }) {
   function save() {
     setError(null);
     startTransition(async () => {
-      const res = editing === "new" ? await createMember(draft) : await updateMember(editing!, draft);
+      const res = await attempt(() =>
+        editing === "new" ? createMember(draft) : updateMember(editing!, draft));
       if (!res.ok) { setError(res.error); return; }
       kept.markSaved();                    // only after a confirmed write
       setSaved(true);
@@ -68,7 +70,7 @@ export function TeamManager({ initial }: { initial: TeamMemberRow[] }) {
   function remove(m: TeamMemberRow) {
     if (!confirm(`Remove ${m.full_name} from the team? They are also removed from every project.`)) return;
     startTransition(async () => {
-      const res = await deleteMember(m.id);
+      const res = await attempt(() => deleteMember(m.id));
       if (res.ok) setItems((prev) => prev.filter((it) => it.id !== m.id));
       else setError(res.error);
       router.refresh();

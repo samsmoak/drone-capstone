@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { resetPageContent, savePageContent } from "@/lib/mutations";
+import { attempt } from "@/lib/save";
 import { ADMIN_PAGES } from "@/lib/routes";
 import {
   PAGE_SPECS,
@@ -39,7 +40,7 @@ export function PageEditor({ pageKey, initial, edited }: { pageKey: PageKey; ini
 
   function save() {
     startTransition(async () => {
-      const res = await savePageContent(pageKey, content);
+      const res = await attempt(() => savePageContent(pageKey, content));
       if (!res.ok) return setMessage({ tone: "error", text: res.error });
       // Only now: the write came back having actually changed a row.
       draft.markSaved();
@@ -51,7 +52,7 @@ export function PageEditor({ pageKey, initial, edited }: { pageKey: PageKey; ini
   function reset() {
     if (!confirm(`Put “${spec.title}” back to its original wording? Your edits to this page are lost.`)) return;
     startTransition(async () => {
-      const res = await resetPageContent(pageKey);
+      const res = await attempt(() => resetPageContent(pageKey));
       if (!res.ok) return setMessage({ tone: "error", text: res.error });
       draft.discard();
       router.refresh();
