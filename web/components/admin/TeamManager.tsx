@@ -153,7 +153,7 @@ export function TeamManager({ initial }: { initial: TeamMemberRow[] }) {
               <div>
                 <Label htmlFor="m-bio">Short bio</Label>
                 <Textarea id="m-bio" rows={2} value={draft.bio} onChange={(e) => set("bio", e.target.value)} />
-                <p className="mt-1 text-xs text-[var(--muted)]">Used beside projects. The long version goes below.</p>
+                <p className="mt-1 text-xs text-[var(--muted)]">Shown beside each project they worked on, and under their name on their own page. The long version goes below.</p>
               </div>
               <div>
                 <Label htmlFor="m-now">Working on now</Label>

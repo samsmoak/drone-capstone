@@ -32,19 +32,32 @@ export function ProjectEditor({ project, allMembers }: { project: ProjectWithTea
   const [coverUrl, setCoverUrl] = useState<string | null>(project.cover_image_url);
   const [status, setStatus] = useState(project.status as "draft" | "published");
   const [memberIds, setMemberIds] = useState<string[]>(project.team.map((m) => m.id));
+  // The write-up lives in state as well as the ref. The ref is what a save
+  // reads (always current, never a render behind); the state is what the draft
+  // watches — without it the draft kept every field EXCEPT the writing, which
+  // is the part nobody wants to lose.
   const contentRef = useRef<Json>(project.content);
+  const [content, setContent] = useState<Json>(project.content);
+  // Changing this re-mounts the editor. BlockNote reads initialContent once,
+  // so a restored draft needs a fresh instance to show it.
+  const [editorKey, setEditorKey] = useState(0);
   const [state, setState] = useState<SaveState>({ kind: "idle" });
   const [pending, startTransition] = useTransition();
   // Every field the form holds, mirrored to this browser as it is typed. The
   // write-up lives in a ref (BlockNote owns it), so it is read on each change
   // rather than tracked in state.
-  const fields = { title, subtitle, summary, category, dateLabel, location, coverUrl, status, memberIds };
+  const fields = { title, subtitle, summary, category, dateLabel, location, coverUrl, status, memberIds, content };
   const draft = useDraft(`project:${project.id}`, fields);
 
   function restore(value: typeof fields) {
     setTitle(value.title); setSubtitle(value.subtitle); setSummary(value.summary);
     setCategory(value.category); setDateLabel(value.dateLabel); setLocation(value.location);
     setCoverUrl(value.coverUrl); setStatus(value.status); setMemberIds(value.memberIds);
+    if (value.content !== undefined) {
+      contentRef.current = value.content;
+      setContent(value.content);
+      setEditorKey((n) => n + 1);          // re-mount, so the writing reappears
+    }
     draft.discard();
   }
 
@@ -173,7 +186,11 @@ export function ProjectEditor({ project, allMembers }: { project: ProjectWithTea
           <Card className="p-6 sm:p-8">
             <Label>Write-up</Label>
             <p className="mb-4 text-xs text-[var(--muted)]">Headings become the page&apos;s contents. Type “/” for blocks, or drag images in.</p>
-            <BlockEditorClient initialContent={project.content} onChange={(doc) => { contentRef.current = doc; }} />
+            <BlockEditorClient
+              key={editorKey}
+              initialContent={content}
+              onChange={(doc) => { contentRef.current = doc; setContent(doc); }}
+            />
           </Card>
         </div>
       </div>
