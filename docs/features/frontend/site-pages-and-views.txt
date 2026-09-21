@@ -87,6 +87,44 @@ the Windows CI runner used to build the published .exe. See
 ../development/releases.txt — the builds come from CI, not from these pages.
 
 
+WHEN A SAVE GOES WRONG
+
+Three things, after an operator lost a page of writing on 2026-09-21.
+
+  The error boundary   /admin had none, so a server read that threw was
+                       answered by Next's own bare page — "This page couldn't
+                       load", a Reload button, an error code — and the editor
+                       was replaced mid-edit. app/admin/error.tsx and
+                       app/(public)/error.tsx are copies of app/app/error.tsx:
+                       what happened, the reference code, and Try again, which
+                       re-runs the failed render without a page load.
+  The draft            components/admin/useDraft.ts mirrors what is typed into
+                       localStorage as it is typed, and clears it only when a
+                       save comes back CONFIRMED. On return the editor OFFERS
+                       it — "You have unsaved changes… Put them back / Discard
+                       them" — rather than restoring silently over the saved
+                       version.
+  The reason           lib/mutations.ts reason() maps the failure: an expired
+                       sign-in, an account without the operator role, a
+                       duplicate, an unreachable database. The raw PostgREST
+                       message never reaches the browser — it carries policy
+                       and column names — it goes to the server log.
+
+Why a save was the moment it broke: every editor calls router.refresh() after a
+successful write, which re-runs the server reads. A stale session or a network
+blip at that instant becomes a thrown read, and before the boundary that took
+the page with it.
+
+THE EDITOR BAR
+
+components/admin/EditorBar.tsx, extracted from PageEditor, which was the only
+editor whose header was sticky. Every editor now wears the same bar: where you
+are, the state of the work (unsaved / saving / saved / the failure), and Save —
+pinned to the top, so a long form never has to be scrolled back to save it.
+Measured: at 1,139 px down the Set Up editor, Save sits at the top of the
+viewport.
+
+
 THE OPERATOR SHELL
 
 /app and /admin share one frame (components/operator/OperatorShell.tsx): a fixed
@@ -101,6 +139,9 @@ the email were in it, which is why the navbar was so tall.
 WHERE IT LIVES
 
   lib/site-content.ts                     field specs, default wording, normaliser
+  components/admin/EditorBar.tsx          the sticky bar every editor wears
+  components/admin/useDraft.ts            unsaved work, kept in the browser
+  app/admin/error.tsx, app/(public)/error.tsx   what a failed render says
   lib/queries.ts getPageContent           override ⊕ defaults, never throws
   lib/mutations.ts savePageContent,       normalise then upsert; reset = delete
                    resetPageContent

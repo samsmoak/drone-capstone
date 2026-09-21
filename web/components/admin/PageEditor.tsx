@@ -13,7 +13,9 @@ import {
   type FieldSpec,
   type PageKey,
 } from "@/lib/site-content";
+import { DraftNotice, EditorBar, type EditorState } from "./EditorBar";
 import { ImagePicker } from "./ImagePicker";
+import { useDraft } from "./useDraft";
 import { Button, Card, Input, Label, Textarea } from "./ui";
 
 /**
@@ -24,13 +26,14 @@ export function PageEditor({ pageKey, initial, edited }: { pageKey: PageKey; ini
   const spec = PAGE_SPECS[pageKey];
   const router = useRouter();
   const [content, setContent] = useState<ContentObject>(initial);
-  const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
+  // Typing is mirrored to this browser as it happens, so a failed save or a
+  // page that goes away mid-edit does not take the work with it.
+  const draft = useDraft(`page:${pageKey}`, content);
 
   function update(next: ContentObject) {
     setContent(next);
-    setDirty(true);
     setMessage(null);
   }
 
@@ -38,7 +41,8 @@ export function PageEditor({ pageKey, initial, edited }: { pageKey: PageKey; ini
     startTransition(async () => {
       const res = await savePageContent(pageKey, content);
       if (!res.ok) return setMessage({ tone: "error", text: res.error });
-      setDirty(false);
+      // Only now: the write came back having actually changed a row.
+      draft.markSaved();
       setMessage({ tone: "ok", text: "Saved — the page is updated." });
       router.refresh();
     });
@@ -49,34 +53,42 @@ export function PageEditor({ pageKey, initial, edited }: { pageKey: PageKey; ini
     startTransition(async () => {
       const res = await resetPageContent(pageKey);
       if (!res.ok) return setMessage({ tone: "error", text: res.error });
+      draft.discard();
       router.refresh();
       router.push(ADMIN_PAGES);
     });
   }
 
+  const state: EditorState =
+    message?.tone === "error" ? { kind: "error", text: message.text }
+      : pending ? { kind: "saving" }
+        : message?.tone === "ok" ? { kind: "saved", text: message.text }
+          : draft.dirty ? { kind: "dirty" }
+            : { kind: "idle" };
+
   return (
     <div className="grid gap-6">
-      <header className="sticky top-0 z-20 -mx-2 flex max-lg:top-[6.5rem] flex-wrap items-center justify-between gap-4 rounded-b-xl bg-[var(--background)]/95 px-2 py-3 backdrop-blur">
-        <div className="min-w-0">
-          <Link href={ADMIN_PAGES} className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]">← Pages</Link>
-          <h1 className="font-display mt-1 text-3xl font-semibold">{spec.title}</h1>
-          <p className="text-sm text-[var(--muted)]">{spec.description}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {message && (
-            <span role={message.tone === "error" ? "alert" : "status"}
-                  className={`text-sm font-medium ${message.tone === "error" ? "text-[var(--status-critical)]" : ""}`}>
-              {message.text}
-            </span>
-          )}
-          {dirty && !message && <span className="text-sm text-[var(--muted)]">Unsaved changes</span>}
-          <Link href={spec.path} target="_blank" className="inline-flex min-h-11 items-center rounded-lg border border-[var(--border)] px-4 text-sm font-semibold">
-            View page ↗
-          </Link>
-          {edited && <Button variant="ghost" onClick={reset} disabled={pending}>Reset to original</Button>}
-          <Button onClick={save} disabled={pending || !dirty}>{pending ? "Saving…" : "Save"}</Button>
-        </div>
-      </header>
+      <EditorBar
+        back={ADMIN_PAGES}
+        backLabel="Pages"
+        title={spec.title}
+        description={spec.description}
+        state={state}
+      >
+        <Link href={spec.path} target="_blank" className="inline-flex min-h-11 items-center rounded-lg border border-[var(--border)] px-4 text-sm font-semibold">
+          View page ↗
+        </Link>
+        {edited && <Button variant="ghost" onClick={reset} disabled={pending}>Reset to original</Button>}
+        <Button onClick={save} disabled={pending || !draft.dirty}>{pending ? "Saving…" : "Save"}</Button>
+      </EditorBar>
+
+      {draft.pending && (
+        <DraftNotice
+          savedAt={draft.pending.savedAt}
+          onRestore={() => { setContent(draft.pending!.value); draft.discard(); }}
+          onDiscard={draft.discard}
+        />
+      )}
 
       <Card className="grid gap-7 p-6 lg:p-8">
         <Fields fields={spec.fields} value={content} onChange={update} />

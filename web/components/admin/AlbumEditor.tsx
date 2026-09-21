@@ -17,6 +17,8 @@ import type { AlbumWithItems, GalleryItemRow } from "@/lib/queries";
 import { ADMIN_GALLERY, galleryPath } from "@/lib/routes";
 import { uploadImage } from "@/lib/upload";
 import { youtubeId, youtubeThumb } from "@/lib/video";
+import { DraftNotice, EditorBar, type EditorState } from "./EditorBar";
+import { useDraft } from "./useDraft";
 import { Button, Card, Input, Label, StatusChip, Textarea } from "./ui";
 
 /** Read an image's size in the browser, so the public page can lay it out before it loads. */
@@ -44,6 +46,10 @@ export function AlbumEditor({ album }: { album: AlbumWithItems }) {
   const [uploading, setUploading] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const fileInput = useRef<HTMLInputElement>(null);
+  // The album's own fields. Photos and videos are saved the moment they are
+  // added, so they are not part of the draft — only the typing is.
+  const fields = { title, summary, category, dateLabel, cover, status };
+  const draft = useDraft(`album:${album.id}`, fields);
 
   const fail = (text: string) => setMessage({ tone: "error", text });
 
@@ -55,6 +61,7 @@ export function AlbumEditor({ album }: { album: AlbumWithItems }) {
       });
       if (!res.ok) return fail(res.error);
       if (nextStatus) setStatus(nextStatus);
+      draft.markSaved();                   // only after a confirmed write
       setMessage({ tone: "ok", text: "Saved ✓" });
       router.refresh();
     });
@@ -134,27 +141,40 @@ export function AlbumEditor({ album }: { album: AlbumWithItems }) {
 
   return (
     <div className="grid gap-6">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <Link href={ADMIN_GALLERY} className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]">← Gallery</Link>
-          <StatusChip status={status} />
-          {message && (
-            <span role={message.tone === "error" ? "alert" : "status"}
-                  className={`text-sm font-medium ${message.tone === "error" ? "text-[var(--status-critical)]" : ""}`}>
-              {message.text}
-            </span>
-          )}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {status === "published" && (
-            <Link href={galleryPath(album.slug)} target="_blank" className="inline-flex min-h-11 items-center rounded-lg border border-[var(--border)] px-4 text-sm font-semibold">View ↗</Link>
-          )}
-          <Button variant="outline" onClick={() => save()} disabled={pending}>Save</Button>
-          {status === "published"
-            ? <Button variant="ghost" onClick={() => save("draft")} disabled={pending}>Unpublish</Button>
-            : <Button onClick={() => save("published")} disabled={pending}>Publish</Button>}
-        </div>
-      </header>
+      <EditorBar
+        back={ADMIN_GALLERY}
+        backLabel="Gallery"
+        title={title || "Untitled album"}
+        state={
+          message?.tone === "error" ? { kind: "error", text: message.text }
+            : pending ? { kind: "saving" }
+              : message?.tone === "ok" ? { kind: "saved", text: message.text }
+                : draft.dirty ? { kind: "dirty" }
+                  : { kind: "idle" } satisfies EditorState
+        }
+      >
+        <StatusChip status={status} />
+        {status === "published" && (
+          <Link href={galleryPath(album.slug)} target="_blank" className="inline-flex min-h-11 items-center rounded-lg border border-[var(--border)] px-4 text-sm font-semibold">View ↗</Link>
+        )}
+        {status === "published"
+          ? <Button variant="ghost" onClick={() => save("draft")} disabled={pending}>Unpublish</Button>
+          : <Button variant="ghost" onClick={() => save("published")} disabled={pending}>Publish</Button>}
+        <Button onClick={() => save()} disabled={pending}>{pending ? "Saving…" : "Save"}</Button>
+      </EditorBar>
+
+      {draft.pending && (
+        <DraftNotice
+          savedAt={draft.pending.savedAt}
+          onRestore={() => {
+            const v = draft.pending!.value;
+            setTitle(v.title); setSummary(v.summary); setCategory(v.category);
+            setDateLabel(v.dateLabel); setCover(v.cover); setStatus(v.status);
+            draft.discard();
+          }}
+          onDiscard={draft.discard}
+        />
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="grid content-start gap-5 p-6">

@@ -108,6 +108,11 @@ INVARIANTS
 - The write-up HTML is injected with dangerouslySetInnerHTML. That is safe only
   because only operators can write projects (RLS) and BlockNote's lossy export
   escapes text. Never let a non-operator write `projects.content`.
+- A write that changes no rows is a failure, not a success. Row-level security
+  does not raise on UPDATE: a row the policy hides simply does not match, so
+  PostgREST answers "no error, no rows" and the editor used to report "Saved ✓"
+  over work that never left the browser. Every admin update selects the rows it
+  changed and treats an empty result as a refusal (lib/mutations.ts).
 - Images are public URLs in a public bucket and cannot be revoked. Never upload
   anything private through the admin — a team member's own photos included.
 - Saving a person is refused with "that web address is already taken" on a 23505
