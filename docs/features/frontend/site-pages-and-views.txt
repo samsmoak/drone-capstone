@@ -115,6 +115,32 @@ successful write, which re-runs the server reads. A stale session or a network
 blip at that instant becomes a thrown read, and before the boundary that took
 the page with it.
 
+PASTING, INCLUDING IMAGES
+
+Pasting a page out of a word processor is how these editors are actually used,
+and it was the thing that broke them. An image on the clipboard arrives inline,
+as a data: URI, so a pasted Google Docs page saved as several megabytes of
+base64 — and a Server Action is capped at 1 MB by default. The save was
+rejected before it reached the database, the rejection escaped the editor, and
+the error boundary replaced the page.
+
+  In the write-up      components/editor/BlockEditor.tsx uploads every data:
+                       image as it appears and points the block at the stored
+                       copy, so the document stays small and the picture
+                       survives (the clipboard copy would not have).
+  Anywhere else        ImagePicker and the gallery's photo area take a click, a
+                       dropped file, or a paste. Both are focusable, because a
+                       paste event goes to whatever has focus and a div has
+                       none by default.
+  The limit            next.config.ts raises bodySizeLimit to 4 MB — headroom
+                       between a paste and its uploads finishing, not a licence
+                       to keep images in prose.
+  The guard            lib/save.ts attempt() wraps every save: an action that
+                       REJECTS (too large, network gone, deployment restarted)
+                       can no longer escape into the error boundary, and a
+                       write-up over the limit is refused before the request
+                       with an explanation of what to do.
+
 THE EDITOR BAR
 
 components/admin/EditorBar.tsx, extracted from PageEditor, which was the only
@@ -140,6 +166,8 @@ WHERE IT LIVES
 
   lib/site-content.ts                     field specs, default wording, normaliser
   components/admin/EditorBar.tsx          the sticky bar every editor wears
+  lib/save.ts                             attempt(): no save may crash a page
+  components/admin/ImagePicker.tsx        click, drop or paste an image
   components/admin/useDraft.ts            unsaved work, kept in the browser
   app/admin/error.tsx, app/(public)/error.tsx   what a failed render says
   lib/queries.ts getPageContent           override ⊕ defaults, never throws

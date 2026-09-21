@@ -14,6 +14,7 @@ import {
   type NewGalleryItem,
 } from "@/lib/mutations";
 import type { AlbumWithItems, GalleryItemRow } from "@/lib/queries";
+import { attempt } from "@/lib/save";
 import { ADMIN_GALLERY, galleryPath } from "@/lib/routes";
 import { uploadImage } from "@/lib/upload";
 import { youtubeId, youtubeThumb } from "@/lib/video";
@@ -46,6 +47,7 @@ export function AlbumEditor({ album }: { album: AlbumWithItems }) {
   const [uploading, setUploading] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const fileInput = useRef<HTMLInputElement>(null);
+  const [over, setOver] = useState(false);
   // The album's own fields. Photos and videos are saved the moment they are
   // added, so they are not part of the draft — only the typing is.
   const fields = { title, summary, category, dateLabel, cover, status };
@@ -56,9 +58,9 @@ export function AlbumEditor({ album }: { album: AlbumWithItems }) {
   function save(nextStatus?: "draft" | "published") {
     setMessage(null);
     startTransition(async () => {
-      const res = await updateAlbum(album.id, {
+      const res = await attempt(() => updateAlbum(album.id, {
         title, summary, category, date_label: dateLabel, cover_image_url: cover, status: nextStatus ?? status,
-      });
+      }));
       if (!res.ok) return fail(res.error);
       if (nextStatus) setStatus(nextStatus);
       draft.markSaved();                   // only after a confirmed write
@@ -193,6 +195,26 @@ export function AlbumEditor({ album }: { album: AlbumWithItems }) {
             <Label>Add photos</Label>
             <input ref={fileInput} type="file" accept="image/*" multiple className="hidden"
                    onChange={(e) => { if (e.target.files?.length) void uploadFiles(e.target.files); e.target.value = ""; }} />
+            {/* Click, drop or paste — the same three ways in as ImagePicker,
+                because copying an image and pasting it is what people try
+                first. Focusable so a paste has somewhere to land. */}
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label="Add photos: click, drop files, or paste"
+              onClick={() => fileInput.current?.click()}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.current?.click(); } }}
+              onPaste={(e) => { if (e.clipboardData?.files.length) { e.preventDefault(); void uploadFiles(e.clipboardData.files); } }}
+              onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+              onDragLeave={() => setOver(false)}
+              onDrop={(e) => { e.preventDefault(); setOver(false); if (e.dataTransfer.files.length) void uploadFiles(e.dataTransfer.files); }}
+              className={`flex min-h-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed p-4 text-center text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--heading)] ${
+                over ? "border-[var(--heading)] bg-[color-mix(in_srgb,var(--heading)_8%,var(--surface-2))]" : "border-[var(--border)] bg-[var(--surface-2)]"
+              }`}
+            >
+              <span className="font-medium">{over ? "Drop to upload" : "Click, drop files, or paste"}</span>
+              <span className="text-xs text-[var(--muted)]">Several at once is fine · ⌘V / Ctrl+V</span>
+            </div>
             <div className="flex flex-wrap items-center gap-3">
               <Button onClick={() => fileInput.current?.click()} disabled={!!uploading}>Upload photos</Button>
               {uploading && <span role="status" className="text-sm text-[var(--muted)]">{uploading}</span>}

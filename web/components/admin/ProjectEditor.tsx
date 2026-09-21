@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import { BlockEditorClient } from "@/components/editor/BlockEditorClient";
 import { deleteProject, updateProject } from "@/lib/mutations";
+import { attempt, MAX_SAVE_BYTES, sizeOf, tooLargeMessage } from "@/lib/save";
 import type { ProjectWithTeam, TeamMemberRow } from "@/lib/queries";
 import { ADMIN_PROJECTS, ADMIN_TEAM, projectPath } from "@/lib/routes";
 import type { Json } from "@/types/database";
@@ -49,14 +50,21 @@ export function ProjectEditor({ project, allMembers }: { project: ProjectWithTea
 
   function save(nextStatus?: "draft" | "published") {
     setState({ kind: "idle" });
+    // Checked before the request rather than after it fails: a rejected save
+    // is the failure that used to take the page down.
+    const bytes = sizeOf(contentRef.current);
+    if (bytes > MAX_SAVE_BYTES) {
+      setState({ kind: "error", message: tooLargeMessage(bytes) });
+      return;
+    }
     startTransition(async () => {
-      const res = await updateProject(project.id, {
+      const res = await attempt(() => updateProject(project.id, {
         title, subtitle, summary, category,
         date_label: dateLabel, location, cover_image_url: coverUrl,
         content: contentRef.current,
         status: nextStatus ?? status,
         member_ids: memberIds,
-      });
+      }));
       if (res.ok) {
         if (nextStatus) setStatus(nextStatus);
         draft.markSaved();                 // only after a confirmed write
@@ -75,7 +83,7 @@ export function ProjectEditor({ project, allMembers }: { project: ProjectWithTea
   function remove() {
     if (!confirm(`Delete “${title || "this project"}”? This cannot be undone.`)) return;
     startTransition(async () => {
-      const res = await deleteProject(project.id);
+      const res = await attempt(() => deleteProject(project.id));
       if (res.ok) { draft.discard(); router.push(ADMIN_PROJECTS); }
       else setState({ kind: "error", message: res.error });
     });

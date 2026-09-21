@@ -1,6 +1,8 @@
 import "server-only";
 import { cache } from "react";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { LOGIN } from "@/lib/routes";
 import type { Database } from "@/types/database";
 import { normalizeContent, type ContentObject, type PageKey } from "@/lib/site-content";
 
@@ -28,6 +30,44 @@ export class QueryError extends Error {
     super(`Could not load ${what}.`);
     this.name = "QueryError";
   }
+}
+
+/**
+ * An expired sign-in is not an error page. It is a sign-in.
+ *
+ * A session that runs out while a tab is open fails the NEXT read, and a read
+ * that throws lands on error.tsx — which asks the operator to work out for
+ * themselves that they need to sign in again. It also happens on a refresh
+ * token that was rotated by a request running in parallel: two requests carry
+ * the same token, the second is told it was already used, and a page that was
+ * working a second ago throws.
+ *
+ * Either way the answer is the same, so it is taken here: send them to sign in
+ * and bring them back. Anything they had typed is still in the browser, and
+ * the editor offers it on return (components/admin/useDraft.ts).
+ */
+function signInAgain(cause: { message?: string; code?: string }, what: string): never {
+  console.error(`sign-in expired while reading ${what}`, cause.code, cause.message);
+  redirect(LOGIN);
+}
+
+function isExpiredSession(cause: { message?: string; code?: string }): boolean {
+  const code = cause.code ?? "";
+  const message = (cause.message ?? "").toLowerCase();
+  return (
+    code === "PGRST301" ||
+    message.includes("jwt expired") ||
+    message.includes("jwt is expired") ||
+    message.includes("invalid refresh token") ||
+    message.includes("refresh token not found") ||
+    message.includes("already used")
+  );
+}
+
+/** Every admin read ends here: sign in again, or say the read failed. */
+function failed(cause: { message: string; code?: string }, what: string): never {
+  if (isExpiredSession(cause)) signInAgain(cause, what);
+  throw new QueryError(what, cause);
 }
 
 /**
@@ -70,7 +110,7 @@ export const getRecentFlights = cache(async (limit = 20): Promise<FlightRow[]> =
     .select("*")
     .order("started_at", { ascending: false })
     .limit(limit);
-  if (error) throw new QueryError("flights", error);
+  if (error) failed(error, "flights");
   return data;
 });
 
@@ -81,7 +121,7 @@ export const getFlight = cache(async (id: string): Promise<FlightRow | null> => 
     .select("*")
     .eq("id", id)
     .maybeSingle();
-  if (error) throw new QueryError("this flight", error);
+  if (error) failed(error, "this flight");
   return data;
 });
 
@@ -101,7 +141,7 @@ export const getFlightTelemetry = cache(
       .eq("flight_id", flightId)
       .order("index", { ascending: true })
       .limit(limit);
-    if (error) throw new QueryError("telemetry", error);
+    if (error) failed(error, "telemetry");
     return data;
   },
 );
@@ -109,7 +149,7 @@ export const getFlightTelemetry = cache(
 export const getZones = cache(async (): Promise<ZoneRow[]> => {
   const supabase = await createClient();
   const { data, error } = await supabase.from("zones").select("*").order("label");
-  if (error) throw new QueryError("zones", error);
+  if (error) failed(error, "zones");
   return data;
 });
 
@@ -120,7 +160,7 @@ export const getMissions = cache(async (limit = 50): Promise<MissionRow[]> => {
     .select("*")
     .order("created_at", { ascending: false })
     .limit(limit);
-  if (error) throw new QueryError("missions", error);
+  if (error) failed(error, "missions");
   return data;
 });
 
@@ -131,7 +171,7 @@ export const getPredictionsForFlight = cache(
       .from("predictions")
       .select("*")
       .eq("flight_id", flightId);
-    if (error) throw new QueryError("predictions", error);
+    if (error) failed(error, "predictions");
     return data;
   },
 );
@@ -141,7 +181,7 @@ export type DroneRow = Database["public"]["Tables"]["drones"]["Row"];
 export const getDrones = cache(async (): Promise<DroneRow[]> => {
   const supabase = await createClient();
   const { data, error } = await supabase.from("drones").select("*").order("name");
-  if (error) throw new QueryError("drones", error);
+  if (error) failed(error, "drones");
   return data;
 });
 
@@ -161,7 +201,7 @@ export const getRunningFlight = cache(async (): Promise<FlightRow | null> => {
     .order("started_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (error) throw new QueryError("the running flight", error);
+  if (error) failed(error, "the running flight");
   return data;
 });
 
@@ -182,7 +222,7 @@ export const getLatestZoneHealth = cache(
       .not("zone_id", "is", null)
       .order("created_at", { ascending: false })
       .limit(limit);
-    if (error) throw new QueryError("zone health", error);
+    if (error) failed(error, "zone health");
 
     const latest = new Map<string, PredictionRow>();
     for (const row of data) {
@@ -242,7 +282,7 @@ export const getPublishedProjects = cache(async (): Promise<ProjectCard[]> => {
     .order("created_at", { ascending: false });
   if (error) {
     if (missingTable(error)) return [];
-    throw new QueryError("projects", error);
+    failed(error, "projects");
   }
   return data;
 });
@@ -257,7 +297,7 @@ export const getTeamMembers = cache(async (): Promise<TeamMemberRow[]> => {
     .order("created_at", { ascending: true });
   if (error) {
     if (missingTable(error)) return [];
-    throw new QueryError("the team", error);
+    failed(error, "the team");
   }
   return data;
 });
@@ -273,7 +313,7 @@ export const getTeamMemberBySlug = cache(
       .maybeSingle();
     if (error) {
       if (missingTable(error)) return null;
-      throw new QueryError("this team member", error);
+      failed(error, "this team member");
     }
     return data;
   },
@@ -293,7 +333,7 @@ export const getProjectsForMember = cache(async (memberId: string): Promise<Proj
     .order("display_order", { ascending: true });
   if (error) {
     if (missingTable(error)) return [];
-    throw new QueryError("this person's projects", error);
+    failed(error, "this person's projects");
   }
   return data
     .map((row) => row.projects as ProjectCard | null)
@@ -307,7 +347,7 @@ async function teamFor(projectId: string): Promise<TeamMemberRow[]> {
     .select("display_order, team_members(*)")
     .eq("project_id", projectId)
     .order("display_order", { ascending: true });
-  if (error) throw new QueryError("this project's team", error);
+  if (error) failed(error, "this project's team");
   return data
     .map((row) => row.team_members as TeamMemberRow | null)
     .filter((m): m is TeamMemberRow => m !== null);
@@ -324,7 +364,7 @@ export const getPublishedProjectBySlug = cache(
       .maybeSingle();
     if (error) {
       if (missingTable(error)) return null;
-      throw new QueryError("this project", error);
+      failed(error, "this project");
     }
     if (!data) return null;
     return { ...data, team: await teamFor(data.id) };
@@ -339,7 +379,7 @@ export const getAllProjectsAdmin = cache(async (): Promise<ProjectCard[]> => {
     .select(CARD_COLUMNS)
     .order("display_order", { ascending: true })
     .order("created_at", { ascending: false });
-  if (error) throw new QueryError("projects", error);
+  if (error) failed(error, "projects");
   return data;
 });
 
@@ -347,7 +387,7 @@ export const getProjectByIdAdmin = cache(
   async (id: string): Promise<ProjectWithTeam | null> => {
     const supabase = await createClient();
     const { data, error } = await supabase.from("projects").select("*").eq("id", id).maybeSingle();
-    if (error) throw new QueryError("this project", error);
+    if (error) failed(error, "this project");
     if (!data) return null;
     return { ...data, team: await teamFor(data.id) };
   },
@@ -389,7 +429,7 @@ export const getPublishedAlbums = cache(async (): Promise<AlbumCard[]> => {
     .order("display_order", { ascending: true });
   if (error) {
     if (missingTable(error)) return [];
-    throw new QueryError("the gallery", error);
+    failed(error, "the gallery");
   }
   return data.map(toCard);
 });
@@ -404,7 +444,7 @@ export const getPublishedAlbumBySlug = cache(async (slug: string): Promise<Album
     .maybeSingle();
   if (error) {
     if (missingTable(error)) return null;
-    throw new QueryError("this album", error);
+    failed(error, "this album");
   }
   if (!data) return null;
   const { gallery_items, ...album } = data;
@@ -417,7 +457,7 @@ export const getAllAlbumsAdmin = cache(async (): Promise<AlbumCard[]> => {
     .from("gallery_albums")
     .select("*, gallery_items(*)")
     .order("display_order", { ascending: true });
-  if (error) throw new QueryError("albums", error);
+  if (error) failed(error, "albums");
   return data.map(toCard);
 });
 
@@ -428,7 +468,7 @@ export const getAlbumByIdAdmin = cache(async (id: string): Promise<AlbumWithItem
     .select("*, gallery_items(*)")
     .eq("id", id)
     .maybeSingle();
-  if (error) throw new QueryError("this album", error);
+  if (error) failed(error, "this album");
   if (!data) return null;
   const { gallery_items, ...album } = data;
   return { ...album, items: [...(gallery_items ?? [])].sort((a, b) => a.display_order - b.display_order) };
@@ -452,6 +492,6 @@ export const getPageContent = cache(async (key: PageKey): Promise<ContentObject>
 export const getEditedPages = cache(async (): Promise<Map<string, string>> => {
   const supabase = await createClient();
   const { data, error } = await supabase.from("site_pages").select("key, updated_at");
-  if (error) throw new QueryError("the pages", error);
+  if (error) failed(error, "the pages");
   return new Map(data.map((row) => [row.key, row.updated_at]));
 });
