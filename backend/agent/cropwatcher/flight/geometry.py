@@ -444,8 +444,12 @@ def _write(cf: Any, poses: dict[int, Any]) -> bool:
     """Store the geometry on the drone, where it survives a power cycle."""
     from threading import Event
 
+    # LighthouseBsGeometry lives with the MEMORY subsystem, not with the
+    # localization types it sits beside everywhere else. Importing it from the
+    # obvious place raised ImportError at the only moment it matters — after a
+    # successful solve, with the operator holding the drone (2026-09-22).
+    from cflib.crazyflie.mem.lighthouse_memory import LighthouseBsGeometry
     from cflib.localization import LighthouseConfigWriter
-    from cflib.localization.lighthouse_types import LighthouseBsGeometry
 
     geometry = {}
     for station, pose in poses.items():

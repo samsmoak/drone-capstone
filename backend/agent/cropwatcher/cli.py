@@ -229,13 +229,21 @@ def cmd_geometry(args: argparse.Namespace) -> int:
         print("\n  MEASURING WHERE THE BASE STATIONS ARE")
         print("  The drone is carried by hand throughout. No motor will spin.")
         print("  Keep yourself out of the line between the stations and the drone.")
-        if alone:
-            seen = ", ".join(str(b) for b in sorted(received)) or "none"
+        seen = ", ".join(str(b) for b in sorted(received))
+        if args.quick:
+            print("\n  QUICK: one sample at one position, no measuring.")
+            print("  This restores position hold now. It can pick the mirror of the")
+            print("  true answer, so if forward turns out to be backward, run this")
+            print("  again without --quick.")
+        elif alone and seen:
             print(f"\n  Only base station {seen} is being received, so this measures")
             print("  that one alone, from two samples a measured distance apart.")
             print("  Both samples must see it, and the drone must face the same")
             print("  way for both — the second sample is what rules out a")
             print("  mirror-image answer where forward comes out backward.")
+        elif alone:
+            print("\n  No base station is being received YET. Put the drone flat with")
+            print("  its top clear and give it a few seconds; the sample will wait.")
         print()
 
         reader = geometry_estimation.SweepAngles(

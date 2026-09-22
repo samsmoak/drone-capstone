@@ -259,3 +259,34 @@ class TestTheQuickWayBack:
             SimpleNamespace(), lambda step, i: FakeSample({}), write=False)
         assert not result.converged
         assert "No base station reached" in result.message
+
+
+class TestTheWritePathImports:
+    """The solve is useless if storing it raises.
+
+    Every test above runs with write=False, so nothing exercised _write until
+    an operator did, holding the drone, after a successful solve:
+    LighthouseBsGeometry lives in cflib.crazyflie.mem.lighthouse_memory, not
+    beside the localization types. These assert the symbols exist, which is
+    the whole bug.
+    """
+
+    def test_everything_write_needs_can_be_imported(self):
+        from cflib.crazyflie.mem.lighthouse_memory import LighthouseBsGeometry
+        from cflib.localization import LighthouseConfigWriter
+        assert LighthouseConfigWriter is not None
+        geo = LighthouseBsGeometry()
+        assert hasattr(geo, "origin")
+        assert hasattr(geo, "rotation_matrix")
+        assert hasattr(geo, "valid")
+
+    def test_a_solved_pose_fills_that_container(self):
+        import numpy as np
+        from cflib.crazyflie.mem.lighthouse_memory import LighthouseBsGeometry
+        pose = FakePose(1.0, 2.0, 3.0)
+        geo = LighthouseBsGeometry()
+        geo.origin = pose.translation.tolist()
+        geo.rotation_matrix = pose.rot_matrix.tolist()
+        geo.valid = True
+        assert geo.origin == [1.0, 2.0, 3.0]
+        assert np.array(geo.rotation_matrix).shape == (3, 3)
