@@ -44,6 +44,19 @@ def flights_dir() -> Path:
     return path
 
 
+def log_file() -> Path:
+    """Where the agent writes its log.
+
+    The desktop app spawns the agent as a sidecar and discards its stdout, so
+    when something failed inside it there was nothing to read: an operator saw
+    "Could not reach the flight agent" and the reason was gone with the
+    process. A file survives the crash that produced it.
+    """
+    path = data_dir() / "logs"
+    path.mkdir(parents=True, exist_ok=True)
+    return path / "agent.log"
+
+
 def outbox_dir() -> Path:
     """Records waiting to reach Supabase. Emptied by the sync as they land."""
     path = data_dir() / "outbox"

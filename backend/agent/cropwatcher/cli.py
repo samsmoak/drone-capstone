@@ -21,9 +21,12 @@ import argparse
 import json
 import logging
 import sys
+import threading
 import time
 from pathlib import Path
+from typing import Any
 
+from cropwatcher import paths
 from cropwatcher.flight import core
 from cropwatcher.flight import geometry as geometry_estimation
 from cropwatcher.flight.checks import CheckResult, ChecksFailed, CheckStatus, ReadyReport, collect
@@ -423,12 +426,42 @@ def cmd_serve(args: argparse.Namespace) -> int:
     return 0
 
 
+def _start_logging(*, verbose: bool) -> None:
+    """Log to the terminal AND to a file that outlives the process.
+
+    The desktop app discards the sidecar's stdout, so a crash inside the agent
+    left the operator with "Could not reach the flight agent" and no way to
+    find out why. The file is capped and rotated: a flight log is worth
+    keeping, a gigabyte of it is not.
+    """
+    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    try:
+        from logging.handlers import RotatingFileHandler
+        handlers.append(RotatingFileHandler(
+            paths.log_file(), maxBytes=2_000_000, backupCount=3, encoding="utf-8"))
+    except Exception:                       # a read-only home must not stop a flight
+        pass
+    logging.basicConfig(
+        level=logging.DEBUG if verbose else logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        handlers=handlers,
+        force=True,
+    )
+    # An exception that kills a thread otherwise vanishes with it.
+    def _thread_died(args: Any) -> None:
+        logging.getLogger("cropwatcher").critical(
+            "unhandled exception in thread %s",
+            getattr(args.thread, "name", "?"),
+            exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
+        )
+    threading.excepthook = _thread_died
+    sys.excepthook = lambda *e: logging.getLogger("cropwatcher").critical(
+        "unhandled exception", exc_info=e)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
-        format="%(levelname)s %(name)s: %(message)s",
-    )
+    _start_logging(verbose=args.verbose)
 
     handlers = {
         "check": cmd_check,
