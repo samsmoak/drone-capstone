@@ -148,7 +148,62 @@ THE VARIANCE GATE — does kalman.varPX actually arrive?
                for. Sub-millimetre stability here, from ONE station, with the
                drone stationary.
 
-STATUS       Blocked at rung 1. Nothing above it can run: rung 2 refuses a
+THE DRONE WOULD NOT ARM — and the message blamed the wrong thing
+  MEASURED     "The drone will not arm at 4.15 V (sys.canfly=0). Charge the
+               battery or swap in a charged one."
+               pm.vbat 4.13 V (a 1S cell is full at 4.2)
+               pm.state 0        (on battery, normal — NOT low power)
+               roll -0.43 deg, pitch 0.59 deg   (dead level, not tumbled)
+               supervisor.info 644 = 0b1010000100
+                   IS_CRASHED   set
+                   CAN_BE_ARMED clear
+                   CAN_FLY      clear
+  MEANT        A LATCHED CRASH, not a flat battery. sys.canfly = 0 is a
+               verdict and says nothing about why; checks.py read it as a
+               battery verdict unconditionally and sent the operator to the
+               charger holding a nearly full cell. The real answer was in
+               supervisor.info the whole time.
+               This is the invariant about sys.canfly applied one level down:
+               having stopped inventing a voltage threshold, we were still
+               inventing the REASON.
+  CHANGED      checks.refusal_reason() now names what the firmware says:
+               tumbled, locked, crashed, or pm.state low power — and when
+               nothing explains it, prints the numbers and says explicitly
+               that charging is probably not the answer. Five tests.
+
+CRASH RECOVERY — it worked, my success test did not
+  MEASURED     before  IS_CRASHED set
+               after   info=526, CAN_FLY set, IS_CRASHED clear
+               cflib warning: "The supervisor subsystem requires CRTP protocol
+               version 12 or later. Connected Crazyflie reports version 10.
+               Update your Crazyflie firmware. Using legacy fallback."
+  MEANT        One recovery request cleared it in under a second. The script
+               reported failure because it waited for CAN_BE_ARMED, which
+               stays clear precisely BECAUSE the drone is already armed
+               (AUTO_ARM is on). The drone was fine; the test of it was wrong.
+               Separately: this drone's firmware is OLD — CRTP 10 against the
+               12 cflib wants. Worth updating, and a candidate explanation for
+               other supervisor oddities.
+
+RUNG 0 PASSED — first full green of the session
+  DID          cropwatcher check
+  MEASURED     ok  Motors unlocked     ready to arm
+               ok  Battery             4.12 V, about 91%, ~219 s of hover
+               ok  Positioning deck    Lighthouse fitted
+               ok  Base stations       Receiving base stations 0
+               ok  Position settled    STEADY TO 1.3 CM
+               ground z +0.263 m
+               READY
+  MEANT        One base station settles to 1.3 cm, inside the 2 cm bar. The
+               one-station change works on hardware, and the position is good
+               enough to hold against. Ready for rung 2.
+  CHANGED      nothing needed — this is the gate passing.
+
+STATUS       Rung 0 PASSED. Rung 1 passed with one station. Next is rung 2,
+             cropwatcher geometry, which needs the operator to carry the drone
+             and has still never run against hardware.
+
+PREVIOUSLY   Blocked at rung 1. Nothing above it can run: rung 2 refuses a
              single-station sample by design, and rungs 7-10 all read a
              position that needs two stations to exist.
              Open with the operator: how many stations are physically in the

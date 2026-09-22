@@ -45,7 +45,12 @@ from cropwatcher.flight.preflight import (
     VBAT_FULL,
     estimate_endurance_s,
 )
-from cropwatcher.safety.flight_guard import PositioningStatus, assess_positioning
+from cropwatcher.safety.flight_guard import (
+    PM_LOW_POWER,
+    PM_SHUTDOWN,
+    PositioningStatus,
+    assess_positioning,
+)
 from cropwatcher.telemetry.stream import Snapshot
 
 log = logging.getLogger(__name__)
@@ -131,6 +136,55 @@ class ReadyReport:
     def budget_s(self) -> float:
         """Seconds of flight this charge supports, with the reserve kept back."""
         return self.endurance_s * USABLE_FRACTION
+
+
+def refusal_reason(vbat: float, pm_state: float | None, info: float | None) -> str:
+    """Why the firmware will not fly, in the firmware's own terms.
+
+    ``sys.canfly = 0`` is a VERDICT, not a reason. Reading it as "flat
+    battery" sent an operator to the charger on 2026-09-22 holding a cell at
+    4.15 V — nearly full — while the real answer sat in ``supervisor.info``
+    the whole time: a latched crash, which a recovery request clears in under
+    a second. The voltage is named only when the firmware itself says the
+    power is the problem.
+
+    The same rule as reading ``sys.canfly`` rather than inventing a voltage
+    threshold, applied one level down: do not guess WHY the drone said no
+    either.
+    """
+    bits = int(info) if info is not None else 0
+    power = int(pm_state) if pm_state is not None else None
+
+    if bits & supervisor.IS_TUMBLED:
+        return (
+            "The drone is not upright, so the firmware will not arm it "
+            "(supervisor says tumbled). Stand it flat on the floor, the right "
+            "way up, and run the checks again."
+        )
+    if bits & supervisor.IS_LOCKED:
+        return (
+            "The firmware has locked the motors after a crash. Stand the drone "
+            "upright and run the checks again — they ask it to recover. If that "
+            "does not clear it, power-cycle the drone. Not a battery problem."
+        )
+    if bits & supervisor.IS_CRASHED:
+        return (
+            "The firmware has latched a crash and will not arm until it is "
+            "cleared. Stand the drone upright and run the checks again — they "
+            "ask for recovery. NOT A BATTERY PROBLEM."
+        )
+    if power in (PM_LOW_POWER, PM_SHUTDOWN):
+        return (
+            f"The firmware reports the power is too low to fly at {vbat:.2f} V "
+            f"(pm.state={power}). Charge the battery or swap in a charged one, "
+            f"then power-cycle the drone."
+        )
+    return (
+        f"The drone will not arm (sys.canfly=0) and has not said why: battery "
+        f"{vbat:.2f} V, pm.state={power}, supervisor.info={bits} "
+        f"(0b{bits:012b}). The battery reads healthy, so charging it is "
+        f"probably not the answer — power-cycle the drone and try again."
+    )
 
 
 def battery_percent(vbat: float) -> int:
@@ -256,8 +310,7 @@ def run_checks(
     if not canfly:
         result = fail(
             CheckKey.BATTERY,
-            f"The drone will not arm at {vbat:.2f} V (sys.canfly=0). Charge the battery "
-            f"or swap in a charged one, then power-cycle the drone.",
+            refusal_reason(vbat, snap.get("pm.state"), snap.get("supervisor.info")),
             **battery_data,
         )
         yield result

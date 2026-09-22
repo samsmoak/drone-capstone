@@ -6,7 +6,7 @@ from types import MappingProxyType, SimpleNamespace
 
 import pytest
 
-from cropwatcher.flight import supervisor
+from cropwatcher.flight import checks, supervisor
 from cropwatcher.flight.checks import (
     BATTERY_TEST_WAIT_S,
     BatteryTestResult,
@@ -292,3 +292,38 @@ class TestBatteryTest:
         assert not HealthTestResult(motors_ok, None, "did not report").ok
         assert HealthTestResult(motors_ok, battery_ok).to_dict()["battery"]["sag_v"] == 0.2
 
+
+
+class TestWhyItWillNotArm:
+    """sys.canfly = 0 is a verdict, not a reason.
+
+    Reading it as "flat battery" sent an operator to the charger on
+    2026-09-22 holding a cell at 4.15 V, while supervisor.info had the real
+    answer — a latched crash — the whole time.
+    """
+
+    def test_a_latched_crash_is_not_reported_as_a_flat_battery(self):
+        reason = checks.refusal_reason(4.15, 0, supervisor.IS_CRASHED)
+        assert "crash" in reason.lower()
+        assert "charge" not in reason.lower()
+
+    def test_being_upside_down_says_so(self):
+        reason = checks.refusal_reason(4.15, 0, supervisor.IS_TUMBLED)
+        assert "upright" in reason
+
+    def test_locked_motors_say_so(self):
+        reason = checks.refusal_reason(4.15, 0, supervisor.IS_LOCKED)
+        assert "locked" in reason.lower()
+
+    def test_the_battery_is_blamed_only_when_the_firmware_blames_it(self):
+        reason = checks.refusal_reason(3.15, 3, 0)      # pm.state 3 = low power
+        assert "Charge the battery" in reason
+        assert "3.15 V" in reason
+
+    def test_an_unexplained_refusal_hands_over_the_numbers(self):
+        """Worse than a wrong reason is a confident wrong reason. With nothing
+        to go on it says so and prints what it read."""
+        reason = checks.refusal_reason(4.15, 0, 0)
+        assert "has not said why" in reason
+        assert "4.15 V" in reason and "supervisor.info=0" in reason
+        assert "charging it is" in reason           # explicitly steers away
