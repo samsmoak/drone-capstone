@@ -35,27 +35,42 @@ from cropwatcher.telemetry.stream import Snapshot
 
 # ── positioning readiness ────────────────────────────────────────────────
 
-# The kit has two base stations; positioning with one works but degrades.
-MIN_USABLE_STATIONS = 2
+# One base station is enough to FLY: Lighthouse V2 sweeps two angles from a
+# single unit and the deck's four sensors resolve a pose from them. Measured
+# 2026-09-22 in the cage — one station, drone at rest, position held to
+# sub-millimetre with varPX at 0.0001 m² (1 cm).
+#
+# Two is still better, and what the kit was built around: a second station is
+# a second viewpoint, so an occluded deck has somewhere else to look. With one,
+# losing sight of it leaves x and y as the accelerometer integrating — measured
+# the same day diverging at about 1 m/s, reaching 18 m in seconds. This drone
+# has nothing to coast on: deck.bcFlow2 = 0 and deck.bcZRanger2 = 0, both read
+# off the drone, so there is no optical flow and no rangefinder.
+#
+# The default is what the room actually has. A stricter room asks for two with
+# CROPWATCHER_MIN_STATIONS=2.
+MIN_USABLE_STATIONS = 1
+
+#: What the kit was designed around, and what the geometry pair-solver needs.
+PREFERRED_STATIONS = 2
 
 
 def required_stations() -> int:
-    """How many base stations the room this drone flies in actually has.
+    """How many base stations this room must have before positioning is ready.
 
-    Lighthouse V2 CAN position from a single station: one unit sweeps two
-    angles, and the deck's four sensors resolve a full pose from them. It was
-    measured doing exactly that on 2026-09-22 — one station, drone at rest,
-    position held to sub-millimetre with varPX at 0.0001 m^2 (1 cm).
+    One by default — see MIN_USABLE_STATIONS for why that is enough to fly and
+    what the second one buys. A room with two can insist on both with
+    CROPWATCHER_MIN_STATIONS=2, which is worth doing wherever they exist: the
+    geometry pair-solver needs two, and only two give the drone somewhere else
+    to look when its deck is occluded.
 
-    It is still genuinely worse, for a reason no tuning fixes: one viewpoint
-    means an occluded deck has NO second opinion, and this drone carries no
-    flow deck and no rangefinder to coast on (measured the same day:
-    deck.bcFlow2 = 0, deck.bcZRanger2 = 0). Lose the one station and x and y
-    become the accelerometer integrating, which diverged at about 1 m/s in
-    the same session.
-
-    So it stays two by default and is lowered per room, deliberately, with
-    CROPWATCHER_MIN_STATIONS=1 — never silently for everyone.
+    ZERO IS NOT AN OPTION HERE, and not because of caution. With no station
+    there is no position at all, so there is nothing for a position to be held
+    against — the commanded point in flight/manual.py cannot be seeded, the
+    geofence has nothing to measure and the drift guard has nothing to compare.
+    Flying with no positioning is UNASSISTED flight, which is a different
+    control law that the checks already offer by name. It is a different
+    answer, not a looser threshold.
     """
     raw = os.environ.get("CROPWATCHER_MIN_STATIONS", "").strip()
     if not raw:
@@ -64,7 +79,7 @@ def required_stations() -> int:
         wanted = int(raw)
     except ValueError:
         return MIN_USABLE_STATIONS
-    return max(1, min(MIN_USABLE_STATIONS, wanted))
+    return max(1, min(PREFERRED_STATIONS, wanted))
 # Filter position variance, m². 0.0025 m² is a 5 cm standard deviation. The
 # crash reading at rest was ~4.4 m².
 MAX_READY_VARIANCE_M2 = 0.0025

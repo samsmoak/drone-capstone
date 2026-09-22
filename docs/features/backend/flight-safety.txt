@@ -33,7 +33,10 @@ THE CHECKS (in order, each yields a CheckResult the UI renders live)
                wait for it; tumbled -> stand it up; locked -> restart it
   battery      sys.canfly is the authority, not a voltage this code invented;
                the voltage is shown for the operator, never used as the gate
-  positioning  base stations RECEIVED and calibrated and with geometry
+  positioning  base stations RECEIVED and calibrated and with geometry.
+               ONE is enough to fly (MIN_USABLE_STATIONS = 1); a room with two
+               insists on both with CROPWATCHER_MIN_STATIONS=2. Zero is not a
+               looser setting — it is unassisted flight, offered by name.
   still        the Kalman estimate has settled in x, y AND z
 
 On request, once the area is confirmed: the BATTERY & MOTOR TEST — the
