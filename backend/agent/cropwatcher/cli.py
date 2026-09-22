@@ -215,11 +215,25 @@ def cmd_geometry(args: argparse.Namespace) -> int:
     """
     with DroneLink(args.uri) as link:
         scf = link.scf
-        reader = geometry_estimation.SweepAngles(scf.cf)
+        # What is actually RECEIVED decides the method — not what the drone has
+        # stored, which is last session's memory and says nothing about now.
+        received = assess_positioning(link.snapshot()).received
+        alone = len(received) < 2
 
         print("\n  MEASURING WHERE THE BASE STATIONS ARE")
         print("  The drone is carried by hand throughout. No motor will spin.")
-        print("  Keep yourself out of the line between the stations and the drone.\n")
+        print("  Keep yourself out of the line between the stations and the drone.")
+        if alone:
+            seen = ", ".join(str(b) for b in sorted(received)) or "none"
+            print(f"\n  Only base station {seen} is being received, so this measures")
+            print("  that one alone, from two samples a measured distance apart.")
+            print("  Both samples must see it, and the drone must face the same")
+            print("  way for both — the second sample is what rules out a")
+            print("  mirror-image answer where forward comes out backward.")
+        print()
+
+        reader = geometry_estimation.SweepAngles(
+            scf.cf, min_stations=1 if alone else 2)
 
         def collect(step: geometry_estimation.GeometryStep, index: int) -> object:
             total = step.count
@@ -235,8 +249,10 @@ def cmd_geometry(args: argparse.Namespace) -> int:
                 print("    recorded")
                 return sample
 
+        solve = (geometry_estimation.estimate_single if alone
+                 else geometry_estimation.estimate)
         try:
-            result = geometry_estimation.estimate(
+            result = solve(
                 scf.cf, collect,
                 reference_distance_m=args.distance,
                 write=not args.dry_run,
@@ -250,14 +266,19 @@ def cmd_geometry(args: argparse.Namespace) -> int:
             print(f"  {result.message}\n")
             return 1
         print(f"  {result.message}")
-        print(f"  error   mean {result.mean_error_m * 100:.1f} cm, "
-              f"worst {result.max_error_m * 100:.1f} cm")
+        if not alone:
+            print(f"  error   mean {result.mean_error_m * 100:.1f} cm, "
+                  f"worst {result.max_error_m * 100:.1f} cm")
         if result.written:
             print("  stored on the drone — it survives a power cycle")
         elif args.dry_run:
             print("  not written (--dry-run)")
         else:
             print("  WARNING: the drone did not confirm the write")
+        if alone:
+            print("\n  One station carries no redundancy: lose sight of it and x and y")
+            print("  become the accelerometer integrating. Set CROPWATCHER_MIN_STATIONS=1")
+            print("  to let the checks accept it.")
         print("\n  Now run:  cropwatcher check     (it should settle under 2 cm)\n")
     return 0
 

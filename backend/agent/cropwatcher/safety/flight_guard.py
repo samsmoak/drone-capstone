@@ -27,6 +27,7 @@ verdict (``pm.state`` low power, the supervisor's tumble flag) that is used.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -34,8 +35,51 @@ from cropwatcher.telemetry.stream import Snapshot
 
 # ── positioning readiness ────────────────────────────────────────────────
 
-# The kit has two base stations; positioning with one works but degrades.
-MIN_USABLE_STATIONS = 2
+# One base station is enough to FLY: Lighthouse V2 sweeps two angles from a
+# single unit and the deck's four sensors resolve a pose from them. Measured
+# 2026-09-22 in the cage — one station, drone at rest, position held to
+# sub-millimetre with varPX at 0.0001 m² (1 cm).
+#
+# Two is still better, and what the kit was built around: a second station is
+# a second viewpoint, so an occluded deck has somewhere else to look. With one,
+# losing sight of it leaves x and y as the accelerometer integrating — measured
+# the same day diverging at about 1 m/s, reaching 18 m in seconds. This drone
+# has nothing to coast on: deck.bcFlow2 = 0 and deck.bcZRanger2 = 0, both read
+# off the drone, so there is no optical flow and no rangefinder.
+#
+# The default is what the room actually has. A stricter room asks for two with
+# CROPWATCHER_MIN_STATIONS=2.
+MIN_USABLE_STATIONS = 1
+
+#: What the kit was designed around, and what the geometry pair-solver needs.
+PREFERRED_STATIONS = 2
+
+
+def required_stations() -> int:
+    """How many base stations this room must have before positioning is ready.
+
+    One by default — see MIN_USABLE_STATIONS for why that is enough to fly and
+    what the second one buys. A room with two can insist on both with
+    CROPWATCHER_MIN_STATIONS=2, which is worth doing wherever they exist: the
+    geometry pair-solver needs two, and only two give the drone somewhere else
+    to look when its deck is occluded.
+
+    ZERO IS NOT AN OPTION HERE, and not because of caution. With no station
+    there is no position at all, so there is nothing for a position to be held
+    against — the commanded point in flight/manual.py cannot be seeded, the
+    geofence has nothing to measure and the drift guard has nothing to compare.
+    Flying with no positioning is UNASSISTED flight, which is a different
+    control law that the checks already offer by name. It is a different
+    answer, not a looser threshold.
+    """
+    raw = os.environ.get("CROPWATCHER_MIN_STATIONS", "").strip()
+    if not raw:
+        return MIN_USABLE_STATIONS
+    try:
+        wanted = int(raw)
+    except ValueError:
+        return MIN_USABLE_STATIONS
+    return max(1, min(PREFERRED_STATIONS, wanted))
 # Filter position variance, m². 0.0025 m² is a 5 cm standard deviation. The
 # crash reading at rest was ~4.4 m².
 MAX_READY_VARIANCE_M2 = 0.0025
@@ -119,10 +163,11 @@ class PositioningStatus:
                 f"Base station(s) {ids} are received but have no valid calibration "
                 f"or geometry. Re-run geometry estimation in cfclient."
             )
-        if self.received and len(self.usable) < MIN_USABLE_STATIONS:
+        wanted = required_stations()
+        if self.received and len(self.usable) < wanted:
             out.append(
                 f"Only {len(self.usable)} usable base station(s); "
-                f"{MIN_USABLE_STATIONS} are needed. One may be blocked or off."
+                f"{wanted} are needed. One may be blocked or off."
             )
         variances = [v for v in self.variance_m2 if v is not None]
         if len(variances) < 3:

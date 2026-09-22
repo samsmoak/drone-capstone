@@ -83,10 +83,34 @@ class TestPositioningReadiness:
         assert status.received_without_geometry == (2,)
         assert "geometry" in " ".join(status.problems())
 
-    def test_one_station_is_not_enough(self):
+    def test_one_station_is_enough_to_fly(self):
+        """Lighthouse V2 resolves a pose from a single unit's two sweeps.
+        Measured in the cage 2026-09-22: one station, drone at rest, position
+        held to sub-millimetre."""
+        status = assess_positioning(snap(**{"lighthouse__bsReceive": 0b01}))
+        assert status.ready
+        assert status.problems() == []
+
+    def test_a_room_with_two_can_insist_on_both(self, monkeypatch):
+        """A second station is a second viewpoint. Where they exist, wanting
+        both is worth asking for — the pair solver needs two, and only two
+        give an occluded deck somewhere else to look."""
+        monkeypatch.setenv("CROPWATCHER_MIN_STATIONS", "2")
         status = assess_positioning(snap(**{"lighthouse__bsReceive": 0b01}))
         assert not status.ready
         assert "Only 1 usable" in " ".join(status.problems())
+
+    def test_no_station_at_all_is_still_refused(self):
+        """Zero is not a looser threshold, it is a different control law.
+        With no station there is no position for anything to be held against."""
+        status = assess_positioning(snap(**{"lighthouse__bsReceive": 0b00}))
+        assert not status.ready
+        assert "No base station signal" in " ".join(status.problems())
+
+    def test_asking_for_none_still_requires_one(self, monkeypatch):
+        monkeypatch.setenv("CROPWATCHER_MIN_STATIONS", "0")
+        status = assess_positioning(snap(**{"lighthouse__bsReceive": 0b00}))
+        assert not status.ready
 
     def test_missing_variance_is_not_ready(self):
         s = snap()

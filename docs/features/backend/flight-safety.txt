@@ -33,7 +33,10 @@ THE CHECKS (in order, each yields a CheckResult the UI renders live)
                wait for it; tumbled -> stand it up; locked -> restart it
   battery      sys.canfly is the authority, not a voltage this code invented;
                the voltage is shown for the operator, never used as the gate
-  positioning  base stations RECEIVED and calibrated and with geometry
+  positioning  base stations RECEIVED and calibrated and with geometry.
+               ONE is enough to fly (MIN_USABLE_STATIONS = 1); a room with two
+               insists on both with CROPWATCHER_MIN_STATIONS=2. Zero is not a
+               looser setting — it is unassisted flight, offered by name.
   still        the Kalman estimate has settled in x, y AND z
 
 On request, once the area is confirmed: the BATTERY & MOTOR TEST — the
@@ -122,6 +125,32 @@ by hand for every sample and no motor ever spins:
 Every position needs BOTH stations. One station reads fine and poisons the
 solution, so a single-station sample is refused by name rather than accepted.
 
+WHEN THERE IS ONLY ONE STATION
+
+Lighthouse V2 positions from a single station — one unit sweeps two angles and
+the deck's four sensors resolve a pose from them. Measured 2026-09-22 with one
+station and the drone at rest: position held to sub-millimetre, varPX 0.0001 m²
+(1 cm). So a room with one station is not a room with none.
+
+The solver above cannot do it: it works by crossing the views of station PAIRS,
+and one station is not a pair. `cropwatcher geometry` notices what is actually
+being RECEIVED and switches to IPPE instead — the four photodiodes are a known
+planar target, and the angles fix where the station must be.
+
+IPPE returns TWO poses for a planar target, and for one 3 cm across seen from
+metres away they reproject almost identically. The wrong one is a MIRROR: a
+room where forward is backward. Reprojection error alone picks it wrong often
+enough to matter, so the second sample, a measured distance forward, decides —
+only the true pose puts the station in the same place seen from both. They must
+agree within SINGLE_STATION_AGREEMENT_M (0.25 m) or the answer is refused.
+
+It costs redundancy that no tuning recovers. One viewpoint means an occluded
+deck has no second opinion, and this drone carries NO flow deck and NO
+rangefinder to coast on (measured: deck.bcFlow2 = 0, deck.bcZRanger2 = 0).
+Lose the one station and x and y are the accelerometer integrating — measured
+diverging at about 1 m/s the same day. So the checks still want two, and one
+is accepted only by asking, per room: CROPWATCHER_MIN_STATIONS=1.
+
 
 DECISIONS
 
@@ -159,6 +188,11 @@ INVARIANTS
   by the estimate, so with no estimate the motors stop instead.
 - Re-measure the geometry after ANY station moves, and before trusting a held
   position. Everything that reads a position inherits its error, silently.
+- Choose the method from what is RECEIVED, never from what is stored.
+  bsCalVal and bsGeoVal listed both stations on 2026-09-22 while only one was
+  reaching the drone: that is last session's memory, and picking the pair
+  solver on the strength of it would have hung waiting for a second station
+  that was not there.
 - lighthouse.bsAvailable is STORED geometry, not received signal. On the day of
   the crash it read 4 stations while bsReceive read 0: the preflight passed on
   stored data and the drone flew blind. Count only stations that are received

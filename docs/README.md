@@ -58,6 +58,13 @@ Feature docs are plain `.txt`, grouped by the surface they describe.
 | [features/development/skills.txt](features/development/skills.txt) | The `/preflight` and `/adapt` commands committed in `.claude/commands/` |
 | [features/development/releases.txt](features/development/releases.txt) | How a merge to main becomes a download on /apps, on both platforms |
 
+## The lab
+
+[flight-log.txt](flight-log.txt) — what was flown, what it measured, and what changed
+because of it. Newest session first, plus the test ladder every session follows. The one
+doc here that is deliberately a journal: flight work cannot be re-run, so the readings
+are the only thing that survives a session.
+
 ## Plans
 
 [plans/2026-09-16-sessions-flight-portfolio.txt](plans/2026-09-16-sessions-flight-portfolio.txt) — the 70-stage plan for sessions, barometer flight, the desktop redesign and the portfolio.

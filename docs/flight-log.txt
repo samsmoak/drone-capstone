@@ -1,0 +1,174 @@
+FLIGHT LOG — what was flown, what it measured, what changed because of it
+=========================================================================
+
+WHAT THIS IS
+
+A running record of lab sessions, newest FIRST. It is the one doc in this tree
+that is deliberately a journal: the feature docs describe the system as it is
+now, git records how it got there, and this records WHAT THE DRONE ACTUALLY
+DID — the readings, the failures, and which of them turned into a rule.
+
+It exists because flight work cannot be re-run. A test that tumbles at 11.6 s
+is gone; the only thing that survives is what was written down about it. Three
+separate sessions were spent re-discovering the same facts before this file.
+
+HOW TO ADD A SESSION
+
+Add a block at the top, under the date. Record:
+
+  CONDITIONS   battery, stations received, geometry age, tuning in force
+  DID          the command, verbatim, so it can be repeated
+  MEASURED     numbers, not impressions. "hopped" is not a measurement
+  MEANT        what the numbers say
+  CHANGED      the commit, or "nothing — still open"
+
+A number with no units is not a measurement. A conclusion with no number is an
+opinion. When something is not known, write "not measured" rather than
+guessing — a guessed threshold has already cost this project flights.
+
+THE LADDER
+
+Nothing skips a rung. Each one is only run once the one above it passed, and
+each is a separate power cycle if the one above it ended badly.
+
+  0  cropwatcher check              every gate, no motors
+  1  cropwatcher stations           both stations RECEIVED, not just stored
+  2  cropwatcher geometry           re-measure; settle must then be < 2 cm
+  3  cropwatcher check              confirm the settle
+  4  cropwatcher proptest           motors spin, drone held down
+  5  armed idle                     props turn, no lift
+  6  20 cm hover, 10 s              the smallest real flight
+  7  W alone                        must climb STRAIGHT — x, y unchanged
+  8  forward alone, then release    must travel, stop, and HOLD
+  9  Up+Down together               must hold the level exactly
+  10 side steps, then a square      the whole law
+
+Rungs 7-10 are what PR #26 changed. They are the test of it.
+
+
+=========================================================================
+2026-09-22 — session in progress
+=========================================================================
+
+CONDITIONS
+  drone        cf-002f002a3334471239333335
+  battery      4.04 V, about 82%, ~197 s of hover estimated
+  stations     RECEIVED: 0 only.  STORED (calibrated + geometry): 0 and 1
+  geometry     stale — last measured before 2026-09-21, stations since moved
+  code         PR #25 (commanded point, geometry tool) and PR #26 (axis lock)
+               merged; NEITHER HAS EVER FLOWN
+
+RUNG 0 — cropwatcher check
+  MEASURED     ok  drone identified, telemetry 10 Hz, motors unlocked
+               ok  battery 4.04 V / 82%
+               ok  Lighthouse deck fitted
+               FAIL base stations: only 1 usable, 2 needed
+               ground z +1.284 m, settled to INF cm
+  MEANT        The infinite settle is not a separate fault. With one station
+               the estimate is constrained but not determined, so the spread
+               across the window never falls under the 2 cm threshold. One
+               cause, two symptoms.
+
+RUNG 1 — cropwatcher stations --seconds 12
+  MEASURED     received   0
+               calibrated 0, 1
+               geometry   0, 1
+               estimate   -0.42, -1.28, +1.28, drifting under 1 cm
+  MEANT        Base station 1 is NOT reaching the drone. That it appears under
+               calibrated and geometry is the documented trap: those columns
+               are what the drone REMEMBERS from a previous session, not what
+               it is receiving now. Station 1 is off, unplugged, blocked or
+               aimed away.
+  CHANGED      nothing yet — blocked on the physical station.
+
+RUNG 1 (again) — stations re-read while the cage was worked on
+  MEASURED     received none for ~20 s: estimate ran away from +1.26,+1.01 to
+               +5.45,+8.84 and then to -18.00,+1.76,-4.58. z held near 0.
+               station 0 back: estimate snapped to +0.87,-0.50,+0.38 and held
+               to about 1 cm.
+               reception then DROPPED OUT for 4 consecutive 1 s samples and
+               recovered.
+               one sample read +1.71,-0.23,+0.85 between two readings of
+               +0.8,-0.5 — a ~1 m jump in 1 s.
+               station 1: never appeared once, in any read this session.
+  MEANT        Three separate facts.
+               (a) With no station, x and y are the accelerometer integrating
+               and diverge at about 1 m/s — metres within seconds. z survives
+               because the barometer holds it. This is the measured version of
+               the physics in manual-control.txt, and it is why the commanded
+               point must never be seeded from an untrusted fix.
+               (b) Station 0's reception is INTERMITTENT, not merely present.
+               A hold that reads position at 10 Hz cannot be trusted through a
+               4 s blackout.
+               (c) The 1 m jump is ~10 m/s. PR #25's jump test (2.0 m/s) would
+               have refused it, and the variance gate from PR #26 very likely
+               too. First evidence either guard would have earned its place —
+               though on a station dropout rather than on stale geometry.
+  CHANGED      nothing — still open.
+
+WHAT IS FITTED — asked the drone directly, read-only
+  MEASURED     deck.bcLighthouse4   1   YES
+               deck.bcAI            1   YES
+               deck.bcFlow2         0   no
+               deck.bcFlow          0   no
+               deck.bcZRanger2      0   no
+               deck.bcZRanger       0   no
+               deck.bcMultiranger   0   no
+               lighthouse.systemType 2      (Lighthouse V2)
+               lighthouse.method     1      (crossing beams)
+               stabilizer.estimator  2      (Kalman)
+               stabilizer.controller 2      (MELLINGER)
+  MEANT        (a) NO FLOW DECK, and no rangefinder of any kind. The open
+               question is closed: Lighthouse is the ONLY absolute position
+               source on this drone, with no second opinion and no fallback.
+               Every claim about holding a position rests on it alone, which
+               raises the cost of a station dropout from "degraded" to "the
+               drone has no idea where it is".
+               (b) stabilizer.controller reads 2 AT REST — Mellinger, the
+               controller that ignores every gain in flight/tuning.py. This is
+               the same reading as 2026-09-21, after a battery change, so it
+               is NOT simply RAM left over from a previous session as was
+               assumed then. Flights are unaffected because BASE_PROFILE pins
+               it to PID before every flight, but the assumption about why it
+               was 2 was wrong and is corrected here. Whether it is a stored
+               persistent parameter is NOT MEASURED.
+
+THE VARIANCE GATE — does kalman.varPX actually arrive?
+  MEASURED     over 8 s, one station received, drone still on the floor:
+               varPX 0.000098 - 0.000109 m^2   (about 1.0 cm std dev)
+               varPY 0.000567 - 0.000595 m^2   (about 2.4 cm std dev)
+               varPZ 0.000736 - 0.000772 m^2   (about 2.7 cm std dev)
+               x held 0.8672 - 0.8682, yaw held -115.96 to -115.98
+  MEANT        The gate added in PR #26 reads real numbers, comfortably inside
+               MAX_HOLD_VARIANCE_M2 (0.01). A first read immediately after the
+               link opens returns None for all three — that is the stream not
+               having delivered yet, not a missing variable, and the gate
+               treats an empty list as "nothing to object to", so it passes.
+               Worth knowing: the gate cannot refuse a fix it has no variance
+               for. Sub-millimetre stability here, from ONE station, with the
+               drone stationary.
+
+STATUS       Blocked at rung 1. Nothing above it can run: rung 2 refuses a
+             single-station sample by design, and rungs 7-10 all read a
+             position that needs two stations to exist.
+             Open with the operator: how many stations are physically in the
+             cage, and is the second powered and on a different channel.
+
+
+=========================================================================
+OPEN QUESTIONS — carried between sessions until answered
+=========================================================================
+
+- Is a Flow deck fitted? Only deck.bcLighthouse4 is ever queried. A Flow deck
+  v2 would add optical flow and a laser rangefinder, which would firm up the
+  hold between Lighthouse updates. One param read settles it. NOT MEASURED —
+  and not to be inferred from the kit photos, which was wrong for hours.
+
+- Does the firmware's position controller track a setpoint ramping at
+  0.20 m/s without feeling sluggish or overshooting on release? It is tuned
+  for waypoints. This is the main unknown in PR #26 and only rungs 7-10
+  answer it.
+
+- drift_m and the commanded point are recorded in the flight trace and the
+  agent log, but are NOT shown in the app. Whether that matters is a decision
+  for after the first flight that uses them.
