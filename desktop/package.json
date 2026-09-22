@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "sidecar": "../backend/agent/packaging/build_sidecar.sh",
+    "build:all": "pnpm sidecar && pnpm build",
     "preview": "vite preview",
     "tauri": "tauri"
   },

@@ -219,9 +219,9 @@ WHAT NEEDS REDIRECTION — where the instructions were wrong
 
 THE ORDER TO DO IT IN
 
-  1  Rebuild the sidecar, then the app.        unblocks everything below
-       backend/agent/packaging/build_sidecar.sh
-       cd desktop && pnpm tauri build
+  1  DONE 2026-09-22. cd desktop && pnpm tauri build now builds BOTH
+       halves, so a stale sidecar cannot ship again. Verified: the bundled
+       agent talks to the drone and carries today's code.
   2  cropwatcher geometry --distance 1.0       makes directions true
   3  cropwatcher check                         expect settle under 2 cm
   4  Fly ASSISTED. Confirm the app does NOT offer the barometer.

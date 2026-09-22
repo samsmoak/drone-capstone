@@ -24,8 +24,22 @@ WHERE IT LIVES
   .github/workflows/desktop-release.yml   .dmg + .exe on a v* tag
   web/components/ui/download-buttons.tsx  /setup buttons, live once a file exists
 
-Build:  backend/agent/packaging/build_sidecar.sh
-        cd desktop && pnpm tauri build
+Build:  cd desktop && pnpm tauri build      <- builds BOTH halves
+
+`pnpm tauri build` re-freezes the agent first, because tauri.conf.json's
+beforeBuildCommand is `pnpm build:all` (sidecar, then frontend). Before that
+it was `pnpm build`, which built only the frontend and bundled WHATEVER
+binary happened to be sitting in src-tauri/bin.
+
+That cost a lab session on 2026-09-22. The agent had been changed to accept a
+single base station; the app had not been re-frozen, so it still demanded two,
+refused assisted flight and offered the barometer instead. Every flight that
+day ran on a sensor with 72 cm of noise while the Lighthouse next to it was
+good to 1.3 cm — and it read as a drone fault, not a build fault.
+
+The halves can still be built separately when that is what is wanted:
+        pnpm sidecar        freeze the agent only (~25 s)
+        pnpm build          frontend only
 Rust lives in ~/.cargo/bin, which a login shell may not have on PATH.
 
 
