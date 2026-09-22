@@ -14,6 +14,7 @@ Feature docs are plain `.txt`, grouped by the surface they describe.
 
 | Doc | What it covers |
 |---|---|
+| [features/backend/flight-status.txt](features/backend/flight-status.txt) | **Where flight actually is**: every symptom diagnosed, what is proven, what has never flown |
 | [features/backend/flight-safety.txt](features/backend/flight-safety.txt) | The pre-flight checks and the in-flight guards. **Read this one first** |
 | [features/backend/telemetry-stream.txt](features/backend/telemetry-stream.txt) | The single 10 Hz subscription every reader shares |
 | [features/backend/sessions-and-modes.txt](features/backend/sessions-and-modes.txt) | The session state machine, Auto and Manual, ending an operation |

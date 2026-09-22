@@ -1,0 +1,254 @@
+FLIGHT STATUS — where the drone actually is, and what to do next
+================================================================
+
+Read this to know what is solved, what is not, and what to do about it.
+`flight-log.txt` has the session-by-session readings this is drawn from.
+
+Last updated from hardware: 2026-09-22.
+
+
+WHERE WE ARE IN ONE PARAGRAPH
+
+Sideways control is better and the operator confirms it. Height is not: let
+go after a climb and the drone sinks and rises continually. The cause is
+measured and it is not the control law — all three flights on 2026-09-22 ran
+UNASSISTED, holding height on the BAROMETER, which wandered 72 cm while our
+height target sat frozen. The position work built in PRs #25 and #26 has
+never run once. The single action that matters most is rebuilding the desktop
+sidecar so the app can fly assisted on the one base station the cage has.
+
+
+THE MEASUREMENT THAT EXPLAINS THE HEIGHT PROBLEM
+
+14.7 s of trace_cc73c0ef.csv, hands off the keys, drone in the air:
+
+  our height target      0.371 m       FROZEN for the whole 14.7 s
+  barometer z            -0.07..+0.65  a 72 cm range
+  motors                 0 .. 65535    repeatedly, full off to full on
+
+The agent commanded one steady height and never moved it. The barometer
+reported the drone swinging through 72 cm. The firmware believed the
+barometer, saw a 50 cm error that did not exist, and answered with everything
+it had — then cut to zero. The drone physically porpoised chasing sensor noise.
+
+For comparison, the SAME DRONE on the Lighthouse, one base station, an hour
+earlier: steady to 1.3 cm. That is 55x better. The fix for height is not
+gains; it is flying on the sensor that works.
+
+(The docs previously said an indoor barometer wanders "tens of centimetres".
+Measured here: 72 cm. Worse than written.)
+
+
+WHY EACH REPORTED BEHAVIOUR HAPPENS
+
+Symptom, cause, the evidence, and whether it is fixed. Nothing here is
+inferred from how quadrotors usually behave; each cause is a measurement.
+
+1. "IT HOVERS BUT LOWERS AND RISES CONTINUALLY, AND WILL NOT LOCK A HEIGHT"
+   CAUSE    The barometer, not the control law.
+   EVIDENCE Our height target sat frozen at 0.371 m for 14.7 s while the
+            barometer reported a 72 cm swing. The firmware believed it.
+            Across that flight the controller demanded MORE THAN FULL
+            THROTTLE in 46% of samples (peak 541,901 against an actuator
+            maximum of 65,535 — eight times over) and NEGATIVE thrust in
+            12%. Motors sat at exactly 0 for 17% of airborne samples.
+   MEANING  The controller spent 58% of the flight demanding something
+            physically impossible, because it was correcting an error that
+            did not exist. The porpoising is the airframe following a
+            fictional altitude. Motors at zero in the air is free fall.
+   FIXED?   NO — but the cause is not in our code. Fly assisted and z comes
+            from the Lighthouse, measured at 1.3 cm against the barometer's
+            72 cm.
+
+2. "SIDEWAYS IS A LITTLE BETTER TODAY"
+   CAUSE    The easing, not the axis locking.
+   EVIDENCE The flight ran the barometer law, where the arrows tilt the
+            drone. What improved it is the eased tilt and yaw rates
+            (TILT_RATE_DEG_S, YAW_ACCEL_DEG_S2) from the earlier glide work.
+   MEANING  A real improvement, and worth keeping — but NOT evidence about
+            PR #26. The commanded point never ran. Judgement on the new law
+            has to wait for an assisted flight.
+   FIXED?   Partly, and by something other than what was assumed.
+
+3. "IT GOES SIDEWAYS, HOPS, AND CRASHES" (the original complaint)
+   CAUSE    Three, compounding.
+            (a) Velocity-only control. A speed never says WHERE, so tilt
+                error integrated into position with nothing observing
+                position. A quadrotor is underactuated — it moves sideways
+                by tilting — so one degree of unnoticed tilt is 0.17 m/s^2,
+                34 cm of drift in two seconds.
+            (b) stabilizer.controller = 2 (Mellinger), which ignores every
+                gain in flight/tuning.py.
+            (c) Stale geometry: 21 cm estimate jumps with the drone still.
+   FIXED?   (a) shipped, never flown. (b) pinned to PID before every flight.
+            (c) tool written, never run against hardware.
+
+4. "FLIGHTS LAST SECONDS; MY TEAM GOT NINE MINUTES"
+   CAUSE    Tumbles, not battery. Session history: aborted-tumbled at 11.6,
+            11.1, 15.7, 20.3 and 8.2 seconds.
+   FIXED?   Addressed at the root by 3 above, not yet demonstrated.
+
+5. "IT WILL NOT ARM AT 4.15 V"
+   CAUSE    A latched crash. supervisor.info = 644, IS_CRASHED set. Battery
+            4.13 V, pm.state 0 (normal), roll and pitch under one degree.
+            Nothing to do with power.
+   FIXED?   YES. One recovery request cleared it; the message now names the
+            real reason.
+
+6. "THE DESKTOP SAYS I NEED TWO BASE STATIONS"
+   CAUSE    The app runs a FROZEN copy of the agent, built before the change.
+   FIXED?   In the agent, yes. In the app, only after a rebuild.
+
+
+MANUAL IS THE FOUNDATION FOR AUTONOMOUS
+
+This is why the architecture matters more than the symptom list. The
+commanded point is not a manual-flight trick: a waypoint mission IS the same
+machinery with a different source of intent. Manual moves the point with
+keys; autonomous moves it along a plan. Same seeding, same leash, same
+estimator gates, same guards, same trace.
+
+Two consequences worth holding on to:
+
+- Anything hacked into the manual law to paper over a sensor fault will be
+  inherited by every autonomous flight, where nobody is watching to correct
+  it. That is the strongest argument against tuning height gains to mask
+  barometer noise.
+
+- The quality bar for manual is therefore the quality bar for the whole
+  system. Getting a clean, measured hover is not a milestone on the way to
+  the real work; it IS the real work, and the mission layer is a thin thing
+  on top of it.
+
+
+WHAT IS DONE — and whether it has actually flown
+
+  PROVEN ON HARDWARE
+  - One base station accepted, and it is enough. Checks pass, position
+    settles to 1.3 cm. PR #27.
+  - Crash recovery. The drone had latched IS_CRASHED; one recovery request
+    cleared it in under a second.
+  - Honest refusal messages. `sys.canfly = 0` no longer reads as "flat
+    battery" — it names what the firmware says. This cost a lab hour before
+    it was fixed: a 4.15 V cell, nearly full, sent to the charger.
+  - The estimator's own confidence is readable and real: varPX 0.0001 m^2,
+    about 1 cm.
+  - Motors, battery, telemetry, deck detection.
+
+  SHIPPED, NEVER FLOWN — this is the honest gap
+  - The commanded point: every axis you are not pressing is locked. PR #26.
+  - Auto-correction to that point, continuously, moving or still.
+  - Multi-key rules: opposite pairs cancel and HOLD; different axes compose.
+  - The 30 cm leash.
+  - Estimator-jump rejection at 2 m/s, and the 10 cm variance gate.
+  - Single-station geometry with mirror disambiguation. PR #27.
+  All of it is tested — 469 tests — and none of it has met a drone.
+
+
+WHAT IS NOT FIXED
+
+1. HEIGHT DOES NOT HOLD.   Cause measured (above): barometer noise, not the
+   control law. Not yet retested on the Lighthouse, which is the actual fix.
+
+2. THE DESKTOP APP RUNS STALE CODE.  It bundles a FROZEN copy of the agent
+   (`externalBin`), built before today. That copy still demands two base
+   stations, so the app refuses assisted flight, offers "fly on the
+   barometer", and the operator takes it — which is how every flight today
+   ended up on the worst available sensor. THIS IS THE ROOT CAUSE OF THE
+   HEIGHT PROBLEM, one level up.
+
+3. GEOMETRY HAS NEVER RUN AGAINST HARDWARE.  Until it does, directions may be
+   rotated or mirrored: "forward" is not guaranteed to be where the nose
+   points. Hover and up/down are unaffected. Arrow tests are not meaningful.
+
+4. drift_m AND THE COMMANDED POINT ARE INVISIBLE.  They go to the trace CSV
+   and the agent log. Nothing shows the operator that the drone is 15 cm off
+   the spot and correcting.
+
+5. FIRMWARE IS OLD.  CRTP protocol 10; cflib wants 12 and falls back to
+   legacy supervisor handling. Not blocking, but a standing suspect.
+
+
+WHAT NEEDS IMPROVEMENT
+
+- ONE STATION HAS NO REDUNDANCY. It works, and it is measurably good, but a
+  single viewpoint means an occluded deck has nowhere else to look — and this
+  drone carries no flow deck and no rangefinder (deck.bcFlow2 = 0,
+  deck.bcZRanger2 = 0, read off the drone). Lose sight of the station and x
+  and y become the accelerometer integrating, measured diverging at about
+  1 m/s to 18 m in seconds. A second station is the single biggest robustness
+  win available and costs no code.
+
+- THE BAROMETER LAW SHOULD BE HARDER TO REACH BY ACCIDENT. Today it was the
+  default outcome of a stale binary. It should be a deliberate choice that
+  states what it costs, not the path of least resistance.
+
+- MOTORS REACHING EXACTLY 0 IN FLIGHT is momentary free fall — 17% of
+  airborne samples on 2026-09-22. A floor under commanded thrust while
+  airborne is worth considering, but ONLY after the estimate is fixed.
+  Applied now it would mask the real fault, and per the note above, a mask
+  in the manual law is inherited by every autonomous flight.
+
+- CONTROLLER SATURATION IS NOT MEASURED ANYWHERE. 46% of samples demanded
+  above the actuator maximum and 12% demanded negative thrust, and nothing
+  in the system noticed or said so. A controller spending most of a flight
+  asking for the impossible is a loud signal that something upstream is
+  wrong, and it is currently only visible by reading a CSV afterwards.
+
+
+WHAT NEEDS REDIRECTION — where the instructions were wrong
+
+- "TUNE THE HEIGHT GAINS." Wrong target. The trace shows a frozen command and
+  a lying sensor. Tuning a controller against a bad estimate hides the fault
+  and makes the next one harder to find. Fix the estimate first, then measure
+  again before touching a gain.
+
+- "THE BATTERY THRESHOLD IS TOO HIGH." It never was. Both times flight was
+  refused this week the battery was healthy — 4.15 V on 2026-09-22, and a
+  latched crash was the real reason. Read the reason, never assume it.
+
+- "WE DO NOT NEED THE LIGHTHOUSE TO FLY." True, and it is exactly what went
+  wrong today: flying without it is what produced the porpoising. The
+  Lighthouse is not a nice-to-have on this airframe, it is the only sensor
+  that measures position or a trustworthy height.
+
+- TEST ASSISTED BEFORE JUDGING THE NEW CONTROL LAW. Every impression of the
+  drone so far — including "sideways is better" — comes from the barometer
+  law. The axis-locking work has not been seen yet, well or badly.
+
+
+THE ORDER TO DO IT IN
+
+  1  Rebuild the sidecar, then the app.        unblocks everything below
+       backend/agent/packaging/build_sidecar.sh
+       cd desktop && pnpm tauri build
+  2  cropwatcher geometry --distance 1.0       makes directions true
+  3  cropwatcher check                         expect settle under 2 cm
+  4  Fly ASSISTED. Confirm the app does NOT offer the barometer.
+  5  20 cm hover, hands off, 10 s              height should now hold
+  6  W alone                                   must climb straight
+  7  Forward, release                          must travel, stop, HOLD
+  8  Up+Down together                          must hold the level exactly
+
+Rungs 5-8 are the first real test of PR #26. Read the trace after each:
+target_height_m against stateEstimate.z, and target_x_m against
+stateEstimate.x, are the two comparisons that say whether it worked.
+
+
+INVARIANTS THIS SESSION ADDED
+
+- The desktop app runs a FROZEN agent. Changing Python does nothing to the
+  installed app until build_sidecar.sh re-freezes it. An agent fix that is
+  not rebuilt is an agent fix the operator never receives, and the symptom is
+  the app behaving like an older version of itself — which reads as a
+  hardware fault and is not one.
+
+- Read the flight trace before theorising about flight behaviour. The height
+  fault was diagnosed in one pass from columns that were already being
+  recorded: a frozen command beside a 72 cm sensor swing. Every guess made
+  before reading it was wrong.
+
+- Check WHICH CONTROL LAW flew before drawing any conclusion from a flight.
+  The tuning column names it: a barometer profile (velCtlPid.vzKp lowered)
+  means unassisted, and nothing about the position law can be concluded from
+  that flight at all.
