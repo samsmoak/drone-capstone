@@ -84,6 +84,40 @@ def _default_scan() -> list[str]:
 
 
 
+#: The Crazyradio's USB vendor id (Bitcraze). Used only to tell "the radio is
+#: not here" apart from "the radio is here and someone else has it".
+CRAZYRADIO_VENDOR_ID = 0x1915
+
+
+def _nothing_found_reason() -> str:
+    """Why the scan found nothing, checked rather than assumed.
+
+    An empty scan has three very different causes and they need three
+    different actions. Blaming the battery for all of them sent an operator to
+    re-plug a working dongle four times on 2026-09-22, while the real cause
+    was the desktop app holding the radio — a USB device can only be claimed
+    by one process, and the second one is simply told "no such device".
+    """
+    try:
+        import usb.core  # type: ignore[import-untyped]
+        present = any(usb.core.find(find_all=True, idVendor=CRAZYRADIO_VENDOR_ID))
+    except Exception:
+        present = False                    # cannot tell; fall back to the old advice
+
+    if present:
+        return (
+            "The Crazyradio is plugged in but nothing could be reached through it. "
+            "Another program is almost certainly using it — a USB radio can only be "
+            "held by one at a time. Quit the CropWatcher app (or any other tool "
+            "talking to the drone) and try again. If nothing else is running, check "
+            "the drone is switched on and within a few metres."
+        )
+    return (
+        "No Crazyradio was found on USB. Plug the dongle in — directly into the "
+        "computer rather than through a hub — then try again."
+    )
+
+
 def _fix(snapshot: Snapshot) -> Fix | None:
     """Where the drone believes it is, and how much it believes it.
 
@@ -167,10 +201,7 @@ class DroneLink:
                 "program using it?"
             ) from e
         if not found:
-            raise LinkError(
-                "No drone answered. Check the battery is connected, the drone is "
-                "switched on, and it is within a few metres of this computer."
-            )
+            raise LinkError(_nothing_found_reason())
 
         scf = self._scf_factory(self.uri)
         self._open_link_within(scf, CONNECT_TIMEOUT_S)
