@@ -39,7 +39,11 @@ from cropwatcher.flight.control import GuardedFlight, PhaseEvent
 from cropwatcher.flight.manual import Fix, ManualController
 from cropwatcher.flight.tuning import BAROMETER_PROFILE, BASE_PROFILE, Applied, FlightTuning
 from cropwatcher.paths import cflib_cache_dir
-from cropwatcher.safety.flight_guard import FlightGuard, GuardContext
+from cropwatcher.safety.flight_guard import (
+    MAX_HOLD_VARIANCE_M2,
+    FlightGuard,
+    GuardContext,
+)
 from cropwatcher.telemetry.reader import stream_variables_for
 from cropwatcher.telemetry.stream import Snapshot, TelemetryStream
 
@@ -80,17 +84,29 @@ def _default_scan() -> list[str]:
 
 
 def _fix(snapshot: Snapshot) -> Fix | None:
-    """Where the drone believes it is, for the manual loop to anchor to.
+    """Where the drone believes it is, and how much it believes it.
 
-    None whenever the estimator has not reported all three numbers — the loop
-    then asks for stillness instead of flying to a coordinate built from a
-    missing one. A half-filled fix is worse than no fix: it would anchor to
+    None whenever the estimator has not reported all three numbers — a
+    half-filled fix is worse than no fix, because the missing one reads as
     x=0, which is the middle of the room.
+
+    Also None when the Kalman filter's own variance says the estimate is
+    loose (MAX_HOLD_VARIANCE_M2, a 10 cm standard deviation). The drone
+    publishes its confidence, so this reads it instead of inferring one:
+    a guessed threshold refused flights the firmware would have allowed, and
+    the same mistake in reverse would lock a position to a number the
+    estimator itself does not stand behind. The flight continues either way
+    — the guard has its own, looser bound — but the commanded point stops
+    being moved by a reading that cannot carry it.
     """
     x = snapshot.get("stateEstimate.x")
     y = snapshot.get("stateEstimate.y")
     yaw = snapshot.get("stabilizer.yaw")
     if x is None or y is None or yaw is None:
+        return None
+    spread = [v for v in (snapshot.get("kalman.varPX"), snapshot.get("kalman.varPY"))
+              if v is not None]
+    if spread and max(spread) > MAX_HOLD_VARIANCE_M2:
         return None
     return Fix(float(x), float(y), float(yaw))
 

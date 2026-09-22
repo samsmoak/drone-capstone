@@ -31,18 +31,50 @@ What changed from the first version, and why:
               it, and Land lowers the target to the floor at a fixed rate. The
               arrows tilt the drone, because there is no position to move to.
 
-**Letting go holds the spot, not the speed.** Assisted flight used to send a
-velocity of zero when no key was held, which asks the drone to stop — not to
-stay. A drone told to stop drifts: every small error in the estimate, every
-draught, every gust off its own propellers moves it, and nothing brings it
-back. So when the arrows are released and the glide has come to rest, the
-loop takes the position the drone is at and commands THAT, absolutely, until
-the operator asks for something else. The firmware then flies back to it on
-its own, which is what makes a hover look like a hover.
+**The keys move a POINT, not the drone.** Assisted flight used to send a
+speed: hold an arrow, get 0.20 m/s. A speed says how fast and never says
+where, so nothing in the system knew where the drone was supposed to be, and
+sideways slip during a forward move was invisible to it. Releasing every key
+sent a speed of zero, which asks the drone to stop — not to stay — and a drone
+told to stop drifts, because every estimate error and every draught moves it
+with nothing to bring it back.
 
-It needs a position to anchor to, so it only happens in assisted flight, and
-only while one is being reported. Without one the loop falls back to the old
-zero-velocity hover rather than guessing a coordinate.
+So the agent now keeps ONE COMMANDED POINT — x, y, height and heading — and
+sends it absolutely, every tick, moving or still. Each held key advances one
+coordinate of that point at its own eased rate, for exactly as long as it is
+held. The coordinates no key is asking for are never written to, so they stay
+locked by construction rather than by a routine that watches for deviation:
+that is why W climbs straight up instead of sliding, and why a forward press
+travels forward and nothing else. Let go and the point simply stops advancing
+— it is already the spot to hold, with no capture step and no gap.
+
+Auto-correction is therefore not a mode that switches on. The point is the
+only thing the drone is ever told, and the firmware's position controller
+closes on it at 100 Hz — where an agent-side correction would be capped at
+the radio's 10 Hz. There is deliberately no extra push past a threshold: an
+absolute position is already the strongest correction this link can send, and
+a deadband that ignores small error and then snaps at it is what lurches.
+
+This is PX4's Position mode and ArduPilot's Loiter, which integrate stick
+input into a position setpoint for the same reason. The leash below is
+ArduPilot's too.
+
+**Why a speed could never have worked.** A quadrotor is underactuated: it only
+accelerates along its own thrust axis, so it moves sideways by tilting, and
+any attitude error IS a horizontal acceleration error. One degree of unnoticed
+tilt is g*sin(1 deg) = 0.17 m/s^2, which is 34 cm of drift in two seconds. A
+velocity command leaves that error to integrate into position with nothing
+observing position. Only closing the loop on position removes it.
+
+**Multiple keys.** Each axis reads only its own opposite pair, so the axes
+compose without interfering: Up+Right climbs while sliding right, Forward+Left
+travels diagonally. An opposite pair held together cancels to zero, that
+coordinate is not advanced, and it stays locked and actively held — pressing
+Up and Down together really does mean "stay exactly here".
+
+It needs a position to hold, so this is assisted flight only, and only while
+the estimator stands behind its own numbers. Without one the loop falls back
+to the old velocity law rather than inventing a coordinate to fly to.
 
 The first unassisted law drove raw thrust. In the lab (2026-09-16) the slow
 ramp through liftoff let the drone skid sideways on a leg and tumble, and
@@ -190,16 +222,31 @@ class Fix:
     yaw_deg: float
 
 
-#: Below this the eased velocity counts as stopped, and the spot is taken.
-#: Anchoring while still gliding would fight the glide and lurch.
-STOPPED_M_S = 0.02
+#: How far the commanded point may get ahead of where the drone actually is.
+#:
+#: Holding a key advances the point whether or not the drone keeps up. If
+#: something holds the drone back — wind, a snagged leg, a sagging battery —
+#: an unleashed point would keep running and build an error the drone answers
+#: with everything it has the moment it comes free. The leash caps that error,
+#: so the worst lurch possible is a 30 cm one, and releasing the key always
+#: settles within 30 cm. It also bounds the arrows to what the drone can
+#: really fly: the point cannot outrun it.
+#:
+#: 0.30 m is well clear of the tracking lag at MOVE_SPEED_M_S (0.20 m/s), so
+#: ordinary flight never touches it.
+LEASH_M = 0.30
 
-#: Drift off the held spot that is worth saying out loud. Under this the
+#: Drift off the commanded point that is worth saying out loud. Under this the
 #: firmware is simply doing its job and there is nothing to report; over it,
 #: something is winning against the position controller and the operator
 #: should know before it becomes a geofence abort. The manual geofence is
 #: +/-2.00 m, which is far too coarse to notice a hover sliding across a room.
 DRIFT_NOTICE_M = 0.15
+
+
+def _wrap_deg(degrees: float) -> float:
+    """Fold a heading into [-180, 180)."""
+    return (degrees + 180.0) % 360.0 - 180.0
 
 
 @dataclass
@@ -239,9 +286,12 @@ class ManualController:
         #: Where the drone reports it is, for holding a spot. None when
         #: nothing is reporting one — then the loop keeps to velocities.
         self._position = position
-        self._anchor: Fix | None = None
-        #: How far the drone is from the spot it is holding, metres. 0 when no
-        #: spot is held. Read by the trace and by the app.
+        #: The point the drone is being told to be at: x, y and heading. The
+        #: height is carried separately, in _target_height, because it is
+        #: relative to the floor. None until a position has been reported.
+        self._target: Fix | None = None
+        #: How far the drone is from that point, metres. Read by the trace and
+        #: by the app; 0 when no point is being commanded.
         self._drift_m = 0.0
         #: The last fix that was believed, with its timestamp — the jump test
         #: needs something to compare against.
@@ -293,10 +343,15 @@ class ManualController:
             return self._intent
 
     @property
-    def anchor(self) -> Fix | None:
-        """The spot being held, for the flight trace. None while flying by key."""
+    def target(self) -> Fix | None:
+        """The point the drone is being told to be at, for the flight trace.
+
+        It moves under the keys and stands still under none of them, so this
+        is both "where it is going" and "the spot it is holding" — they were
+        never two different things.
+        """
         with self._lock:
-            return self._anchor
+            return self._target
 
     @property
     def drift_m(self) -> float:
@@ -500,10 +555,10 @@ class ManualController:
     def _reset_glide_locked(self) -> None:
         self._climb_velocity = self._vx = self._vy = 0.0
         self._roll = self._pitch = self._yaw_rate = 0.0
-        self._release_anchor_locked()
+        self._release_target_locked()
 
-    def _release_anchor_locked(self) -> None:
-        self._anchor = None
+    def _release_target_locked(self) -> None:
+        self._target = None
         self._drift_m = 0.0
         self._last_fix = None
 
@@ -518,9 +573,9 @@ class ManualController:
         0.1 s step (2.1 m/s) while the drone sat still on the floor, with both
         stations received 96 % of the time. The arrows command 0.20 m/s.
 
-        A rejected fix is not an error: the previous anchor stays, and the
-        drone keeps flying to the spot it was already holding, which is
-        exactly right if the estimate is the thing that moved.
+        A rejected fix is not an error: the commanded point stays exactly
+        where it was, and the drone keeps flying to it — which is the right
+        answer if the estimate is the thing that moved.
         """
         if self._position is None:
             return None
@@ -562,6 +617,16 @@ class ManualController:
         return self._zdistance_setpoint_locked(intent, dt)
 
     def _hover_setpoint_locked(self, intent: Intent, dt: float) -> Callable[[], None]:
+        """The assisted law: hold a point, and let the keys move the point.
+
+        Each held key advances ONE coordinate of the commanded point at its
+        own eased rate. The coordinates no key is asking for are not touched,
+        so they stay locked by construction — which is what makes W climb
+        straight up instead of sliding, and what makes a forward press travel
+        forward and nothing else. The point is then commanded absolutely,
+        every tick, whether or not anything is held; the firmware flies to it
+        at 100 Hz and corrects any difference on its own.
+        """
         forward = (1 if intent.forward else 0) - (1 if intent.back else 0)
         # cflib MotionCommander: left is +vy, turning left is +yawrate.
         left = (1 if intent.left else 0) - (1 if intent.right else 0)
@@ -569,38 +634,72 @@ class ManualController:
         self._vx = self._ease(self._vx, forward * MOVE_SPEED_M_S, MOVE_ACCEL_M_S2 * dt)
         self._vy = self._ease(self._vy, left * MOVE_SPEED_M_S, MOVE_ACCEL_M_S2 * dt)
         self._yaw_rate = self._ease(self._yaw_rate, yaw * YAW_RATE_DEG_S, YAW_ACCEL_DEG_S2 * dt)
+        # _glide_height_locked has already moved the height for this tick.
         z = self._ground_z + self._target_height
         vx, vy, rate = self._vx, self._vy, self._yaw_rate
 
-        asked_to_move = bool(forward or left or yaw)
-        gliding = max(abs(vx), abs(vy), abs(rate) / YAW_RATE_DEG_S) > STOPPED_M_S
-        if asked_to_move or gliding:
-            # Under the operator's hand, or still coasting to a stop: a spot
-            # taken now would be the wrong one, and holding it would fight
-            # the glide.
-            self._release_anchor_locked()
-            return lambda: self._commander.send_hover_setpoint(vx, vy, rate, z)
-
         fix = self._believable_fix_locked()
-        if self._anchor is None:
-            self._anchor = fix
-        anchor = self._anchor
-        if anchor is None:
-            # Nothing is reporting a position. Ask for stillness rather than
-            # invent a coordinate to fly to.
-            return lambda: self._commander.send_hover_setpoint(0.0, 0.0, 0.0, z)
+        if self._target is None:
+            # Seeded from where the drone actually is, at liftoff. Until a
+            # position is reported there is no point to hold, so the old
+            # velocity law flies it — that is unassisted flight in all but
+            # name, and it is the only honest thing to do without a position.
+            self._target = fix
+            if self._target is None:
+                return lambda: self._commander.send_hover_setpoint(vx, vy, rate, z)
 
-        # How far the correction is from done. The setpoint below does not
-        # change with it: an absolute position IS the strongest correction
-        # this link can send, and the firmware already pushes harder the
-        # further off it is, at 100 Hz. What the distance adds is knowing.
+        self._advance_target_locked(vx, vy, rate, dt)
         if fix is not None:
-            self._drift_m = math.hypot(fix.x - anchor.x, fix.y - anchor.y)
+            self._leash_target_locked(fix)
+            self._drift_m = math.hypot(fix.x - self._target.x, fix.y - self._target.y)
             if self._drift_m > DRIFT_NOTICE_M:
                 log.warning(
-                    "%.0f cm off the spot being held and still correcting", self._drift_m * 100)
+                    "%.0f cm off the commanded point and still correcting",
+                    self._drift_m * 100)
+
+        target = self._target
         return lambda: self._commander.send_position_setpoint(
-            anchor.x, anchor.y, z, anchor.yaw_deg)
+            target.x, target.y, z, target.yaw_deg)
+
+    def _advance_target_locked(self, vx: float, vy: float, yaw_rate: float, dt: float) -> None:
+        """Move the commanded point by what the keys asked for this tick.
+
+        The keys are in the drone's own frame — "forward" is where the nose
+        points — while the point is in the room's frame, so the step is
+        rotated by the heading being commanded. The firmware did this for us
+        when we sent velocities; with a position it is ours to do, and the
+        sign of the sine term is the difference between forward and backward.
+        """
+        target = self._target
+        assert target is not None
+        heading = math.radians(target.yaw_deg)
+        cos_h, sin_h = math.cos(heading), math.sin(heading)
+        self._target = Fix(
+            # +vx is forward along the heading, +vy is 90 degrees to its left.
+            x=target.x + (vx * cos_h - vy * sin_h) * dt,
+            y=target.y + (vx * sin_h + vy * cos_h) * dt,
+            yaw_deg=_wrap_deg(target.yaw_deg + yaw_rate * dt),
+        )
+
+    def _leash_target_locked(self, fix: Fix) -> None:
+        """Keep the commanded point within LEASH_M of the drone.
+
+        Without this the point runs on at the key's speed while a held-back
+        drone falls behind, and the error it is eventually asked to close is
+        unbounded. Pulling the point in keeps the correction gentle and stops
+        the arrows commanding more than the drone can actually fly.
+        """
+        target = self._target
+        assert target is not None
+        gap = math.hypot(target.x - fix.x, target.y - fix.y)
+        if gap <= LEASH_M:
+            return
+        held_back = LEASH_M / gap
+        self._target = Fix(
+            x=fix.x + (target.x - fix.x) * held_back,
+            y=fix.y + (target.y - fix.y) * held_back,
+            yaw_deg=target.yaw_deg,
+        )
 
     def _zdistance_setpoint_locked(self, intent: Intent, dt: float) -> Callable[[], None]:
         """Level attitude from the arrows, height held by the firmware on the
