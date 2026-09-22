@@ -6,7 +6,7 @@ WHAT IT IS
 Manual mode does not send raw thrust. The window reports WHICH KEYS ARE HELD
 about ten times a second; the agent runs a 50 Hz loop that turns that intent
 into a height-holding setpoint. Let go of everything and the drone holds where
-it is — it does not sink.
+it is — it does not sink, and with base stations it does not wander off either.
 
 Pressing Start does not take off. It idles the propellers on the ground at
 IDLE_THRUST (11000, just above cflib's "10001 = next to no power") so the
@@ -16,6 +16,8 @@ operator can see the drone is live. It leaves the ground only while W is held.
 WHERE IT LIVES
 
   backend/agent/cropwatcher/flight/manual.py  the loop and the control state
+  backend/agent/cropwatcher/flight/link.py    reads the position the spot comes from
+  backend/agent/cropwatcher/flight/geometry.py  re-measures where the stations are
   backend/agent/cropwatcher/api/rest.py     /ws/live carries the intent
   desktop/src/App.tsx                       key state -> intent
   backend/agent/tests/test_manual.py
@@ -38,6 +40,38 @@ legacy setpoint packets — PITCH_SIGN in manual.py must be checked in the lab.
 
 Replaced (2026-09-16): a raw-throttle law. Its slow ramp through liftoff let the
 drone skid on a leg and tumble, and letting go of W held nothing.
+
+
+HOLDING THE SPOT (assisted only)
+
+Letting go of the arrows used to send a velocity of ZERO, which asks the drone
+to stop — not to stay. A drone told to stop drifts: every error in the estimate
+and every draught moves it, and nothing brings it back. That is the sideways
+wander manual flight had.
+
+Now, once the arrows are released AND the glide has decayed below 2 cm/s, the
+loop reads the position the drone reports, keeps it, and commands it absolutely
+with send_position_setpoint(x, y, z, yaw) until the operator asks for something
+else. The firmware's own position controller flies back to it at 100 Hz. W and S
+still move the height while the spot is held, so climbing straight up holds x
+and y instead of sliding.
+
+The spot is taken ONCE and never follows the drone. An anchor that tracked the
+live position would follow the drift, which corrects nothing.
+
+The agent does not change how hard the correction pushes, and there is no
+"react harder past N centimetres" gain here. An absolute position IS the
+strongest correction this link can send, and the firmware already pushes
+proportionally harder the further off it is, at 100 Hz rather than the radio's
+10. What the distance is used for is KNOWING: drift_m is measured every tick,
+recorded in the trace beside the spot being held, and logged past
+DRIFT_NOTICE_M (0.15 m) — far below the +/-2.00 m manual geofence, which is
+too coarse to notice a hover sliding across a room.
+
+Unassisted flight never holds a spot: without base stations x and y are dead
+reckoning, and anchoring to them would fly the drone into the drift. With no
+position reported at all the loop falls back to the old zero-velocity hover
+rather than inventing a coordinate.
 
 
 THE GLIDE
@@ -66,6 +100,10 @@ THE NUMBERS
   MAX_UNASSISTED_HEIGHT_M 0.80      ceiling on the barometer
   LAND_RATE_M_S       0.25          barometer descent
   MOVE_SPEED_M_S      0.20          arrows, body frame
+  STOPPED_M_S         0.02          below this the glide is over, take the spot
+  DRIFT_NOTICE_M      0.15          off the spot and still correcting -> logged
+  MAX_PLAUSIBLE_SPEED_M_S 2.0       above this a fix is the estimator, not the
+                                    drone (shared with safety/flight_guard.py)
   YAW_RATE_DEG_S      30            A / D
   LAND_S              3.0           graceful descent
 
@@ -115,3 +153,19 @@ INVARIANTS
   drone then holds its height instead of drifting on with a key stuck down.
 - The same guards run in manual as in auto (flight-safety.txt). Manual is not a
   bypass; it is a different source of intent.
+
+- NEVER act on a position that moved faster than the drone can fly. A fix that
+  jumps further between two ticks than MAX_PLAUSIBLE_SPEED_M_S (2.0 m/s) allows
+  is the ESTIMATOR moving, not the drone, and flying to it drives the drone hard
+  towards a place it already is. Measured 2026-09-21 with stale base-station
+  geometry: the estimate moved 21 cm in one 0.1 s step (2.1 m/s) with the drone
+  sitting still on the floor and both stations received 96 % of the time. The
+  arrows command 0.20 m/s, so the bound is ten times any real manoeuvre.
+  A rejected fix keeps the previous spot; a reading that PERSISTS is believed
+  after about 0.1 s, so a drone genuinely carried somewhere is not ignored.
+
+- Hold the spot only on geometry that has been measured in THIS room. The
+  anchor is exactly as good as the position estimate under it. Stale geometry
+  does not fail loudly — the stations simply disagree — and the anchor would
+  then hold a coordinate that is quietly wrong. Run `cropwatcher geometry`
+  after any station is moved, nudged or re-aimed.

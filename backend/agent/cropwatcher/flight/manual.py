@@ -24,12 +24,25 @@ What changed from the first version, and why:
 **Two control laws, chosen by whether the drone knows where it is.**
 
   assisted    base stations usable. W and S move a target *height*; the drone
-              holds it, and releasing every key holds position.
+              holds it, and releasing every key HOLDS THE SPOT — see below.
   unassisted  no base stations. The height comes from the BAROMETER (the
               firmware's complementary estimator) and is held with a z-distance
               setpoint: W and S move a target height gently, letting go holds
               it, and Land lowers the target to the floor at a fixed rate. The
               arrows tilt the drone, because there is no position to move to.
+
+**Letting go holds the spot, not the speed.** Assisted flight used to send a
+velocity of zero when no key was held, which asks the drone to stop — not to
+stay. A drone told to stop drifts: every small error in the estimate, every
+draught, every gust off its own propellers moves it, and nothing brings it
+back. So when the arrows are released and the glide has come to rest, the
+loop takes the position the drone is at and commands THAT, absolutely, until
+the operator asks for something else. The firmware then flies back to it on
+its own, which is what makes a hover look like a hover.
+
+It needs a position to anchor to, so it only happens in assisted flight, and
+only while one is being reported. Without one the loop falls back to the old
+zero-velocity hover rather than guessing a coordinate.
 
 The first unassisted law drove raw thrust. In the lab (2026-09-16) the slow
 ramp through liftoff let the drone skid sideways on a leg and tumble, and
@@ -49,12 +62,15 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import math
 import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
+
+from cropwatcher.safety.flight_guard import MAX_PLAUSIBLE_SPEED_M_S
 
 log = logging.getLogger(__name__)
 
@@ -126,6 +142,8 @@ class Commander(Protocol):
         self, roll: float, pitch: float, yawrate: float, zdistance: float
     ) -> None: ...
 
+    def send_position_setpoint(self, x: float, y: float, z: float, yaw: float) -> None: ...
+
     def send_notify_setpoint_stop(self, remain_valid_milliseconds: int = 0) -> None: ...
 
     def send_stop_setpoint(self) -> None: ...
@@ -163,6 +181,27 @@ class Intent:
         return cls(**{k: bool(v) for k, v in payload.items() if k in known})
 
 
+@dataclass(frozen=True)
+class Fix:
+    """Where the drone says it is, in the estimator's own frame."""
+
+    x: float
+    y: float
+    yaw_deg: float
+
+
+#: Below this the eased velocity counts as stopped, and the spot is taken.
+#: Anchoring while still gliding would fight the glide and lurch.
+STOPPED_M_S = 0.02
+
+#: Drift off the held spot that is worth saying out loud. Under this the
+#: firmware is simply doing its job and there is nothing to report; over it,
+#: something is winning against the position controller and the operator
+#: should know before it becomes a geofence abort. The manual geofence is
+#: +/-2.00 m, which is far too coarse to notice a hover sliding across a room.
+DRIFT_NOTICE_M = 0.15
+
+
 @dataclass
 class ManualStats:
     ticks: int = 0
@@ -181,6 +220,7 @@ class ManualController:
         ground_z: float,
         land: Callable[[float, float], None],
         assisted: bool = True,
+        position: Callable[[], Fix | None] | None = None,
         heartbeat_timeout_s: float = HEARTBEAT_TIMEOUT_S,
         tick_s: float = TICK_S,
         clock: Callable[[], float] = time.monotonic,
@@ -196,6 +236,16 @@ class ManualController:
         self._ground_z = ground_z
         self._land = land
         self._assisted = assisted
+        #: Where the drone reports it is, for holding a spot. None when
+        #: nothing is reporting one — then the loop keeps to velocities.
+        self._position = position
+        self._anchor: Fix | None = None
+        #: How far the drone is from the spot it is holding, metres. 0 when no
+        #: spot is held. Read by the trace and by the app.
+        self._drift_m = 0.0
+        #: The last fix that was believed, with its timestamp — the jump test
+        #: needs something to compare against.
+        self._last_fix: tuple[float, Fix] | None = None
         self._touchdown_at: float | None = None
         # The eased commands. See "glide" above.
         self._climb_velocity = 0.0
@@ -241,6 +291,22 @@ class ManualController:
         """The keys currently held, for the flight trace."""
         with self._lock:
             return self._intent
+
+    @property
+    def anchor(self) -> Fix | None:
+        """The spot being held, for the flight trace. None while flying by key."""
+        with self._lock:
+            return self._anchor
+
+    @property
+    def drift_m(self) -> float:
+        """How far the drone has been pushed off the spot it is holding.
+
+        Zero while flying by key: there is no spot to be off. This is the
+        number that says whether holding a spot is working.
+        """
+        with self._lock:
+            return self._drift_m
 
     @property
     def climb_velocity(self) -> float:
@@ -434,6 +500,49 @@ class ManualController:
     def _reset_glide_locked(self) -> None:
         self._climb_velocity = self._vx = self._vy = 0.0
         self._roll = self._pitch = self._yaw_rate = 0.0
+        self._release_anchor_locked()
+
+    def _release_anchor_locked(self) -> None:
+        self._anchor = None
+        self._drift_m = 0.0
+        self._last_fix = None
+
+    def _believable_fix_locked(self) -> Fix | None:
+        """The reported position, unless it moved faster than a drone can.
+
+        A fix that jumps further between two ticks than the drone could
+        possibly have flown is the ESTIMATOR moving, not the drone, and acting
+        on it is the worst thing this loop can do: it would fly hard towards a
+        place the drone already is. Measured in the lab on 2026-09-21 with
+        stale base-station geometry — the estimate moved 21 cm in a single
+        0.1 s step (2.1 m/s) while the drone sat still on the floor, with both
+        stations received 96 % of the time. The arrows command 0.20 m/s.
+
+        A rejected fix is not an error: the previous anchor stays, and the
+        drone keeps flying to the spot it was already holding, which is
+        exactly right if the estimate is the thing that moved.
+        """
+        if self._position is None:
+            return None
+        fix = self._position()
+        if fix is None:
+            self._last_fix = None
+            return None
+        now = self._clock()
+        previous = self._last_fix
+        if previous is not None:
+            elapsed = now - previous[0]
+            if elapsed > 0:
+                moved = math.hypot(fix.x - previous[1].x, fix.y - previous[1].y)
+                if moved / elapsed > MAX_PLAUSIBLE_SPEED_M_S:
+                    log.warning(
+                        "ignoring a position that jumped %.0f cm in %.0f ms — that is "
+                        "the estimator, not the drone; check the base-station geometry",
+                        moved * 100, elapsed * 1000,
+                    )
+                    return None
+        self._last_fix = (now, fix)
+        return fix
 
     def _glide_height_locked(self, desired_velocity: float, dt: float) -> None:
         """Move the height target at an eased climb speed, within the ceiling."""
@@ -462,7 +571,36 @@ class ManualController:
         self._yaw_rate = self._ease(self._yaw_rate, yaw * YAW_RATE_DEG_S, YAW_ACCEL_DEG_S2 * dt)
         z = self._ground_z + self._target_height
         vx, vy, rate = self._vx, self._vy, self._yaw_rate
-        return lambda: self._commander.send_hover_setpoint(vx, vy, rate, z)
+
+        asked_to_move = bool(forward or left or yaw)
+        gliding = max(abs(vx), abs(vy), abs(rate) / YAW_RATE_DEG_S) > STOPPED_M_S
+        if asked_to_move or gliding:
+            # Under the operator's hand, or still coasting to a stop: a spot
+            # taken now would be the wrong one, and holding it would fight
+            # the glide.
+            self._release_anchor_locked()
+            return lambda: self._commander.send_hover_setpoint(vx, vy, rate, z)
+
+        fix = self._believable_fix_locked()
+        if self._anchor is None:
+            self._anchor = fix
+        anchor = self._anchor
+        if anchor is None:
+            # Nothing is reporting a position. Ask for stillness rather than
+            # invent a coordinate to fly to.
+            return lambda: self._commander.send_hover_setpoint(0.0, 0.0, 0.0, z)
+
+        # How far the correction is from done. The setpoint below does not
+        # change with it: an absolute position IS the strongest correction
+        # this link can send, and the firmware already pushes harder the
+        # further off it is, at 100 Hz. What the distance adds is knowing.
+        if fix is not None:
+            self._drift_m = math.hypot(fix.x - anchor.x, fix.y - anchor.y)
+            if self._drift_m > DRIFT_NOTICE_M:
+                log.warning(
+                    "%.0f cm off the spot being held and still correcting", self._drift_m * 100)
+        return lambda: self._commander.send_position_setpoint(
+            anchor.x, anchor.y, z, anchor.yaw_deg)
 
     def _zdistance_setpoint_locked(self, intent: Intent, dt: float) -> Callable[[], None]:
         """Level attitude from the arrows, height held by the firmware on the

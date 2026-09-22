@@ -26,6 +26,7 @@ from cropwatcher.flight.manual import (
     TOUCHDOWN_HOLD_S,
     YAW_RATE_DEG_S,
     ControlState,
+    Fix,
     Intent,
     ManualController,
 )
@@ -60,6 +61,9 @@ class FakeCommander:
     def send_zdistance_setpoint(self, roll, pitch, yawrate, zdistance):
         self.commands.append(("zdistance", roll, pitch, yawrate, zdistance))
 
+    def send_position_setpoint(self, x, y, z, yaw):
+        self.commands.append(("position", x, y, z, yaw))
+
     def send_notify_setpoint_stop(self, remain_valid_milliseconds=0):
         self.commands.append(("notify_stop",))
 
@@ -71,6 +75,26 @@ class FakeCommander:
 
     def kinds(self):
         return [c[0] for c in self.commands]
+
+    #: The setpoints that fly the drone, as opposed to notify/stop bookkeeping.
+    FLYING = ("hover", "zdistance", "position", "setpoint")
+
+    def height(self):
+        """The commanded height, off whichever setpoint last carried one.
+
+        Which setpoint that is depends on the law and on whether the spot is
+        being held, and no test here is about that — they are about the height.
+        """
+        for c in reversed(self.commands):
+            if c[0] in ("hover", "zdistance"):
+                return c[4]
+            if c[0] == "position":
+                return c[3]
+        raise AssertionError("nothing carrying a height was ever sent")
+
+    def first_flying(self):
+        """Index of the first setpoint that flies the drone."""
+        return next(i for i, c in enumerate(self.commands) if c[0] in self.FLYING)
 
 
 class FakeClock:
@@ -84,14 +108,22 @@ class FakeClock:
         self.now += seconds
 
 
+#: An arbitrary spot the estimator reports the drone at, so tests that care
+#: about the held position have a number to recognise.
+SOMEWHERE = Fix(1.5, -0.5, 90.0)
+
+
 class Rig:
-    def __init__(self, assisted: bool = True):
+    def __init__(self, assisted: bool = True, fix: Fix | None = SOMEWHERE):
         self.clock = FakeClock()
         self.cmd = FakeCommander()
         self.lands: list[tuple[float, float]] = []
+        #: What the estimator reports. Moving it simulates the drone drifting.
+        self.fix = fix
         self.ctl = ManualController(
             self.cmd, ground_z=GROUND, land=lambda z, d: self.lands.append((z, d)),
             assisted=assisted, clock=self.clock,
+            position=lambda: self.fix,
         )
 
     def run(self, seconds: float, intent: Intent | None = None, heartbeat: bool = True):
@@ -102,6 +134,19 @@ class Rig:
             if heartbeat:
                 self.ctl.heartbeat()
             self.ctl.tick()
+
+    def drift(self, dx: float, dy: float, speed: float = 0.5):
+        """Push the reported position by (dx, dy) at a believable speed.
+
+        Moving it in one step would be an estimator jump, which the loop
+        rejects on purpose — so a test about drift has to drift.
+        """
+        start = self.fix
+        distance = (dx * dx + dy * dy) ** 0.5
+        ticks = max(1, round(distance / speed / TICK_S))
+        for i in range(1, ticks + 1):
+            self.fix = Fix(start.x + dx * i / ticks, start.y + dy * i / ticks, start.yaw_deg)
+            self.run(TICK_S)
 
     def fly_to(self, height: float):
         """Hold W until the target is near `height`, then release and let it
@@ -172,7 +217,7 @@ class TestGentleClimb:
         rig = Rig()
         rig.fly_to(0.30)
         rig.run(0.1)
-        assert rig.cmd.last("hover")[4] == pytest.approx(GROUND + 0.30, abs=0.015)
+        assert rig.cmd.height() == pytest.approx(GROUND + 0.30, abs=0.015)
 
     def test_releasing_the_keys_holds_height(self):
         """The old controller bled thrust off and the drone sank."""
@@ -218,7 +263,9 @@ class TestMovement:
         assert yaw == pytest.approx(YAW_RATE_DEG_S)    # turning left is +yawrate
 
     def test_opposite_keys_cancel(self):
-        rig = Rig()
+        # No position source, so the cancelled velocities stay visible on the
+        # wire instead of resolving into a held spot.
+        rig = Rig(fix=None)
         rig.fly_to(0.3)
         rig.run(0.1, Intent(forward=True, back=True, yaw_left=True, yaw_right=True))
         _, vx, _, yaw, _ = rig.cmd.last("hover")
@@ -232,7 +279,7 @@ class TestGracefulLanding:
         rig.ctl.land()
         rig.run(0.1)
         kinds = rig.cmd.kinds()
-        assert kinds.index("notify_stop") > kinds.index("hover")
+        assert kinds.index("notify_stop") > rig.cmd.first_flying()
         assert rig.lands == [(GROUND, LAND_S)]
         assert rig.ctl.state is ControlState.LANDING
 
@@ -549,3 +596,136 @@ class TestGlide:
         rig.run(0.1, Intent(forward=True))
         _, vx, _, _, _ = rig.cmd.last("hover")
         assert 0 < vx <= MOVE_ACCEL_M_S2 * 0.1 + 1e-9
+
+
+class TestHoldingTheSpot:
+    """Letting go holds the place, not the speed.
+
+    Zero velocity asks the drone to stop; it does not ask it to stay. Every
+    small error in the estimate, and every draught, then moves it, and nothing
+    brings it back — which is drift an operator has to fly out by hand.
+    """
+
+    def test_flying_by_key_sends_velocities_and_takes_no_spot(self):
+        rig = Rig()
+        rig.fly_to(0.3)
+        rig.run(0.5, Intent(forward=True))
+        assert rig.cmd.kinds()[-1] == "hover"
+        assert rig.ctl.anchor is None
+
+    def test_letting_go_holds_the_place_it_stopped(self):
+        rig = Rig()
+        rig.fly_to(0.3)
+        rig.run(0.5, Intent(forward=True))
+        rig.run(1.5, Intent())                       # glide out, then settle
+        kind, x, y, z, yaw = rig.cmd.last("position")
+        assert (x, y, yaw) == (1.5, -0.5, 90.0)      # where the estimator said it was
+        assert z == pytest.approx(GROUND + rig.ctl.target_height)
+        assert rig.ctl.anchor == Fix(1.5, -0.5, 90.0)
+
+    def test_the_spot_is_not_taken_while_still_gliding(self):
+        """Anchoring mid-glide would fight the glide and lurch."""
+        rig = Rig()
+        rig.fly_to(0.3)
+        rig.run(0.5, Intent(forward=True))
+        rig.run(0.1, Intent())                       # released, still coasting
+        assert rig.cmd.kinds()[-1] == "hover"
+        assert rig.ctl.anchor is None
+
+    def test_the_drone_drifting_does_not_move_the_spot(self):
+        """The point of the anchor: the drone comes back to it, not with it."""
+        rig = Rig()
+        rig.fly_to(0.3)
+        rig.run(2.0, Intent())
+        held = rig.ctl.anchor
+        rig.drift(0.10, 0.0)                         # blown 10 cm downwind
+        assert rig.ctl.anchor == held
+        _, x, y, _, _ = rig.cmd.last("position")
+        assert (x, y) == (held.x, held.y)            # still commanding the old spot
+
+    def test_the_distance_off_the_spot_is_reported(self):
+        rig = Rig()
+        rig.fly_to(0.3)
+        rig.run(2.0, Intent())
+        assert rig.ctl.drift_m == pytest.approx(0.0, abs=1e-9)
+        rig.drift(0.06, 0.08)                        # 3-4-5: exactly 10 cm off
+        assert rig.ctl.drift_m == pytest.approx(0.10, abs=0.005)
+
+    def test_flying_again_clears_the_reported_drift(self):
+        rig = Rig()
+        rig.fly_to(0.3)
+        rig.run(2.0, Intent())
+        rig.drift(0.10, 0.0)
+        rig.run(0.1, Intent(forward=True))
+        assert rig.ctl.drift_m == 0.0
+
+    def test_moving_again_releases_the_spot(self):
+        rig = Rig()
+        rig.fly_to(0.3)
+        rig.run(2.0, Intent())
+        assert rig.ctl.anchor is not None
+        rig.run(0.2, Intent(left=True))
+        assert rig.ctl.anchor is None
+        assert rig.cmd.kinds()[-1] == "hover"
+
+    def test_height_still_moves_while_the_spot_is_held(self):
+        rig = Rig()
+        rig.fly_to(0.3)
+        rig.run(2.0, Intent())
+        before = rig.cmd.last("position")[3]
+        rig.run(1.0, Intent(up=True))
+        after = rig.cmd.last("position")[3]
+        assert after > before                        # W still climbs
+        assert rig.ctl.anchor is not None            # and the spot is kept
+
+    def test_without_a_position_it_asks_for_stillness_rather_than_a_coordinate(self):
+        rig = Rig(fix=None)
+        rig.fly_to(0.3)
+        rig.run(2.0, Intent())
+        assert "position" not in rig.cmd.kinds()
+        _, vx, vy, rate, _ = rig.cmd.last("hover")
+        assert (vx, vy, rate) == (0.0, 0.0, 0.0)
+
+    def test_unassisted_flight_never_holds_a_spot(self):
+        """No base stations, no position worth flying to."""
+        rig = Rig(assisted=False)
+        rig.ctl.arm()
+        rig.run(2.0, Intent(up=True))
+        rig.run(2.0, Intent())
+        assert "position" not in rig.cmd.kinds()
+        assert rig.cmd.kinds()[-1] == "zdistance"
+
+    def test_a_position_that_jumps_is_not_believed(self):
+        """Stale geometry moved the estimate 21 cm in one 0.1 s step while the
+        drone sat still. Chasing that would fly it hard into the error."""
+        rig = Rig()
+        rig.fly_to(0.3)
+        rig.run(2.0, Intent())
+        held = rig.ctl.anchor
+        rig.fix = Fix(held.x + 0.21, held.y, held.yaw_deg)   # 10.5 m/s
+        rig.run(TICK_S)
+        assert rig.ctl.drift_m == 0.0                # the jump never became drift
+        assert rig.ctl.anchor == held
+
+    def test_a_position_that_stays_put_is_believed_in_the_end(self):
+        """Rejecting a jump must not blind the loop for good: a drone really
+        carried somewhere keeps reporting it, and that is not a glitch."""
+        rig = Rig()
+        rig.fly_to(0.3)
+        rig.run(2.0, Intent())
+        held = rig.ctl.anchor
+        rig.fix = Fix(held.x + 0.21, held.y, held.yaw_deg)
+        rig.run(0.5)                                 # same reading, tick after tick
+        assert rig.ctl.drift_m == pytest.approx(0.21, abs=0.005)
+        assert rig.ctl.anchor == held                # and still the original spot
+
+    def test_arming_again_forgets_the_old_spot(self):
+        rig = Rig()
+        rig.fly_to(0.3)
+        rig.run(2.0, Intent())
+        assert rig.ctl.anchor is not None
+        rig.ctl.land()
+        rig.run(LAND_S + 0.5)
+        rig.ctl.arm()
+        assert rig.ctl.anchor is None
+

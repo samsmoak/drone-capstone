@@ -19,7 +19,9 @@ WHERE IT LIVES
   backend/agent/cropwatcher/safety/flight_guard.py the in-flight guards
   backend/agent/cropwatcher/flight/control.py     GuardedFlight, FlightAborted
   backend/agent/cropwatcher/flight/programs.py    HoverTest
-  backend/agent/tests/test_checks.py, test_flight_guard.py
+  backend/agent/cropwatcher/flight/geometry.py    measuring the station poses
+  backend/agent/cropwatcher/cli.py                stations, geometry
+  backend/agent/tests/test_checks.py, test_flight_guard.py, test_geometry.py
 
 
 THE CHECKS (in order, each yields a CheckResult the UI renders live)
@@ -88,6 +90,39 @@ geometry — it was seen once, from that position — while not being received a
 all. That was the lab's state on 2026-09-21: received 0, calibrated 0 and 1.
 
 
+MEASURING WHERE THE STATIONS ARE
+
+  cropwatcher geometry                  walks the steps and writes the result
+  cropwatcher geometry --distance 1.25  the measured distance that sets scale
+  cropwatcher geometry --dry-run        solve and print, write nothing
+
+The drone finds its position by crossing the beams of two stations, so it has
+to know where each station IS. That is the geometry, and it is stored ON THE
+DRONE, surviving a power cycle. It goes stale the moment a station is nudged,
+re-aimed, or the drone is flown in another room.
+
+Stale geometry does not fail loudly. The stations simply disagree and the
+estimate jumps between their answers, with every indicator still green.
+Measured on 2026-09-21 with both stations received 96 % of the time and the
+drone SITTING STILL on the floor: the position jumped 21 cm in a single 0.1 s
+step and wandered 33 cm in ten seconds. Nothing downstream can recover from
+that — the height hold, the geofence, the drift guard and the held spot in
+manual flight all read a position that is lying.
+
+The procedure is Bitcraze's own (the cflib example
+lighthouse/multi_bs_geometry_estimation.py, which is what cfclient runs),
+driven from our CLI so a lab session needs no cfclient. The drone is CARRIED
+by hand for every sample and no motor ever spins:
+
+  1. at the ORIGIN        where (0, 0, 0) should be, facing "forward"
+  2. on the +X AXIS       a measured distance away — this sets the scale
+  3. 4x in the XY PLANE   spread around the floor, corners are good
+  4. 6x around the SPACE  including up in the air, where it actually flies
+
+Every position needs BOTH stations. One station reads fine and poisons the
+solution, so a single-station sample is refused by name rather than accepted.
+
+
 DECISIONS
 
 - Lost position means STOP, not land. A landing steers by a position estimate;
@@ -107,6 +142,12 @@ DECISIONS
   (graceful); Emergency stop is hold-for-one-second and has no key binding.
 - The guard verdict is data (Action + Reason enums), not a callback. The same
   verdict drives the abort, the audit event and the message on screen.
+- Geometry is re-measured, not adjusted. There is no way to tell a drifting
+  estimate from a moved station by watching the numbers, so the fix is to walk
+  the samples again rather than nudge a stored pose.
+- The geometry walk takes the samples through a caller-supplied callback, so
+  the order, the refusals and the wording are tested without a drone or a
+  person in the room.
 
 
 INVARIANTS
@@ -116,6 +157,8 @@ INVARIANTS
   hold a position; tests pin that the crash readings come back unassisted.
 - Lost position still outranks low battery in an assisted flight: landing steers
   by the estimate, so with no estimate the motors stop instead.
+- Re-measure the geometry after ANY station moves, and before trusting a held
+  position. Everything that reads a position inherits its error, silently.
 - lighthouse.bsAvailable is STORED geometry, not received signal. On the day of
   the crash it read 4 stations while bsReceive read 0: the preflight passed on
   stored data and the drone flew blind. Count only stations that are received

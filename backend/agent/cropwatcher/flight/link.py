@@ -36,7 +36,7 @@ from cropwatcher.flight.checks import (
     run_prop_test,
 )
 from cropwatcher.flight.control import GuardedFlight, PhaseEvent
-from cropwatcher.flight.manual import ManualController
+from cropwatcher.flight.manual import Fix, ManualController
 from cropwatcher.flight.tuning import BAROMETER_PROFILE, BASE_PROFILE, Applied, FlightTuning
 from cropwatcher.paths import cflib_cache_dir
 from cropwatcher.safety.flight_guard import FlightGuard, GuardContext
@@ -76,6 +76,23 @@ def _default_scan() -> list[str]:
 
     cflib.crtp.init_drivers()
     return [found[0] for found in cflib.crtp.scan_interfaces()]
+
+
+
+def _fix(snapshot: Snapshot) -> Fix | None:
+    """Where the drone believes it is, for the manual loop to anchor to.
+
+    None whenever the estimator has not reported all three numbers — the loop
+    then asks for stillness instead of flying to a coordinate built from a
+    missing one. A half-filled fix is worse than no fix: it would anchor to
+    x=0, which is the middle of the room.
+    """
+    x = snapshot.get("stateEstimate.x")
+    y = snapshot.get("stateEstimate.y")
+    yaw = snapshot.get("stabilizer.yaw")
+    if x is None or y is None or yaw is None:
+        return None
+    return Fix(float(x), float(y), float(yaw))
 
 
 class DroneLink:
@@ -282,7 +299,7 @@ class DroneLink:
         has had a moment to settle. The Kalman ground height in the report is
         meaningless without base stations and is not used.
         """
-        scf, _ = self._require_open()
+        scf, stream = self._require_open()
         ground_z = report.ground_z_m
         # Tuning first, so the estimator settles under the gains it will fly on.
         # See flight/tuning.py for the lab evidence behind every value.
@@ -299,6 +316,10 @@ class DroneLink:
             ground_z=ground_z,
             land=lambda z, duration: scf.cf.high_level_commander.land(z, duration),
             assisted=report.assisted,
+            # Only assisted flight has a position worth holding. Unassisted
+            # there are no base stations, so x and y are dead reckoning and
+            # anchoring to them would fly the drone into the drift.
+            position=(lambda: _fix(stream.snapshot())) if report.assisted else None,
         )
 
     def restore_estimator(self) -> None:

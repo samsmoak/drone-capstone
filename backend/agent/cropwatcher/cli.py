@@ -25,6 +25,7 @@ import time
 from pathlib import Path
 
 from cropwatcher.flight import core
+from cropwatcher.flight import geometry as geometry_estimation
 from cropwatcher.flight.checks import CheckResult, ChecksFailed, CheckStatus, ReadyReport, collect
 from cropwatcher.flight.control import FlightAborted
 from cropwatcher.flight.link import DroneLink, LinkError
@@ -69,6 +70,14 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common(stations)
     stations.add_argument("--seconds", type=float, default=0.0,
                           help="stop after this long (default: until Ctrl-C)")
+
+    geometry = sub.add_parser(
+        "geometry", help="measure where the base stations are; no motors spin")
+    _add_common(geometry)
+    geometry.add_argument("--distance", type=float, default=1.0,
+                          help="how far the x-axis sample is from the origin, in metres")
+    geometry.add_argument("--dry-run", action="store_true",
+                          help="solve but do not write the result to the drone")
 
     proptest = sub.add_parser("proptest", help="the firmware's propeller test — motors spin")
     _add_common(proptest)
@@ -195,6 +204,64 @@ def cmd_stations(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_geometry(args: argparse.Namespace) -> int:
+    """Measure where the base stations are, with the drone carried by hand.
+
+    Stale geometry is silent: the stations disagree and the estimate jumps
+    rather than failing, which is what the lab drone was doing on 2026-09-21 —
+    21 cm in a tenth of a second while sitting still. Nothing downstream can
+    recover from a position that is lying, so this is the first thing to fix
+    when a drone will not hold still.
+    """
+    with DroneLink(args.uri) as link:
+        scf = link.scf
+        reader = geometry_estimation.SweepAngles(scf.cf)
+
+        print("\n  MEASURING WHERE THE BASE STATIONS ARE")
+        print("  The drone is carried by hand throughout. No motor will spin.")
+        print("  Keep yourself out of the line between the stations and the drone.\n")
+
+        def collect(step: geometry_estimation.GeometryStep, index: int) -> object:
+            total = step.count
+            label = f" ({index + 1} of {total})" if total > 1 else ""
+            while True:
+                print(f"\n  {step.instruction}{label}")
+                input("  Press Enter when it is there and steady: ")
+                try:
+                    sample = reader.record()
+                except (TimeoutError, ValueError) as e:
+                    print(f"    {e}")
+                    continue
+                print("    recorded")
+                return sample
+
+        try:
+            result = geometry_estimation.estimate(
+                scf.cf, collect,
+                reference_distance_m=args.distance,
+                write=not args.dry_run,
+            )
+        except KeyboardInterrupt:
+            print("\n  stopped — nothing was written to the drone\n")
+            return 1
+
+        print()
+        if not result.converged:
+            print(f"  {result.message}\n")
+            return 1
+        print(f"  {result.message}")
+        print(f"  error   mean {result.mean_error_m * 100:.1f} cm, "
+              f"worst {result.max_error_m * 100:.1f} cm")
+        if result.written:
+            print("  stored on the drone — it survives a power cycle")
+        elif args.dry_run:
+            print("  not written (--dry-run)")
+        else:
+            print("  WARNING: the drone did not confirm the write")
+        print("\n  Now run:  cropwatcher check     (it should settle under 2 cm)\n")
+    return 0
+
+
 def cmd_proptest(args: argparse.Namespace) -> int:
     with DroneLink(args.uri) as link:
         _run_checks(link)
@@ -300,6 +367,7 @@ def main(argv: list[str] | None = None) -> int:
     handlers = {
         "check": cmd_check,
         "stations": cmd_stations,
+        "geometry": cmd_geometry,
         "proptest": cmd_proptest,
         "hover": cmd_hover,
         "mission": cmd_mission,

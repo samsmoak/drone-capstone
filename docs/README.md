@@ -17,7 +17,7 @@ Feature docs are plain `.txt`, grouped by the surface they describe.
 | [features/backend/flight-safety.txt](features/backend/flight-safety.txt) | The pre-flight checks and the in-flight guards. **Read this one first** |
 | [features/backend/telemetry-stream.txt](features/backend/telemetry-stream.txt) | The single 10 Hz subscription every reader shares |
 | [features/backend/sessions-and-modes.txt](features/backend/sessions-and-modes.txt) | The session state machine, Auto and Manual, ending an operation |
-| [features/backend/manual-control.txt](features/backend/manual-control.txt) | Assisted manual flight from held keys, the 50 Hz loop |
+| [features/backend/manual-control.txt](features/backend/manual-control.txt) | Assisted manual flight from held keys, the 50 Hz loop, holding the spot |
 | [features/backend/agent-api.txt](features/backend/agent-api.txt) | The local HTTP/WebSocket surface, the control token, CORS |
 | [features/backend/offline-sync.txt](features/backend/offline-sync.txt) | The outbox, CSV-first recording, idempotent upload |
 | [features/backend/audit-trail.txt](features/backend/audit-trail.txt) | Every action and safety decision, against a person and a drone |
