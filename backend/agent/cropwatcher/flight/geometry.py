@@ -49,6 +49,12 @@ SAMPLE_TIMEOUT_S = 20.0
 XY_PLANE_SAMPLES = 4
 SPACE_SAMPLES = 6
 
+#: How closely the two single-station samples must agree about where the
+#: station is before the answer is trusted, in metres. The true pose and its
+#: mirror land far apart — metres, usually — so this only has to be tighter
+#: than that while staying loose enough for a hand-carried 1 m step.
+SINGLE_STATION_AGREEMENT_M = 0.25
+
 
 @dataclass
 class GeometryStep:
@@ -118,9 +124,11 @@ class SweepAngles:
     sentence rather than hanging.
     """
 
-    def __init__(self, cf: Any, *, timeout_s: float = SAMPLE_TIMEOUT_S) -> None:
+    def __init__(self, cf: Any, *, timeout_s: float = SAMPLE_TIMEOUT_S,
+                 min_stations: int = 2) -> None:
         self._cf = cf
         self._timeout = timeout_s
+        self._min_stations = min_stations
 
     def record(self) -> Any:
         from threading import Event
@@ -144,11 +152,11 @@ class SweepAngles:
                 "the drone."
             )
         angles = captured["angles"]
-        if len(angles) < 2:
+        if len(angles) < self._min_stations:
             raise ValueError(
                 f"Only base station {', '.join(str(b) for b in sorted(angles))} reached "
-                f"the drone here. Two are needed at every position — move the drone, or "
-                f"re-aim the station that is missing."
+                f"the drone here. {self._min_stations} are needed at every position — "
+                f"move the drone, or re-aim the station that is missing."
             )
         return LhCfPoseSample(angles_calibrated=angles)
 
@@ -204,6 +212,117 @@ def estimate(
     )
     if write:
         result.written = _write(cf, solution.bs_poses)
+    return result
+
+
+# ── one base station ─────────────────────────────────────────────────────
+#
+# Lighthouse V2 can position from a single station, so a room with one is not
+# a room with none. The solver above cannot be used for it: it works by
+# crossing the views of station pairs, and with one station there is no pair.
+#
+# Instead the pose comes from IPPE — the deck's four photodiodes are a known
+# planar target, and the angles they measure fix where the station must be.
+# cflib does this per station already (LhCfPoseSample.augment_with_ippe) and
+# hands back the station's pose in the DRONE's frame, so with the drone at the
+# origin that is the room's frame too.
+#
+# THE CATCH, and the reason this is not just "take the first solution": IPPE
+# returns TWO poses for a planar target, and for a target 3 cm across seen
+# from metres away they reproject almost identically. The wrong one is a
+# MIRROR — a room where forward is backward. Reprojection error alone picks it
+# wrong often enough to matter, so a second sample, a measured distance away,
+# decides between them: only the true pose puts the station in the same place
+# from both.
+
+
+def single_station_steps(reference_distance_m: float) -> list[GeometryStep]:
+    return [
+        GeometryStep(
+            "origin",
+            "Put the drone where you want (0, 0, 0) to be — on the floor, "
+            "facing the direction you want to call forward. Keep the deck's "
+            "view of the base station clear.",
+        ),
+        GeometryStep(
+            "x_axis",
+            f"Move the drone {reference_distance_m:.2f} m straight forward, "
+            f"along the direction it is facing, still on the floor and still "
+            f"facing the SAME way. Measure it: this one both sets the scale "
+            f"and decides between two mirror-image answers.",
+        ),
+    ]
+
+
+def estimate_single(
+    cf: Any,
+    collect: Callable[[GeometryStep, int], Any],
+    *,
+    reference_distance_m: float = 1.0,
+    write: bool = True,
+) -> GeometryResult:
+    """Solve one base station's pose from two samples a measured distance apart."""
+    import numpy as np
+    from cflib.localization import LhDeck4SensorPositions
+
+    positions = LhDeck4SensorPositions.positions
+    plan = single_station_steps(reference_distance_m)
+
+    origin = collect(plan[0], 0)
+    forward = collect(plan[1], 0)
+    for sample in (origin, forward):
+        sample.augment_with_ippe(positions)
+
+    seen = set(origin.angles_calibrated) & set(forward.angles_calibrated)
+    if not seen:
+        return GeometryResult(
+            converged=False,
+            message=(
+                "The two samples did not see the same base station, so there is "
+                "nothing to solve. Take both without moving or re-aiming it."
+            ),
+        )
+    station = sorted(seen)[0]
+
+    # The drone faced the same way for both samples, so the second one sits at
+    # (distance, 0, 0) in the frame being defined. Whichever pairing of the two
+    # candidates agrees about where the station is, is the true one.
+    offset = np.array([reference_distance_m, 0.0, 0.0])
+    best_error = float("inf")
+    best_pose = None
+    for at_origin in origin.ippe_solutions[station]:
+        for at_forward in forward.ippe_solutions[station]:
+            disagreement = float(np.linalg.norm(
+                (offset + at_forward.translation) - at_origin.translation))
+            if disagreement < best_error:
+                best_error, best_pose = disagreement, at_origin
+
+    if best_pose is None:                                   # pragma: no cover
+        return GeometryResult(converged=False, message="IPPE returned no pose.")
+    if best_error > SINGLE_STATION_AGREEMENT_M:
+        return GeometryResult(
+            converged=False,
+            message=(
+                f"The two samples disagree about where base station {station} is, by "
+                f"{best_error * 100:.0f} cm. Either the drone did not move the "
+                f"{reference_distance_m:.2f} m it was told, or it was turned on the way, "
+                f"or the station saw too little of the deck. Take them again."
+            ),
+        )
+
+    result = GeometryResult(
+        converged=True,
+        stations={station: best_pose},
+        mean_error_m=best_error,
+        max_error_m=best_error,
+        message=(
+            f"Solved for base station {station} alone, from two samples "
+            f"{reference_distance_m:.2f} m apart that agree to "
+            f"{best_error * 100:.1f} cm."
+        ),
+    )
+    if write:
+        result.written = _write(cf, {station: best_pose})
     return result
 
 

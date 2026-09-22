@@ -98,3 +98,83 @@ class TestTheResult:
             "mean_error_m": 0.012, "max_error_m": 0.031,
             "written": True, "message": "",
         }
+
+
+class FakePose:
+    """Stands in for cflib's Pose: only the translation is used to choose."""
+
+    def __init__(self, x, y, z):
+        import numpy as np
+        self.translation = np.array([float(x), float(y), float(z)])
+        self.rot_matrix = np.eye(3)
+
+
+class FakeSample:
+    """An LhCfPoseSample whose IPPE answers are handed to it.
+
+    Each station maps to the two poses IPPE would return: the true one and its
+    mirror. Which order they come in is the whole point — the solver must not
+    depend on it.
+    """
+
+    def __init__(self, solutions):
+        self.angles_calibrated = dict.fromkeys(solutions, "vectors")
+        self.ippe_solutions = solutions
+        self.augmented = False
+
+    def augment_with_ippe(self, sensor_positions):
+        self.augmented = True
+
+
+class TestOneBaseStationAlone:
+    """Lighthouse V2 positions from one station, so a room with one is not a
+    room with none. The pose comes from IPPE, which returns the true answer
+    AND its mirror; a second sample a measured distance away decides.
+    """
+
+    def test_it_asks_for_two_samples_and_says_why_the_second_matters(self):
+        plan = geometry.single_station_steps(1.0)
+        assert [s.key for s in plan] == ["origin", "x_axis"]
+        assert "mirror" in plan[1].instruction
+        assert "SAME way" in plan[1].instruction     # the rotation must not change
+
+    def test_it_picks_the_pose_both_samples_agree_on(self):
+        # True station at (2, 0, 2). From 1 m forward it therefore sits 1 m
+        # nearer in x. The mirrors are nowhere near each other.
+        at_origin = FakeSample({0: (FakePose(-9, -9, -9), FakePose(2, 0, 2))})
+        one_m_on = FakeSample({0: (FakePose(1, 0, 2), FakePose(7, 7, 7))})
+        samples = iter([at_origin, one_m_on])
+
+        result = geometry.estimate_single(
+            SimpleNamespace(), lambda step, i: next(samples),
+            reference_distance_m=1.0, write=False)
+
+        assert result.converged
+        assert list(result.stations) == [0]
+        assert result.stations[0].translation.tolist() == [2.0, 0.0, 2.0]
+        assert at_origin.augmented and one_m_on.augmented
+
+    def test_the_mirror_is_refused_when_nothing_agrees(self):
+        at_origin = FakeSample({0: (FakePose(2, 0, 2), FakePose(-2, 0, 2))})
+        one_m_on = FakeSample({0: (FakePose(9, 9, 9), FakePose(-9, 9, 9))})
+        result = geometry.estimate_single(
+            SimpleNamespace(), lambda step, i: iter([at_origin, one_m_on]).__next__(),
+            reference_distance_m=1.0, write=False)
+        assert not result.converged
+        assert "disagree" in result.message
+
+    def test_samples_of_different_stations_solve_nothing(self):
+        samples = iter([FakeSample({0: (FakePose(2, 0, 2),) * 2}),
+                        FakeSample({1: (FakePose(1, 0, 2),) * 2})])
+        result = geometry.estimate_single(
+            SimpleNamespace(), lambda step, i: next(samples),
+            reference_distance_m=1.0, write=False)
+        assert not result.converged
+        assert "same base station" in result.message
+
+    def test_one_station_is_allowed_through_when_asked_for(self):
+        """The refusal is a setting, not a law: a room with one station still
+        has to be able to take a sample in it."""
+        FakeReader.answer = {0: (10, "vectors-0")}
+        sample = geometry.SweepAngles(SimpleNamespace(), min_stations=1).record()
+        assert sorted(sample.angles_calibrated) == [0]

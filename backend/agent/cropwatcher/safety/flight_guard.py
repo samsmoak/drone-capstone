@@ -27,6 +27,7 @@ verdict (``pm.state`` low power, the supervisor's tumble flag) that is used.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -36,6 +37,34 @@ from cropwatcher.telemetry.stream import Snapshot
 
 # The kit has two base stations; positioning with one works but degrades.
 MIN_USABLE_STATIONS = 2
+
+
+def required_stations() -> int:
+    """How many base stations the room this drone flies in actually has.
+
+    Lighthouse V2 CAN position from a single station: one unit sweeps two
+    angles, and the deck's four sensors resolve a full pose from them. It was
+    measured doing exactly that on 2026-09-22 — one station, drone at rest,
+    position held to sub-millimetre with varPX at 0.0001 m^2 (1 cm).
+
+    It is still genuinely worse, for a reason no tuning fixes: one viewpoint
+    means an occluded deck has NO second opinion, and this drone carries no
+    flow deck and no rangefinder to coast on (measured the same day:
+    deck.bcFlow2 = 0, deck.bcZRanger2 = 0). Lose the one station and x and y
+    become the accelerometer integrating, which diverged at about 1 m/s in
+    the same session.
+
+    So it stays two by default and is lowered per room, deliberately, with
+    CROPWATCHER_MIN_STATIONS=1 — never silently for everyone.
+    """
+    raw = os.environ.get("CROPWATCHER_MIN_STATIONS", "").strip()
+    if not raw:
+        return MIN_USABLE_STATIONS
+    try:
+        wanted = int(raw)
+    except ValueError:
+        return MIN_USABLE_STATIONS
+    return max(1, min(MIN_USABLE_STATIONS, wanted))
 # Filter position variance, m². 0.0025 m² is a 5 cm standard deviation. The
 # crash reading at rest was ~4.4 m².
 MAX_READY_VARIANCE_M2 = 0.0025
@@ -119,10 +148,11 @@ class PositioningStatus:
                 f"Base station(s) {ids} are received but have no valid calibration "
                 f"or geometry. Re-run geometry estimation in cfclient."
             )
-        if self.received and len(self.usable) < MIN_USABLE_STATIONS:
+        wanted = required_stations()
+        if self.received and len(self.usable) < wanted:
             out.append(
                 f"Only {len(self.usable)} usable base station(s); "
-                f"{MIN_USABLE_STATIONS} are needed. One may be blocked or off."
+                f"{wanted} are needed. One may be blocked or off."
             )
         variances = [v for v in self.variance_m2 if v is not None]
         if len(variances) < 3:
