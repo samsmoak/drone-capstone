@@ -1,7 +1,170 @@
-FLIGHT STATUS — where the drone actually is, and what to do next
-================================================================
+FLIGHT STATUS — versioned. Newest update at the top.
+========================================================================
 
-Read this to know what is solved, what is not, and what to do about it.
+HOW THIS FILE WORKS
+
+Each update is a COMPLETE, SELF-CONTAINED statement of where flight stands —
+not a diff against the one before it. Read the top one and you know the state
+of the system; you never have to reconstruct it by reading downwards.
+
+Nothing is ever deleted. Older updates stay below, in full, separated by a
+rule, so the history of what we believed and when is recoverable. Where a
+later update CONTRADICTS an earlier one, the later one says so explicitly.
+
+This applies to flight only. `flight-log.txt` is the raw session journal —
+readings as they were taken. This file is what those readings mean.
+
+
+========================================================================
+UPDATE 4 — 2026-09-22, evening
+========================================================================
+
+HEADLINE
+
+The control law works. It flew, twice, and the operator's words were
+"buttery smooth" for up and down and "marvellous" for sideways, with the
+height holding when the keys were released. Both flights ended early, and
+NEITHER ended because of the control law: one on a half-second base-station
+dropout, one on a half-second telemetry gap. Both of those guards have been
+fixed. The one real outstanding fault is that DIRECTIONS ARE ROTATED, and the
+cause is the one step of the ladder we skipped — geometry has still never
+been measured.
+
+
+WHAT THE TRACES MEASURED
+
+Climb, keys held (trace_0f947214.csv):
+
+  drift from the commanded point   0.0006 .. 0.017 m
+  thrust                            steady near 56,000
+  thrust above the actuator max     0%
+  motors at zero while airborne     0%
+  controller                        stabilizer.controller = 2 -> 1 (PID)
+
+Against the barometer flight three hours earlier, same drone:
+
+  thrust above the actuator max     46%   (peak 541,901 vs max 65,535)
+  motors at zero while airborne     17%   — momentary free fall
+  barometer z, target frozen        72 cm of swing
+
+That is the whole argument for position control in two tables. The commanded
+point held x and y to under 2 cm through an entire climb.
+
+
+WHAT IS FIXED, AND PROVEN ON HARDWARE
+
+- The commanded point. Every axis not being pressed is locked; the firmware
+  corrects to it at 100 Hz. Flew, worked.
+- Height holds when the keys are released. Confirmed by the operator.
+- One base station is enough. Checks pass, position settles to 1.3-1.8 cm.
+- Crash recovery. A latched IS_CRASHED cleared in under a second.
+- Honest refusal messages. `sys.canfly = 0` names the real reason instead of
+  blaming the battery — which had sent the operator to a charger holding a
+  4.15 V cell, nearly full.
+- One command builds the app AND the agent inside it. A stale sidecar is the
+  reason every flight before 14:30 ran on the barometer.
+
+WHAT IS FIXED, BUT HAS NOT FLOWN YET
+
+- Beam blackouts are ridden out for up to 3 s while the Kalman's own variance
+  stands behind the position, instead of a flat 0.5 s. The 0.5 s landed a
+  drone that was holding x and y to 1.7 cm, with the beams back 0.2 s later.
+- Telemetry gaps are ridden out to 2.0 s total. There was NO grace at all
+  before — one late sample landed a flight, where every other guard requires
+  a fault to persist.
+
+
+WHAT IS NOT FIXED
+
+1. DIRECTIONS ARE ROTATED. Forward moves backward, left moves right.
+   CAUSE: not the key mapping and not the rotation maths. While the operator
+   held `forward`, stabilizer.yaw read 164.7 deg — the drone believed it was
+   facing almost exactly backwards. At that heading cos = -0.96, so "forward
+   along the heading" correctly means decreasing x, and the trace shows
+   target_x falling from 0.707 to 0.331 with the drone following to within
+   1-12 cm. The loop is faithful; the FRAME is wrong.
+   WHY: the world frame is defined by the stored base-station geometry, and
+   that geometry has never been measured. It is left over from a previous
+   session with the stations somewhere else. A rotated frame rotates yaw.
+   FIX: run `cropwatcher geometry`. NOT a sign flip in code — inverting the
+   keys would be a compensation for a wrong frame, and it would invert again
+   the moment geometry is measured properly. See the note on masks below.
+
+2. GEOMETRY HAS NEVER RUN AGAINST HARDWARE. Rung 2 of the ladder, still.
+   Everything in 1 above follows from it.
+
+3. A TOTAL RADIO LOSS STILL DROPS THE DRONE, and no agent change can alter
+   that. Bitcraze's firmware detects a dead link at about 1 s and CUTS THE
+   MOTORS at about 2 s. It does not glide. What does work: our landing hands
+   to the HIGH-LEVEL COMMANDER, which runs the descent ON the drone — so once
+   that command arrives, the landing completes without any further radio. So
+   a lost DOWNLINK (we go blind, uplink alive) now lands gently; a lost
+   UPLINK cannot be helped from here, because the command cannot arrive.
+
+4. drift_m AND THE COMMANDED POINT ARE INVISIBLE to the operator. They are in
+   the trace and the agent log only.
+
+5. FIRMWARE IS OLD. CRTP protocol 10; cflib wants 12 and falls back to legacy
+   supervisor handling.
+
+
+WHAT NEEDS IMPROVEMENT
+
+- ONE STATION HAS NO REDUNDANCY, and this drone has nothing to coast on —
+  deck.bcFlow2 = 0 and deck.bcZRanger2 = 0, read off the drone. A second
+  station is still the single biggest robustness win available, and it costs
+  no code.
+- THE BLACKOUT CEILINGS (3.0 s for beams, 2.0 s for telemetry) ARE REASONED,
+  NOT MEASURED. kalman.varPX and varPY are now in the trace so the next real
+  dropout can be judged on data rather than argument.
+- CONTROLLER SATURATION IS STILL UNREPORTED. A controller demanding more than
+  full throttle is a loud upstream signal and is currently visible only by
+  reading a CSV afterwards.
+
+
+WHAT NEEDS REDIRECTION
+
+- DO NOT FIX THE DIRECTIONS BY FLIPPING THE KEYS. It is the reason this
+  section exists. The frame is wrong, not the mapping, and a compensation
+  here is inherited by every autonomous flight — see below.
+- DO NOT TUNE HEIGHT GAINS. Established in update 3 and still true: the
+  barometer flight's fault was a lying sensor against a frozen command.
+- JUDGE THE CONTROL LAW ONLY FROM ASSISTED FLIGHTS. The tuning column names
+  the law. A barometer profile means nothing about the commanded point.
+
+
+MANUAL IS THE FOUNDATION FOR AUTONOMOUS
+
+The commanded point is not a manual-flight trick: a waypoint mission IS the
+same machinery with a different source of intent. Manual moves the point with
+keys; autonomous moves it along a plan. Same seeding, same leash, same
+estimator gates, same guards, same trace.
+
+So anything hacked in here to paper over a sensor or a frame fault is
+inherited by every autonomous flight, where nobody is watching to correct it.
+That is the whole argument against flipping the keys in 1 above, and against
+tuning height gains in update 3. The quality bar for manual IS the quality
+bar for the system.
+
+
+THE ORDER TO DO IT IN
+
+  1  cropwatcher geometry --distance 1.0    fixes the rotated frame
+  2  cropwatcher check                      expect settle under 2 cm
+  3  Re-test directions. Forward should go where the nose points.
+       If it is STILL inverted after correct geometry, it is a genuine sign
+       bug and the yaw convention needs pinning — sit the drone facing a
+       known way, read stabilizer.yaw, rotate it 90 deg left, read again.
+  4  Re-test a climb-and-release with the new blackout tolerances.
+  5  Side steps, then a square.
+
+
+========================================================================
+UPDATE 3 — 2026-09-22, afternoon
+========================================================================
+(Kept verbatim. Superseded where update 4 says so: the height fault described
+here was the barometer, and the flights described here all ran unassisted.)
+
 `flight-log.txt` has the session-by-session readings this is drawn from.
 
 Last updated from hardware: 2026-09-22.
@@ -270,3 +433,4 @@ INVARIANTS THIS SESSION ADDED
   The tuning column names it: a barometer profile (velCtlPid.vzKp lowered)
   means unassisted, and nothing about the position law can be concluded from
   that flight at all.
+

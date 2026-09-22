@@ -114,7 +114,20 @@ RECEPTION_BLACKOUT_MAX_S = 3.0      # hard ceiling, however good it looks
 #: MAX_FLIGHT_VARIANCE_M2 (0.25, where it stops being a position at all).
 RECEPTION_COAST_VARIANCE_M2 = 0.04  # 20 cm standard deviation
 LOW_VOLTAGE_GRACE_S = 1.0           # a sag under a throttle step is not "empty"
-STALE_TELEMETRY_S = 0.5
+# Telemetry is the DOWNLINK. Losing it means we are blind, not that the drone
+# is in danger: the agent keeps sending setpoints at 50 Hz, and if the UPLINK
+# is still alive the drone is still flying them. If the uplink is dead too,
+# the firmware's own commander watchdog cuts within about half a second and no
+# landing command of ours would have arrived anyway — so riding out a gap
+# costs nothing in the case where it cannot help, and saves the flight in the
+# case where it can.
+#
+# Measured 2026-09-22: a flight ended on "Lost contact with the drone's
+# telemetry" with a drone that was otherwise flying well. There was no grace
+# period at all — ONE late sample landed it, where every other guard here
+# requires a fault to persist.
+STALE_TELEMETRY_S = 0.5             # beyond this we are blind
+STALE_TELEMETRY_GRACE_S = 1.5       # ...and this long before it ends a flight
 # Beyond these the estimate is not a position — it is the accelerometer
 # integrating. The crash trace fell ~1 m per sample at 4 Hz.
 MAX_PLAUSIBLE_SPEED_M_S = 2.0
@@ -314,12 +327,22 @@ class FlightGuard:
 
     def check(self, snap: Snapshot, now: float) -> Verdict:
         ctx = self.context
+        # The snapshot's own age IS how long we have been blind, so no timer
+        # is needed and a very old first sample lands at once rather than
+        # starting a grace period from now.
         age = snap.age_s(now)
-        if age is None or age > STALE_TELEMETRY_S:
+        if age is None or age > STALE_TELEMETRY_S + STALE_TELEMETRY_GRACE_S:
+            seen = "never" if age is None else f"{age:.1f} s ago"
             return Verdict(
                 Action.LAND, Reason.TELEMETRY_STALE,
-                "Lost contact with the drone's telemetry — landing.",
+                f"No telemetry from the drone ({seen}) — landing rather than "
+                f"flying blind.",
             )
+        if age > STALE_TELEMETRY_S:
+            # Blind, but not yet lost. Every check below reads this snapshot,
+            # and a stale one cannot say anything true about now — so the
+            # honest answer is to hold the last setpoint and wait for a frame.
+            return OK
 
         info = snap.get("supervisor.info")
         if info is not None and int(info) >> SUPERVISOR_TUMBLED_BIT & 1:

@@ -186,6 +186,23 @@ INVARIANTS
   hold a position; tests pin that the crash readings come back unassisted.
 - Lost position still outranks low battery in an assisted flight: landing steers
   by the estimate, so with no estimate the motors stop instead.
+- Losing the DOWNLINK is not losing the drone. Telemetry going quiet means we
+  are BLIND, not that the drone is in danger: setpoints still go up at 50 Hz
+  and, if the uplink is alive, it is still flying them. A gap is ridden out to
+  STALE_TELEMETRY_S + STALE_TELEMETRY_GRACE_S (2.0 s) and the snapshot's own
+  AGE is the evidence, so a very old first sample lands at once rather than
+  starting a fresh grace period. While blind, no other guard speaks — a stale
+  snapshot cannot say anything true about now, so reading a tumble or a
+  position out of it would be inventing one. Before this there was no grace at
+  all: one late sample ended a flight on 2026-09-22.
+
+- A TOTAL RADIO LOSS DROPS THE DRONE and nothing here can change that. The
+  firmware detects a dead link at about 1 s and CUTS THE MOTORS at about 2 s;
+  it does not glide. What does help is that landing hands to the HIGH-LEVEL
+  COMMANDER, which runs the descent on the drone — so once that command
+  arrives, the landing finishes with no further radio. A lost downlink lands
+  gently; a lost uplink cannot be helped, because the command cannot arrive.
+
 - Losing the BEAMS is not losing the POSITION. The Kalman coasts on the IMU
   and publishes how well it is coasting: its variance GROWS while it has no
   measurement to correct with. So a blackout is ridden out for up to

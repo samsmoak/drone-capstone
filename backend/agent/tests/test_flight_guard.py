@@ -230,10 +230,23 @@ class TestGuardLands:
         verdict = hold_guard().check(snap(**{"stateEstimate__y": -2.1}), now=10.0)
         assert verdict.reason is Reason.OUTSIDE_FENCE
 
-    def test_stale_telemetry(self):
-        verdict = hold_guard().check(snap(now=10.0), now=10.6)
+    def test_a_brief_telemetry_gap_is_ridden_out(self):
+        """Losing the DOWNLINK means we are blind, not that the drone is in
+        danger: setpoints still go up at 50 Hz. One late sample used to land a
+        drone that was otherwise flying well (2026-09-22)."""
+        assert hold_guard().check(snap(now=10.0), now=10.6).ok
+        assert hold_guard().check(snap(now=10.0), now=11.9).ok
+
+    def test_a_long_telemetry_silence_lands(self):
+        verdict = hold_guard().check(snap(now=10.0), now=12.1)
         assert verdict.reason is Reason.TELEMETRY_STALE
         assert verdict.action is Action.LAND
+
+    def test_while_blind_no_other_guard_speaks(self):
+        """A stale snapshot cannot say anything true about now, so reading a
+        tumble or a position out of it would be inventing one."""
+        tumbled = {"supervisor__info": 1 << 5}
+        assert hold_guard().check(snap(now=10.0, **tumbled), now=10.9).ok
 
 
 class TestManualFlight:
@@ -299,6 +312,8 @@ class TestUnassistedGuards:
         assert verdict.action is Action.LAND and verdict.reason is Reason.BATTERY_LOW
 
     def test_stale_telemetry_still_lands(self):
+        """Nine seconds old lands immediately — the age is the evidence, so
+        there is no grace period left to start."""
         verdict = self.guard().check(snap(now=1.0), 10.0)
         assert verdict.action is Action.LAND and verdict.reason is Reason.TELEMETRY_STALE
 
