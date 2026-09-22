@@ -11,6 +11,7 @@ from cropwatcher.flight.tuning import (
     BASE_PROFILE,
     MEASURED_HOVER_THRUST,
     FlightTuning,
+    TuningError,
 )
 from tests.fakes import make_toc
 
@@ -155,13 +156,39 @@ class TestTheControllerIsRebuiltNotJustSelected:
         assert written[0] != "1"
         assert written[-1] == "1"
 
-    def test_the_original_is_still_what_gets_restored(self):
-        """The bounce must not be mistaken for the value the flight found."""
+    def test_mellinger_is_never_handed_back(self):
+        """Restoring it faithfully is what kept Mellinger alive: found on 2,
+        set to 1 for the flight, handed 2 back at the end — for ever. Measured
+        2026-09-22, the bench drone read 2 after a day of flights that all
+        pinned it to 1. Nobody chose Mellinger; there is no state to preserve.
+        """
         param = FakeParam({"stabilizer.controller": "2", "posCtlPid.thrustBase": "36000"})
         tuning = FlightTuning(param)
         tuning.apply(BASE_PROFILE)
         tuning.restore()
-        assert param.values["stabilizer.controller"] == "2"
+        assert param.values["stabilizer.controller"] == "1"
+
+    def test_everything_else_is_still_restored_exactly(self):
+        param = FakeParam({"stabilizer.controller": "2", "posCtlPid.thrustBase": "36000"})
+        tuning = FlightTuning(param)
+        tuning.apply(BASE_PROFILE)
+        tuning.restore()
+        assert param.values["posCtlPid.thrustBase"] == "36000"
+
+    def test_a_controller_that_will_not_switch_stops_the_flight(self):
+        """Being LEFT on the bounce is worse than never bouncing: the
+        intermediate is Mellinger, which reads none of these gains."""
+        param = FakeParam({"stabilizer.controller": "1", "posCtlPid.thrustBase": "36000"})
+        real_set = param.set_value
+
+        def stuck_on_mellinger(name, value):
+            real_set(name, value)
+            if name == "stabilizer.controller":
+                param.values[name] = "2"          # the write silently did not take
+        param.set_value = stuck_on_mellinger
+
+        with pytest.raises(TuningError, match="would not switch"):
+            FlightTuning(param).apply(BASE_PROFILE)
 
     def test_a_refused_bounce_does_not_stop_the_flight(self):
         """Losing the re-init is worth a log line, not a scrubbed flight."""

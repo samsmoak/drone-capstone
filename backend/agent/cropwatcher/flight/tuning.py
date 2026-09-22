@@ -37,10 +37,15 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
+
+class TuningError(RuntimeError):
+    """The drone would not take a setting the flight depends on."""
+
 #: Mean unsaturated motor output while airborne, lab traces 2026-09-17.
 MEASURED_HOVER_THRUST = 48_500
 
 #: `stabilizer.controller`: 1 PID, 2 Mellinger, 3 INDI (firmware stabilizer.h).
+CONTROLLER_PARAM = "stabilizer.controller"
 CONTROLLER_PID = 1
 
 #: Any other valid type, written briefly to force the firmware to re-init.
@@ -146,6 +151,10 @@ class FlightTuning:
                     if adj.kind is Kind.REINIT:
                         self._reinit(adj.name, target, ctype)
                     self._param.set_value(adj.name, after)
+                    if adj.kind is Kind.REINIT:
+                        self._confirm(adj.name, target)
+                except TuningError:
+                    raise
                 except Exception:
                     log.exception("tuning: could not adjust %s — left as it was", adj.name)
                     continue
@@ -186,9 +195,48 @@ class FlightTuning:
         except Exception:
             log.exception("tuning: could not bounce %s — integrators may carry over", name)
 
+    def _confirm(self, name: str, wanted: float) -> None:
+        """Read the controller back, because being LEFT on the bounce is worse
+        than never bouncing at all.
+
+        The intermediate value is Mellinger, which reads none of the gains in
+        this file and lurches without an excellent position estimate. A silent
+        failure of the second write would therefore fly the drone on the exact
+        controller this whole profile exists to get away from.
+        """
+        try:
+            actual = int(float(self._param.get_value(name)))
+        except Exception:
+            log.warning("tuning: could not read %s back — flying unverified", name)
+            return
+        if actual != int(wanted):
+            log.error("tuning: %s is %d, not %d — the drone is NOT on the controller "
+                      "its gains belong to", name, actual, int(wanted))
+            raise TuningError(
+                f"The drone would not switch to its flight controller "
+                f"({name} reads {actual}, not {int(wanted)}). Switch the drone off and "
+                f"on and run the checks again rather than flying on the wrong one."
+            )
+
     def restore(self) -> None:
-        """Write back exactly what the drone reported before. Safe to call twice."""
+        """Write back exactly what the drone reported before. Safe to call twice.
+
+        EXCEPT the controller, which is left on PID. Restoring it faithfully is
+        what kept Mellinger alive: the drone was found on 2, every flight set
+        it to 1, and every flight then handed 2 back — so the leftover the
+        pinning exists to remove was re-applied at the end of each flight, for
+        ever. Measured 2026-09-22: stabilizer.controller read 2 on the bench
+        after a day of flights that all pinned it to 1.
+
+        Nobody chose Mellinger. It reads none of the gains in this file and
+        lurches without an excellent position estimate, so there is no state
+        worth preserving and handing it back is not politeness, it is a bug.
+        """
         for name, value in self._originals.items():
+            if name == CONTROLLER_PARAM:
+                log.info("tuning: leaving %s on PID rather than restoring %s",
+                         name, value)
+                continue
             try:
                 self._param.set_value(name, value)
             except Exception:
