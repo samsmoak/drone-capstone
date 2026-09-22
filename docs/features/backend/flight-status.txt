@@ -16,6 +16,113 @@ readings as they were taken. This file is what those readings mean.
 
 
 ========================================================================
+UPDATE 5 — 2026-09-22, late evening
+========================================================================
+
+HEADLINE
+
+The control law is not the problem and has not changed. The last five flights
+were all BAROMETER flights — drift_m reads 0.0000 on every row, so no
+commanded point existed — with vertical swings of 0.67, 1.40 and 1.86 m. They
+fell back to the barometer because THE DRONE HAS NO VALID GEOMETRY: it
+receives base station 0 but cannot turn those beams into a position, and
+reports the estimate uncertain by 525 cm. Geometry has still never been run.
+
+Separately, two real controller faults were found and fixed, one of them
+introduced by yesterday's own fix.
+
+
+THE TWO CONTROLLER FAULTS
+
+1. THE DRONE WAS LIVING ON MELLINGER. Measured on the bench: after a full day
+   of flights that every one of them pinned stabilizer.controller to 1, the
+   parameter read 2. The cause is restore(): it writes back exactly what it
+   found, it found Mellinger, so the END of every flight handed Mellinger
+   back, and the next flight started from it again. The leftover that the
+   pinning exists to remove was being re-applied for ever.
+   Mellinger reads NONE of the gains in flight/tuning.py and lurches without
+   an excellent position estimate — the documented cause of the 2026-09-21
+   crashes.
+   FIXED: the controller is now LEFT ON PID. Nobody chose Mellinger, so there
+   is no operator state to preserve; handing it back is a bug, not politeness.
+   Everything else is still restored exactly.
+
+2. THE RE-INIT COULD LEAVE THE DRONE ON THE BOUNCE. This one was introduced by
+   the fix in update 4. Forcing controllerInit() requires writing a DIFFERENT
+   controller type first, and the value chosen was 2 — Mellinger. So a silent
+   failure of the second write would fly the drone on precisely the controller
+   the profile exists to escape, and nothing checked.
+   FIXED: the value is read back after the bounce and a mismatch raises rather
+   than flying unverified. Being left on the bounce is worse than never
+   bouncing at all.
+
+
+WHY THE SMOOTHNESS WENT AWAY
+
+Not the control law. The smooth flights — the ones called "buttery smooth" for
+up and down and "marvellous" sideways — were ASSISTED, holding x and y to
+under 2 cm with thrust steady near 56,000 and no saturation. Every flight
+since has been unassisted, which is the 72 cm-of-noise sensor diagnosed in
+update 3.
+
+The tuning column in the trace names the law, and it is the first thing to
+read before drawing any conclusion from a flight. A barometer profile
+(velCtlPid.vzKp lowered) means nothing about the commanded point.
+
+
+WHAT IS PROVEN ON HARDWARE
+
+- The commanded point, and every axis not being pressed staying locked.
+- Height holding when the keys are released.
+- One base station settling to 1.3-1.8 cm — WHEN it has geometry.
+- Crash recovery, honest refusal messages, motors, battery, deck detection.
+- A connect that cannot hang, and a busy message that names the step.
+
+WHAT IS FIXED BUT HAS NOT FLOWN
+
+- Beam blackouts ridden out to 3 s on the filter's own variance.
+- Telemetry gaps ridden out to 2.0 s.
+- The controller rebuilt before every flight so a crash's wound-up
+  integrators do not carry into the next takeoff.
+- Mellinger never handed back; the bounce verified.
+- IS_FLYING on the ground reported as a named warning.
+
+
+WHAT IS NOT FIXED
+
+1. GEOMETRY HAS NEVER RUN. It is now blocking, not merely advisable: without
+   it the drone cannot produce a position at all, so every flight falls back
+   to the barometer and cannot be smooth. It is also the cause of the rotated
+   directions in update 4.
+2. A TOTAL RADIO LOSS STILL DROPS THE DRONE. Firmware cuts motors at about
+   2 s and does not glide. Only a lost downlink can be landed gently.
+3. drift_m AND THE COMMANDED POINT ARE INVISIBLE to the operator.
+4. FIRMWARE IS OLD — CRTP 10 against the 12 cflib wants. send_arming_request
+   is silently a no-op because of it.
+5. IS_FLYING CANNOT BE CLEARED from here. Reported, not fixable; a power cycle
+   is the only reliable reset.
+
+
+WHAT NEEDS REDIRECTION
+
+- NOTHING ABOUT THE CONTROL LAW SHOULD BE JUDGED, TUNED OR CHANGED until a
+  flight runs assisted again. Five barometer flights in a row produced five
+  impressions of a law that never executed.
+- RUN GEOMETRY BEFORE THE NEXT FLIGHT. Not as a step in a ladder — as the
+  precondition for the system working at all.
+- DO NOT FIX THE ROTATED DIRECTIONS BY FLIPPING THE KEYS. Still true, and
+  still for the same reason: the frame is wrong, not the mapping.
+
+
+THE ORDER TO DO IT IN
+
+  1  ./cropwatcher geometry --distance 1.0   the precondition for everything
+  2  ./cropwatcher check                     expect settle under 2 cm
+  3  Fly ASSISTED. Confirm the app does NOT offer the barometer.
+  4  Re-test directions, then a climb-and-release, then side steps.
+
+
+========================================================================
 UPDATE 4 — 2026-09-22, evening
 ========================================================================
 
