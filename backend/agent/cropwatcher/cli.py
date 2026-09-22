@@ -76,6 +76,9 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common(geometry)
     geometry.add_argument("--distance", type=float, default=1.0,
                           help="how far the x-axis sample is from the origin, in metres")
+    geometry.add_argument("--quick", action="store_true",
+                          help="one sample, one position, no measuring — restores "
+                               "position hold now; forward/back may come out mirrored")
     geometry.add_argument("--countdown", type=float, metavar="SECONDS",
                           help="take each sample after a countdown instead of on Enter, "
                                "for when both hands are holding the drone")
@@ -275,7 +278,10 @@ def cmd_geometry(args: argparse.Namespace) -> int:
             return None if value is None else float(value)
 
         try:
-            if alone:
+            if args.quick:
+                result = geometry_estimation.estimate_quick(
+                    scf.cf, collect, write=not args.dry_run)
+            elif alone:
                 result = geometry_estimation.estimate_single(
                     scf.cf, collect,
                     reference_distance_m=args.distance,

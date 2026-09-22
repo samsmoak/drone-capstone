@@ -218,3 +218,44 @@ class TestWhyTheSamplesDisagreed:
                            (FakePose(9, 9, 9), FakePose(-7, -7, -7)))
         assert not result.converged
         assert "disagree" in result.message
+
+
+class TestTheQuickWayBack:
+    """One position, no measuring. It trades the mirror check for a much
+    smaller ask, because position hold does not care which way the room is
+    labelled — only the arrows do."""
+
+    def test_one_sample_is_enough_to_solve(self):
+        sample = FakeSample({0: (FakePose(2, 0, 2), FakePose(-9, -9, -9))})
+        result = geometry.estimate_quick(
+            SimpleNamespace(), lambda step, i: sample, write=False)
+        assert result.converged
+        assert result.stations[0].translation.tolist() == [2.0, 0.0, 2.0]
+
+    def test_it_takes_the_lower_reprojection_error_one(self):
+        """cflib returns the better solution first; the mirror is second."""
+        sample = FakeSample({0: (FakePose(1, 1, 1), FakePose(-1, -1, -1))})
+        result = geometry.estimate_quick(
+            SimpleNamespace(), lambda step, i: sample, write=False)
+        assert result.stations[0].translation.tolist() == [1.0, 1.0, 1.0]
+
+    def test_it_asks_for_exactly_one_position(self):
+        seen = []
+        sample = FakeSample({0: (FakePose(2, 0, 2),) * 2})
+        geometry.estimate_quick(
+            SimpleNamespace(), lambda step, i: (seen.append(step.key) or sample),
+            write=False)
+        assert seen == ["origin"]
+
+    def test_it_says_the_mirror_is_the_risk_it_took(self):
+        sample = FakeSample({0: (FakePose(2, 0, 2),) * 2})
+        result = geometry.estimate_quick(
+            SimpleNamespace(), lambda step, i: sample, write=False)
+        assert "mirror" in result.message
+        assert "Position hold will work" in result.message
+
+    def test_no_station_at_that_spot_is_refused(self):
+        result = geometry.estimate_quick(
+            SimpleNamespace(), lambda step, i: FakeSample({}), write=False)
+        assert not result.converged
+        assert "No base station reached" in result.message

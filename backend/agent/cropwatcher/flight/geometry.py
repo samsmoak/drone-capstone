@@ -254,6 +254,57 @@ def single_station_steps(reference_distance_m: float) -> list[GeometryStep]:
     ]
 
 
+def estimate_quick(
+    cf: Any,
+    collect: Callable[[GeometryStep, int], Any],
+    *,
+    write: bool = True,
+) -> GeometryResult:
+    """One sample, one position, no measuring — the fastest way back into the air.
+
+    IPPE gives two poses for a planar target and this takes the one with the
+    lower reprojection error, which is what cfclient's own "simple" geometry
+    estimation does. The two-sample walk exists because that choice is
+    sometimes the MIRROR, and a mirrored room flies forward when told back.
+
+    So this trades a known risk for a much smaller ask. It restores POSITION
+    HOLD immediately — hovering, height, and holding a spot do not care which
+    way the room is labelled — and the mirror, if it happened, shows up the
+    first time an arrow is pressed and costs one more run to fix. When the
+    directions matter, measure properly with estimate_single().
+    """
+    from cflib.localization import LhDeck4SensorPositions
+
+    step = GeometryStep(
+        "origin",
+        "Put the drone flat on the floor where you want (0, 0, 0) to be, facing "
+        "the direction you want to call forward. Keep its top clear and stay out "
+        "of the line to the base station.",
+    )
+    sample = collect(step, 0)
+    sample.augment_with_ippe(LhDeck4SensorPositions.positions)
+    if not sample.angles_calibrated:
+        return GeometryResult(
+            converged=False,
+            message="No base station reached the drone at that position.",
+        )
+
+    station = sorted(sample.angles_calibrated)[0]
+    pose = sample.ippe_solutions[station][0]      # lower reprojection error
+    result = GeometryResult(
+        converged=True,
+        stations={station: pose},
+        message=(
+            f"Solved for base station {station} from a single sample. Position hold "
+            f"will work. If forward turns out to be backward, the mirror was picked "
+            f"— run `cropwatcher geometry` without --quick to settle it."
+        ),
+    )
+    if write:
+        result.written = _write(cf, {station: pose})
+    return result
+
+
 def estimate_single(
     cf: Any,
     collect: Callable[[GeometryStep, int], Any],
