@@ -8,6 +8,8 @@ can be tested in microseconds rather than by sleeping.
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from cropwatcher.flight.manual import (
@@ -17,6 +19,7 @@ from cropwatcher.flight.manual import (
     IDLE_THRUST,
     LAND_RATE_M_S,
     LAND_S,
+    LEASH_M,
     MAX_HEIGHT_M,
     MAX_TILT_DEG,
     MAX_UNASSISTED_HEIGHT_M,
@@ -109,8 +112,10 @@ class FakeClock:
 
 
 #: An arbitrary spot the estimator reports the drone at, so tests that care
-#: about the held position have a number to recognise.
-SOMEWHERE = Fix(1.5, -0.5, 90.0)
+#: about the commanded point have a number to recognise. Heading 0, so
+#: "forward" is +x and a direction test reads plainly; the body-to-world
+#: rotation is pinned separately at 90 and 180 degrees.
+SOMEWHERE = Fix(1.5, -0.5, 0.0)
 
 
 class Rig:
@@ -254,7 +259,9 @@ class TestGentleClimb:
 
 class TestMovement:
     def test_arrows_and_yaw_follow_cflib_conventions(self):
-        rig = Rig()
+        # The fallback law, which is the only one that still puts velocities
+        # on the wire for these conventions to be visible in.
+        rig = Rig(fix=None)
         rig.fly_to(0.3)
         rig.run(1.0, Intent(forward=True, left=True, yaw_left=True))
         _, vx, vy, yaw, _ = rig.cmd.last("hover")
@@ -591,102 +598,256 @@ class TestGlide:
         assert 0 < roll < MAX_TILT_DEG                           # levelling, not snapped
 
     def test_assisted_arrows_ease_too(self):
-        rig = Rig()
+        rig = Rig(fix=None)                          # see the note above
         rig.fly_to(0.3)
         rig.run(0.1, Intent(forward=True))
         _, vx, _, _, _ = rig.cmd.last("hover")
         assert 0 < vx <= MOVE_ACCEL_M_S2 * 0.1 + 1e-9
 
 
-class TestHoldingTheSpot:
-    """Letting go holds the place, not the speed.
+class TestTheCommandedPoint:
+    """The keys move a point; the drone is always told to be at that point.
 
-    Zero velocity asks the drone to stop; it does not ask it to stay. Every
-    small error in the estimate, and every draught, then moves it, and nothing
-    brings it back — which is drift an operator has to fly out by hand.
+    A speed says how fast and never says where, so nothing knew where the
+    drone was supposed to be and sideways slip during a move was invisible.
+    Every test here is about the point: what moves it, what must not, and
+    what the drone is told while it moves.
     """
 
-    def test_flying_by_key_sends_velocities_and_takes_no_spot(self):
+    def test_a_held_arrow_advances_the_point_forward_and_nothing_else(self):
         rig = Rig()
         rig.fly_to(0.3)
-        rig.run(0.5, Intent(forward=True))
-        assert rig.cmd.kinds()[-1] == "hover"
-        assert rig.ctl.anchor is None
+        before = rig.ctl.target
+        rig.run(1.0, Intent(forward=True))
+        after = rig.ctl.target
+        assert after.x > before.x                    # travelled forward
+        assert after.y == pytest.approx(before.y)    # and not sideways
+        assert after.yaw_deg == pytest.approx(before.yaw_deg)
 
-    def test_letting_go_holds_the_place_it_stopped(self):
+    def test_the_point_is_what_the_drone_is_told(self):
         rig = Rig()
         rig.fly_to(0.3)
-        rig.run(0.5, Intent(forward=True))
-        rig.run(1.5, Intent())                       # glide out, then settle
-        kind, x, y, z, yaw = rig.cmd.last("position")
-        assert (x, y, yaw) == (1.5, -0.5, 90.0)      # where the estimator said it was
+        rig.run(1.0, Intent(forward=True))
+        target = rig.ctl.target
+        _, x, y, z, yaw = rig.cmd.last("position")
+        assert (x, y, yaw) == (target.x, target.y, target.yaw_deg)
         assert z == pytest.approx(GROUND + rig.ctl.target_height)
-        assert rig.ctl.anchor == Fix(1.5, -0.5, 90.0)
 
-    def test_the_spot_is_not_taken_while_still_gliding(self):
-        """Anchoring mid-glide would fight the glide and lurch."""
+    def test_the_point_advances_only_while_the_key_is_held(self):
         rig = Rig()
         rig.fly_to(0.3)
-        rig.run(0.5, Intent(forward=True))
-        rig.run(0.1, Intent())                       # released, still coasting
-        assert rig.cmd.kinds()[-1] == "hover"
-        assert rig.ctl.anchor is None
-
-    def test_the_drone_drifting_does_not_move_the_spot(self):
-        """The point of the anchor: the drone comes back to it, not with it."""
-        rig = Rig()
-        rig.fly_to(0.3)
+        rig.run(1.0, Intent(forward=True))
+        rig.run(1.0, Intent())                       # released: ease to a stop
+        stopped = rig.ctl.target
         rig.run(2.0, Intent())
-        held = rig.ctl.anchor
-        rig.drift(0.10, 0.0)                         # blown 10 cm downwind
-        assert rig.ctl.anchor == held
-        _, x, y, _, _ = rig.cmd.last("position")
-        assert (x, y) == (held.x, held.y)            # still commanding the old spot
+        assert rig.ctl.target == stopped             # and it stays stopped
+        assert rig.cmd.kinds()[-1] == "position"     # still being commanded
 
-    def test_the_distance_off_the_spot_is_reported(self):
+    def test_up_climbs_straight_up(self):
+        """The bug that started this: W sent vx=vy=0, which asks the drone to
+        stop moving sideways but never asks it to stay anywhere."""
         rig = Rig()
         rig.fly_to(0.3)
-        rig.run(2.0, Intent())
+        before = rig.ctl.target
+        height_before = rig.ctl.target_height
+        rig.run(1.0, Intent(up=True))
+        assert rig.ctl.target_height > height_before  # it climbed
+        assert rig.ctl.target == before               # and held x, y and heading
+
+    def test_yaw_turns_the_heading_and_holds_the_place(self):
+        rig = Rig()
+        rig.fly_to(0.3)
+        before = rig.ctl.target
+        rig.run(1.0, Intent(yaw_left=True))
+        after = rig.ctl.target
+        assert after.yaw_deg > before.yaw_deg
+        assert (after.x, after.y) == (before.x, before.y)
+
+
+class TestForwardMeansWhereTheNosePoints:
+    """The keys are in the drone's frame, the point is in the room's.
+
+    The firmware did this rotation for us when we sent velocities. With a
+    position it is ours, and the sign of the sine term is the difference
+    between forward and backward.
+    """
+
+    def test_facing_along_y_sends_forward_along_y(self):
+        rig = Rig(fix=Fix(0.0, 0.0, 90.0))
+        rig.fly_to(0.3)
+        rig.run(1.0, Intent(forward=True))
+        target = rig.ctl.target
+        assert target.y > 0.02                       # nose points +y at yaw 90
+        assert target.x == pytest.approx(0.0, abs=1e-9)
+
+    def test_facing_backwards_sends_forward_along_minus_x(self):
+        rig = Rig(fix=Fix(0.0, 0.0, 180.0))
+        rig.fly_to(0.3)
+        rig.run(1.0, Intent(forward=True))
+        assert rig.ctl.target.x < -0.02
+
+    def test_left_is_ninety_degrees_off_the_nose(self):
+        rig = Rig(fix=Fix(0.0, 0.0, 90.0))
+        rig.fly_to(0.3)
+        rig.run(1.0, Intent(left=True))
+        target = rig.ctl.target
+        assert target.x < -0.02                      # facing +y, left is -x
+        assert target.y == pytest.approx(0.0, abs=1e-9)
+
+    def test_the_heading_stays_inside_half_a_turn(self):
+        """A heading that accumulates past 180 is still a heading, but the
+        firmware reads an absolute one and the number should read like it."""
+        rig = Rig(fix=Fix(0.0, 0.0, 170.0))
+        rig.fly_to(0.3)
+        rig.run(2.0, Intent(yaw_left=True))          # 30 deg/s past the wrap
+        assert -180.0 <= rig.ctl.target.yaw_deg < 180.0
+        assert rig.ctl.target.yaw_deg < 0            # wrapped, not 200
+
+
+class TestMultipleKeys:
+    """Each axis reads only its own pair, so the axes never interfere."""
+
+    def test_opposite_arrows_hold_the_place(self):
+        rig = Rig()
+        rig.fly_to(0.3)
+        held = rig.ctl.target
+        rig.run(1.0, Intent(forward=True, back=True))
+        assert rig.ctl.target == held
+        assert rig.cmd.kinds()[-1] == "position"     # held, not merely stopped
+
+    def test_up_and_down_together_hold_the_level(self):
+        rig = Rig()
+        rig.fly_to(0.3)
+        height = rig.ctl.target_height
+        rig.run(1.0, Intent(up=True, down=True))
+        assert rig.ctl.target_height == pytest.approx(height)
+
+    def test_opposite_yaw_holds_the_heading(self):
+        rig = Rig()
+        rig.fly_to(0.3)
+        held = rig.ctl.target
+        rig.run(1.0, Intent(yaw_left=True, yaw_right=True))
+        assert rig.ctl.target.yaw_deg == pytest.approx(held.yaw_deg)
+
+    def test_two_different_axes_both_move(self):
+        rig = Rig()
+        rig.fly_to(0.3)
+        before, height = rig.ctl.target, rig.ctl.target_height
+        rig.run(1.0, Intent(up=True, left=True))
+        assert rig.ctl.target_height > height        # climbing
+        assert rig.ctl.target.y > before.y           # and sliding left
+
+    def test_a_cancelled_axis_does_not_freeze_a_live_one(self):
+        rig = Rig()
+        rig.fly_to(0.3)
+        before, height = rig.ctl.target, rig.ctl.target_height
+        rig.run(1.0, Intent(up=True, down=True, forward=True))
+        assert rig.ctl.target_height == pytest.approx(height)   # level held
+        assert rig.ctl.target.x > before.x                      # still travelling
+
+    def test_cancelling_mid_move_stops_smoothly_not_instantly(self):
+        """The rate eases to zero, so the point runs on a few centimetres and
+        stops somewhere definite. A freeze would be a jolt."""
+        rig = Rig()
+        rig.fly_to(0.3)
+        rig.run(1.0, Intent(forward=True))
+        moving = rig.ctl.target
+        rig.run(TICK_S, Intent(forward=True, back=True))
+        assert rig.ctl.target.x > moving.x           # still easing down
+        rig.run(1.0, Intent(forward=True, back=True))
+        settled = rig.ctl.target
+        rig.run(1.0, Intent(forward=True, back=True))
+        assert rig.ctl.target == settled             # and then it is still
+
+
+class TestTheLeash:
+    """The point may not outrun the drone.
+
+    Holding a key advances the point whether or not the drone keeps up. The
+    fake drone here never moves, which is the extreme of exactly that.
+    """
+
+    def test_the_point_never_gets_further_than_the_leash(self):
+        rig = Rig()
+        rig.fly_to(0.3)
+        rig.run(10.0, Intent(forward=True))          # 2 m of asking
+        gap = math.hypot(rig.ctl.target.x - rig.fix.x, rig.ctl.target.y - rig.fix.y)
+        assert gap == pytest.approx(LEASH_M, abs=0.01)
+
+    def test_the_leash_does_not_bite_during_ordinary_flight(self):
+        rig = Rig()
+        rig.fly_to(0.3)
+        rig.run(1.0, Intent(forward=True))
+        gap = math.hypot(rig.ctl.target.x - rig.fix.x, rig.ctl.target.y - rig.fix.y)
+        assert gap < LEASH_M
+
+    def test_the_leash_keeps_the_direction_it_was_asked_for(self):
+        rig = Rig()
+        rig.fly_to(0.3)
+        rig.run(10.0, Intent(left=True))
+        target = rig.ctl.target
+        assert target.y - rig.fix.y == pytest.approx(LEASH_M, abs=0.01)
+        assert target.x == pytest.approx(rig.fix.x, abs=1e-9)
+
+
+class TestDrift:
+    def test_the_distance_off_the_point_is_reported(self):
+        rig = Rig()
+        rig.fly_to(0.3)
+        rig.run(1.0, Intent())
         assert rig.ctl.drift_m == pytest.approx(0.0, abs=1e-9)
         rig.drift(0.06, 0.08)                        # 3-4-5: exactly 10 cm off
         assert rig.ctl.drift_m == pytest.approx(0.10, abs=0.005)
 
-    def test_flying_again_clears_the_reported_drift(self):
+    def test_the_drone_drifting_does_not_move_the_point(self):
+        """The whole idea: the drone comes back to the point, not the other
+        way round. A point that followed the live position would follow the
+        drift and correct nothing."""
         rig = Rig()
         rig.fly_to(0.3)
-        rig.run(2.0, Intent())
+        rig.run(1.0, Intent())
+        held = rig.ctl.target
         rig.drift(0.10, 0.0)
-        rig.run(0.1, Intent(forward=True))
-        assert rig.ctl.drift_m == 0.0
+        assert rig.ctl.target == held
+        _, x, y, _, _ = rig.cmd.last("position")
+        assert (x, y) == (held.x, held.y)
 
-    def test_moving_again_releases_the_spot(self):
+
+class TestWhatTheEstimatorSays:
+    def test_a_position_that_jumps_is_not_believed(self):
+        """Stale geometry moved the estimate 21 cm in one 0.1 s step while the
+        drone sat still. Chasing that would fly it hard into the error."""
         rig = Rig()
         rig.fly_to(0.3)
-        rig.run(2.0, Intent())
-        assert rig.ctl.anchor is not None
-        rig.run(0.2, Intent(left=True))
-        assert rig.ctl.anchor is None
-        assert rig.cmd.kinds()[-1] == "hover"
+        rig.run(1.0, Intent())
+        held = rig.ctl.target
+        rig.fix = Fix(held.x + 0.21, held.y, held.yaw_deg)   # 10.5 m/s
+        rig.run(TICK_S)
+        assert rig.ctl.drift_m == 0.0                # the jump never became drift
+        assert rig.ctl.target == held
 
-    def test_height_still_moves_while_the_spot_is_held(self):
+    def test_a_position_that_stays_put_is_believed_in_the_end(self):
+        """Rejecting a jump must not blind the loop for good: a drone really
+        carried somewhere keeps reporting it, and that is not a glitch."""
         rig = Rig()
         rig.fly_to(0.3)
-        rig.run(2.0, Intent())
-        before = rig.cmd.last("position")[3]
-        rig.run(1.0, Intent(up=True))
-        after = rig.cmd.last("position")[3]
-        assert after > before                        # W still climbs
-        assert rig.ctl.anchor is not None            # and the spot is kept
+        rig.run(1.0, Intent())
+        held = rig.ctl.target
+        rig.fix = Fix(held.x + 0.21, held.y, held.yaw_deg)
+        rig.run(0.5)                                 # same reading, tick after tick
+        assert rig.ctl.drift_m == pytest.approx(0.21, abs=0.02)
+        assert rig.ctl.target == held                # and still the original point
 
-    def test_without_a_position_it_asks_for_stillness_rather_than_a_coordinate(self):
+    def test_without_a_position_it_flies_by_velocity(self):
         rig = Rig(fix=None)
         rig.fly_to(0.3)
-        rig.run(2.0, Intent())
+        rig.run(1.0, Intent(forward=True))
         assert "position" not in rig.cmd.kinds()
-        _, vx, vy, rate, _ = rig.cmd.last("hover")
-        assert (vx, vy, rate) == (0.0, 0.0, 0.0)
+        assert rig.ctl.target is None
+        _, vx, _, _, _ = rig.cmd.last("hover")
+        assert vx == pytest.approx(MOVE_SPEED_M_S)
 
-    def test_unassisted_flight_never_holds_a_spot(self):
+    def test_unassisted_flight_never_commands_a_point(self):
         """No base stations, no position worth flying to."""
         rig = Rig(assisted=False)
         rig.ctl.arm()
@@ -695,37 +856,13 @@ class TestHoldingTheSpot:
         assert "position" not in rig.cmd.kinds()
         assert rig.cmd.kinds()[-1] == "zdistance"
 
-    def test_a_position_that_jumps_is_not_believed(self):
-        """Stale geometry moved the estimate 21 cm in one 0.1 s step while the
-        drone sat still. Chasing that would fly it hard into the error."""
+    def test_arming_again_forgets_the_old_point(self):
         rig = Rig()
         rig.fly_to(0.3)
-        rig.run(2.0, Intent())
-        held = rig.ctl.anchor
-        rig.fix = Fix(held.x + 0.21, held.y, held.yaw_deg)   # 10.5 m/s
-        rig.run(TICK_S)
-        assert rig.ctl.drift_m == 0.0                # the jump never became drift
-        assert rig.ctl.anchor == held
-
-    def test_a_position_that_stays_put_is_believed_in_the_end(self):
-        """Rejecting a jump must not blind the loop for good: a drone really
-        carried somewhere keeps reporting it, and that is not a glitch."""
-        rig = Rig()
-        rig.fly_to(0.3)
-        rig.run(2.0, Intent())
-        held = rig.ctl.anchor
-        rig.fix = Fix(held.x + 0.21, held.y, held.yaw_deg)
-        rig.run(0.5)                                 # same reading, tick after tick
-        assert rig.ctl.drift_m == pytest.approx(0.21, abs=0.005)
-        assert rig.ctl.anchor == held                # and still the original spot
-
-    def test_arming_again_forgets_the_old_spot(self):
-        rig = Rig()
-        rig.fly_to(0.3)
-        rig.run(2.0, Intent())
-        assert rig.ctl.anchor is not None
+        rig.run(1.0, Intent())
+        assert rig.ctl.target is not None
         rig.ctl.land()
         rig.run(LAND_S + 0.5)
         rig.ctl.arm()
-        assert rig.ctl.anchor is None
+        assert rig.ctl.target is None
 

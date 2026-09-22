@@ -6,7 +6,8 @@ WHAT IT IS
 Manual mode does not send raw thrust. The window reports WHICH KEYS ARE HELD
 about ten times a second; the agent runs a 50 Hz loop that turns that intent
 into a height-holding setpoint. Let go of everything and the drone holds where
-it is — it does not sink, and with base stations it does not wander off either.
+it is — it does not sink, and with base stations it does not wander off. Each
+key moves ONE coordinate of a commanded point; the rest stay locked.
 
 Pressing Start does not take off. It idles the propellers on the ground at
 IDLE_THRUST (11000, just above cflib's "10001 = next to no power") so the
@@ -42,35 +43,73 @@ Replaced (2026-09-16): a raw-throttle law. Its slow ramp through liftoff let the
 drone skid on a leg and tumble, and letting go of W held nothing.
 
 
-HOLDING THE SPOT (assisted only)
+THE COMMANDED POINT (assisted only)
 
-Letting go of the arrows used to send a velocity of ZERO, which asks the drone
-to stop — not to stay. A drone told to stop drifts: every error in the estimate
-and every draught moves it, and nothing brings it back. That is the sideways
-wander manual flight had.
+The arrows used to send a SPEED: hold one, get 0.20 m/s. A speed says how fast
+and never says where, so nothing in the system knew where the drone was meant
+to be, and sideways slip during a forward move was invisible to it. Releasing
+every key sent a speed of zero, which asks the drone to STOP — not to STAY.
 
-Now, once the arrows are released AND the glide has decayed below 2 cm/s, the
-loop reads the position the drone reports, keeps it, and commands it absolutely
-with send_position_setpoint(x, y, z, yaw) until the operator asks for something
-else. The firmware's own position controller flies back to it at 100 Hz. W and S
-still move the height while the spot is held, so climbing straight up holds x
-and y instead of sliding.
+The agent now keeps ONE COMMANDED POINT — x, y, height, heading — and sends it
+absolutely every tick, moving or still, with send_position_setpoint(x, y, z,
+yaw). Each held key advances one coordinate of that point at its own eased
+rate, for exactly as long as it is held:
 
-The spot is taken ONCE and never follows the drone. An anchor that tracked the
-live position would follow the drift, which corrects nothing.
+  Up / Down arrow   forward / back    0.20 m/s along the nose
+  Left / Right      sideways          0.20 m/s across the nose
+  W / S             height            0.15 m/s
+  A / D             heading           30 deg/s
 
-The agent does not change how hard the correction pushes, and there is no
-"react harder past N centimetres" gain here. An absolute position IS the
-strongest correction this link can send, and the firmware already pushes
-proportionally harder the further off it is, at 100 Hz rather than the radio's
-10. What the distance is used for is KNOWING: drift_m is measured every tick,
-recorded in the trace beside the spot being held, and logged past
-DRIFT_NOTICE_M (0.15 m) — far below the +/-2.00 m manual geofence, which is
-too coarse to notice a hover sliding across a room.
+The coordinates no key is asking for are NEVER WRITTEN TO, so they stay locked
+by construction rather than by a routine watching for deviation. That is why W
+climbs straight up instead of sliding, and why a forward press travels forward
+and nothing else. Let go and the point stops advancing — it is already the
+spot to hold, with no capture step and no gap.
 
-Unassisted flight never holds a spot: without base stations x and y are dead
-reckoning, and anchoring to them would fly the drone into the drift. With no
-position reported at all the loop falls back to the old zero-velocity hover
+Auto-correction is therefore not a mode that switches on. The point is the
+only thing the drone is ever told, and the firmware's position controller
+closes on it at 100 Hz — where anything agent-side is capped at the radio's
+10 Hz. There is deliberately NO extra push past a threshold: an absolute
+position is already the strongest correction this link can send, and a
+deadband that ignores small error then snaps at it is what lurches.
+
+This is PX4's Position mode and ArduPilot's Loiter, which integrate stick
+input into a position setpoint for the same reason. The leash is ArduPilot's
+term too.
+
+WHY A SPEED COULD NEVER HAVE WORKED. A quadrotor is underactuated: it only
+accelerates along its own thrust axis, so it moves sideways by TILTING, and
+any attitude error IS a horizontal acceleration error. One degree of unnoticed
+tilt is g*sin(1 deg) = 0.17 m/s^2 — 34 cm of drift in two seconds. A velocity
+command leaves that error to integrate into position with nothing observing
+position. Only closing the loop on position removes it.
+
+MULTIPLE KEYS. Each axis reads only its own opposite pair, so the axes compose
+without interfering. Up+Right climbs while sliding right; Forward+Left travels
+diagonally. An opposite pair held together cancels to zero, that coordinate is
+not advanced, and it stays locked and ACTIVELY HELD — Up and Down together
+really does mean "stay exactly here". Cancelling is a smooth stop, not a
+freeze: the rate eases out, so the point runs on a few centimetres and stops
+somewhere definite.
+
+THE LEASH. Holding a key advances the point whether or not the drone keeps up.
+If something holds the drone back — wind, a snagged leg, a sagging battery —
+an unleashed point runs on and builds an error the drone answers with
+everything it has the moment it comes free. The point is never allowed more
+than LEASH_M (0.30 m) from where the drone actually is, so the worst lurch
+possible is a 30 cm one, releasing a key always settles within 30 cm, and the
+arrows cannot command more than the drone can really fly.
+
+FORWARD MEANS WHERE THE NOSE POINTS. The keys are in the drone's frame, the
+point is in the room's, so each step is rotated by the heading being
+commanded. The firmware did this for us when we sent velocities; with a
+position it is ours, and the sign of the sine term is the difference between
+forward and backward. Heading is locked unless A/D is held — if it drifted,
+the meaning of "forward" would rotate under the operator and the drone would
+curve.
+
+Unassisted flight never commands a point: without base stations x and y are
+dead reckoning. With no position the loop falls back to the velocity law
 rather than inventing a coordinate.
 
 
@@ -100,8 +139,10 @@ THE NUMBERS
   MAX_UNASSISTED_HEIGHT_M 0.80      ceiling on the barometer
   LAND_RATE_M_S       0.25          barometer descent
   MOVE_SPEED_M_S      0.20          arrows, body frame
-  STOPPED_M_S         0.02          below this the glide is over, take the spot
-  DRIFT_NOTICE_M      0.15          off the spot and still correcting -> logged
+  LEASH_M             0.30          how far the point may get ahead of the drone
+  DRIFT_NOTICE_M      0.15          off the point and still correcting -> logged
+  MAX_HOLD_VARIANCE_M2 0.01         10 cm std dev; looser and the fix is not
+                                    trusted to move the point (flight_guard.py)
   MAX_PLAUSIBLE_SPEED_M_S 2.0       above this a fix is the estimator, not the
                                     drone (shared with safety/flight_guard.py)
   YAW_RATE_DEG_S      30            A / D
@@ -121,6 +162,10 @@ KEYS (all shown on screen, always)
 
 DECISIONS
 
+- The keys move a POINT, not the drone. Velocity control was replaced outright
+  rather than corrected on top of: a second controller on the agent's side of a
+  10 Hz link fighting the firmware's own at 100 Hz is the arrangement that
+  failed its own simulation at +/-0.2 m and was deleted (flight-tuning.txt).
 - Held keys change a height TARGET at 0.15 m/s; they do not change thrust. Raw
   thrust has no height hold: releasing the key drops the drone, and holding it
   climbs without limit. The first version did exactly that.
@@ -164,8 +209,16 @@ INVARIANTS
   A rejected fix keeps the previous spot; a reading that PERSISTS is believed
   after about 0.1 s, so a drone genuinely carried somewhere is not ignored.
 
-- Hold the spot only on geometry that has been measured in THIS room. The
-  anchor is exactly as good as the position estimate under it. Stale geometry
-  does not fail loudly — the stations simply disagree — and the anchor would
-  then hold a coordinate that is quietly wrong. Run `cropwatcher geometry`
+- Command a point only on geometry measured in THIS room. The point is
+  exactly as good as the position estimate under it. Stale geometry does not
+  fail loudly — the stations simply disagree — and the drone would then be
+  flown to a coordinate that is quietly wrong. Run `cropwatcher geometry`
   after any station is moved, nudged or re-aimed.
+
+- Read the estimator's OWN confidence, do not infer one. kalman.varPX/varPY
+  are the filter's variance in its own position. Above MAX_HOLD_VARIANCE_M2
+  (0.01 m², a 10 cm standard deviation) the fix stops being used to seed or
+  leash the point, though the flight continues and the guard keeps its own
+  looser bound. The same principle as sys.canfly: a guessed threshold refused
+  flights the firmware would have allowed, and guessing in the other direction
+  would lock a position the estimator does not stand behind.

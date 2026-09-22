@@ -42,6 +42,14 @@ MAX_READY_VARIANCE_M2 = 0.0025
 
 # ── in-flight policy ─────────────────────────────────────────────────────
 
+# Above this the estimate is too uncertain to LOCK a position to, even though
+# the flight may continue. 0.01 m² is a 10 cm standard deviation. The drone
+# publishes its own confidence, so manual position hold reads that rather than
+# guessing from how far the number moved (flight/manual.py, flight/link.py).
+# It sits between the 5 cm wanted at rest before arming and the 50 cm at which
+# the estimate stops being a position at all.
+MAX_HOLD_VARIANCE_M2 = 0.01
+
 MAX_DRIFT_M = 0.30                  # sideways from the takeoff point, hold programs
 MAX_HEIGHT_ERROR_M = 0.25           # from the target height, hold programs
 HEIGHT_ERROR_GRACE_S = 1.0          # must persist this long (climb overshoot)

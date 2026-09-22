@@ -3,7 +3,7 @@
 Written for every manual flight at the stream rate (10 Hz), beside the flight
 CSV as `trace_<flight id>.csv`. The flight CSV records the environment; this
 records control — which keys were held, the eased height target and climb speed
-the agent commanded, the spot being held if any, the firmware's own height
+the agent commanded, the point it was told to be at, the firmware's own height
 target and barometer estimate, thrust, attitude, the four motors and the tuning
 in force.
 
@@ -32,9 +32,9 @@ log = logging.getLogger(__name__)
 KEYS = ("up", "down", "forward", "back", "left", "right", "yaw_left", "yaw_right")
 
 STREAM_COLUMNS = (
-    # x and y ride along so the held spot can be compared with where the drone
-    # actually was. The gap between them IS the drift the anchor corrects, and
-    # without both columns it cannot be measured after the fact.
+    # x and y ride along so the commanded point can be compared with where the
+    # drone actually was. The gap between them IS the drift being corrected,
+    # and without both columns it cannot be measured after the fact.
     "stateEstimate.x", "stateEstimate.y", "stateEstimate.z", "stateEstimate.vz",
     "posCtl.targetZ", "posCtl.targetVZ", "posEstAlt.estimatedZ", "posEstAlt.velocityZ",
     "stabilizer.thrust", "stabilizer.roll", "stabilizer.pitch", "stabilizer.yaw", "gyro.z",
@@ -56,7 +56,7 @@ class FlightTrace:
         self._writer = csv.writer(self._file)
         self._writer.writerow([
             "recorded_at", "control_state", "keys", "target_height_m", "climb_velocity_m_s",
-            "anchor_x_m", "anchor_y_m", "anchor_yaw_deg", "drift_m",
+            "target_x_m", "target_y_m", "target_yaw_deg", "drift_m",
             *STREAM_COLUMNS, "tuning",
         ])
         self.rows = 0
@@ -67,17 +67,17 @@ class FlightTrace:
                 return
             intent = getattr(self._controller, "intent", None)
             keys = "+".join(k for k in KEYS if intent is not None and getattr(intent, k, False))
-            # Empty whenever no spot is being held — which is itself the
-            # reading: it says the operator had the drone, or it was gliding.
-            anchor = getattr(self._controller, "anchor", None)
+            # Empty whenever no point is being commanded — which is itself
+            # the reading: no position the drone trusts enough to hold one.
+            target = getattr(self._controller, "target", None)
             self._writer.writerow([
                 datetime.now(UTC).isoformat(),
                 str(getattr(self._controller, "state", "")),
                 keys,
                 round(float(getattr(self._controller, "target_height", 0.0)), 4),
                 round(float(getattr(self._controller, "climb_velocity", 0.0)), 4),
-                *(("", "", "") if anchor is None else (
-                    round(anchor.x, 4), round(anchor.y, 4), round(anchor.yaw_deg, 2))),
+                *(("", "", "") if target is None else (
+                    round(target.x, 4), round(target.y, 4), round(target.yaw_deg, 2))),
                 round(float(getattr(self._controller, "drift_m", 0.0)), 4),
                 *(snap.get(name) for name in STREAM_COLUMNS),
                 self._tuning if self.rows == 0 else "",
