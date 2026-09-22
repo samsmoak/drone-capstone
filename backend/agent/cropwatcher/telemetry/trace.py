@@ -40,6 +40,11 @@ STREAM_COLUMNS = (
     "stabilizer.thrust", "stabilizer.roll", "stabilizer.pitch", "stabilizer.yaw", "gyro.z",
     "motor.m1", "motor.m2", "motor.m3", "motor.m4",
     "pm.vbat", "pm.state", "supervisor.info", "lighthouse.bsReceive",
+    # The filter's confidence in its own position. It grows during a beam
+    # blackout, which is what decides whether the flight rides one out — so
+    # when a dropout ends a flight, this is the column that says whether it
+    # should have (safety/flight_guard.py).
+    "kalman.varPX", "kalman.varPY",
 )
 
 

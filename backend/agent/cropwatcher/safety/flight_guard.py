@@ -97,7 +97,22 @@ MAX_HOLD_VARIANCE_M2 = 0.01
 MAX_DRIFT_M = 0.30                  # sideways from the takeoff point, hold programs
 MAX_HEIGHT_ERROR_M = 0.25           # from the target height, hold programs
 HEIGHT_ERROR_GRACE_S = 1.0          # must persist this long (climb overshoot)
-RECEPTION_LOST_GRACE_S = 0.5        # Kalman coasts on the IMU briefly
+# Losing the beams is not the same as losing the position. The Kalman coasts
+# on the IMU, and it says how well it is coasting: its variance GROWS while it
+# has no measurement to correct with. So a blackout is ridden out for as long
+# as the filter still stands behind its own answer, and ended early when it
+# does not.
+#
+# Measured 2026-09-22: a 0.5 s dropout at 0.8 m landed a drone that was
+# holding x and y to 1.7 cm, and the beams were back 0.2 s later. With one
+# base station a brief occlusion is ORDINARY — the airframe's own tilt can
+# break the line — so a fixed half-second was never going to survive it.
+RECEPTION_LOST_GRACE_S = 0.5        # when the estimate is degrading too
+RECEPTION_BLACKOUT_MAX_S = 3.0      # hard ceiling, however good it looks
+#: Variance up to which a blacked-out estimate is still worth flying on.
+#: Between MAX_HOLD_VARIANCE_M2 (0.01, tight enough to command a point) and
+#: MAX_FLIGHT_VARIANCE_M2 (0.25, where it stops being a position at all).
+RECEPTION_COAST_VARIANCE_M2 = 0.04  # 20 cm standard deviation
 LOW_VOLTAGE_GRACE_S = 1.0           # a sag under a throttle step is not "empty"
 STALE_TELEMETRY_S = 0.5
 # Beyond these the estimate is not a position — it is the accelerometer
@@ -347,10 +362,19 @@ class FlightGuard:
         if received is not None and int(received) == 0:
             if self._reception_lost_since is None:
                 self._reception_lost_since = now
-            if now - self._reception_lost_since > RECEPTION_LOST_GRACE_S:
+            blackout = now - self._reception_lost_since
+            # The filter's variance is the honest signal: it grows while there
+            # is nothing to correct with. While it is still tight the estimate
+            # is worth flying on, whatever the beams are doing.
+            coasting_well = bool(variances) and max(variances) <= RECEPTION_COAST_VARIANCE_M2
+            limit = RECEPTION_BLACKOUT_MAX_S if coasting_well else RECEPTION_LOST_GRACE_S
+            if blackout > limit:
+                held = "and the estimate is going with it" if not coasting_well else (
+                    f"for {blackout:.1f} s")
                 return Verdict(
                     Action.LAND, Reason.RECEPTION_LOST,
-                    "Base station signal lost — landing while the estimate still holds.",
+                    f"Base station signal lost {held} — landing while the estimate "
+                    f"still holds.",
                 )
         else:
             self._reception_lost_since = None

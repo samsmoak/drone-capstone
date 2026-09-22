@@ -99,6 +99,24 @@ inferred from how quadrotors usually behave; each cause is a measurement.
    CAUSE    The app runs a FROZEN copy of the agent, built before the change.
    FIXED?   In the agent, yes. In the app, only after a rebuild.
 
+7. "IT FLEW UP BEAUTIFULLY, THEN FELL STRAIGHT DOWN WHEN I LET GO"
+   CAUSE    Not the release, and not a fall. The base station dropped out for
+            about half a second at that moment and the guard landed it.
+   EVIDENCE trace_0f947214.csv. The climb held x and y to between 0.0006 and
+            0.017 m, thrust steady near 56,000, no saturation — the first
+            flight of the commanded point, and it worked. At t=5.1 s
+            lighthouse.bsReceive went to 0 and the key was released; at 5.5 s
+            the state went to landing; at 5.7 s the beams were BACK and
+            stayed. Descent 1.03 m to 0.37 m over 2.1 s, about 0.31 m/s,
+            motors steady near 50,000 — a controlled landing, not a drop. The
+            operator pressed up at 7.8 s and nothing happened: landing
+            ignores the keys.
+   MEANING  The guard aborted on RECEPTION, which is a proxy. What matters is
+            whether the ESTIMATE is still good, and it was.
+   FIXED?   YES. A blackout is now ridden out while the filter's own variance
+            stands behind its position (up to 3 s), and ended inside 0.5 s
+            when the variance is growing instead.
+
 
 MANUAL IS THE FOUNDATION FOR AUTONOMOUS
 

@@ -149,14 +149,34 @@ class TestGuardLands:
     def test_healthy_hover_is_ok(self):
         assert hold_guard().check(snap(), now=10.0).ok
 
-    def test_reception_loss_needs_the_grace_period(self):
+    def test_a_brief_blackout_is_ridden_out_while_the_estimate_holds(self):
+        """Measured 2026-09-22: a 0.5 s dropout landed a drone holding x and y
+        to 1.7 cm, and the beams were back 0.2 s later. With one base station
+        a brief occlusion is ordinary — the airframe's own tilt can cause it."""
         guard = hold_guard()
         lost = {"lighthouse__bsReceive": 0}
+        for t in (10.0, 10.4, 10.6, 11.0, 12.0, 12.9):
+            assert guard.check(snap(now=t, **lost), now=t).ok, f"landed at {t}"
+
+    def test_a_long_blackout_lands_however_good_it_looks(self):
+        guard = hold_guard()
+        lost = {"lighthouse__bsReceive": 0}
+        guard.check(snap(now=10.0, **lost), now=10.0)
+        verdict = guard.check(snap(now=13.1, **lost), now=13.1)
+        assert verdict.reason is Reason.RECEPTION_LOST
+        assert verdict.action is Action.LAND
+
+    def test_a_blackout_lands_fast_when_the_estimate_is_going_with_it(self):
+        """The filter's variance grows when it has nothing to correct with.
+        That, not the beams, is what says the position is being lost."""
+        guard = hold_guard()
+        lost = {"lighthouse__bsReceive": 0,
+                "kalman__varPX": 0.10, "kalman__varPY": 0.10}   # 32 cm sd
         assert guard.check(snap(now=10.0, **lost), now=10.0).ok
-        assert guard.check(snap(now=10.4, **lost), now=10.4).ok
         verdict = guard.check(snap(now=10.6, **lost), now=10.6)
         assert verdict.reason is Reason.RECEPTION_LOST
         assert verdict.action is Action.LAND
+        assert "estimate is going with it" in verdict.message
 
     def test_reception_returning_resets_the_grace_period(self):
         guard = hold_guard()
@@ -166,8 +186,10 @@ class TestGuardLands:
 
     def test_grace_period_starting_at_time_zero(self):
         guard = hold_guard()
-        guard.check(snap(now=0.0, **{"lighthouse__bsReceive": 0}), now=0.0)
-        assert not guard.check(snap(now=0.6, **{"lighthouse__bsReceive": 0}), now=0.6).ok
+        degrading = {"lighthouse__bsReceive": 0,
+                     "kalman__varPX": 0.10, "kalman__varPY": 0.10}
+        guard.check(snap(now=0.0, **degrading), now=0.0)
+        assert not guard.check(snap(now=0.6, **degrading), now=0.6).ok
 
     def test_firmware_low_power_state_ends_the_operation(self):
         verdict = hold_guard().check(snap(**{"pm__state": PM_LOW_POWER}), now=10.0)

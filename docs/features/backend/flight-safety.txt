@@ -186,6 +186,17 @@ INVARIANTS
   hold a position; tests pin that the crash readings come back unassisted.
 - Lost position still outranks low battery in an assisted flight: landing steers
   by the estimate, so with no estimate the motors stop instead.
+- Losing the BEAMS is not losing the POSITION. The Kalman coasts on the IMU
+  and publishes how well it is coasting: its variance GROWS while it has no
+  measurement to correct with. So a blackout is ridden out for up to
+  RECEPTION_BLACKOUT_MAX_S (3.0 s) while the variance stays under
+  RECEPTION_COAST_VARIANCE_M2 (0.04 m², 20 cm), and ended inside
+  RECEPTION_LOST_GRACE_S (0.5 s) when it does not. A flat half-second landed
+  a drone on 2026-09-22 that was holding x and y to 1.7 cm, with the beams
+  back 0.2 s later. With ONE station a brief occlusion is ordinary — the
+  airframe's own tilt can break the line — so reception alone was never a
+  safe thing to abort on.
+
 - Re-measure the geometry after ANY station moves, and before trusting a held
   position. Everything that reads a position inherits its error, silently.
 - Choose the method from what is RECEIVED, never from what is stored.
