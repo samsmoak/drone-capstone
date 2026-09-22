@@ -40,6 +40,7 @@ RECOVERY_POLL_S = 0.2
 
 class MotorState(StrEnum):
     READY = "ready"                 # nothing holding the motors
+    STILL_FLYING = "still_flying"   # on the ground, but the firmware disagrees
     RECOVERED = "recovered"         # was crashed; recovery cleared it
     UNKNOWN = "unknown"             # this firmware does not publish supervisor.info
     TUMBLED = "tumbled"             # not upright — stand it up
@@ -54,15 +55,41 @@ class MotorCheck:
 
     @property
     def ok(self) -> bool:
-        return self.state in (MotorState.READY, MotorState.RECOVERED, MotorState.UNKNOWN)
+        return self.state in (MotorState.READY, MotorState.RECOVERED,
+                              MotorState.UNKNOWN, MotorState.STILL_FLYING)
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        """The bits the supervisor has set, for the record and the operator.
+
+        The state above is a verdict; these are what it was read from. A
+        verdict with no reading behind it is the thing that cost a lab hour
+        when a latched crash was reported as a flat battery.
+        """
+        if self.bits is None:
+            return ()
+        return tuple(name for name, bit in BITS if self.bits & bit)
 
     @property
     def message(self) -> str:
         return MESSAGES[self.state]
 
 
+#: Every bit worth naming, in the order the firmware defines them.
+BITS: tuple[tuple[str, int], ...] = (
+    ("can_be_armed", CAN_BE_ARMED), ("is_armed", IS_ARMED), ("can_fly", CAN_FLY),
+    ("is_flying", IS_FLYING), ("is_tumbled", IS_TUMBLED), ("is_locked", IS_LOCKED),
+    ("is_crashed", IS_CRASHED),
+)
+
+
 MESSAGES: dict[MotorState, str] = {
     MotorState.READY: "The drone is ready to arm.",
+    MotorState.STILL_FLYING: (
+        "The drone is on the ground but its firmware still thinks it is flying, "
+        "left over from the last flight. It will usually fly anyway; if it "
+        "behaves oddly, switch it off and on — that is the only reliable reset."
+    ),
     MotorState.RECOVERED: "The drone had locked its motors after the last crash — recovered.",
     MotorState.UNKNOWN: "This firmware does not report its supervisor state; not checked.",
     MotorState.TUMBLED: (
@@ -77,6 +104,24 @@ MESSAGES: dict[MotorState, str] = {
         "then try again."
     ),
 }
+
+
+def _settled(bits: int) -> MotorState:
+    """Ready, unless the firmware still believes the last flight is running.
+
+    IS_FLYING set while the drone sits on the floor is state left from a
+    previous flight — measured on six of nine flights on 2026-09-22, all of
+    them following a flight that ended abnormally. Nothing cflib offers on
+    this firmware clears it: disarm, re-arm, a stop setpoint and a same-value
+    controller write were all tried on the drone and supervisor.info did not
+    move, because send_arming_request falls back to a legacy path below CRTP
+    12 and this drone reports 10.
+
+    So it is reported rather than fixed. It does not block a flight — the
+    drone flies with it set, and did all day — but when something does fly
+    oddly the operator should be looking at this instead of guessing.
+    """
+    return MotorState.STILL_FLYING if bits & IS_FLYING else MotorState.READY
 
 
 def ensure_motors_unlocked(
@@ -94,7 +139,7 @@ def ensure_motors_unlocked(
     if bits & IS_LOCKED:
         return MotorCheck(MotorState.LOCKED, bits)
     if not bits & (IS_CRASHED | IS_TUMBLED):
-        return MotorCheck(MotorState.READY, bits)
+        return MotorCheck(_settled(bits), bits)
 
     if request_recovery is not None:
         request_recovery()

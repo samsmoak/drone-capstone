@@ -285,15 +285,18 @@ def run_checks(
     motors = supervisor.ensure_motors_unlocked(
         read_bits, request_recovery, clock=clock, sleep=sleep
     )
-    motor_data = {"state": str(motors.state), "bits": motors.bits}
+    # The named bits go in the record, not just the verdict. A verdict with no
+    # reading behind it is what reported a latched crash as a flat battery.
+    motor_data = {"state": str(motors.state), "bits": motors.bits,
+                  "supervisor": list(motors.names)}
     if not motors.ok:
         result = fail(CheckKey.MOTORS, motors.message, **motor_data)
         yield result
         raise ChecksFailed(result)
+    softened = (supervisor.MotorState.UNKNOWN, supervisor.MotorState.STILL_FLYING)
     yield CheckResult(
         CheckKey.MOTORS,
-        (CheckStatus.WARNING if motors.state is supervisor.MotorState.UNKNOWN
-         else CheckStatus.PASSED),
+        CheckStatus.WARNING if motors.state in softened else CheckStatus.PASSED,
         motors.message, motor_data,
     )
 

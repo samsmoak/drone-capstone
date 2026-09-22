@@ -327,3 +327,33 @@ class TestWhyItWillNotArm:
         assert "has not said why" in reason
         assert "4.15 V" in reason and "supervisor.info=0" in reason
         assert "charging it is" in reason           # explicitly steers away
+
+
+class TestStateLeftFromTheLastFlight:
+    """IS_FLYING set while the drone is on the floor is last flight's state.
+
+    Measured on six of nine flights on 2026-09-22, all following a flight that
+    ended abnormally. Nothing cflib offers on this firmware clears it — disarm,
+    re-arm, a stop setpoint and a same-value controller write were all tried on
+    the drone and supervisor.info did not move. So it is reported, not fixed.
+    """
+
+    def test_a_drone_that_thinks_it_is_still_flying_is_flagged(self):
+        check = supervisor.ensure_motors_unlocked(
+            lambda: supervisor.IS_ARMED | supervisor.CAN_FLY | supervisor.IS_FLYING, None)
+        assert check.state is supervisor.MotorState.STILL_FLYING
+        assert check.ok                      # it still flies; it is not a refusal
+        assert "switch it off and on" in check.message.lower()
+
+    def test_a_settled_drone_is_simply_ready(self):
+        check = supervisor.ensure_motors_unlocked(
+            lambda: supervisor.IS_ARMED | supervisor.CAN_FLY, None)
+        assert check.state is supervisor.MotorState.READY
+
+    def test_the_bits_are_named_not_just_totalled(self):
+        check = supervisor.ensure_motors_unlocked(
+            lambda: supervisor.IS_ARMED | supervisor.CAN_FLY | supervisor.IS_FLYING, None)
+        assert check.names == ("is_armed", "can_fly", "is_flying")
+
+    def test_a_firmware_that_says_nothing_names_nothing(self):
+        assert supervisor.ensure_motors_unlocked(lambda: None, None).names == ()
