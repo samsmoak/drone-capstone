@@ -196,3 +196,55 @@ class TestTheControllerIsRebuiltNotJustSelected:
                           refuse={"stabilizer.controller"})
         applied = FlightTuning(param).apply(BASE_PROFILE)
         assert [a.name for a in applied] == ["posCtlPid.thrustBase"]
+
+
+class TestConfirmWaitsForTheDrone:
+    """set_value is asynchronous. Reading back on the next line reads the
+    value from BEFORE the write — which raised one millisecond after the
+    write and refused every flight on 2026-09-22.
+    """
+
+    def test_a_write_the_drone_acknowledges_late_is_accepted(self):
+        param = FakeParam({"stabilizer.controller": "1", "posCtlPid.thrustBase": "36000"})
+        real_set = param.set_value
+        lag = {"reads": 0}
+
+        def slow_ack(name, value):
+            if name == "stabilizer.controller" and value == "1":
+                lag["pending"] = value          # the drone has not replied yet
+                param.writes.append((name, value))
+                return
+            real_set(name, value)
+
+        real_get = param.get_value
+
+        def catching_up(name):
+            if name == "stabilizer.controller" and "pending" in lag:
+                lag["reads"] += 1
+                if lag["reads"] < 3:            # stale for the first two reads
+                    return "2"
+                param.values[name] = lag.pop("pending")
+            return real_get(name)
+
+        param.set_value, param.get_value = slow_ack, catching_up
+        FlightTuning(param).apply(BASE_PROFILE)          # must not raise
+        assert lag["reads"] >= 3, "it should have waited, not read once"
+
+    def test_a_controller_that_never_takes_still_raises(self):
+        param = FakeParam({"stabilizer.controller": "1", "posCtlPid.thrustBase": "36000"})
+        real_set = param.set_value
+
+        def stuck(name, value):
+            real_set(name, value)
+            if name == "stabilizer.controller":
+                param.values[name] = "2"
+        param.set_value = stuck
+
+        import cropwatcher.flight.tuning as tuning_module
+        original = tuning_module.CONFIRM_TIMEOUT_S
+        tuning_module.CONFIRM_TIMEOUT_S = 0.2            # do not wait 2 s in a test
+        try:
+            with pytest.raises(TuningError, match="would not switch"):
+                FlightTuning(param).apply(BASE_PROFILE)
+        finally:
+            tuning_module.CONFIRM_TIMEOUT_S = original

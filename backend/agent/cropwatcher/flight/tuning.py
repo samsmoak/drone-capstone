@@ -51,6 +51,12 @@ CONTROLLER_PID = 1
 #: Any other valid type, written briefly to force the firmware to re-init.
 CONTROLLER_OTHER = 2
 
+#: How long to let the drone acknowledge a parameter write before calling it
+#: a refusal. Writes are asynchronous: the cache updates on the drone's reply,
+#: so reading back immediately reads the value from before the write.
+CONFIRM_TIMEOUT_S = 2.0
+CONFIRM_POLL_S = 0.05
+
 #: Long enough for the 1 kHz stabilizer task to SEE the intermediate value.
 #: Both writes landing inside one iteration would look like no change at all,
 #: and the whole point would be missed silently.
@@ -196,27 +202,45 @@ class FlightTuning:
             log.exception("tuning: could not bounce %s — integrators may carry over", name)
 
     def _confirm(self, name: str, wanted: float) -> None:
-        """Read the controller back, because being LEFT on the bounce is worse
-        than never bouncing at all.
+        """WAIT for the controller to really be what we asked for.
 
-        The intermediate value is Mellinger, which reads none of the gains in
-        this file and lurches without an excellent position estimate. A silent
-        failure of the second write would therefore fly the drone on the exact
-        controller this whole profile exists to get away from.
+        Being LEFT on the bounce is worse than never bouncing: the
+        intermediate value is Mellinger, which reads none of the gains in this
+        file and lurches without an excellent position estimate.
+
+        But `set_value` is ASYNCHRONOUS. The write goes out over the radio and
+        the cached value only catches up when the drone acknowledges it, so
+        reading back on the very next line returns the value from BEFORE the
+        write. Doing exactly that raised ONE MILLISECOND after the write and
+        refused every flight on 2026-09-22 — a check meant to stop the drone
+        flying on the wrong controller became the only thing stopping it
+        flying at all, and surfaced as "could not reach the flight agent".
+
+        So it waits, and calls it a failure only once the drone has had time
+        to answer and still disagrees.
         """
-        try:
-            actual = int(float(self._param.get_value(name)))
-        except Exception:
-            log.warning("tuning: could not read %s back — flying unverified", name)
-            return
-        if actual != int(wanted):
-            log.error("tuning: %s is %d, not %d — the drone is NOT on the controller "
-                      "its gains belong to", name, actual, int(wanted))
-            raise TuningError(
-                f"The drone would not switch to its flight controller "
-                f"({name} reads {actual}, not {int(wanted)}). Switch the drone off and "
-                f"on and run the checks again rather than flying on the wrong one."
-            )
+        deadline = time.monotonic() + CONFIRM_TIMEOUT_S
+        actual: int | None = None
+        while True:
+            try:
+                actual = int(float(self._param.get_value(name)))
+            except Exception:
+                log.warning("tuning: could not read %s back — flying unverified", name)
+                return
+            if actual == int(wanted):
+                return
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(CONFIRM_POLL_S)
+
+        log.error("tuning: %s is %s, not %d after %.1fs — the drone is NOT on the "
+                  "controller its gains belong to", name, actual, int(wanted),
+                  CONFIRM_TIMEOUT_S)
+        raise TuningError(
+            f"The drone would not switch to its flight controller "
+            f"({name} reads {actual}, not {int(wanted)}). Switch the drone off and "
+            f"on and run the checks again rather than flying on the wrong one."
+        )
 
     def restore(self) -> None:
         """Write back exactly what the drone reported before. Safe to call twice.
