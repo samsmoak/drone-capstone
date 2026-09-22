@@ -30,6 +30,7 @@ These are starting values from two flights, to be refined from the flight traces
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
@@ -42,10 +43,19 @@ MEASURED_HOVER_THRUST = 48_500
 #: `stabilizer.controller`: 1 PID, 2 Mellinger, 3 INDI (firmware stabilizer.h).
 CONTROLLER_PID = 1
 
+#: Any other valid type, written briefly to force the firmware to re-init.
+CONTROLLER_OTHER = 2
+
+#: Long enough for the 1 kHz stabilizer task to SEE the intermediate value.
+#: Both writes landing inside one iteration would look like no change at all,
+#: and the whole point would be missed silently.
+CONTROLLER_REINIT_PAUSE_S = 0.15
+
 
 class Kind(StrEnum):
     SET = "set"          # write this value
     SCALE = "scale"      # multiply what the drone reports
+    REINIT = "reinit"    # write something else first, so the firmware re-inits
 
 
 @dataclass(frozen=True)
@@ -65,8 +75,9 @@ BASE_PROFILE: tuple[Adjustment, ...] = (
     # lurches without one, and reads NONE of the gains below, which is why
     # tuning them changed nothing. Pinned so a leftover cannot decide how the
     # drone flies. Restored, like everything here, when the flight ends.
-    Adjustment("stabilizer.controller", Kind.SET, CONTROLLER_PID,
-               "the PID controller — the one every gain in this file belongs to"),
+    Adjustment("stabilizer.controller", Kind.REINIT, CONTROLLER_PID,
+               "the PID controller — the one every gain in this file belongs to, "
+               "re-initialised so no previous flight's integrators carry over"),
     Adjustment("posCtlPid.thrustBase", Kind.SET, MEASURED_HOVER_THRUST,
                "measured hover thrust; the default assumes a lighter stock drone"),
 )
@@ -129,8 +140,11 @@ class FlightTuning:
                 try:
                     before = str(self._param.get_value(adj.name))
                     current = float(before)
-                    target = adj.value if adj.kind is Kind.SET else current * adj.value
-                    after = _format(target, str(getattr(element, "ctype", "")))
+                    target = current * adj.value if adj.kind is Kind.SCALE else adj.value
+                    ctype = str(getattr(element, "ctype", ""))
+                    after = _format(target, ctype)
+                    if adj.kind is Kind.REINIT:
+                        self._reinit(adj.name, target, ctype)
                     self._param.set_value(adj.name, after)
                 except Exception:
                     log.exception("tuning: could not adjust %s — left as it was", adj.name)
@@ -139,6 +153,38 @@ class FlightTuning:
                 applied.append(Applied(adj.name, before, after))
                 log.info("tuning: %s %s -> %s (%s)", adj.name, before, after, adj.why)
         return applied
+
+    def _reinit(self, name: str, target: float, ctype: str) -> None:
+        """Make the firmware rebuild the controller, not just re-select it.
+
+        stabilizer.c only calls controllerInit() when the type CHANGES:
+
+            if (controllerGetType() != controllerType) {
+                controllerInit(controllerType);
+                controllerType = controllerGetType();
+            }
+
+        and it re-initialises the controller NOWHERE else — not on disarm, not
+        when the supervisor stops the motors, not between flights. Only the
+        setpoint is zeroed and the motors stopped. So every PID integrator
+        survives from one flight to the next for as long as the drone stays
+        powered, and a crash that saturated thrust for seconds hands its
+        wind-up straight to the next takeoff.
+
+        Writing the value it already holds changes nothing and re-inits
+        nothing. So another valid type goes in first, long enough for the
+        1 kHz task to see it, and the wanted one goes in after.
+
+        Safe because it only ever runs before a flight, on the ground, with no
+        thrust commanded — the setpoint is zero throughout.
+        """
+        other = CONTROLLER_OTHER if int(target) != CONTROLLER_OTHER else CONTROLLER_PID
+        try:
+            self._param.set_value(name, _format(float(other), ctype))
+            time.sleep(CONTROLLER_REINIT_PAUSE_S)
+            log.info("tuning: %s bounced via %d so the firmware rebuilds it", name, other)
+        except Exception:
+            log.exception("tuning: could not bounce %s — integrators may carry over", name)
 
     def restore(self) -> None:
         """Write back exactly what the drone reported before. Safe to call twice."""

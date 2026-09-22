@@ -70,6 +70,35 @@ nothing recorded them; the second had to infer a locked supervisor the same way.
 
 INVARIANTS
 
+- THE FIRMWARE NEVER REBUILDS THE CONTROLLER BY ITSELF. stabilizer.c calls
+  controllerInit() in exactly one place:
+
+      if (controllerGetType() != controllerType) {
+          controllerInit(controllerType);
+          controllerType = controllerGetType();
+      }
+
+  and nowhere else — not on disarm, not when the supervisor stops the motors,
+  not between flights. Stopping only zeroes the setpoint and cuts the motors.
+  So EVERY PID INTEGRATOR SURVIVES from one flight to the next for as long as
+  the drone stays powered, and a crash that saturated thrust for seconds hands
+  its wind-up straight to the next takeoff. That is why a drone that crashed
+  earlier in a session flies oddly afterwards while a freshly powered one does
+  not.
+
+  Writing the controller type it already holds changes nothing and re-inits
+  nothing, which is what BASE_PROFILE used to do. Kind.REINIT now writes
+  another valid type first, pauses long enough for the 1 kHz stabilizer task
+  to see it (CONTROLLER_REINIT_PAUSE_S), then writes the wanted one. It runs
+  before a flight, on the ground, with the setpoint at zero.
+
+- THE DRONE CANNOT BE DISARMED FROM HERE on this firmware. cflib's
+  send_arming_request falls back to a legacy path below CRTP 12 (this drone
+  reports 10) and is silently ignored: measured 2026-09-22, supervisor.info
+  did not move for disarm, re-arm, a stop setpoint, or a same-value controller
+  write. Anything that depends on an arm/disarm cycle to clear firmware state
+  will do nothing and report success.
+
 - Read before write. A gain is scaled from the value the drone reports, so a
   re-tuned or newer firmware is never overwritten with a number from here.
 - A parameter the firmware does not publish is skipped and logged, not guessed;

@@ -117,3 +117,55 @@ def test_a_float_gain_reported_without_a_decimal_point_keeps_its_fraction():
     param = FakeParam(FIRMWARE | {"posCtlPid.zKp": "2"})
     FlightTuning(param).apply(BAROMETER_PROFILE)
     assert param.values["posCtlPid.zKp"] == "1.5"
+
+
+class TestTheControllerIsRebuiltNotJustSelected:
+    """stabilizer.c re-inits the controller ONLY when the type changes:
+
+        if (controllerGetType() != controllerType) {
+            controllerInit(controllerType);
+            controllerType = controllerGetType();
+        }
+
+    and nowhere else — not on disarm, not when the supervisor stops the
+    motors, not between flights. So every PID integrator survives from one
+    flight to the next while the drone stays powered, and a crash that
+    saturated thrust hands its wind-up to the next takeoff. Writing the value
+    it already holds re-inits nothing at all.
+    """
+
+    def test_a_controller_already_on_pid_is_still_bounced(self):
+        param = FakeParam({"stabilizer.controller": "1", "posCtlPid.thrustBase": "36000"})
+        FlightTuning(param).apply(BASE_PROFILE)
+        written = [v for n, v in param.writes if n == "stabilizer.controller"]
+        assert written == ["2", "1"], "it must change before it can re-init"
+
+    def test_it_ends_on_pid_whatever_it_started_as(self):
+        for start in ("1", "2", "3"):
+            param = FakeParam({"stabilizer.controller": start,
+                               "posCtlPid.thrustBase": "36000"})
+            FlightTuning(param).apply(BASE_PROFILE)
+            assert param.values["stabilizer.controller"] == "1", f"started at {start}"
+
+    def test_the_bounce_never_lands_on_the_value_it_wants(self):
+        """Bouncing through the target would be no change and no re-init."""
+        param = FakeParam({"stabilizer.controller": "2", "posCtlPid.thrustBase": "36000"})
+        FlightTuning(param).apply(BASE_PROFILE)
+        written = [v for n, v in param.writes if n == "stabilizer.controller"]
+        assert written[0] != "1"
+        assert written[-1] == "1"
+
+    def test_the_original_is_still_what_gets_restored(self):
+        """The bounce must not be mistaken for the value the flight found."""
+        param = FakeParam({"stabilizer.controller": "2", "posCtlPid.thrustBase": "36000"})
+        tuning = FlightTuning(param)
+        tuning.apply(BASE_PROFILE)
+        tuning.restore()
+        assert param.values["stabilizer.controller"] == "2"
+
+    def test_a_refused_bounce_does_not_stop_the_flight(self):
+        """Losing the re-init is worth a log line, not a scrubbed flight."""
+        param = FakeParam({"stabilizer.controller": "1", "posCtlPid.thrustBase": "36000"},
+                          refuse={"stabilizer.controller"})
+        applied = FlightTuning(param).apply(BASE_PROFILE)
+        assert [a.name for a in applied] == ["posCtlPid.thrustBase"]
