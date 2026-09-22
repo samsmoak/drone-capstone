@@ -28,25 +28,29 @@ guessing — a guessed threshold has already cost this project flights.
 
 THE COMMANDS
 
-Everything below is run from the repo root. The agent needs its venv active
-once per terminal; the builds do not.
+All from the repo root. NOTHING needs a virtualenv activated — `./cropwatcher`
+and the build script both reach into it by path.
 
-  cd backend/agent && source .venv/bin/activate
-
-    cropwatcher check                     every gate, never spins a motor
-    cropwatcher stations                  what the drone receives, live
-    cropwatcher stations --seconds 20     for a fixed time, then stop
-    cropwatcher geometry --distance 1.0   measure where the stations are
-    cropwatcher geometry --dry-run        solve and print, write nothing
-    cropwatcher proptest                  firmware motor test — PROPS SPIN
-    cropwatcher hover --height 0.3 --secs 10
-    cropwatcher serve                     the local API the desktop app uses
+    ./cropwatcher check                   every gate, never spins a motor
+    ./cropwatcher stations                what the drone receives, live
+    ./cropwatcher stations --seconds 20   for a fixed time, then stop
+    ./cropwatcher geometry --distance 1.0 measure where the stations are
+    ./cropwatcher geometry --dry-run      solve and print, write nothing
+    ./cropwatcher proptest                firmware motor test — PROPS SPIN
+    ./cropwatcher hover --height 0.3 --secs 10
+    ./cropwatcher serve                   the local API the desktop app uses
 
   cd desktop
 
-    pnpm tauri build                      the app AND the agent inside it
+    pnpm app                              build both halves AND open the app
+    pnpm tauri build                      build both halves
     pnpm sidecar                          re-freeze the agent only (~25 s)
     pnpm build                            frontend only
+
+`source .venv/bin/activate` only ever did one thing: put the venv's bin
+directory on PATH so `cropwatcher` resolved as a bare word. It was never
+needed for a build. Use ./cropwatcher and it cannot be forgotten, left active
+in the wrong shell, or lost by opening a new tab.
 
 Nothing prompts except `geometry`, which asks the operator to move the drone
 between samples, so it needs a real terminal rather than a script.
