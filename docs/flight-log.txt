@@ -26,6 +26,32 @@ A number with no units is not a measurement. A conclusion with no number is an
 opinion. When something is not known, write "not measured" rather than
 guessing — a guessed threshold has already cost this project flights.
 
+THE COMMANDS
+
+Everything below is run from the repo root. The agent needs its venv active
+once per terminal; the builds do not.
+
+  cd backend/agent && source .venv/bin/activate
+
+    cropwatcher check                     every gate, never spins a motor
+    cropwatcher stations                  what the drone receives, live
+    cropwatcher stations --seconds 20     for a fixed time, then stop
+    cropwatcher geometry --distance 1.0   measure where the stations are
+    cropwatcher geometry --dry-run        solve and print, write nothing
+    cropwatcher proptest                  firmware motor test — PROPS SPIN
+    cropwatcher hover --height 0.3 --secs 10
+    cropwatcher serve                     the local API the desktop app uses
+
+  cd desktop
+
+    pnpm tauri build                      the app AND the agent inside it
+    pnpm sidecar                          re-freeze the agent only (~25 s)
+    pnpm build                            frontend only
+
+Nothing prompts except `geometry`, which asks the operator to move the drone
+between samples, so it needs a real terminal rather than a script.
+
+
 THE LADDER
 
 Nothing skips a rung. Each one is only run once the one above it passed, and
