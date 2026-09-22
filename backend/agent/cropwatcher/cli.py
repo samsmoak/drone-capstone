@@ -269,14 +269,25 @@ def cmd_geometry(args: argparse.Namespace) -> int:
                 print("    recorded")
                 return sample
 
-        solve = (geometry_estimation.estimate_single if alone
-                 else geometry_estimation.estimate)
+        def heading() -> float | None:
+            """The drone's yaw, so a failure can say if it was turned."""
+            value = link.snapshot().get("stabilizer.yaw")
+            return None if value is None else float(value)
+
         try:
-            result = solve(
-                scf.cf, collect,
-                reference_distance_m=args.distance,
-                write=not args.dry_run,
-            )
+            if alone:
+                result = geometry_estimation.estimate_single(
+                    scf.cf, collect,
+                    reference_distance_m=args.distance,
+                    write=not args.dry_run,
+                    heading=heading,
+                )
+            else:
+                result = geometry_estimation.estimate(
+                    scf.cf, collect,
+                    reference_distance_m=args.distance,
+                    write=not args.dry_run,
+                )
         except KeyboardInterrupt:
             print("\n  stopped — nothing was written to the drone\n")
             return 1

@@ -178,3 +178,43 @@ class TestOneBaseStationAlone:
         FakeReader.answer = {0: (10, "vectors-0")}
         sample = geometry.SweepAngles(SimpleNamespace(), min_stations=1).record()
         assert sorted(sample.angles_calibrated) == [0]
+
+
+class TestWhyTheSamplesDisagreed:
+    """"Take them again" is not an instruction. Which assumption broke is."""
+
+    def _run(self, origin, forward, **kw):
+        samples = iter([FakeSample({0: origin}), FakeSample({0: forward})])
+        return geometry.estimate_single(
+            SimpleNamespace(), lambda step, i: next(samples),
+            reference_distance_m=1.0, write=False, **kw)
+
+    def test_a_turned_drone_is_named_as_the_cause(self):
+        yaws = iter([10.0, 55.0])                       # turned 45 degrees
+        result = self._run((FakePose(2, 0, 2), FakePose(-9, -9, -9)),
+                           (FakePose(9, 9, 9), FakePose(-7, -7, -7)),
+                           heading=lambda: next(yaws))
+        assert not result.converged
+        assert "turned about 45 degrees" in result.message
+        assert "SAME way" in result.message
+
+    def test_a_wrap_around_turn_is_measured_the_short_way(self):
+        yaws = iter([-175.0, 175.0])                    # 10 degrees, not 350
+        result = self._run((FakePose(2, 0, 2), FakePose(-9, -9, -9)),
+                           (FakePose(9, 9, 9), FakePose(-7, -7, -7)),
+                           heading=lambda: next(yaws))
+        assert "turned about" not in result.message     # under the threshold
+
+    def test_a_steady_heading_is_ruled_out_explicitly(self):
+        yaws = iter([10.0, 11.0])
+        result = self._run((FakePose(2, 0, 2), FakePose(-9, -9, -9)),
+                           (FakePose(9, 9, 9), FakePose(-7, -7, -7)),
+                           heading=lambda: next(yaws))
+        assert "not the cause" in result.message
+        assert "m away" in result.message               # gives both distances
+
+    def test_it_still_explains_itself_with_no_heading_available(self):
+        result = self._run((FakePose(2, 0, 2), FakePose(-9, -9, -9)),
+                           (FakePose(9, 9, 9), FakePose(-7, -7, -7)))
+        assert not result.converged
+        assert "disagree" in result.message

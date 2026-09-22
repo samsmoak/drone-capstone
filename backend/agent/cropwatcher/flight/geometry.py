@@ -260,16 +260,30 @@ def estimate_single(
     *,
     reference_distance_m: float = 1.0,
     write: bool = True,
+    heading: Callable[[], float | None] | None = None,
 ) -> GeometryResult:
-    """Solve one base station's pose from two samples a measured distance apart."""
+    """Solve one base station's pose from two samples a measured distance apart.
+
+    `heading()` reports the drone's yaw in degrees. It is read at each sample
+    purely so a failure can say WHICH assumption broke: the maths requires the
+    drone to face the same way at both, and "you turned it 40 degrees" is a
+    thing the operator can act on where "take them again" is not. It comes
+    from the IMU, so it is meaningful as a CHANGE over half a minute even with
+    no geometry to give it an absolute reference.
+    """
     import numpy as np
     from cflib.localization import LhDeck4SensorPositions
 
     positions = LhDeck4SensorPositions.positions
     plan = single_station_steps(reference_distance_m)
 
+    def look() -> float | None:
+        return heading() if heading is not None else None
+
     origin = collect(plan[0], 0)
+    yaw_at_origin = look()
     forward = collect(plan[1], 0)
+    yaw_at_forward = look()
     for sample in (origin, forward):
         sample.augment_with_ippe(positions)
 
@@ -302,12 +316,10 @@ def estimate_single(
     if best_error > SINGLE_STATION_AGREEMENT_M:
         return GeometryResult(
             converged=False,
-            message=(
-                f"The two samples disagree about where base station {station} is, by "
-                f"{best_error * 100:.0f} cm. Either the drone did not move the "
-                f"{reference_distance_m:.2f} m it was told, or it was turned on the way, "
-                f"or the station saw too little of the deck. Take them again."
-            ),
+            message=_disagreement_reason(
+                station, best_error, reference_distance_m,
+                yaw_at_origin, yaw_at_forward,
+                origin.ippe_solutions[station], forward.ippe_solutions[station], offset),
         )
 
     result = GeometryResult(
@@ -324,6 +336,57 @@ def estimate_single(
     if write:
         result.written = _write(cf, {station: best_pose})
     return result
+
+
+def _turned_by(before: float | None, after: float | None) -> float | None:
+    """How far the drone was rotated between the samples, in degrees."""
+    if before is None or after is None:
+        return None
+    return abs((after - before + 180.0) % 360.0 - 180.0)
+
+
+#: Beyond this the drone was turned enough to explain the disagreement on its
+#: own: the second sample is then not "1 m forward along the same heading",
+#: which is the one thing the solve assumes.
+MAX_TURN_BETWEEN_SAMPLES_DEG = 10.0
+
+
+def _disagreement_reason(
+    station: int,
+    error_m: float,
+    distance_m: float,
+    yaw_before: float | None,
+    yaw_after: float | None,
+    at_origin: Any,
+    at_forward: Any,
+    offset: Any,
+) -> str:
+    """Say which assumption broke, not which three might have."""
+    import numpy as np
+
+    turned = _turned_by(yaw_before, yaw_after)
+    if turned is not None and turned > MAX_TURN_BETWEEN_SAMPLES_DEG:
+        return (
+            f"The drone was turned about {turned:.0f} degrees between the two samples. "
+            f"The measurement needs it facing the SAME way for both — carry it forward "
+            f"without rotating it, and take them again."
+        )
+
+    # Both samples put the station somewhere; printing where makes a scale
+    # error ("it thinks it is twice as far") tell itself apart from noise.
+    far_origin = float(np.linalg.norm(at_origin[0].translation))
+    far_forward = float(np.linalg.norm(at_forward[0].translation))
+    turn_note = (f" The drone held its heading to {turned:.0f} degrees, so that is "
+                 f"not the cause.") if turned is not None else ""
+    return (
+        f"The two samples disagree about where base station {station} is, by "
+        f"{error_m * 100:.0f} cm.{turn_note} From the first it looks "
+        f"{far_origin:.2f} m away, from the second {far_forward:.2f} m — those should "
+        f"differ by about {distance_m:.2f} m, no more. Most likely the drone did not "
+        f"move {distance_m:.2f} m, or the deck was angled away from the station and it "
+        f"saw too few of the four sensors. Keep the drone flat, keep its top clear, "
+        f"measure the step, and take them again."
+    )
 
 
 def _write(cf: Any, poses: dict[int, Any]) -> bool:
