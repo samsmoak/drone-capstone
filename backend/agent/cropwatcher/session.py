@@ -147,6 +147,10 @@ class Session:
 
         self._lock = threading.RLock()
         self._worker: threading.Thread | None = None
+        #: What that worker is, and when it started, so a session that will not
+        #: free up can say which step is stuck instead of "something".
+        self._worker_name: str | None = None
+        self._worker_started_at: float | None = None
         self._snapshot = Snapshot()
         self.operator: Operator | None = None
         self.audit: AuditLog | None = None
@@ -306,7 +310,16 @@ class Session:
     def _start_worker(self, name: str, work: Callable[[], None]) -> None:
         with self._lock:
             if self._worker is not None and self._worker.is_alive():
-                raise SessionError("Something is already running. Wait for it to finish.")
+                # Name what is running and for how long. "Something is already
+                # running" was true and useless on 2026-09-22: a connect that
+                # could not time out held this for ever, and the operator was
+                # told to wait for a thing the message would not name.
+                busy, since = self._worker_name, self._worker_started_at
+                waited = f" for {time.monotonic() - since:.0f}s" if since else ""
+                raise SessionError(
+                    f"{busy or 'Something'} is still running{waited}. Wait for it to "
+                    f"finish, or press End session to stop it."
+                )
 
             def run() -> None:
                 try:
@@ -317,6 +330,8 @@ class Session:
                     log.exception("%s failed", name)
                     self._set(message="Something went wrong. The log has the details.")
 
+            self._worker_name = name.replace("_", " ").capitalize()
+            self._worker_started_at = time.monotonic()
             self._worker = threading.Thread(target=run, daemon=True, name=f"session-{name}")
             self._worker.start()
 

@@ -66,6 +66,20 @@ DECISIONS
 
 INVARIANTS
 
+- NOTHING THAT TALKS TO THE RADIO MAY WAIT FOR EVER. cflib's
+  SyncCrazyflie.open_link() waits on an Event with no timeout
+  (syncCrazyflie.py: `self._connect_event.wait()`), so a radio unplugged
+  mid-handshake blocks its caller permanently. DroneLink runs it on its own
+  thread and gives up after CONNECT_TIMEOUT_S (20 s); a healthy connect
+  measured 0.7 s to scan and about 2 s for the TOCs. On 2026-09-22 the
+  un-timed version wedged the desktop app: the checks worker never returned
+  and every later action refused with "Something is already running".
+
+- A BUSY MESSAGE MUST NAME WHAT IS BUSY. The session records the running
+  worker and when it started, so the refusal says which step is stuck, for how
+  long, and that End session is the way out. "Something is already running" is
+  true, unactionable, and indistinguishable from a bug.
+
 - Localhost does not keep websites out, and WebSockets are not covered by CORS.
   The control token — not the bind address, not the origin — is what guards
   every command.

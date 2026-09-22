@@ -849,3 +849,27 @@ class TestStartupState:
     def test_signing_in_by_hand_also_clears_it(self, rig):
         sign_in(rig)
         assert rig.session.snapshot().restoring is False
+
+
+class TestWhatIsRunning:
+    """"Something is already running" was true and useless.
+
+    On 2026-09-22 a connect that could not time out held the worker for ever,
+    and the operator was told to wait for a thing the message would not name.
+    """
+
+    def test_the_busy_message_names_the_step_and_the_wait(self, rig):
+        import threading as _t
+
+        session = rig.session
+        release = _t.Event()
+        session._start_worker("checks", release.wait)
+        try:
+            with pytest.raises(SessionError) as caught:
+                session._start_worker("manual arm", lambda: None)
+            text = str(caught.value)
+            assert "Checks" in text                  # names what is running
+            assert "End session" in text             # and the way out
+        finally:
+            release.set()
+            session.wait_idle(timeout=5)

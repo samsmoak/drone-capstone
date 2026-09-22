@@ -20,6 +20,7 @@ in the lab is the behaviour of every caller.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from collections.abc import Callable, Generator
 from typing import Any
@@ -111,6 +112,21 @@ def _fix(snapshot: Snapshot) -> Fix | None:
     return Fix(float(x), float(y), float(yaw))
 
 
+#: How long the connection handshake may take before it is called a failure.
+#:
+#: cflib's SyncCrazyflie.open_link() waits on an Event with NO TIMEOUT
+#: (syncCrazyflie.py: `self._connect_event.wait()`), so a radio unplugged
+#: mid-handshake, or a drone that never finishes its TOC exchange, blocks the
+#: calling thread for good. That wedged the desktop app on 2026-09-22: the
+#: checks worker never returned, and every later action answered "Something is
+#: already running" — true, and useless.
+#:
+#: A healthy connect measured 0.7 s to scan and about 2 s to finish the TOCs
+#: from cache, so 20 s is far beyond anything normal and still short enough
+#: that an operator is told rather than left watching a spinner.
+CONNECT_TIMEOUT_S = 20.0
+
+
 class DroneLink:
     def __init__(
         self,
@@ -157,10 +173,7 @@ class DroneLink:
             )
 
         scf = self._scf_factory(self.uri)
-        try:
-            scf.open_link()
-        except Exception as e:
-            raise LinkError(f"The drone was found but the link failed to open ({e}).") from e
+        self._open_link_within(scf, CONNECT_TIMEOUT_S)
 
         try:
             self._configure(scf.cf)
@@ -171,6 +184,38 @@ class DroneLink:
             raise
         self.scf, self.stream = scf, stream
         log.info("link open to %s", self.uri)
+
+    @staticmethod
+    def _open_link_within(scf: Any, timeout_s: float) -> None:
+        """Open the link, or give up and say so — never wait for ever.
+
+        The handshake runs on its own thread because cflib's wait cannot be
+        interrupted. On a timeout that thread is abandoned: it is a daemon, so
+        it dies with the process, and leaking one blocked thread is much
+        cheaper than an app that can never do anything again.
+        """
+        failure: list[BaseException] = []
+
+        def connect() -> None:
+            try:
+                scf.open_link()
+            except BaseException as e:                    # noqa: BLE001
+                failure.append(e)
+
+        worker = threading.Thread(target=connect, daemon=True, name="cf-connect")
+        worker.start()
+        worker.join(timeout_s)
+
+        if worker.is_alive():
+            raise LinkError(
+                f"The drone stopped answering while connecting (no reply for "
+                f"{timeout_s:.0f} s). Check the Crazyradio is still plugged in and the "
+                f"drone is still switched on, then try again."
+            )
+        if failure:
+            raise LinkError(
+                f"The drone was found but the link failed to open ({failure[0]})."
+            ) from failure[0]
 
     def close(self) -> None:
         if not self.is_open:

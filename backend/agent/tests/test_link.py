@@ -3,6 +3,8 @@ out stops the motors."""
 
 from __future__ import annotations
 
+import threading
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -13,8 +15,11 @@ from cropwatcher.safety.flight_guard import PositioningStatus
 
 
 class FakeScf:
-    def __init__(self, fail_open: bool = False) -> None:
+    def __init__(self, fail_open: bool = False, hang_open: bool = False) -> None:
         self.fail_open = fail_open
+        #: Stands in for cflib's open_link, which waits on an Event with no
+        #: timeout and so never returns if the drone stops answering.
+        self.hang_open = hang_open
         self.opened = False
         self.closed = False
         self.cf = SimpleNamespace(
@@ -25,6 +30,8 @@ class FakeScf:
     def open_link(self) -> None:
         if self.fail_open:
             raise RuntimeError("Too many packets lost")
+        if self.hang_open:
+            threading.Event().wait()            # exactly what cflib does
         self.opened = True
 
     def close_link(self) -> None:
@@ -94,6 +101,26 @@ class TestOpen:
         link, _, _ = make_link(FakeScf(fail_open=True))
         with pytest.raises(LinkError, match="link failed"):
             link.open()
+
+    def test_a_drone_that_stops_answering_does_not_hang_for_ever(self):
+        """cflib's SyncCrazyflie.open_link waits on an Event with NO timeout.
+        A radio pulled mid-handshake therefore blocked the caller for good,
+        and on 2026-09-22 that wedged the desktop app: the checks worker never
+        returned and every later action answered "Something is already
+        running"."""
+        link, _, _ = make_link(FakeScf(hang_open=True))
+        started = time.monotonic()
+        with pytest.raises(LinkError, match="stopped answering while connecting"):
+            link._open_link_within(link._scf_factory(link.uri), timeout_s=0.2)
+        assert time.monotonic() - started < 5.0        # it gave up, not hung
+        assert not link.is_open
+
+    def test_the_timeout_message_says_what_to_check(self):
+        link, _, _ = make_link(FakeScf(hang_open=True))
+        with pytest.raises(LinkError) as caught:
+            link._open_link_within(link._scf_factory(link.uri), timeout_s=0.1)
+        text = str(caught.value)
+        assert "Crazyradio" in text and "plugged in" in text
 
     def test_configure_failure_still_stops_motors_and_closes(self):
         link, scf, cuts = make_link(configure_error=RuntimeError("param timeout"))
