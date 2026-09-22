@@ -186,10 +186,22 @@ class PositioningStatus:
                 "and nothing blocks the line of sight."
             )
         elif self.received_without_geometry:
+            # Two different things are missing here and only one needs a person.
+            # CALIBRATION is the station's own factory data, broadcast over the
+            # air and picked up on its own after some seconds of clear line of
+            # sight. GEOMETRY is where the station stands in THIS room, which
+            # nothing broadcasts and which has to be measured once.
+            #
+            # This used to say "re-run geometry estimation in cfclient", naming
+            # a tool this project replaced and does not install. An instruction
+            # an operator cannot follow is worse than none.
             ids = ", ".join(str(s) for s in self.received_without_geometry)
             out.append(
-                f"Base station(s) {ids} are received but have no valid calibration "
-                f"or geometry. Re-run geometry estimation in cfclient."
+                f"Base station {ids} is being received, but the drone cannot turn its "
+                f"beams into a position yet. Give it a few seconds of clear line of "
+                f"sight to pick up the station's calibration; if it stays like this, "
+                f"the room has not been measured — run `./cropwatcher geometry` once, "
+                f"which takes two samples on the floor and spins no motors."
             )
         wanted = required_stations()
         if self.received and len(self.usable) < wanted:
@@ -197,16 +209,29 @@ class PositioningStatus:
                 f"Only {len(self.usable)} usable base station(s); "
                 f"{wanted} are needed. One may be blocked or off."
             )
+
+        # The uncertainty is a SYMPTOM of everything above. Saying "keep the
+        # drone still and wait" while the room has never been measured sends
+        # the operator to wait for something that will never arrive — standing
+        # still cannot produce geometry. So it is only said when there is
+        # nothing better already said, and it never contradicts it.
         variances = [v for v in self.variance_m2 if v is not None]
         if len(variances) < 3:
             out.append("The position filter's uncertainty is not available.")
         elif max(variances) > MAX_READY_VARIANCE_M2:
             worst_cm = max(variances) ** 0.5 * 100
-            out.append(
-                f"Position is uncertain by about {worst_cm:.0f} cm; it must be "
-                f"under {MAX_READY_VARIANCE_M2 ** 0.5 * 100:.0f} cm. Keep the drone "
-                f"still and wait for the base stations to lock on."
-            )
+            limit_cm = MAX_READY_VARIANCE_M2 ** 0.5 * 100
+            if out:
+                out.append(
+                    f"Until then the position is uncertain by about {worst_cm:.0f} cm, "
+                    f"where under {limit_cm:.0f} cm is needed."
+                )
+            else:
+                out.append(
+                    f"Position is uncertain by about {worst_cm:.0f} cm; it must be "
+                    f"under {limit_cm:.0f} cm. Keep the drone still and wait for the "
+                    f"base stations to lock on."
+                )
         return out
 
 

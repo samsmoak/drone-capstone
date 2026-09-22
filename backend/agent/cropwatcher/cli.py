@@ -76,6 +76,9 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common(geometry)
     geometry.add_argument("--distance", type=float, default=1.0,
                           help="how far the x-axis sample is from the origin, in metres")
+    geometry.add_argument("--countdown", type=float, metavar="SECONDS",
+                          help="take each sample after a countdown instead of on Enter, "
+                               "for when both hands are holding the drone")
     geometry.add_argument("--dry-run", action="store_true",
                           help="solve but do not write the result to the drone")
 
@@ -235,12 +238,29 @@ def cmd_geometry(args: argparse.Namespace) -> int:
         reader = geometry_estimation.SweepAngles(
             scf.cf, min_stations=1 if alone else 2)
 
+        def ready(prompt: str) -> None:
+            """Wait for the operator — by the keyboard, or by the clock.
+
+            Someone alone in a cage is holding the drone with both hands at
+            the position being measured. Reaching back to a keyboard moves the
+            very thing the sample is of.
+            """
+            if args.countdown is None:
+                input(f"  {prompt}: ")
+                return
+            print(f"  {prompt} — sampling in:", end="", flush=True)
+            for remaining in range(int(args.countdown), 0, -1):
+                print(f" {remaining}", end="", flush=True)
+                time.sleep(1.0)
+            print("  now — hold still")
+
         def collect(step: geometry_estimation.GeometryStep, index: int) -> object:
             total = step.count
             label = f" ({index + 1} of {total})" if total > 1 else ""
             while True:
                 print(f"\n  {step.instruction}{label}")
-                input("  Press Enter when it is there and steady: ")
+                ready("Press Enter when it is there and steady"
+                      if args.countdown is None else "Get it into position")
                 try:
                     sample = reader.record()
                 except (TimeoutError, ValueError) as e:
