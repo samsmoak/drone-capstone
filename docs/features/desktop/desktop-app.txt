@@ -65,8 +65,21 @@ DECISIONS
   with no shell profile, so reading them from the environment alone gives an
   operator "sign-in is not configured" and no way to fix it. The SECRET key must
   never appear here — this binary ships inside an installer.
-- One-file PyInstaller binary (27 MB; the .dmg is 30 MB). A folder of loose
-  libraries beside the app is worse to ship and to sign.
+- One-file PyInstaller binary. A folder of loose libraries beside the app is
+  worse to ship and to sign.
+
+  MEASURED FROM A REAL BUILD, 2026-09-22 (the previous figures — 27 MB and a
+  30 MB .dmg — were stale and had been quoted in arguments since):
+
+      Contents/MacOS/cropwatcher-agent   42 MB   the frozen agent
+      Contents/MacOS/desktop            7.5 MB   the Rust shell + webview
+      CropWatcher.app                    50 MB
+      CropWatcher_0.1.0_aarch64.dmg      48 MB
+
+  The growth is the AGENT, not the window: the frontend bundle is 647 KB
+  (194 KB gzipped). Re-measure after adding a Python dependency — this is the
+  number that decides whether a library is affordable, so a stale one argues
+  the wrong way.
 - The whole CLI is frozen, not just `serve`, so `cropwatcher-agent check` is
   available on a machine with no Python when a drone will not connect.
 - Installers go to a public bucket at stable paths (latest/CropWatcher-macos.dmg)
