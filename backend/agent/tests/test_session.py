@@ -143,14 +143,27 @@ def sign_in(rig):
     return rig.session.sign_in("ada@example.com", "pw")
 
 
-def start_and_confirm(rig):
+def start_and_confirm(rig, mode: Mode | None = None):
+    """Sign in, run the checks, confirm.
+
+    `mode` is set BEFORE start because the session records the mode it opened
+    in: setting it afterwards leaves a manual entry in the history and the
+    session lists under both. Sessions now open in MANUAL (Snapshot.mode), so a
+    test that wants an Auto session has to say so here.
+    """
     sign_in(rig)
+    if mode is not None:
+        rig.session.set_mode(mode)
     rig.session.start()
     rig.session.wait_idle()
     rig.session.confirm_area()
 
 
 def run_program(rig, **kwargs):
+    # A program needs AUTO, and the session now starts in MANUAL (Snapshot.mode
+    # — Auto cannot fly without a position). Every test that runs a program is
+    # a test ABOUT Auto, so it says so here rather than inheriting a default.
+    rig.session.set_mode(Mode.AUTO)
     rig.session.run_program(**kwargs)
     rig.session.wait_idle()
 
@@ -347,6 +360,7 @@ class TestProgram:
             takeoff_xy=(0.0, 0.0), estimate_spread_m=0.005, positioning=REPORT.positioning,
         )
         start_and_confirm(rig)
+        rig.session.set_mode(Mode.AUTO)
         with pytest.raises(SessionError, match="battery"):
             rig.session.run_program(hold_s=30)
 
@@ -370,6 +384,9 @@ class TestProgram:
 class TestManual:
     def test_arming_needs_manual_mode(self, rig):
         start_and_confirm(rig)
+        # The session starts in MANUAL now, so Auto has to be asked for before
+        # the refusal this test is about can happen at all.
+        rig.session.set_mode(Mode.AUTO)
         with pytest.raises(SessionError, match="Switch to Manual"):
             rig.session.arm_manual()
 
@@ -490,6 +507,7 @@ class TestUnassisted:
     def test_a_program_is_still_refused_with_a_reason(self, rig):
         self.unassisted(rig)
         rig.session.confirm_area(accept_unassisted=True)
+        rig.session.set_mode(Mode.AUTO)
         with pytest.raises(SessionError, match="fly blind"):
             rig.session.run_program()
 
@@ -787,7 +805,7 @@ class TestHistoryByMode:
     def test_a_session_that_switched_mode_lists_under_both_and_splits_its_readings(self, rig):
         from cropwatcher import history
 
-        start_and_confirm(rig)                          # starts in Auto
+        start_and_confirm(rig, Mode.AUTO)
         session_id = rig.session.snapshot().session_id
         log_ = rig.session.history
         log_._clock = lambda: 0.0                       # sample now
@@ -809,7 +827,7 @@ class TestHistoryByMode:
     def test_a_session_only_in_auto_is_not_listed_under_manual(self, rig):
         from cropwatcher import history
 
-        start_and_confirm(rig)
+        start_and_confirm(rig, Mode.AUTO)
         rig.session.end()
         assert history.list_sessions(mode="manual") == []
         assert len(history.list_sessions(mode="auto")) == 1

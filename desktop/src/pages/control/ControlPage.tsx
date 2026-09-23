@@ -29,7 +29,6 @@ import { useState, type FormEvent, type InputHTMLAttributes, type ReactNode } fr
 import type { History, Run } from "@/App";
 import { api, KEY_LABELS, type HealthTest, type Intent, type Session, type Telemetry } from "@/lib/agent";
 import type { LogLine } from "@/lib/commandLog";
-import { RecentSessions } from "@/pages/sessions/RecentSessions";
 import { Button, Message, PageHeader, Panel, Spinner, Stat, StatusDot } from "@/components/ui";
 import { ConsolePane } from "./ConsolePane";
 
@@ -42,31 +41,32 @@ type Props = {
   run: Run;
   logLines: LogLine[];
   onClearLog: () => void;
-  historyKey: string;
-  onOpenSession: (id: string) => void;
+  /** Recent sessions moved off this page; the header links to Sessions. */
   onOpenSessions: () => void;
 };
 
 export function ControlPage({
-  session, telemetry, history, intent, run, logLines, onClearLog,
-  historyKey, onOpenSession, onOpenSessions,
+  session, telemetry, history, intent, run, logLines, onClearLog, onOpenSessions,
 }: Props) {
   if (session === null) {
     return <Spinner label="Connecting to the flight agent…" />;
   }
 
   return (
-    <div className="grid gap-5">
-      <PageHeader
-        eyebrow={session.mode === "auto" ? "Auto" : "Manual"}
-        title="Control"
-      >
-        {session.mode === "auto"
-          ? "Preset programs the drone flies by itself, with the safety guards running throughout."
-          : session.assisted
-            ? "You fly it with the keyboard. The drone still holds its own height and still lands itself on a fault."
-            : "You fly it with the keyboard. With no base stations the drone holds its height on the barometer — roughly — and does not hold its position. It still lands itself on low battery, a tumble, or if this window stops answering."}
-      </PageHeader>
+    <div className="grid gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <PageHeader eyebrow={session.mode === "auto" ? "Auto" : "Manual"} title="Control" />
+        {/* The recent-sessions list used to sit full-width at the foot of this
+            page, duplicating the Sessions page and taking the width the console
+            wanted. One link does the same job. */}
+        <Button onClick={onOpenSessions}>Recent sessions →</Button>
+      </div>
+
+      {/* The keys, directly under the title and above everything else, in BOTH
+          modes. They were in a panel below five other things; the panel's own
+          note says a control surface whose keys are hidden is a crash waiting
+          to happen, and scrolling counts as hidden. */}
+      <Keypad intent={intent} mode={session.mode} />
 
       {session.message && (
         <Message
@@ -80,13 +80,13 @@ export function ControlPage({
           split starts once there is something to observe. */}
       {session.state === "signed_out" ? (
         <div className="max-w-md">
-          <ControlColumn session={session} telemetry={telemetry} intent={intent} run={run} />
+          <ControlColumn session={session} telemetry={telemetry} run={run} />
         </div>
       ) : (
         <div className="grid items-start gap-5 lg:grid-cols-2">
           {/* Controls first in the DOM, right-hand on wide screens. */}
           <div className="grid gap-5 lg:order-2">
-            <ControlColumn session={session} telemetry={telemetry} intent={intent} run={run} />
+            <ControlColumn session={session} telemetry={telemetry} run={run} />
           </div>
           <div className="lg:order-1">
             <ConsolePane
@@ -99,20 +99,15 @@ export function ControlPage({
           </div>
         </div>
       )}
-
-      {session.state !== "signed_out" && (
-        <RecentSessions refreshKey={historyKey} mode={session.mode} onOpen={onOpenSession} onOpenAll={onOpenSessions} />
-      )}
     </div>
   );
 }
 
 // ── the right column ─────────────────────────────────────────────────
 
-function ControlColumn({ session, telemetry, intent, run }: {
+function ControlColumn({ session, telemetry, run }: {
   session: Session;
   telemetry: Telemetry | null;
-  intent: Intent;
   run: Run;
 }) {
   // The flight parameters live here, not inside a panel, because the action
@@ -156,7 +151,7 @@ function ControlColumn({ session, telemetry, intent, run }: {
             />
           ) : (
             <ManualControls
-              session={session} telemetry={telemetry} intent={intent}
+              session={session} telemetry={telemetry}
               ambient={ambient} setAmbient={setAmbient}
             />
           )}
@@ -362,14 +357,11 @@ export function SignIn({ run }: { run: Run }) {
 }
 
 function Checklist({ session, run }: { session: Session; run: Run }) {
-  const [confirmed, setConfirmed] = useState(false);
-  const [acceptedUnassisted, setAcceptedUnassisted] = useState(false);
   const failed = session.state === "checks_failed";
   const awaiting = session.state === "awaiting_confirmation";
   // A positioning problem no longer blocks the flight — it costs the drone its
-  // height hold. The operator is told exactly that, and confirms it separately.
+  // height hold. The operator is told exactly that, in the button they press.
   const unassisted = !session.assisted;
-  const ready = confirmed && (!unassisted || acceptedUnassisted);
 
   return (
     <Panel
@@ -399,46 +391,44 @@ function Checklist({ session, run }: { session: Session; run: Run }) {
       </ol>
 
       {awaiting && (
+        // NO TICK BOXES. The button IS the acknowledgement.
+        //
+        // The agent requires `accept_unassisted` and refuses confirm_area
+        // without it (session.py:545) — that requirement has not moved. What
+        // changed is how the window obtains it. Its own docstring says the
+        // operator decides "having been told it", and a button whose LABEL
+        // states what is being accepted, under the warning that states why, is
+        // that consent in one deliberate act instead of two. The old first box
+        // ("the area is clear") gated nothing server-side at all and is now
+        // simply what pressing the button means.
+        //
+        // The label must keep carrying the consequence. A generic "Continue"
+        // here would be the UI accepting on the operator's behalf.
         <div className="mt-5 grid gap-3 border border-[var(--status-warning)] p-4">
-          <label className="flex items-start gap-3 text-sm">
-            <input
-              type="checkbox"
-              checked={confirmed}
-              onChange={(e) => setConfirmed(e.target.checked)}
-              className="mt-0.5 h-5 w-5"
-            />
-            <span>
-              The drone is on a flat surface, the area around and above it is
-              clear, and everyone nearby knows it is about to fly.
-            </span>
-          </label>
+          <p className="text-sm leading-relaxed">
+            The drone is on a flat surface, the area around and above it is clear, and
+            everyone nearby knows it is about to fly.
+          </p>
           {unassisted && (
-            <label className="flex items-start gap-3 bg-[var(--surface-2)] p-3 text-sm">
-              <input
-                type="checkbox"
-                checked={acceptedUnassisted}
-                onChange={(e) => setAcceptedUnassisted(e.target.checked)}
-                className="mt-0.5 h-5 w-5"
-              />
-              <span>
-                <strong>I will watch it closely.</strong> The drone cannot see the base
-                stations, so its height comes from the barometer — it holds roughly,
-                wandering by tens of centimetres — it will not hold its position, and it
-                will not land itself on drift. Only Manual is available until the base
-                stations are seen.
-              </span>
-            </label>
+            <p className="bg-[var(--surface-2)] p-3 text-sm leading-relaxed">
+              <strong>It cannot catch itself.</strong> The drone cannot see the base
+              stations, so its height comes from the barometer — it holds roughly,
+              wandering by tens of centimetres — it will not hold its position, and it
+              will not land itself on drift. Only Manual is available until the base
+              stations are seen.
+            </p>
           )}
           <div>
             <Button
               variant="primary"
-              disabled={!ready}
               onClick={() => void run(
                 () => api.confirmArea(unassisted),
-                unassisted ? "Confirm the area (barometer)" : "Confirm the area",
+                unassisted ? "Confirm the area — flying by eye" : "Confirm the area",
               )}
             >
-              {unassisted ? "Confirm and fly on the barometer" : "Confirm and continue"}
+              {unassisted
+                ? "Confirm — I am flying it by eye"
+                : "Confirm the area is clear"}
             </Button>
           </div>
         </div>
@@ -606,10 +596,9 @@ function Field({
 
 // ── manual ───────────────────────────────────────────────────────────
 
-function ManualControls({ session, telemetry, intent, ambient, setAmbient }: {
+function ManualControls({ session, telemetry, ambient, setAmbient }: {
   session: Session;
   telemetry: Telemetry | null;
-  intent: Intent;
   ambient: string;
   setAmbient: (v: string) => void;
 }) {
@@ -648,14 +637,19 @@ function ManualControls({ session, telemetry, intent, ambient, setAmbient }: {
           </div>
         )}
       </Panel>
-
-      <Keypad intent={intent} />
     </>
   );
 }
 
 /**
- * Every binding, laid out where the keys actually are.
+ * Every binding, laid out where the keys actually are, directly under the page
+ * title and above everything else.
+ *
+ * IT LIVES AT THE TOP BECAUSE SCROLLING COUNTS AS HIDDEN. This used to be a
+ * panel below the action rail, the checks and the mode controls, which meant
+ * the bindings could be off-screen at the moment the drone was in the air. The
+ * panel's own note has always said a control surface whose keys are hidden is a
+ * crash waiting to happen.
  *
  * THESE ARE NOT BUTTONS AND MUST NOT BECOME BUTTONS. The window reports which
  * keys are *held* and the agent runs the 50 Hz loop from that; a click has no
@@ -663,17 +657,24 @@ function ManualControls({ session, telemetry, intent, ambient, setAmbient }: {
  * path into the flight loop. They light from `intent`, which is the same state
  * the agent is being sent — so a key lit here is a key the drone knows about.
  */
-function Keypad({ intent }: { intent: Intent }) {
+function Keypad({ intent, mode }: { intent: Intent; mode: Session["mode"] }) {
   const land = KEY_LABELS.find((b) => b.keys.every((k) => !k.field));
+  // In Auto the drone flies itself: the movement keys reach nothing. L still
+  // lands in both modes (App.tsx binds it unconditionally), so the cluster is
+  // shown dimmed and said to be inactive rather than removed — a control that
+  // disappears between modes is one the operator has to relearn.
+  const movementLive = mode === "manual";
 
   return (
-    <Panel
-      title="Keys"
-      note="Every binding is on screen. A control surface whose keys are hidden is a crash waiting to happen."
+    <section
+      aria-label="Keys"
+      // items-start, so every cluster's caption sits on the same line. Centred,
+      // the one-row "Down" cluster floated below the two-row ones.
+      className="flex flex-wrap items-start gap-x-8 gap-y-3 border border-[var(--border)] bg-[var(--surface)] px-4 py-3"
     >
-      <div className="flex flex-wrap items-start gap-8">
-        <Cluster caption="Height and rotation">
-          <div className="grid grid-cols-3 gap-1.5">
+      <div className={`flex items-start gap-6 ${movementLive ? "" : "opacity-45"}`}>
+        <Cluster caption="Height · rotation">
+          <div className="grid grid-cols-3 gap-1">
             <span />
             <Cap label="W" field="up" intent={intent} />
             <span />
@@ -681,11 +682,10 @@ function Keypad({ intent }: { intent: Intent }) {
             <Cap label="S" field="down" intent={intent} />
             <Cap label="D" field="yaw_right" intent={intent} />
           </div>
-          <Legend rows={[["W / S", "Rise / descend, gently"], ["A / D", "Rotate left / right"]]} />
         </Cluster>
 
         <Cluster caption="Position">
-          <div className="grid grid-cols-3 gap-1.5">
+          <div className="grid grid-cols-3 gap-1">
             <span />
             <Cap label="↑" field="forward" intent={intent} />
             <span />
@@ -693,27 +693,29 @@ function Keypad({ intent }: { intent: Intent }) {
             <Cap label="↓" field="back" intent={intent} />
             <Cap label="→" field="right" intent={intent} />
           </div>
-          <Legend rows={[["↑ / ↓", "Forward / back"], ["← / →", "Left / right"]]} />
         </Cluster>
-
-        {land && (
-          <Cluster caption="Coming down">
-            <Cap label="L" intent={intent} wide />
-            <Legend rows={[["L", land.action]]} />
-            <p className="mt-1 max-w-[11rem] text-xs leading-relaxed text-[var(--muted)]">
-              Emergency stop is in the strip at the top and has no key: cutting the
-              motors drops the drone.
-            </p>
-          </Cluster>
-        )}
       </div>
-    </Panel>
+
+      {land && (
+        <Cluster caption="Down">
+          <Cap label="L" intent={intent} wide />
+        </Cluster>
+      )}
+
+      <p className="mono min-w-0 flex-1 text-[10px] leading-relaxed text-[var(--muted)]">
+        {movementLive
+          ? "W/S rise · A/D rotate · arrows move · L lands"
+          : "Auto flies itself — the movement keys are inactive. L still lands."}
+        <br />
+        Emergency stop is in the strip at the top and has no key.
+      </p>
+    </section>
   );
 }
 
 function Cluster({ caption, children }: { caption: string; children: ReactNode }) {
   return (
-    <div className="grid gap-2">
+    <div className="grid gap-1.5">
       <p className="eyebrow">{caption}</p>
       {children}
     </div>
@@ -747,18 +749,6 @@ function Cap({ label, field, intent, wide = false }: {
   );
 }
 
-function Legend({ rows }: { rows: [string, string][] }) {
-  return (
-    <dl className="grid gap-0.5 text-xs">
-      {rows.map(([keys, action]) => (
-        <div key={keys} className="flex gap-2">
-          <dt className="mono w-12 shrink-0 font-semibold">{keys}</dt>
-          <dd className="text-[var(--muted)]">{action}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
 
 // ── shared ───────────────────────────────────────────────────────────
 

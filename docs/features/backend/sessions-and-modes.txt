@@ -30,11 +30,19 @@ THE STATES
   busy                  -> land / emergency_stop
   ending                -> land if needed, close the flight, flush the upload
 
-MODE is auto or manual, chosen in the desktop app's SIDEBAR, and defaults to
-AUTO. It cannot change while busy: swapping controller mid-air would hand the
-drone to a different command source with no warning. (It sat in a top bar until
-2026-09-22; the window is a sidebar and a flight strip now — see
+MODE is auto or manual, chosen in the desktop app's SIDEBAR, and DEFAULTS TO
+MANUAL (Snapshot.mode). It cannot change while busy: swapping controller mid-air
+would hand the drone to a different command source with no warning. (It sat in a
+top bar until 2026-09-22; the window is a sidebar and a flight strip now — see
 ../desktop/pages-and-windows.txt.)
+
+The default was AUTO until 2026-09-23, and that was the wrong way round for this
+drone. Auto needs `assisted` — a position the drone can hold — and run_program
+refuses without it (flight-safety.txt). Until a room's Lighthouse geometry is
+measured every session comes back unassisted, so an Auto default opened the app
+in the one mode that could not fly, and filtered the history to the mode the
+operator was not using. Tests that exercise Auto now set the mode explicitly,
+which is what a test about Auto should do anyway.
 
   auto    Hover test (rise, hold a steady height, land where it started)
   both    Battery & motor test (each motor on its own, then the battery under

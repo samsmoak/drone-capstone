@@ -4,17 +4,24 @@
  * Two questions, answered before anything else is offered:
  *
  *   1. **Is everything ready?** — the agent, the account, the drone, the data.
- *   2. **What do I do next?** — one highlighted step, not a menu of six pages.
+ *   2. **What do I do next?** — one highlighted step, not a menu of eight pages.
  *
  * The steps mirror the agent's own state machine (`session.py`), so this page
  * cannot get out of step with what the agent will actually allow: it reads the
  * state it is already being sent rather than tracking progress of its own.
+ *
+ * WRITTEN SHORT, DELIBERATELY. This page used to carry 151 words of prose in
+ * five blocks — a paragraph under every step, plus "Before you fly" and
+ * "Stopping it" spelled out in full. That is onboarding: read once, then in the
+ * way forever, above the thing the operator actually opens the app for. The
+ * steps keep their titles and lose their paragraphs, and the two reference
+ * panels moved into one disclosure that starts closed.
  */
 
 import type { Page, Run } from "@/App";
 import type { Mode, Session, SyncStatus, Telemetry } from "@/lib/agent";
 import { SignIn } from "@/pages/control/ControlPage";
-import { Button, PageHeader, Panel, Stat, StatusDot } from "@/components/ui";
+import { Button, PageHeader, StatusBar, StatusDot } from "@/components/ui";
 
 type Props = {
   session: Session | null;
@@ -41,44 +48,15 @@ const PROGRESS: Record<Session["state"], number> = {
   ending: 4,
 };
 
-type Step = { title: string; detail: string };
-
-function steps(mode: Mode): Step[] {
+/** Step titles only. The detail that used to sit under each one is in the
+ *  reference disclosure at the foot, or on Control where it is acted on. */
+function steps(mode: Mode): string[] {
   return [
-    {
-      title: "Sign in",
-      detail:
-        "With your CropWatcher account — the same one as the web dashboard. " +
-        "Every flight is recorded against the person who flew it.",
-    },
-    {
-      title: "Start the session",
-      detail: "Connects to the drone over the radio and reads who it is.",
-    },
-    {
-      title: "Let the checks run",
-      detail:
-        "Radio, motors, battery, positioning and a still drone. Nothing arms " +
-        "until they pass — keep the drone still while they run. After a crash, " +
-        "Retry runs them all again.",
-    },
-    {
-      title: "Confirm the area is clear",
-      detail: "The drone on the floor, nothing above it, and everyone nearby told.",
-    },
-    mode === "auto"
-      ? {
-          title: "Run the battery & motor test, then Hover test",
-          detail:
-            "The test spins each motor on the ground and checks the battery under " +
-            "load. Hover test rises, holds a steady height, and lands where it started.",
-        }
-      : {
-          title: "Press Start, then hold W to rise",
-          detail:
-            "Run the battery & motor test first. Start turns the propellers gently " +
-            "on the ground; the drone only leaves it while you hold W.",
-        },
+    "Sign in",
+    "Start the session",
+    "Let the checks run",
+    "Confirm the area is clear",
+    mode === "auto" ? "Battery & motor test, then Hover demo" : "Start the motors, then hold W to rise",
   ];
 }
 
@@ -86,7 +64,7 @@ function steps(mode: Mode): Step[] {
  *  email, and repeating it in a title reads as a mistake. */
 function greeting(session: Session | null): string {
   const operator = session?.operator;
-  if (!operator) return "CropWatcher flight control";
+  if (!operator) return "CropWatcher";
   const name = operator.name && operator.name !== operator.email ? operator.name : null;
   return name ? `Welcome back, ${name}` : "Welcome back";
 }
@@ -97,84 +75,84 @@ export function HomePage({ session, telemetry, sync, connected, run, onGo }: Pro
   const progress = session
     ? session.state === "ready" && session.retry_required ? PROGRESS.starting : PROGRESS[session.state]
     : 0;
-  const mode = session?.mode ?? "auto";
+  const mode = session?.mode ?? "manual";
   const vbat = telemetry?.values["pm.vbat"] ?? session?.drone?.battery_v ?? null;
   const pending = sync ? sync.pending_flights + sync.pending_events : 0;
 
   return (
-    <div className="grid gap-5">
-      <PageHeader eyebrow="Operate" title={greeting(session)}>
-        This computer holds the radio, so this is the only app that can fly the
-        drone. It records every flight and uploads it to the dashboard.
-      </PageHeader>
+    <div className="grid gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <PageHeader eyebrow="Operate" title={greeting(session)} />
+        <Button variant="primary" onClick={() => onGo("control")}>Open Control</Button>
+      </div>
+
+      {/* One strip, not five cards. The email gets the growing cell because it
+          is text and must never be cut short. */}
+      <StatusBar
+        items={[
+          {
+            label: "Agent",
+            value: connected ? "Running" : "Not running",
+            tone: connected ? "good" : "critical",
+            hint: connected ? "On this computer" : "Restart CropWatcher",
+          },
+          {
+            label: "Signed in",
+            value: session?.operator?.email ?? "No one",
+            tone: session?.operator ? "good" : "warning",
+            grow: true,
+          },
+          {
+            label: "Drone",
+            value: session?.drone?.hardware_id ?? "Not connected",
+            tone: session?.drone ? "good" : "idle",
+          },
+          {
+            label: "Battery",
+            value: vbat == null ? null : `${vbat.toFixed(2)} V`,
+            tone: vbat == null ? "idle" : vbat < 3.75 ? "warning" : "good",
+            hint: vbat != null && vbat < 3.75 ? "Below the arming threshold" : undefined,
+          },
+          {
+            label: "Mode",
+            value: mode === "auto" ? "Auto" : "Manual",
+          },
+          {
+            label: "Data",
+            value: pending === 0 ? "All synced" : `${pending} to upload`,
+            tone: pending === 0 ? "good" : "warning",
+          },
+        ]}
+      />
 
       {session?.state === "signed_out" && <SignIn run={run} />}
 
-      {/* Four across, with the email given two of them. It is text, not a
-          figure, and it is never truncated — an operator checking which
-          account a flight will be recorded against needs the whole address. */}
-      <section aria-label="Status" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <Stat
-          label="Flight agent"
-          value={connected ? "Running" : "Not running"}
-          tone={connected ? "good" : "critical"}
-          hint={connected ? "On this computer" : "Restart CropWatcher"}
-        />
-        <Stat
-          label="Signed in"
-          className="col-span-2"
-          value={session?.operator?.email ?? "No one"}
-          fit
-          tone={session?.operator ? "good" : "warning"}
-          hint={session?.operator ? "Flights recorded to this account" : "Required before flying"}
-        />
-        <Stat
-          label="Drone"
-          value={session?.drone?.hardware_id ?? "Not connected"}
-          tone={session?.drone ? "good" : "idle"}
-          hint={session?.drone ? "Connected over the radio" : "Connects when a session starts"}
-        />
-        <Stat
-          label="Battery"
-          value={vbat}
-          unit="V"
-          digits={2}
-          tone={vbat == null ? "idle" : vbat < 3.75 ? "warning" : "good"}
-          hint={
-            vbat == null
-              ? "Read once connected"
-              : vbat < 3.75
-                ? "Below the arming threshold — charge it"
-                : "Enough to arm"
-          }
-        />
-      </section>
-
-      <Panel
-        title="What to do next"
-        note={`In ${mode === "auto" ? "Auto" : "Manual"} mode. Switch in the sidebar — the steps up to the last one are the same either way.`}
-        action={<Button variant="primary" onClick={() => onGo("control")}>Open Control</Button>}
-      >
-        <ol className="grid gap-1.5">
-          {steps(mode).map((step, index) => {
+      {/* The steps, as a rail. Titles only — the current one is the answer to
+          "what now", and five paragraphs buried it. */}
+      <section aria-label="What to do next" className="border border-[var(--border)] bg-[var(--surface)]">
+        <h2 className="flex items-center gap-2.5 border-b border-[var(--border)] px-4 py-2 text-sm font-bold uppercase tracking-[0.06em] text-[var(--heading)]">
+          <span aria-hidden="true" className="h-3.5 w-0.5 shrink-0 bg-[var(--primary)]" />
+          What to do next
+        </h2>
+        <ol className="grid gap-0.5 p-2">
+          {steps(mode).map((title, index) => {
             const done = index < progress;
             const current = index === progress;
             return (
               <li
-                key={step.title}
+                key={title}
                 aria-current={current ? "step" : undefined}
-                // A rail down the left edge rather than a box: the current step
-                // has to be findable at a glance without five outlined cards
-                // competing for the same attention.
-                className={`flex gap-3 border-l-2 py-1.5 pl-3 ${
+                className={`flex items-center gap-3 border-l-2 py-1.5 pl-3 text-sm ${
                   current
-                    ? "border-[var(--primary)] bg-[var(--surface-2)]"
-                    : "border-transparent"
+                    ? "border-[var(--primary)] bg-[var(--surface-2)] font-semibold"
+                    : done
+                      ? "border-transparent text-[var(--muted)]"
+                      : "border-transparent"
                 }`}
               >
                 <span
                   aria-hidden="true"
-                  className={`mono mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center border text-[10px] font-bold ${
+                  className={`mono flex h-5 w-5 shrink-0 items-center justify-center border text-[10px] font-bold ${
                     done
                       ? "border-[var(--status-good)] text-[var(--status-good)]"
                       : current
@@ -184,89 +162,75 @@ export function HomePage({ session, telemetry, sync, connected, run, onGo }: Pro
                 >
                   {done ? "✓" : index + 1}
                 </span>
-                <div className="min-w-0">
-                  <p className={done ? "text-sm text-[var(--muted)]" : "text-sm font-semibold"}>
-                    {step.title}
-                    {done && <span className="sr-only"> — done</span>}
-                  </p>
-                  <p className="text-sm leading-relaxed text-[var(--muted)]">{step.detail}</p>
-                </div>
+                <span className="min-w-0">
+                  {title}
+                  {done && <span className="sr-only"> — done</span>}
+                </span>
               </li>
             );
           })}
         </ol>
-      </Panel>
+      </section>
 
-      {/* Two up from md, not lg: with the sidebar taking 15rem there is room
-          for both of these side by side well before a 1024 px viewport, and
-          stacking them pushed "Stopping it" below the fold. */}
-      <div className="grid gap-3 md:grid-cols-2">
-        <Panel title="Before you fly">
-          <ul className="grid gap-2 text-sm leading-relaxed">
-            <li>The Crazyradio dongle is in a USB port on this computer.</li>
-            <li>The drone has a charged battery and is switched on, on the floor.</li>
-            <li>
-              The Lighthouse base stations are powered and their geometry is set for
-              this room. <strong>Received</strong> matters, not stored — see{" "}
-              <button
-                type="button"
-                onClick={() => onGo("positioning")}
-                className="underline underline-offset-2"
-              >
-                Positioning
-              </button>
-              .
-            </li>
-            <li>Propellers are undamaged and the battery holds up. The battery &amp; motor test on Control checks both.</li>
-          </ul>
-        </Panel>
+      {/* Reference, not dashboard. Closed on arrival: an operator needs this
+          on their first flight and never again, and it was taking a third of
+          the page forever. */}
+      <details className="group border border-[var(--border)] bg-[var(--surface)]">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-2 text-sm font-bold uppercase tracking-[0.06em] text-[var(--heading)]">
+          Before you fly, and how to stop it
+          <span aria-hidden="true" className="text-[var(--muted)] transition-transform group-open:rotate-90">›</span>
+        </summary>
+        <div className="grid gap-4 border-t border-[var(--border)] p-4 text-sm leading-relaxed md:grid-cols-2">
+          <div>
+            <h3 className="eyebrow pb-1.5">Before you fly</h3>
+            <ul className="grid gap-1.5">
+              <li>The Crazyradio dongle is in a USB port on this computer.</li>
+              <li>The drone is charged, switched on, and on the floor.</li>
+              <li>
+                Base stations powered, geometry set for this room.{" "}
+                <strong>Received</strong> matters, not stored —{" "}
+                <button type="button" onClick={() => onGo("positioning")} className="underline underline-offset-2">
+                  Positioning
+                </button>
+                .
+              </li>
+              <li>Propellers undamaged. The battery &amp; motor test on Control checks both.</li>
+            </ul>
+          </div>
+          <div>
+            <h3 className="eyebrow pb-1.5">Stopping it</h3>
+            <dl className="grid gap-1.5">
+              <div>
+                <dt className="font-semibold">
+                  Land <kbd className="mono border border-[var(--border)] px-1 text-xs">L</kbd>
+                </dt>
+                <dd className="text-[var(--muted)]">
+                  Descends under control. Always in the strip at the top while a session runs.
+                </dd>
+              </div>
+              <div>
+                <dt className="font-semibold">Emergency stop — hold one second</dt>
+                <dd className="text-[var(--muted)]">
+                  Cuts the motors, so the drone drops. No key binding, deliberately.
+                </dd>
+              </div>
+              <div>
+                <dt className="font-semibold">It also lands itself</dt>
+                <dd className="text-[var(--muted)]">
+                  On low battery, lost positioning, drift or a tumble — and if this window
+                  stops answering.
+                </dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+      </details>
 
-        <Panel title="Stopping it">
-          <dl className="grid gap-3 text-sm leading-relaxed">
-            <div>
-              <dt className="font-medium">
-                Land <kbd className="mono border border-[var(--border)] px-1 text-xs">L</kbd>
-              </dt>
-              <dd className="text-[var(--muted)]">
-                The normal way down: it descends and settles under control. Always in
-                the strip at the top of the window while a session is running.
-              </dd>
-            </div>
-            <div>
-              <dt className="font-medium">Emergency stop — hold for one second</dt>
-              <dd className="text-[var(--muted)]">
-                Cuts the motors immediately, so the drone drops. For when it is stuck
-                or heading somewhere it must not. No keyboard shortcut, deliberately.
-              </dd>
-            </div>
-            <div>
-              <dt className="font-medium">It also lands itself</dt>
-              <dd className="text-[var(--muted)]">
-                On low battery, lost positioning, drift or a tumble — and if this
-                window stops answering.
-              </dd>
-            </div>
-          </dl>
-        </Panel>
-      </div>
-
-      <Panel
-        title="Flight data"
-        action={
-          pending === 0 ? (
-            <StatusDot tone="good">Everything uploaded</StatusDot>
-          ) : (
-            <StatusDot tone="warning">{pending} to upload</StatusDot>
-          )
-        }
-      >
-        <p className="text-sm text-[var(--muted)]">
-          Readings are written to a file on this computer as they arrive, then
-          uploaded to the dashboard. A flight can finish with no internet — it
-          uploads when you are back online, and closing the app does not lose it.
-          {sync?.last_error && ` Last upload attempt: ${sync.last_error}`}
+      {sync?.last_error && (
+        <p className="text-xs text-[var(--muted)]">
+          <StatusDot tone="warning">Last upload attempt: {sync.last_error}</StatusDot>
         </p>
-      </Panel>
+      )}
     </div>
   );
 }

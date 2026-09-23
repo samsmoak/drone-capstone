@@ -87,7 +87,17 @@ class Snapshot:
     """What the app renders. Serialised straight to JSON."""
 
     state: State = State.SIGNED_OUT
-    mode: Mode = Mode.AUTO
+    # MANUAL, not AUTO. Auto needs `assisted` — a position the drone can hold —
+    # and a preset program is refused without it (see run_program below, and
+    # flight-safety.txt). Until this room's Lighthouse geometry is measured,
+    # every session comes back unassisted, so an Auto default opens the app in
+    # the one mode that cannot fly. It also filtered the history: an operator
+    # whose flights were all manual saw "no sessions" on every log page with 45
+    # readings on disk (2026-09-17).
+    #
+    # Tests that exercise Auto set the mode explicitly rather than inheriting
+    # it, which is what a test about Auto should do anyway.
+    mode: Mode = Mode.MANUAL
     operator: dict[str, Any] | None = None
     drone: dict[str, Any] | None = None
     session_id: str | None = None

@@ -27,7 +27,7 @@ import "./styles.css";
 
 const session: Session = {
   state: "checks_failed",
-  mode: "auto",
+  mode: "manual",
   operator: { id: "a0afd4e8", email: "zebachsmoak@gmail.com", name: null },
   drone: { hardware_id: "cf-4a3b2c1d0e9f8a7b", battery_v: 3.82, endurance_s: 420 },
   session_id: "3f1c",
@@ -147,6 +147,7 @@ function Shell({ label, children }: { label: string; children: React.ReactNode }
           onNavigate={() => {}}
           session={session}
           starting={false}
+          flying={false}
           onSetMode={() => {}}
           onSignOut={() => {}}
         />
@@ -181,8 +182,6 @@ const control = (label: string, override: Partial<Session>) => (
       run={noop}
       logLines={logLines}
       onClearLog={() => {}}
-      historyKey="h"
-      onOpenSession={() => {}}
       onOpenSessions={() => {}}
     />
   </Shell>
@@ -199,7 +198,7 @@ createRoot(document.getElementById("root")!).render(
       state: "ready", retry_required: true,
       message: "The drone reports it has tumbled — motors stopped. The flight ended early — press Retry to check the drone again before flying.",
     })}
-    {control("Control · Auto, ready", { state: "ready", mode: "auto", assisted: true, message: null })}
+    {control("Control · Auto, ready", { state: "ready", mode: "manual", assisted: true, message: null })}
     {control("Control · Manual, armed", {
       state: "busy", mode: "manual", activity: "manual", assisted: true, message: null,
     })}
