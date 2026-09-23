@@ -13,11 +13,18 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { KIND_COLOR, KIND_GLYPH, type LogLine } from "@/lib/commandLog";
 import { formatClock } from "@/lib/format";
+import { FullScreenOverlay } from "@/components/FullScreenOverlay";
 
 /** Within this many pixels of the bottom still counts as "at the bottom". */
 const STICK_PX = 24;
 
-export function CommandLog({ lines, onClear }: { lines: LogLine[]; onClear: () => void }) {
+export function CommandLog({ lines, onClear, canExpand = true }: {
+  lines: LogLine[];
+  onClear: () => void;
+  /** False inside the console's own full-screen overlay: a second full-screen
+   *  button there would open a dialog on top of a dialog. */
+  canExpand?: boolean;
+}) {
   const box = useRef<HTMLDivElement>(null);
   const [pinned, setPinned] = useState(true);
   // Full screen is a separate instance rather than a class on this one: the
@@ -98,13 +105,15 @@ export function CommandLog({ lines, onClear }: { lines: LogLine[]; onClear: () =
           {lines.length} line{lines.length === 1 ? "" : "s"} · this window only, not the flight record
         </p>
         <div className="flex shrink-0 items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setFull(true)}
-            className="mono min-h-7 px-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--console-dim)] hover:text-[var(--console-ink)]"
-          >
-            Full screen ⤢
-          </button>
+          {canExpand && (
+            <button
+              type="button"
+              onClick={() => setFull(true)}
+              className="mono min-h-7 px-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--console-dim)] hover:text-[var(--console-ink)]"
+            >
+              Full screen ⤢
+            </button>
+          )}
           <button
             type="button"
             onClick={onClear}
@@ -122,16 +131,14 @@ export function CommandLog({ lines, onClear }: { lines: LogLine[]; onClear: () =
 }
 
 /**
- * The whole window, for reading back a session.
+ * The log at the size of the window, for reading a session back.
  *
- * The inline pane is about six lines once the attitude indicator and the vitals
- * tail have taken their share — enough to watch, not enough to read a failed
- * pre-flight back through. This is the same log with the window's full height
- * and width, which is what makes the narration useful after the fact.
+ * The inline pane is a handful of lines once the attitude indicator and the
+ * vitals tail have taken their share — enough to watch, not enough to read a
+ * failed pre-flight back through.
  *
- * Modal conventions, because it is one: Escape closes, focus moves into it on
- * open and back to the page on close, and the backdrop is inert to clicks so a
- * stray click while flying cannot dismiss what is being read.
+ * The dialog behaviour itself lives in FullScreenOverlay, shared with the
+ * console's own full-screen view.
  */
 function FullScreenLog({ lines, onClear, onClose }: {
   lines: LogLine[];
@@ -139,20 +146,7 @@ function FullScreenLog({ lines, onClear, onClose }: {
   onClose: () => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
-  const closeButton = useRef<HTMLButtonElement>(null);
   const [pinned, setPinned] = useState(true);
-
-  useEffect(() => {
-    closeButton.current?.focus();
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onClose();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   useLayoutEffect(() => {
     if (!pinned) return;
@@ -167,36 +161,20 @@ function FullScreenLog({ lines, onClear, onClose }: {
   }, []);
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Command log, full screen"
-      className="fixed inset-0 z-50 flex flex-col bg-[var(--console)]"
+    <FullScreenOverlay
+      label={`Command log · ${lines.length} line${lines.length === 1 ? "" : "s"}`}
+      onClose={onClose}
+      action={
+        <button
+          type="button"
+          onClick={onClear}
+          disabled={lines.length === 0}
+          className="mono min-h-8 px-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--console-dim)] hover:text-[var(--console-ink)] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Clear
+        </button>
+      }
     >
-      <div className="flex items-center justify-between gap-3 border-b border-[var(--console-line)] px-4 py-2">
-        <h2 className="mono text-xs font-bold uppercase tracking-[0.1em] text-[var(--console-ink)]">
-          Command log · {lines.length} line{lines.length === 1 ? "" : "s"}
-        </h2>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onClear}
-            disabled={lines.length === 0}
-            className="mono min-h-8 px-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--console-dim)] hover:text-[var(--console-ink)] disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Clear
-          </button>
-          <button
-            ref={closeButton}
-            type="button"
-            onClick={onClose}
-            className="mono min-h-8 border border-[var(--console-line)] px-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--console-ink)]"
-          >
-            Close (Esc)
-          </button>
-        </div>
-      </div>
-
       <div
         ref={box}
         onScroll={onScroll}
@@ -226,9 +204,9 @@ function FullScreenLog({ lines, onClear, onClose }: {
         )}
       </div>
 
-      <p className="mono border-t border-[var(--console-line)] px-4 py-1.5 text-[10px] uppercase tracking-[0.08em] text-[var(--console-dim)]">
+      <p className="mono shrink-0 border-t border-[var(--console-line)] px-4 py-1.5 text-[10px] uppercase tracking-[0.08em] text-[var(--console-dim)]">
         This window only, not the flight record · the audit trail is in the dashboard
       </p>
-    </div>
+    </FullScreenOverlay>
   );
 }

@@ -6,17 +6,25 @@
  *
  *   Vitals   how it is sitting (the attitude indicator), what we asked it to
  *            do (the command log), and what it is reporting (the vitals tail)
- *   Camera   what it can see — see CameraPane for why that is empty today
+ *   Camera   what it can see — see camera.txt for why that is a test pattern
  *   Scene    where it is in the room, drawn
  *
  * The panels are hidden rather than unmounted on a tab switch, so the command
  * log keeps its scroll position and the scene keeps its trail.
+ *
+ * TWO THINGS THE OPERATOR OWNS. The Vitals tab carries a draggable divider
+ * between the attitude indicator and the log — drag it up mid-flight to read
+ * more of the log, down to watch the horizon — and the whole console opens full
+ * screen, because a camera frame or a 3D scene in part of a split column is a
+ * thumbnail.
  */
 
 import { useState } from "react";
 import type { History } from "@/App";
 import type { LogLine } from "@/lib/commandLog";
 import type { Telemetry } from "@/lib/agent";
+import { FullScreenOverlay } from "@/components/FullScreenOverlay";
+import { SplitPane } from "@/components/SplitPane";
 import { TabPanel, Tabs, type TabDef } from "@/components/Tabs";
 import { StatusDot } from "@/components/ui";
 import { AttitudeIndicator } from "./AttitudeIndicator";
@@ -33,6 +41,10 @@ const TABS: readonly TabDef<ConsoleTab>[] = [
   { key: "scene", label: "Scene" },
 ];
 
+const TAB_LABEL: Record<ConsoleTab, string> = {
+  vitals: "Vitals", camera: "Camera", scene: "Scene",
+};
+
 /**
  * Which tab to open on.
  *
@@ -41,8 +53,6 @@ const TABS: readonly TabDef<ConsoleTab>[] = [
  * Scene tabs on screen to measure or screenshot them: they are behind a click
  * that a headless browser cannot easily make, and the Scene canvas does not
  * draw at all while its tab is inactive.
- *
- * Same spirit as `?agent=` and `?measure=` — see harness.tsx and measure.ts.
  */
 function initialTab(): ConsoleTab {
   const wanted = new URLSearchParams(window.location.search).get("tab");
@@ -50,59 +60,50 @@ function initialTab(): ConsoleTab {
 }
 
 export function ConsolePane({
-  telemetry, history, logLines, onClearLog,
+  telemetry, history, logLines, onClearLog, fill = false,
 }: {
   telemetry: Telemetry | null;
   history: History;
   logLines: LogLine[];
   onClearLog: () => void;
+  /** Fill the height a parent gives it (the split) instead of setting its own.
+   *  Stacked, there is no parent height to fill, so it sets one. */
+  fill?: boolean;
 }) {
   const [tab, setTab] = useState<ConsoleTab>(initialTab);
+  const [full, setFull] = useState(false);
 
-  return (
-    <section
-      aria-label="Drone console"
-      // A DEFINITE height, so the three scrolling panes inside can share it —
-      // they are all min-h-0 flex children and would otherwise collapse to
-      // their content.
-      //
-      // 46rem is a floor, not a preference: below about that, the command log
-      // and the vitals tail each get fewer than four lines once their own
-      // header and footer bars are subtracted, which is not a log. On a taller
-      // window it grows to fill the viewport beside the controls instead.
-      className="flex min-h-[46rem] flex-col border border-[var(--border)] bg-[var(--surface)] lg:h-[calc(100vh-13rem)]"
-    >
-      <Tabs
-        id="console"
-        label="Drone console view"
-        tabs={TABS}
-        active={tab}
-        onSelect={setTab}
-        action={
-          <span className="mono text-[10px] uppercase tracking-[0.08em]">
-            <StatusDot tone={telemetry ? "good" : "idle"}>
-              {telemetry ? "10 Hz" : "no stream"}
-            </StatusDot>
-          </span>
-        }
-      />
-
+  /** `fullScreen` suppresses the controls that would be meaningless inside the
+   *  overlay — a second "full screen" button, and the log's own. */
+  const body = (fullScreen: boolean) => (
+    <>
       <TabPanel id="console" tabKey="vitals" active={tab === "vitals"} className="flex min-h-0 flex-1 flex-col">
-        <div className="border-b border-[var(--border)]">
-          <AttitudeIndicator telemetry={telemetry} />
-        </div>
-        {/* The command log takes most of what is left. It got the height the
-            current-values grid used to occupy when that moved up into the
-            strip: its lines wrap and a refusal can run to three of them, while
-            the tail below is one fixed-width line per second. */}
-        <div className="flex min-h-0 flex-8 flex-col border-b border-[var(--border)]">
-          <PaneTitle>Command log</PaneTitle>
-          <CommandLog lines={logLines} onClear={onClearLog} />
-        </div>
-        <div className="flex min-h-0 flex-4 flex-col">
-          <PaneTitle>Vitals</PaneTitle>
-          <VitalsTail history={history} />
-        </div>
+        <SplitPane
+          orientation="horizontal"
+          storageKey="cropwatcher.split.console"
+          defaultFraction={0.34}
+          label="Attitude indicator and the log"
+          className="min-h-0 flex-1"
+          first={
+            <div className="console-scroll min-h-0 flex-1 overflow-y-auto">
+              <AttitudeIndicator telemetry={telemetry} />
+            </div>
+          }
+          second={
+            <div className="flex min-h-0 flex-1 flex-col">
+              {/* The log takes most of what is below the divider; the tail is
+                  one fixed-width line per second and needs less. */}
+              <div className="flex min-h-0 flex-8 flex-col border-b border-[var(--border)]">
+                <PaneTitle>Command log</PaneTitle>
+                <CommandLog lines={logLines} onClear={onClearLog} canExpand={!fullScreen} />
+              </div>
+              <div className="flex min-h-0 flex-4 flex-col">
+                <PaneTitle>Vitals</PaneTitle>
+                <VitalsTail history={history} />
+              </div>
+            </div>
+          }
+        />
       </TabPanel>
 
       <TabPanel id="console" tabKey="camera" active={tab === "camera"} className="flex min-h-0 flex-1 flex-col">
@@ -114,7 +115,63 @@ export function ConsolePane({
             stays mounted so the trail survives, but the loop does not run. */}
         <SceneView telemetry={telemetry} history={history} active={tab === "scene"} />
       </TabPanel>
-    </section>
+    </>
+  );
+
+  const strip = (fullScreen: boolean) => (
+    <Tabs
+      id="console"
+      label="Drone console view"
+      tabs={TABS}
+      active={tab}
+      onSelect={setTab}
+      action={
+        <>
+          <span className="mono text-[10px] uppercase tracking-[0.08em]">
+            <StatusDot tone={telemetry ? "good" : "idle"}>
+              {telemetry ? "10 Hz" : "no stream"}
+            </StatusDot>
+          </span>
+          {!fullScreen && (
+            <button
+              type="button"
+              onClick={() => setFull(true)}
+              title="Show this view full screen"
+              className="mono min-h-8 px-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)] hover:text-[var(--foreground)]"
+            >
+              Full screen ⤢
+            </button>
+          )}
+        </>
+      }
+    />
+  );
+
+  return (
+    <>
+      <section
+        aria-label="Drone console"
+        // Filled by the split when there is one. Stacked it sets its own: 46rem
+        // is a floor, not a preference — below about that the command log and
+        // the vitals tail each get fewer than four lines once their own header
+        // and footer bars are subtracted, which is not a log.
+        className={`flex flex-col border border-[var(--border)] bg-[var(--surface)] ${
+          fill ? "min-h-0 flex-1" : "min-h-[46rem]"
+        }`}
+      >
+        {strip(false)}
+        {body(false)}
+      </section>
+
+      {full && (
+        <FullScreenOverlay label={`Console · ${TAB_LABEL[tab]}`} onClose={() => setFull(false)}>
+          <div className="flex min-h-0 flex-1 flex-col bg-[var(--surface)]">
+            {strip(true)}
+            {body(true)}
+          </div>
+        </FullScreenOverlay>
+      )}
+    </>
   );
 }
 

@@ -30,6 +30,8 @@ import type { History, Run } from "@/App";
 import { api, KEY_LABELS, type HealthTest, type Intent, type Session, type Telemetry } from "@/lib/agent";
 import type { LogLine } from "@/lib/commandLog";
 import { Button, Message, PageHeader, Panel, Spinner, Stat, StatusDot } from "@/components/ui";
+import { SplitPane } from "@/components/SplitPane";
+import { useMediaQuery, WIDE } from "@/lib/useMediaQuery";
 import { ConsolePane } from "./ConsolePane";
 import { VitalsNow } from "./VitalsNow";
 
@@ -49,6 +51,10 @@ type Props = {
 export function ControlPage({
   session, telemetry, history, intent, run, logLines, onClearLog, onOpenSessions,
 }: Props) {
+  // Below `lg` the two columns stack, so there is no divider to drag and the
+  // split would be splitting nothing.
+  const wide = useMediaQuery(WIDE);
+
   if (session === null) {
     return <Spinner label="Connecting to the flight agent…" />;
   }
@@ -62,12 +68,6 @@ export function ControlPage({
             wanted. One link does the same job. */}
         <Button onClick={onOpenSessions}>Recent sessions →</Button>
       </div>
-
-      {/* The keys, directly under the title and above everything else, in BOTH
-          modes. They were in a panel below five other things; the panel's own
-          note says a control surface whose keys are hidden is a crash waiting
-          to happen, and scrolling counts as hidden. */}
-      <Keypad intent={intent} mode={session.mode} telemetry={telemetry} session={session} />
 
       {session.message && (
         <Message
@@ -83,20 +83,58 @@ export function ControlPage({
         <div className="max-w-md">
           <ControlColumn session={session} telemetry={telemetry} run={run} />
         </div>
+      ) : wide ? (
+        // Side by side, with a divider the operator owns. The console starts
+        // LARGER than the controls — it is the half that carries readings, and
+        // the controls are mostly buttons at a fixed size.
+        <SplitPane
+          orientation="vertical"
+          storageKey="cropwatcher.split.control"
+          defaultFraction={0.60}
+          label="Console and controls"
+          className="h-[calc(100vh-11rem)] gap-0"
+          first={
+            <div className="min-w-0 flex-1">
+              <ConsolePane
+                telemetry={telemetry}
+                history={history}
+                logLines={logLines}
+                onClearLog={onClearLog}
+                fill
+              />
+            </div>
+          }
+          second={
+            <div className="flex min-w-0 flex-1 flex-col pl-3">
+              {/* Vitals and keys are OUTSIDE the scroll. They are what an
+                  operator glances at with the drone in the air, and a panel
+                  that can be scrolled away is a panel that is sometimes not
+                  there — the keys' own note has always said so. */}
+              <FlightDeck
+                intent={intent} mode={session.mode}
+                telemetry={telemetry} session={session}
+              />
+              <div className="console-scroll grid min-h-0 flex-1 content-start gap-5 overflow-y-auto pt-4">
+                <ControlColumn session={session} telemetry={telemetry} run={run} />
+              </div>
+            </div>
+          }
+        />
       ) : (
-        <div className="grid items-start gap-5 lg:grid-cols-2">
-          {/* Controls first in the DOM, right-hand on wide screens. */}
-          <div className="grid gap-5 lg:order-2">
-            <ControlColumn session={session} telemetry={telemetry} run={run} />
-          </div>
-          <div className="lg:order-1">
-            <ConsolePane
-              telemetry={telemetry}
-              history={history}
-              logLines={logLines}
-              onClearLog={onClearLog}
-            />
-          </div>
+        // Stacked: there is nothing to split, and the controls come first
+        // because at this width the console would push them off the screen.
+        <div className="grid items-start gap-5">
+          <FlightDeck
+            intent={intent} mode={session.mode}
+            telemetry={telemetry} session={session}
+          />
+          <ControlColumn session={session} telemetry={telemetry} run={run} />
+          <ConsolePane
+            telemetry={telemetry}
+            history={history}
+            logLines={logLines}
+            onClearLog={onClearLog}
+          />
         </div>
       )}
     </div>
@@ -665,22 +703,28 @@ function ManualControls({ session, telemetry, ambient, setAmbient, height, setHe
 }
 
 /**
- * Every binding, laid out where the keys actually are, directly under the page
- * title and above everything else.
+ * The vitals and the keys — the two things that must be on screen while the
+ * drone is in the air, in the RIGHT column, above the scroll.
  *
- * IT LIVES AT THE TOP BECAUSE SCROLLING COUNTS AS HIDDEN. This used to be a
- * panel below the action rail, the checks and the mode controls, which meant
- * the bindings could be off-screen at the moment the drone was in the air. The
- * panel's own note has always said a control surface whose keys are hidden is a
- * crash waiting to happen.
+ * IT SITS OUTSIDE THE SCROLLING AREA because scrolling counts as hidden. This
+ * was a panel below the action rail, the checks and the mode controls, which
+ * meant the bindings could be off screen at the moment the drone was flying;
+ * then it was a full-width strip above both columns, which cost the console the
+ * vertical room the command log needed. Here it is always visible and costs the
+ * left column nothing.
  *
- * THESE ARE NOT BUTTONS AND MUST NOT BECOME BUTTONS. The window reports which
+ * Laid out for a NARROW column: the vitals in three columns of two, the two key
+ * clusters side by side beneath them, and Land beside those. At the widths this
+ * column actually gets — roughly 400 px at a 1280 px window — a single row of
+ * everything would wrap into nonsense.
+ *
+ * THE CAPS ARE NOT BUTTONS AND MUST NOT BECOME BUTTONS. The window reports which
  * keys are *held* and the agent runs the 50 Hz loop from that; a click has no
- * hold, so a clickable key would either do nothing or need a second control
- * path into the flight loop. They light from `intent`, which is the same state
- * the agent is being sent — so a key lit here is a key the drone knows about.
+ * hold, so a clickable key would either do nothing or need a second control path
+ * into the flight loop. They light from `intent`, which is the same state the
+ * agent is being sent — so a cap lit here is a key the drone knows about.
  */
-function Keypad({ intent, mode, telemetry, session }: {
+function FlightDeck({ intent, mode, telemetry, session }: {
   intent: Intent;
   mode: Session["mode"];
   telemetry: Telemetry | null;
@@ -688,59 +732,57 @@ function Keypad({ intent, mode, telemetry, session }: {
 }) {
   const land = KEY_LABELS.find((b) => b.keys.every((k) => !k.field));
   // In Auto the drone flies itself: the movement keys reach nothing. L still
-  // lands in both modes (App.tsx binds it unconditionally), so the cluster is
+  // lands in both modes (App.tsx binds it unconditionally), so the clusters are
   // shown dimmed and said to be inactive rather than removed — a control that
   // disappears between modes is one the operator has to relearn.
   const movementLive = mode === "manual";
 
   return (
     <section
-      aria-label="Keys"
-      // items-start, so every cluster's caption sits on the same line. Centred,
-      // the one-row "Down" cluster floated below the two-row ones.
-      className="flex flex-wrap items-start gap-x-8 gap-y-4 border border-[var(--border)] bg-[var(--surface)] px-4 py-3"
+      aria-label="Vitals and keys"
+      className="shrink-0 border border-[var(--border)] bg-[var(--surface)]"
     >
-      {/* The vitals sit LEFT of the keys and never move: they used to live in
-          the console's Vitals tab, where switching to Camera or Scene hid the
-          battery reading. */}
-      <VitalsNow telemetry={telemetry} session={session} />
-
-      <div aria-hidden="true" className="hidden self-stretch border-l border-[var(--border)] lg:block" />
-
-      <div className={`flex items-start gap-6 ${movementLive ? "" : "opacity-45"}`}>
-        <Cluster caption="Height · rotation">
-          <div className="grid grid-cols-3 gap-1">
-            <span />
-            <Cap label="W" field="up" intent={intent} />
-            <span />
-            <Cap label="A" field="yaw_left" intent={intent} />
-            <Cap label="S" field="down" intent={intent} />
-            <Cap label="D" field="yaw_right" intent={intent} />
-          </div>
-        </Cluster>
-
-        <Cluster caption="Position">
-          <div className="grid grid-cols-3 gap-1">
-            <span />
-            <Cap label="↑" field="forward" intent={intent} />
-            <span />
-            <Cap label="←" field="left" intent={intent} />
-            <Cap label="↓" field="back" intent={intent} />
-            <Cap label="→" field="right" intent={intent} />
-          </div>
-        </Cluster>
+      <div className="border-b border-[var(--border)] px-3 py-2.5">
+        <VitalsNow telemetry={telemetry} session={session} />
       </div>
 
-      {land && (
-        <Cluster caption="Down">
-          <Cap label="L" intent={intent} wide />
-        </Cluster>
-      )}
+      <div className="flex flex-wrap items-start gap-x-6 gap-y-3 px-3 py-2.5">
+        <div className={`flex items-start gap-5 ${movementLive ? "" : "opacity-45"}`}>
+          <Cluster caption="Height · rotation">
+            <div className="grid grid-cols-3 gap-1">
+              <span />
+              <Cap label="W" field="up" intent={intent} />
+              <span />
+              <Cap label="A" field="yaw_left" intent={intent} />
+              <Cap label="S" field="down" intent={intent} />
+              <Cap label="D" field="yaw_right" intent={intent} />
+            </div>
+          </Cluster>
 
-      <p className="mono min-w-0 flex-1 self-center text-[10px] leading-relaxed text-[var(--muted)]">
-        {!movementLive && <>Auto flies itself — the movement keys are inactive. L still lands.<br /></>}
-        Emergency stop is in the strip at the top and has no key.
-      </p>
+          <Cluster caption="Position">
+            <div className="grid grid-cols-3 gap-1">
+              <span />
+              <Cap label="↑" field="forward" intent={intent} />
+              <span />
+              <Cap label="←" field="left" intent={intent} />
+              <Cap label="↓" field="back" intent={intent} />
+              <Cap label="→" field="right" intent={intent} />
+            </div>
+          </Cluster>
+        </div>
+
+        {land && (
+          <Cluster caption="Down">
+            <Cap label="L" intent={intent} wide />
+          </Cluster>
+        )}
+      </div>
+
+      {!movementLive && (
+        <p className="mono border-t border-[var(--border)] px-3 py-1.5 text-[10px] leading-relaxed text-[var(--muted)]">
+          Auto flies itself — the movement keys are inactive. L still lands.
+        </p>
+      )}
     </section>
   );
 }
