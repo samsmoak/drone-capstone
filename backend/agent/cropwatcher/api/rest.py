@@ -35,6 +35,7 @@ from starlette.responses import Response
 from cropwatcher import history
 from cropwatcher.api.events import EventHub
 from cropwatcher.api.tokens import HEADER, load_or_create_token
+from cropwatcher.camera import FrameSource, NoCamera, TestPattern
 from cropwatcher.session import Mode, Session, SessionError
 from cropwatcher.sync.cloud import SupabaseCloud
 from cropwatcher.sync.outbox import Outbox
@@ -131,6 +132,16 @@ class Agent:
         self.session = Session(
             cloud=self.cloud, outbox=self.outbox, syncer=self.syncer,
             publish=self.hub.publish,
+        )
+        #: Where camera frames come from. NoCamera is the truth on this drone:
+        #: the AI deck is fitted but its Wi-Fi link has never worked, so there
+        #: is nothing producing frames. CROPWATCHER_CAMERA=test serves a
+        #: generated pattern instead, which is how the whole path — the route,
+        #: the window's content policy, the recorder and the upload — is proven
+        #: without one. A real deck source replaces this and nothing else moves.
+        self.camera: FrameSource = (
+            TestPattern() if os.environ.get("CROPWATCHER_CAMERA") == "test"
+            else NoCamera()
         )
 
 
@@ -260,6 +271,44 @@ def status() -> dict:
         "drone_connected": snapshot.drone is not None,
         "sync": agent.syncer.status.to_dict(),
     }
+
+
+@app.get("/camera")
+def camera_status() -> dict:
+    """What the Camera tab shows when there is nothing to show.
+
+    Unauthenticated, like /status and for the same reason: it carries no
+    operator details and commands nothing. `deck_fitted` is the DRONE's own
+    answer (deck.bcAI, read over the radio during the checks), so the tab
+    reports what was asked rather than what someone typed.
+    """
+    status = agent.camera.status()
+    fitted = agent.session.snapshot().ai_deck
+    return {**status.to_dict(), "deck_fitted": fitted}
+
+
+@app.get("/camera/frame")
+def camera_frame() -> Response:
+    """The latest frame, as an image.
+
+    Unauthenticated ON PURPOSE, and it is the narrowest route here: it is
+    read-only, it commands nothing, and the agent binds localhost. An <img> tag
+    cannot send a header, so requiring the token would mean putting it in a
+    query string — which the WebSocket deliberately avoids because a query
+    string lands in access logs. /status is already open and carries more.
+
+    204 when there is no camera: an empty body the window can distinguish from
+    a broken route, which a 404 would not.
+    """
+    frame = agent.camera.frame()
+    if frame is None:
+        return Response(status_code=204)
+    return Response(
+        content=frame,
+        media_type=agent.camera.content_type,
+        # A live feed must never be served from cache.
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.get("/session", dependencies=[Command])

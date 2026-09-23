@@ -156,15 +156,16 @@ export function AttitudeIndicator({ telemetry }: { telemetry: Telemetry | null }
           )}
         </svg>
 
+        {/* Attitude and rates only. Thrust and Height moved to the vitals
+            strip above, which is always on screen — showing them here as well
+            would be two places for one number. */}
         <dl className="mono grid min-w-0 flex-1 grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
           <Readout label="Roll" value={roll} unit="°" digits={1} />
           <Readout label="Pitch" value={pitch} unit="°" digits={1} />
           <Readout label="Yaw" value={yaw} unit="°" digits={1} />
-          <Readout label="Thrust" value={read(telemetry, "stabilizer.thrust")} unit="" digits={0} />
           <Readout label="Gyro x" value={read(telemetry, "gyro.x")} unit="°/s" digits={1} />
           <Readout label="Gyro y" value={read(telemetry, "gyro.y")} unit="°/s" digits={1} />
           <Readout label="Gyro z" value={read(telemetry, "gyro.z")} unit="°/s" digits={1} />
-          <Readout label="Height" value={telemetry?.height_m ?? null} unit="m" digits={2} />
         </dl>
       </div>
 

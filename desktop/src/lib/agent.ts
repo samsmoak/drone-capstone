@@ -81,6 +81,17 @@ export type Telemetry = {
 };
 
 /** Held-key state. Mirrors `Intent` in the agent, field for field. */
+/** What the agent says about the camera. See backend camera/source.py. */
+export type CameraStatus = {
+  live: boolean;
+  /** "none" | "test-pattern" | the deck, once one exists. */
+  kind: string;
+  reason: string | null;
+  /** The DRONE's own answer (deck.bcAI). null until a drone has been asked,
+   *  which is not the same as "not fitted". */
+  deck_fitted: boolean | null;
+};
+
 export type Intent = {
   up: boolean; down: boolean;
   forward: boolean; back: boolean;
@@ -106,6 +117,16 @@ export async function connectToShell(): Promise<void> {
 const base = () => `http://127.0.0.1:${port}`;
 
 export class AgentError extends Error {}
+
+/**
+ * The URL an <img> loads camera frames from.
+ *
+ * A bare URL rather than a fetch, because an <img> cannot send the control
+ * token in a header — and the agent serves this route unauthenticated for that
+ * reason: it is read-only, it commands nothing, and the agent binds localhost.
+ * `stamp` defeats the cache so a live feed does not freeze on the first frame.
+ */
+export const cameraFrameUrl = (stamp: number) => `${base()}/camera/frame?t=${stamp}`;
 
 async function command<T>(path: string, body?: unknown, method: "GET" | "POST" = "POST"): Promise<T> {
   let response: Response;
@@ -147,6 +168,7 @@ export const api = {
   /** Rise to a height and hold it, in Manual, without holding W. Not the Auto
    *  hover test — that one needs base stations; this works on the barometer. */
   holdManual: (height_m: number) => command<Session>("/session/manual/hold", { height_m }),
+  cameraStatus: () => command<CameraStatus>("/camera", undefined, "GET"),
   land: () => command<Session>("/session/land"),
   emergencyStop: () => command<Session>("/session/emergency-stop"),
   endSession: () => command<Session>("/session/end"),

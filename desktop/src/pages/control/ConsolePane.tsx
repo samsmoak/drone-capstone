@@ -16,7 +16,7 @@
 import { useState } from "react";
 import type { History } from "@/App";
 import type { LogLine } from "@/lib/commandLog";
-import type { Session, Telemetry } from "@/lib/agent";
+import type { Telemetry } from "@/lib/agent";
 import { TabPanel, Tabs, type TabDef } from "@/components/Tabs";
 import { StatusDot } from "@/components/ui";
 import { AttitudeIndicator } from "./AttitudeIndicator";
@@ -50,9 +50,8 @@ function initialTab(): ConsoleTab {
 }
 
 export function ConsolePane({
-  session, telemetry, history, logLines, onClearLog,
+  telemetry, history, logLines, onClearLog,
 }: {
-  session: Session | null;
   telemetry: Telemetry | null;
   history: History;
   logLines: LogLine[];
@@ -92,22 +91,22 @@ export function ConsolePane({
         <div className="border-b border-[var(--border)]">
           <AttitudeIndicator telemetry={telemetry} />
         </div>
-        {/* The command log first: when something has just been pressed, the
-            question is what the agent did with it. It gets the larger share —
-            its lines wrap and a refusal can run to three of them, while the
-            vitals tail is one fixed-width line per second. */}
-        <div className="flex min-h-0 flex-6 flex-col border-b border-[var(--border)]">
+        {/* The command log takes most of what is left. It got the height the
+            current-values grid used to occupy when that moved up into the
+            strip: its lines wrap and a refusal can run to three of them, while
+            the tail below is one fixed-width line per second. */}
+        <div className="flex min-h-0 flex-8 flex-col border-b border-[var(--border)]">
           <PaneTitle>Command log</PaneTitle>
           <CommandLog lines={logLines} onClear={onClearLog} />
         </div>
-        <div className="flex min-h-0 flex-5 flex-col">
+        <div className="flex min-h-0 flex-4 flex-col">
           <PaneTitle>Vitals</PaneTitle>
-          <VitalsTail telemetry={telemetry} history={history} session={session} />
+          <VitalsTail history={history} />
         </div>
       </TabPanel>
 
       <TabPanel id="console" tabKey="camera" active={tab === "camera"} className="flex min-h-0 flex-1 flex-col">
-        <CameraPane />
+        <CameraPane active={tab === "camera"} />
       </TabPanel>
 
       <TabPanel id="console" tabKey="scene" active={tab === "scene"} className="flex min-h-0 flex-1 flex-col">

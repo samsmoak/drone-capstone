@@ -125,6 +125,12 @@ class ReadyReport:
     #: point, and the guards that watch drift and altitude cannot run. Only
     #: unassisted manual flight is offered in that state.
     assisted: bool = True
+    #: Whether the AI deck is fitted, as the DRONE reports it (deck.bcAI, over
+    #: the radio). None when it could not be asked. The camera lives on that
+    #: deck, so this is the one thing about the camera the radio CAN answer —
+    #: the frames themselves need the deck's own Wi-Fi (see camera/source.py).
+    #: Recorded, never acted on: nothing refuses a flight over a camera.
+    ai_deck: bool | None = None
 
     @property
     def unassisted_reason(self) -> str | None:
@@ -330,6 +336,9 @@ def run_checks(
     # drone can do for itself, and the operator standing over it decides whether
     # to fly: a base station that is off is a recommendation, not a refusal.
     yield running(CheckKey.DECK)
+    # Asked at the same time as the positioning deck, because it is the same
+    # kind of question and the answer is free. It gates nothing.
+    ai_deck = _ai_deck_fitted(cf)
     if str(cf.param.get_value("deck.bcLighthouse4")) != "1":
         # No deck means no positioning at all, whatever the lighthouse
         # variables happen to read — there is nothing left to wait for.
@@ -343,6 +352,7 @@ def run_checks(
             hardware_id=hardware_id, vbat=vbat, endurance_s=endurance,
             ground_z_m=pz, takeoff_xy=(px, py), estimate_spread_m=float("inf"),
             positioning=assess_positioning(snapshot()), assisted=False,
+            ai_deck=ai_deck,
         )
     yield CheckResult(CheckKey.DECK, CheckStatus.PASSED, "Lighthouse deck fitted")
 
@@ -368,7 +378,7 @@ def run_checks(
         return ReadyReport(
             hardware_id=hardware_id, vbat=vbat, endurance_s=endurance,
             ground_z_m=pz, takeoff_xy=(px, py), estimate_spread_m=float("inf"),
-            positioning=status, assisted=False,
+            positioning=status, assisted=False, ai_deck=ai_deck,
         )
     yield CheckResult(
         CheckKey.POSITIONING, CheckStatus.PASSED,
@@ -406,7 +416,7 @@ def run_checks(
                     return ReadyReport(
                         hardware_id=hardware_id, vbat=vbat, endurance_s=endurance,
                         ground_z_m=gz, takeoff_xy=(gx, gy), estimate_spread_m=spread,
-                        positioning=status,
+                        positioning=status, ai_deck=ai_deck,
                     )
         sleep(SETTLE_POLL_S)
 
@@ -423,8 +433,28 @@ def run_checks(
     return ReadyReport(
         hardware_id=hardware_id, vbat=vbat, endurance_s=endurance,
         ground_z_m=pz, takeoff_xy=(px, py), estimate_spread_m=best,
-        positioning=status, assisted=False,
+        positioning=status, assisted=False, ai_deck=ai_deck,
     )
+
+
+def _ai_deck_fitted(cf: Any) -> bool | None:
+    """Is the AI deck fitted? Ask the drone; never infer it from a photo.
+
+    The camera lives on that deck, so this is the one camera question the RADIO
+    can answer — a param read, the same way the Lighthouse deck is checked. The
+    frames themselves cannot come this way: usable CRTP throughput is a few KB/s
+    and the same link carries the 50 Hz setpoint stream, which is why the deck
+    carries its own Wi-Fi chip.
+
+    None rather than False when the param is missing or unreadable: firmware
+    that does not publish it has not said "no deck", and recording a guess as a
+    measurement is what CLAUDE.md #5 exists to stop.
+    """
+    try:
+        return str(cf.param.get_value("deck.bcAI")) == "1"
+    except Exception:
+        log.debug("deck.bcAI could not be read", exc_info=True)
+        return None
 
 
 def collect(

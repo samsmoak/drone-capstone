@@ -1,78 +1,79 @@
 /**
  * What the drone sees — when there is anything to see.
  *
- * READ THIS BEFORE WIRING A STREAM IN. As of 2026-09-22 this project has no
- * camera pipeline at all, and that is not an oversight:
+ * THE WHOLE PATH IS REAL NOW; only the camera is not. Frames come from the
+ * agent's own `/camera/frame`, through the window's content policy, into this
+ * tab. What the agent puts behind that route is a `FrameSource`: today either
+ * "there is no camera" or a generated test pattern
+ * (`CROPWATCHER_CAMERA=test`), and one day the AI deck. Nothing here changes
+ * when the real one arrives.
  *
- *   1. The AI deck IS fitted — `deck.bcAI` reads 1 on the lab drone — but its
- *      Wi-Fi datalink never worked in the original capstone and was cut from
- *      final scope. CLAUDE.md lists it under "Out of scope".
- *   2. The agent serves no image or video route. Its live WebSocket carries
- *      telemetry, session and sync frames only.
- *   3. The window's CSP (desktop/src-tauri/tauri.conf.json) declares
- *      `default-src 'self'` and no `img-src`, so images fall back to 'self'.
- *      The deck serves from its own access point, which is neither 'self' nor
- *      127.0.0.1:8765 — THE WINDOW CANNOT RENDER A FRAME FROM IT TODAY.
+ * WHY THERE IS NO REAL SOURCE YET. The AI deck IS fitted — `deck.bcAI` reads 1,
+ * and the agent now asks the drone directly during the checks rather than
+ * trusting a note in the flight log. But its Wi-Fi datalink has never worked,
+ * and the frames cannot come over the radio instead: usable CRTP throughput is
+ * a few KB/s and the same link carries the 50 Hz setpoint stream, which the
+ * drone falls out of the air without. That is why the deck has its own Wi-Fi
+ * chip, and why this is a lab problem rather than a coding one.
  *
- * So this pane is the finished UI for a stream that does not exist yet: all
- * four states are real code paths, and the empty state says plainly what is
- * missing rather than showing a grey box. Turning it on later is three things:
- * a datalink, an agent route that relays frames, and a CSP entry — after which
- * only CAMERA_URL below needs to change.
+ * `deck_fitted` is the drone's answer, not a sentence someone typed: the pane
+ * distinguishes "the deck is fitted and the link is down" from "nothing has
+ * asked yet", because those need different things done about them.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api, cameraFrameUrl, type CameraStatus } from "@/lib/agent";
 import { Button, Message, Spinner, StatusDot } from "@/components/ui";
 
-/**
- * Where frames would come from. `null` while no relay exists.
- *
- * It must be a URL the window's CSP permits — i.e. served by the agent on
- * 127.0.0.1:8765, not fetched from the deck directly. The agent is the only
- * process allowed to talk to the drone's hardware, and that rule holds for the
- * camera exactly as it holds for the radio.
- */
-const CAMERA_URL: string | null = null;
-
-type CameraState =
-  | { kind: "probing" }
-  | { kind: "unavailable"; reason: string }
-  | { kind: "error"; message: string }
-  | { kind: "live"; url: string };
+/** How often a new frame is pulled while the feed is live. */
+const FRAME_MS = 200;
 
 /** How long a frame can be stale before the overlay stops claiming "live". */
 const STALE_MS = 2000;
 
-export function CameraPane() {
-  const [state, setState] = useState<CameraState>({ kind: "probing" });
+type Load =
+  | { kind: "probing" }
+  | { kind: "error"; message: string }
+  | { kind: "ready"; status: CameraStatus };
+
+export function CameraPane({ active }: {
+  /** Whether the Camera tab is the one showing. Frames are not pulled behind a
+   *  hidden tab — that is a request every 200 ms for an image nobody sees. */
+  active: boolean;
+}) {
+  const [load, setLoad] = useState<Load>({ kind: "probing" });
+  const [stamp, setStamp] = useState(() => Date.now());
   const [frameAt, setFrameAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const failures = useRef(0);
 
-  const probe = useCallback(() => {
-    setState({ kind: "probing" });
+  const probe = useCallback(async () => {
+    setLoad({ kind: "probing" });
     setFrameAt(null);
-    if (CAMERA_URL === null) {
-      setState({
-        kind: "unavailable",
-        reason:
-          "No camera datalink. The AI deck is fitted on this drone, but its Wi-Fi " +
-          "link is not connected and the flight agent serves no video, so there is " +
-          "nothing for this window to show.",
+    failures.current = 0;
+    try {
+      setLoad({ kind: "ready", status: await api.cameraStatus() });
+    } catch (e) {
+      setLoad({
+        kind: "error",
+        message: e instanceof Error ? e.message : "Could not ask the agent about the camera.",
       });
-      return;
     }
-    setState({ kind: "live", url: CAMERA_URL });
   }, []);
 
-  useEffect(probe, [probe]);
+  useEffect(() => { void probe(); }, [probe]);
 
-  // Only tick while a stream is actually up: a clock running behind an empty
-  // pane is a re-render ten times a minute for nothing.
+  const live = load.kind === "ready" && load.status.live;
+
+  // Pull frames only while the tab is showing AND something is producing them.
   useEffect(() => {
-    if (state.kind !== "live") return;
-    const timer = window.setInterval(() => setNow(Date.now()), 500);
+    if (!active || !live) return;
+    const timer = window.setInterval(() => {
+      setStamp(Date.now());
+      setNow(Date.now());
+    }, FRAME_MS);
     return () => window.clearInterval(timer);
-  }, [state.kind]);
+  }, [active, live]);
 
   const age = frameAt === null ? null : now - frameAt;
   const fresh = age !== null && age < STALE_MS;
@@ -80,72 +81,75 @@ export function CameraPane() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="relative flex min-h-0 flex-1 items-center justify-center bg-[var(--console)] p-4">
-        {/* The frame keeps 4:3 whatever the pane does, so the empty state and a
-            real stream occupy exactly the same box. */}
-        <div className="relative aspect-[4/3] w-full max-w-[520px] border border-[var(--console-line)]">
-          {state.kind === "probing" && (
+        {/* The frame keeps 1:1 — the deck's sensor is 320x320 — so the empty
+            state and a real stream occupy exactly the same box. */}
+        <div className="relative aspect-square w-full max-w-[420px] border border-[var(--console-line)]">
+          {load.kind === "probing" && (
             <div className="absolute inset-0 flex items-center justify-center px-6">
-              <Spinner label="Looking for a camera on this drone…" />
+              <Spinner label="Asking the agent about the camera…" />
             </div>
           )}
 
-          {state.kind === "unavailable" && (
-            <div className="absolute inset-0 grid content-center gap-3 px-6 text-center">
-              <p className="mono text-xs uppercase tracking-[0.1em] text-[var(--console-dim)]">
-                No signal
-              </p>
-              <p className="text-sm leading-relaxed text-[var(--console-ink)]">{state.reason}</p>
-              <p className="text-xs leading-relaxed text-[var(--console-dim)]">
-                Turning this on needs three things: a working datalink from the deck, a
-                route on the flight agent that relays its frames, and an <code>img-src</code>{" "}
-                entry in the window's content policy. The agent stays the only process
-                that talks to the drone's hardware.
-              </p>
-            </div>
-          )}
-
-          {state.kind === "error" && (
+          {load.kind === "error" && (
             <div className="absolute inset-0 grid content-center gap-3 px-6">
-              <Message tone="critical" text={state.message} />
+              <Message tone="critical" text={load.message} />
               <div className="flex justify-center">
-                <Button onClick={probe}>Try again</Button>
+                <Button onClick={() => void probe()}>Try again</Button>
               </div>
             </div>
           )}
 
-          {state.kind === "live" && (
+          {load.kind === "ready" && !load.status.live && (
+            <div className="absolute inset-0 grid content-center gap-3 px-6 text-center">
+              <p className="mono text-xs uppercase tracking-[0.1em] text-[var(--console-dim)]">
+                No signal
+              </p>
+              <p className="text-sm leading-relaxed text-[var(--console-ink)]">
+                {load.status.reason ?? "No camera is connected."}
+              </p>
+              <DeckLine fitted={load.status.deck_fitted} />
+            </div>
+          )}
+
+          {load.kind === "ready" && load.status.live && (
             <>
               <img
-                src={state.url}
+                // `stamp` in the URL is what makes this a feed rather than one
+                // cached image; the agent also sends no-store.
+                src={cameraFrameUrl(stamp)}
                 alt="The drone's camera view"
                 className="h-full w-full object-cover"
-                onLoad={() => setFrameAt(Date.now())}
-                onError={() =>
-                  setState({
-                    kind: "error",
-                    message:
-                      "The camera stream stopped. The drone may have moved out of range of " +
-                      "its datalink, or the relay on the flight agent may have ended.",
-                  })
-                }
+                onLoad={() => { failures.current = 0; setFrameAt(Date.now()); }}
+                onError={() => {
+                  // One dropped frame is a hiccup; several in a row is a feed
+                  // that has stopped, and saying so at the first is noise.
+                  failures.current += 1;
+                  if (failures.current >= 5) {
+                    setLoad({
+                      kind: "error",
+                      message:
+                        "The camera stream stopped. The drone may have moved out of range " +
+                        "of its datalink, or the relay on the flight agent may have ended.",
+                    });
+                  }
+                }}
               />
               <Reticle />
             </>
           )}
 
-          {/* Drawn on every state: the pane should read as a camera view even
-              when it is empty, and an empty frame with no furniture reads as a
-              rendering bug instead. */}
-          {state.kind !== "live" && <Reticle dim />}
+          {!live && <Reticle dim />}
         </div>
       </div>
 
       <div className="mono flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-[var(--console-line)] bg-[var(--console)] px-3 py-1.5 text-[10px] uppercase tracking-[0.08em]">
         <span className="text-[var(--console-dim)]">
-          {state.kind === "live" ? "AI deck · 4:3" : "AI deck · not connected"}
+          {load.kind === "ready" && load.status.live
+            ? `${load.status.kind} · 320×320`
+            : "AI deck · not connected"}
         </span>
         <span>
-          {state.kind === "live" ? (
+          {live ? (
             <StatusDot tone={fresh ? "good" : "warning"}>
               {age === null ? "Waiting for a frame" : fresh ? `Live · ${age} ms` : `Stale · ${(age / 1000).toFixed(1)} s`}
             </StatusDot>
@@ -158,13 +162,48 @@ export function CameraPane() {
   );
 }
 
+/**
+ * What the drone said about the deck, and what that means.
+ *
+ * Three states and they are genuinely different: fitted with no link is a lab
+ * problem, not fitted is a hardware one, and "nothing has asked" is neither —
+ * it just means no session has run the checks yet.
+ */
+function DeckLine({ fitted }: { fitted: boolean | null }) {
+  if (fitted === null) {
+    return (
+      <p className="text-xs leading-relaxed text-[var(--console-dim)]">
+        The drone has not been asked whether the AI deck is fitted — that happens
+        during the checks. Start a session to find out.
+      </p>
+    );
+  }
+  if (!fitted) {
+    return (
+      <p className="text-xs leading-relaxed text-[var(--console-dim)]">
+        The drone reports <strong>no AI deck</strong> (deck.bcAI = 0). There is no
+        camera on this airframe to connect to.
+      </p>
+    );
+  }
+  return (
+    <p className="text-xs leading-relaxed text-[var(--console-dim)]">
+      The drone reports the <strong>AI deck is fitted</strong> (deck.bcAI = 1), so the
+      camera is there — what is missing is the link to it. Frames cannot come over
+      the radio: that link carries the 50 Hz setpoint stream the drone stays in the
+      air on. The deck's own Wi-Fi is the route, and getting it working is a lab
+      job.
+    </p>
+  );
+}
+
 /** Corner brackets and a centre cross — camera furniture, not data. */
 function Reticle({ dim = false }: { dim?: boolean }) {
   const stroke = dim ? "var(--console-line)" : "var(--adi-ink)";
   return (
     <svg
       aria-hidden="true"
-      viewBox="0 0 400 300"
+      viewBox="0 0 400 400"
       className="pointer-events-none absolute inset-0 h-full w-full"
       fill="none"
       stroke={stroke}
@@ -173,9 +212,9 @@ function Reticle({ dim = false }: { dim?: boolean }) {
     >
       <path d="M16 40 V16 H40" />
       <path d="M360 16 H384 V40" />
-      <path d="M384 260 V284 H360" />
-      <path d="M40 284 H16 V260" />
-      <path d="M186 150 H196 M204 150 H214 M200 136 V146 M200 154 V164" />
+      <path d="M384 360 V384 H360" />
+      <path d="M40 384 H16 V360" />
+      <path d="M186 200 H196 M204 200 H214 M200 186 V196 M200 204 V214" />
     </svg>
   );
 }

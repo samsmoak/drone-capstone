@@ -1,0 +1,110 @@
+CAMERA — the path is built; the camera is not
+=============================================
+
+WHAT IT IS
+
+The Control page's Camera tab, and everything behind it: a frame source in the
+agent, a route that serves frames, the window's content policy, and the tab that
+renders them. All of it runs today against a generated test pattern.
+
+WHAT IS MISSING IS ONE LINK. The AI deck is fitted — the agent now asks the
+drone directly — but its Wi-Fi datalink has never worked, so nothing is
+producing real frames. Everything downstream of that link is ordinary work, so
+it was built and proven rather than left as a drawing. When a lab session works
+out how to reach the deck, ONE class is written and nothing else moves.
+
+
+WHERE IT LIVES
+
+  backend/agent/cropwatcher/camera/source.py   FrameSource, NoCamera, TestPattern
+  backend/agent/cropwatcher/api/rest.py        GET /camera, GET /camera/frame
+  backend/agent/cropwatcher/flight/checks.py   _ai_deck_fitted — deck.bcAI
+  backend/agent/tests/test_camera.py
+  desktop/src/pages/control/CameraPane.tsx     the tab and its four states
+  desktop/src/lib/agent.ts                     cameraFrameUrl, api.cameraStatus
+  desktop/src-tauri/tauri.conf.json            the img-src the frames need
+
+
+WHAT THE RADIO CAN AND CANNOT DO
+
+  ask whether the deck is fitted      YES — deck.bcAI, a param read
+  carry the frames                    NO
+
+`deck.bcAI` is read during the checks, beside `deck.bcLighthouse4`, and lands on
+the session snapshot as `ai_deck`. It gates nothing; it is recorded and shown.
+None rather than False when it cannot be read: firmware that does not publish
+the param has not said "no deck", and recording a guess as a measurement is what
+CLAUDE.md #5 exists to stop.
+
+The frames cannot come the same way. Usable CRTP throughput is a few KB/s and a
+single 320x320 frame is tens of KB — but the real objection is not bandwidth, it
+is that THE SAME LINK CARRIES THE 50 Hz SETPOINT STREAM. The Crazyflie stops
+accepting control below about 10 Hz of commands and drops; congesting the radio
+with image data risks the drone. That is why the deck carries its own Wi-Fi chip,
+and it is why this is a lab problem rather than a coding one.
+
+Bitcraze's CPX can route deck data over CRTP, so a still frame every few seconds
+is possible in principle. It still shares the link with control, it needs the
+deck flashed for it, and it is not video.
+
+
+THE SOURCES
+
+  NoCamera      the truth on this drone. Frames are None; the route answers 204
+  TestPattern   a generated 320x320 PNG, the deck's own sensor size
+  (the deck)    not written — this is the one unknown
+
+`CROPWATCHER_CAMERA=test` selects the pattern. It MOVES: a band sweeps down and a
+counter bar advances, because a still image cannot tell a live feed from a frozen
+one — which is the exact failure a real feed has.
+
+The PNG encoder is written by hand with zlib from the standard library. Pillow
+would be clearer and is tens of megabytes into a binary that ships to operators
+inside a 48 MB installer, for a picture nobody sees once a real camera exists.
+
+
+THE ROUTES
+
+  GET /camera         status as JSON: live, kind, reason, deck_fitted
+  GET /camera/frame   the latest frame, or 204 when there is none
+
+BOTH ARE UNAUTHENTICATED, deliberately. An <img> cannot send a header, so
+requiring the control token would mean putting it in a query string — which the
+WebSocket deliberately avoids because a query string lands in access logs. These
+routes are read-only, they command nothing, the agent binds localhost, and
+/status is already open and carries more.
+
+204 rather than 404 for "no camera": an empty body the window can tell apart
+from a broken route.
+
+
+DECISIONS
+
+- Built against a test pattern rather than waiting for the deck. The deck is one
+  unknown; the route, the content policy, the four states and the cache
+  behaviour are four knowns, and proving them now means the lab session is
+  plug-in-and-check instead of build-and-debug.
+- `deck_fitted` has three states and they need different things done about them:
+  fitted with no link is a lab problem, not fitted is a hardware one, and null
+  means no session has run the checks yet.
+- The tab does not poll behind a hidden tab. A frame request every 200 ms for an
+  image nobody is looking at is waste on a laptop that is also flying a drone.
+- One dropped frame is a hiccup; five in a row is a stopped feed. Reporting the
+  first would make a normal feed look broken.
+
+
+INVARIANTS
+
+- The frame URL carries a changing stamp and the route sends `no-store`. Without
+  both, the <img> shows the first frame forever and the feed looks frozen when
+  it is fine.
+- img-src must list the agent's origin in tauri.conf.json. `default-src 'self'`
+  covers images when img-src is absent, so the window silently renders nothing —
+  no error, no broken-image icon in some cases, just an empty frame.
+- Deck presence is a PARAM, not a log variable. It cannot ride the 10 Hz
+  telemetry stream, and asking for it there would be looking in the wrong place.
+
+
+LAST VERIFIED  2026-09-23. Routes exercised against a running agent with
+CROPWATCHER_CAMERA=test; the pattern rendered in the tab through the real CSP
+and the real <img>. No real camera has ever been reached.

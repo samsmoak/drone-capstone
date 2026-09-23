@@ -31,6 +31,7 @@ Feature docs are plain `.txt`, grouped by the surface they describe.
 | Doc | What it covers |
 |---|---|
 | [features/desktop/desktop-app.txt](features/desktop/desktop-app.txt) | The shell, the bundled agent sidecar, installers and CI |
+| [features/desktop/camera.txt](features/desktop/camera.txt) | The camera path — built and proven on a test pattern; the deck's own link is the one missing piece |
 | [features/desktop/pages-and-windows.txt](features/desktop/pages-and-windows.txt) | The sidebar shell, Control's two columns and its console, the five live sensor windows, and how the layout is measured |
 
 ## Frontend — the web app (`web/`)
