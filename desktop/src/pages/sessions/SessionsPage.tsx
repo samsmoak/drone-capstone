@@ -25,9 +25,9 @@ export function SessionsPage({ refreshKey, mode, selectedId, onSelect }: {
   }
 
   return (
-    <div className="grid gap-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <PageHeader title={allModes ? "Sessions" : `${MODE_LABEL[mode]} sessions`}>
+    <div className="grid gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <PageHeader eyebrow="Operate" title={allModes ? "Sessions" : `${MODE_LABEL[mode]} sessions`}>
           Every session run on this computer: who ran it, when it started and ended, and what the
           drone reported. Open one for its flights and readings.
         </PageHeader>
@@ -44,7 +44,7 @@ export function SessionsPage({ refreshKey, mode, selectedId, onSelect }: {
           emptyText={<p>No sessions on this computer yet.</p>}
         >
           {(records) => (
-            <ul className="-mx-4 divide-y divide-[var(--border)]">
+            <ul className="-mx-5 divide-y divide-[var(--border)]">
               {records.map((r) => <SessionRow key={r.id} record={r} onOpen={() => onSelect(r.id)} />)}
             </ul>
           )}
@@ -67,7 +67,7 @@ function SessionDetail({ id, mode, onBack }: { id: string; mode: Mode | null; on
   useEffect(() => { void load(); }, [load]);
 
   return (
-    <div className="grid gap-6">
+    <div className="grid gap-4">
       <div>
         <button type="button" onClick={onBack} className="text-sm font-medium text-[var(--muted)] hover:text-[var(--foreground)]">
           ← All sessions
@@ -96,15 +96,15 @@ function SessionDetailBody({ record, mode }: { record: SessionRecord; mode: Mode
         on drone {record.drone_hardware_id ?? "unknown"}.
       </PageHeader>
 
-      <section className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      {/* One row of eight rather than two of four: the whole summary of a
+          session should be readable without the eye travelling down a column. */}
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-4 2xl:grid-cols-8">
         <Stat label="Started" value={formatTime(record.started_at)} />
         <Stat label="Ended" value={record.ended_at ? formatTime(record.ended_at) : "Running"}
               hint={endReasonLabel(record.end_reason)} />
         <Stat label="Duration" value={formatDuration(record.duration_s)} />
         <Stat label="Flights" value={String(record.flights.length)}
               hint={`${record.mode === "auto" ? "Auto" : "Manual"}${record.assisted ? "" : " · unassisted"}`} />
-      </section>
-      <section className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Stat label="Battery start" value={s.battery_start_v} unit="V" />
         <Stat label="Battery lowest" value={s.battery_min_v} unit="V" />
         <Stat label="Highest" value={s.max_height_m} unit="m" hint="Above the floor at takeoff" />

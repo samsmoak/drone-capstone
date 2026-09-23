@@ -22,9 +22,13 @@ export function StartupPage({ connected }: { connected: boolean }) {
   }, []);
 
   return (
-    <div className="grid gap-6">
-      <header className="grid gap-2">
-        <Skeleton className="h-9 w-72" />
+    <div className="grid gap-5">
+      {/* The shape of the page that is coming: an eyebrow, a title, a line of
+          description. The sidebar and the strip are already real by now — only
+          the page itself is unknown. */}
+      <header className="grid gap-1.5">
+        <Skeleton className="h-2.5 w-20" />
+        <Skeleton className="h-7 w-64" />
         <Skeleton className="h-4 w-full max-w-xl" />
       </header>
 
@@ -44,17 +48,19 @@ export function StartupPage({ connected }: { connected: boolean }) {
         />
       )}
 
-      <section aria-hidden="true" className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="min-w-0 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
-            <Skeleton className="h-3 w-20" />
-            <Skeleton className="mt-3 h-7 w-24" />
-            <Skeleton className="mt-3 h-3 w-28" />
+      {/* Five across, matching Home's status row, so nothing jumps when the
+          real figures arrive. */}
+      <section aria-hidden="true" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="min-w-0 border border-[var(--border)] bg-[var(--surface)] p-4">
+            <Skeleton className="h-2.5 w-16" />
+            <Skeleton className="mt-2.5 h-6 w-20" />
+            <Skeleton className="mt-2.5 h-2.5 w-24" />
           </div>
         ))}
       </section>
 
-      <div aria-hidden="true" className="grid gap-5">
+      <div aria-hidden="true" className="grid gap-4">
         <SkeletonPanel lines={4} />
         <SkeletonPanel lines={2} />
       </div>

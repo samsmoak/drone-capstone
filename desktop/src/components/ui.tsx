@@ -9,6 +9,12 @@
  * - **A missing value is stated, not rendered as blank or zero.** A blank panel
  *   where a battery voltage belongs reads as "fine" to an operator about to fly.
  * - **Status ships icon + words.** Colour never carries the meaning alone.
+ *
+ * DELIBERATE DIVERGENCES from the web file (2026-09-22), NOT propagated back:
+ * every corner is square (see --radius-* in styles.css), the padding is tighter
+ * because a desktop window is denser than a web page, and PageHeader is set in
+ * Inter rather than Fraunces. The rules above, and the colour tokens, are
+ * shared and should stay shared.
  */
 
 import type { ReactNode } from "react";
@@ -59,13 +65,12 @@ export function Stat({
   const isText = typeof value === "string";
 
   return (
-    <div className={`min-w-0 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 ${className}`}>
+    <div className={`min-w-0 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 ${className}`}>
       <p className="eyebrow">{label}</p>
-      <p className="mt-2.5 flex flex-wrap items-baseline gap-x-1.5">
+      <p className="mt-2 flex flex-wrap items-baseline gap-x-1.5">
         <span
-
           className={`min-w-0 font-bold ${
-            isText ? (fit ? "wrap-anywhere text-[15px] leading-snug" : "text-base wrap-anywhere") : "tabular text-[26px] leading-none"
+            isText ? (fit ? "wrap-anywhere text-[15px] leading-snug" : "text-base wrap-anywhere") : "tabular text-[24px] leading-none"
           } ${missing ? "text-[var(--muted)]" : "text-[var(--foreground)]"}`}
         >
           {missing ? "—" : shown}
@@ -90,11 +95,22 @@ export function Stat({
  *
  * Every page carries one, in the same place and the same colour, so the window
  * always answers "where am I" without the operator reading the nav back.
+ *
+ * Set in Inter, not Fraunces. The display serif stays on the sidebar's brand
+ * mark — one place, so the app still reads as the same product as the website —
+ * but a serif title sitting above a terminal and an attitude indicator reads as
+ * a marketing page, not an instrument panel.
  */
-export function PageHeader({ title, children }: { title: string; children?: ReactNode }) {
+export function PageHeader({ title, eyebrow, children }: {
+  title: string;
+  /** The section this page belongs to, when the sidebar group is not enough. */
+  eyebrow?: string;
+  children?: ReactNode;
+}) {
   return (
-    <header className="grid gap-2">
-      <h1 className="font-display wrap-anywhere text-[26px] font-bold leading-tight text-[var(--heading)]">
+    <header className="grid gap-1.5">
+      {eyebrow && <p className="eyebrow">{eyebrow}</p>}
+      <h1 className="wrap-anywhere text-[22px] font-bold leading-tight tracking-[-0.015em] text-[var(--heading)]">
         {title}
       </h1>
       {children && <p className="max-w-2xl text-sm leading-relaxed text-[var(--muted)]">{children}</p>}
@@ -103,26 +119,35 @@ export function PageHeader({ title, children }: { title: string; children?: Reac
 }
 
 export function Panel({
-  title, children, action, note,
+  title, children, action, note, className = "", bodyClassName = "",
 }: {
   title: string;
   children: ReactNode;
   action?: ReactNode;
   note?: ReactNode;
+  /** Layout from the caller — a panel that must fill a column, for instance. */
+  className?: string;
+  /** For a body that owns its own padding, like the console panes. */
+  bodyClassName?: string;
 }) {
   return (
-    <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] pb-4">
+    <section className={`rounded-xl border border-[var(--border)] bg-[var(--surface)] ${className}`}>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] px-5 py-3">
         {/* The rule is decorative (it carries no meaning colour has to convey);
-            the title's own colour is the measured --heading token. */}
-        <h2 className="flex min-w-0 items-center gap-2.5 text-base font-bold tracking-tight text-[var(--heading)]">
-          <span aria-hidden="true" className="h-4 w-1 shrink-0 rounded-full bg-[var(--primary)]" />
+            the title's own colour is the measured --heading token. Square now,
+            like everything else — see --radius-* in styles.css. */}
+        <h2 className="flex min-w-0 items-center gap-2.5 text-sm font-bold uppercase tracking-[0.06em] text-[var(--heading)]">
+          <span aria-hidden="true" className="h-3.5 w-0.5 shrink-0 bg-[var(--primary)]" />
           {title}
         </h2>
         {action}
       </div>
-      {note && <p className="mb-5 max-w-3xl text-sm leading-relaxed text-[var(--muted)]">{note}</p>}
-      {children}
+      {/* The note sits outside the body so a panel whose body owns its own
+          padding (the console panes) still gets a readable note. */}
+      {note && (
+        <p className="max-w-3xl px-5 pt-4 text-sm leading-relaxed text-[var(--muted)]">{note}</p>
+      )}
+      <div className={bodyClassName || "p-5"}>{children}</div>
     </section>
   );
 }

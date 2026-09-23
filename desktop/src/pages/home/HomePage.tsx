@@ -11,7 +11,7 @@
  * state it is already being sent rather than tracking progress of its own.
  */
 
-import type { Page } from "@/App";
+import type { Page, Run } from "@/App";
 import type { Mode, Session, SyncStatus, Telemetry } from "@/lib/agent";
 import { SignIn } from "@/pages/control/ControlPage";
 import { Button, PageHeader, Panel, Stat, StatusDot } from "@/components/ui";
@@ -21,7 +21,7 @@ type Props = {
   telemetry: Telemetry | null;
   sync: SyncStatus | null;
   connected: boolean;
-  run: (action: () => Promise<unknown>) => Promise<void>;
+  run: Run;
   onGo: (page: Page) => void;
 };
 
@@ -102,15 +102,18 @@ export function HomePage({ session, telemetry, sync, connected, run, onGo }: Pro
   const pending = sync ? sync.pending_flights + sync.pending_events : 0;
 
   return (
-    <div className="grid gap-6">
-      <PageHeader title={greeting(session)}>
+    <div className="grid gap-5">
+      <PageHeader eyebrow="Operate" title={greeting(session)}>
         This computer holds the radio, so this is the only app that can fly the
         drone. It records every flight and uploads it to the dashboard.
       </PageHeader>
 
       {session?.state === "signed_out" && <SignIn run={run} />}
 
-      <section aria-label="Status" className="grid grid-cols-2 gap-4 md:grid-cols-5">
+      {/* Four across, with the email given two of them. It is text, not a
+          figure, and it is never truncated — an operator checking which
+          account a flight will be recorded against needs the whole address. */}
+      <section aria-label="Status" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Stat
           label="Flight agent"
           value={connected ? "Running" : "Not running"}
@@ -149,10 +152,10 @@ export function HomePage({ session, telemetry, sync, connected, run, onGo }: Pro
 
       <Panel
         title="What to do next"
-        note={`In ${mode === "auto" ? "Auto" : "Manual"} mode. Switch at the top — the steps up to the last one are the same either way.`}
+        note={`In ${mode === "auto" ? "Auto" : "Manual"} mode. Switch in the sidebar — the steps up to the last one are the same either way.`}
         action={<Button variant="primary" onClick={() => onGo("control")}>Open Control</Button>}
       >
-        <ol className="grid gap-3">
+        <ol className="grid gap-1.5">
           {steps(mode).map((step, index) => {
             const done = index < progress;
             const current = index === progress;
@@ -160,7 +163,10 @@ export function HomePage({ session, telemetry, sync, connected, run, onGo }: Pro
               <li
                 key={step.title}
                 aria-current={current ? "step" : undefined}
-                className={`flex gap-3 rounded-lg border p-3 ${
+                // A rail down the left edge rather than a box: the current step
+                // has to be findable at a glance without five outlined cards
+                // competing for the same attention.
+                className={`flex gap-3 border-l-2 py-1.5 pl-3 ${
                   current
                     ? "border-[var(--primary)] bg-[var(--surface-2)]"
                     : "border-transparent"
@@ -168,7 +174,7 @@ export function HomePage({ session, telemetry, sync, connected, run, onGo }: Pro
               >
                 <span
                   aria-hidden="true"
-                  className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold ${
+                  className={`mono mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center border text-[10px] font-bold ${
                     done
                       ? "border-[var(--status-good)] text-[var(--status-good)]"
                       : current
@@ -178,12 +184,12 @@ export function HomePage({ session, telemetry, sync, connected, run, onGo }: Pro
                 >
                   {done ? "✓" : index + 1}
                 </span>
-                <div>
-                  <p className={done ? "text-sm text-[var(--muted)]" : "text-sm font-medium"}>
+                <div className="min-w-0">
+                  <p className={done ? "text-sm text-[var(--muted)]" : "text-sm font-semibold"}>
                     {step.title}
                     {done && <span className="sr-only"> — done</span>}
                   </p>
-                  <p className="text-sm text-[var(--muted)]">{step.detail}</p>
+                  <p className="text-sm leading-relaxed text-[var(--muted)]">{step.detail}</p>
                 </div>
               </li>
             );
@@ -191,9 +197,9 @@ export function HomePage({ session, telemetry, sync, connected, run, onGo }: Pro
         </ol>
       </Panel>
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid gap-3 lg:grid-cols-2">
         <Panel title="Before you fly">
-          <ul className="grid gap-2 text-sm">
+          <ul className="grid gap-2 text-sm leading-relaxed">
             <li>The Crazyradio dongle is in a USB port on this computer.</li>
             <li>The drone has a charged battery and is switched on, on the floor.</li>
             <li>
@@ -213,14 +219,14 @@ export function HomePage({ session, telemetry, sync, connected, run, onGo }: Pro
         </Panel>
 
         <Panel title="Stopping it">
-          <dl className="grid gap-3 text-sm">
+          <dl className="grid gap-3 text-sm leading-relaxed">
             <div>
               <dt className="font-medium">
-                Land <kbd className="rounded border border-[var(--border)] px-1 text-xs">L</kbd>
+                Land <kbd className="mono border border-[var(--border)] px-1 text-xs">L</kbd>
               </dt>
               <dd className="text-[var(--muted)]">
                 The normal way down: it descends and settles under control. Always in
-                the top bar while a session is running.
+                the strip at the top of the window while a session is running.
               </dd>
             </div>
             <div>

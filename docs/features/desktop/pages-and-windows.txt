@@ -3,15 +3,16 @@ PAGES AND WINDOWS — what the desktop app shows
 
 WHAT IT IS
 
-A top bar and one page at a time. The top bar carries the Auto/Manual toggle,
-the pages, who is signed in, the sync state, and — whenever a session is live —
-Land and Emergency stop.
+A left sidebar, a slim strip across the top, and one page at a time. The
+sidebar carries the pages, the Auto/Manual toggle and the account. The strip
+carries the sync state and — whenever a session is live — Land and Emergency
+stop.
 
   Home         where you are and what to do next; the sign-in form when signed
                out. Opens first.
-  Control      checks, confirmation, the battery & motor test, the controls
-               for the mode, Retry after an abnormal end, End session, and the
-               recent sessions for the selected mode
+  Control      two columns: the console on the left (vitals, camera, scene),
+               the controls on the right (the action rail, the step's own
+               controls, the keypad). Recent sessions beneath both.
   Sessions     every session (who, when, how it ended) and one session's detail
   Flight       position, speed, attitude, thrust
   Power        battery, will-it-arm, per-motor
@@ -22,14 +23,27 @@ Land and Emergency stop.
 
 WHERE IT LIVES
 
-  desktop/src/App.tsx                    the shell, the nav, the keyboard, Land/Stop
+  desktop/src/App.tsx                    the shell, the keyboard, `run`
+  desktop/src/components/Sidebar.tsx     the left rail: pages, mode, account
+  desktop/src/components/nav-items.ts    the nav groups and their icons
+  desktop/src/components/FlightStrip.tsx the top strip: sync, Land, Stop, End
+  desktop/src/components/Tabs.tsx        the tab strip primitive
+  desktop/src/components/ui.tsx          Panel, Stat, Button, Message, Spinner
+  desktop/src/components/ProfileMenu.tsx the account menu
+  desktop/src/lib/commandLog.ts          the console's log, and the narrator
+  desktop/src/measure.ts                 the layout measurement (see below)
   desktop/src/pages/home/                status and the next step
-  desktop/src/pages/control/             the session flow and both modes
+  desktop/src/pages/control/             the session flow, both modes, and:
+                                           ConsolePane      the three tabs
+                                           AttitudeIndicator the ADI + compass
+                                           CommandLog       what we asked for
+                                           VitalsTail       what it reports
+                                           CameraPane       what it can see
+                                           SceneView        where it is
   desktop/src/pages/windows/             the five live sensor windows, LiveChart
   desktop/src/pages/sessions/            RecentSessions, SessionsPage, WindowLog,
                                          and the parts they share
   desktop/src/pages/startup/             the loading state
-  desktop/src/components/                ui.tsx, ProfileMenu.tsx
   desktop/src/lib/                       agent.ts, format.ts, web.ts
   desktop/src/harness.tsx                the layout harness (see below)
 
@@ -37,19 +51,119 @@ One folder per page, imported through the `@/` alias (tsconfig + vite), so
 moving a file does not rewrite a dozen relative imports.
 
 
-TOP BAR
+THE SHELL: A SIDEBAR THAT NAVIGATES, A STRIP THAT STOPS
 
-One container width and side padding (max-w-6xl, px-6) for the bar and the page,
-so their edges line up. It carries the brand (Home), the Auto/Manual toggle, the
-pages, the sync state, Land and Emergency stop while flying, End session while a
-session is running and nothing is flying, and the profile menu: an initial in a
-circle, opening to name, email and role with Sign in or Sign out. The bar never
-shows a bare email address.
+The sidebar is copy-adapted from web/components/operator/OperatorSidebar.tsx —
+brand at the top, the pages in groups, the way out and the account at the foot —
+so the app and the dashboard navigate the same way.
+
+The split between the two surfaces is not cosmetic:
+
+  sidebar   pages, the Auto/Manual mode, "Open the dashboard", the account
+  strip     the session state chip, sync, Land, Emergency stop, End session
+
+A nav rail scrolls. An abort control must never be scrollable out of reach, so
+Land and Emergency stop cannot live in it. That is the whole reason there are
+two surfaces rather than one.
+
+There is no container width any more. `CONTAINER` (max-w-6xl) is gone: a desktop
+window should use the width it has, unlike a web page, and the two-column
+Control page needs all of it.
+
+
+CONTROL: TWO COLUMNS
+
+Above `lg`, left is the console and right is the controls. Below it they stack,
+CONTROLS FIRST — which is why the controls come first in the DOM and are ordered
+back to the right on wide screens. At the window's 720 px minimum width, two
+halves would be about 230 px each, so the split has to be a breakpoint and not
+a fixed 50/50.
+
+The right column opens with the ACTION RAIL: four buttons, always in the same
+place whatever step the session is on — Battery & motor test, Hover demo (or
+Start motors in Manual), Start session, End session. A button that cannot act
+right now is disabled WITH THE REASON, both as a tooltip and as a line beneath
+the rail, never hidden. The old page revealed each control when its step
+arrived, which meant the operator relearned the layout at every stage.
+
+The left column is three tabs:
+
+  Vitals   the attitude indicator, then the command log, then the vitals tail
+  Camera   a finished camera UI with nothing behind it yet — see below
+  Scene    the drone drawn in the room, from its own position and attitude
+
+Panels are hidden rather than unmounted on a tab switch, so the command log
+keeps its scroll position and the scene keeps its trail.
+
+
+THE COMMAND LOG IS NOT THE AUDIT TRAIL
+
+It is built entirely from what the window can already see: the commands it
+issues through `run`, and the session frames arriving on the live socket. The
+agent has an audit trail (../backend/audit-trail.txt) but exposes no route to
+read it back, so this starts when the window opens and dies with it. The pane
+says so on screen.
+
+It earns its place by narrating a session in order. `useSessionNarration` diffs
+each session frame against the one before it and writes only what changed, so
+pressing Start session reads as the agent's own sequence:
+
+  > Start session
+  — idle → starting
+  ✓ Radio: cf-4a3b… answered
+  ✓ Battery: 3.82 V — the drone reports it can fly
+  ✗ Positioning: only 0 of 4 base stations are being received
+  — starting → checks_failed
+
+Before this, a failed pre-flight could only be read by leaving the app and
+opening the agent's log file.
+
+
+THE ATTITUDE INDICATOR, AND WHAT IT COST
+
+Nothing. `stabilizer.roll/pitch/yaw` and `gyro.x/y/z` were already arriving at
+10 Hz in the one shared subscription (../backend/telemetry-stream.txt) and going
+unused on this page. The indicator is inline SVG over data that was already
+there: no new subscription, no extra radio traffic.
+
+10 Hz is a tenth of cfclient's rate, so it steps rather than glides. A 90 ms CSS
+transition smooths the picture. THE STREAM RATE IS NOT TOUCHED — the guards and
+the CSV read the same subscription.
+
+
+THE SCENE IS A DECLARED ROOM, NOT A MEASURED ONE
+
+The drone's POSE is measured; the ROOM is declared (4 × 4 × 2 m, drawn to
+scale). That is the most this airframe's sensors can support, and the distinction
+matters enough to state on the pane.
+
+Asked the drone directly (docs/flight-log.txt):
+
+  deck.bcLighthouse4   1    yes
+  deck.bcAI            1    yes
+  deck.bcFlow2         0    no
+  deck.bcZRanger2      0    no
+  deck.bcMultiranger   0    no
+
+There is NO DISTANCE SENSOR OF ANY KIND on this drone. Lighthouse is inside-out
+tracking: it localises the drone against fixed beacons and reports nothing about
+where the walls are. Mapping the vicinity would need a Multiranger deck — five
+VL53L1x time-of-flight sensors — after which each range sample becomes a room
+coordinate through the pose already trusted here. Until then, a scene that drew
+walls would be drawing fiction.
+
+Positions outside the drawn box are clamped FOR THE DRAWING ONLY, and the
+figures printed in the corner are always the real ones, with a warning line
+when the drone is outside.
+
+No three.js: one body, four rotors, a floor grid and a trail is an axonometric
+projection and a 3×3 rotation matrix, against ~170 KB gzipped into an installer
+whose size is documented (../desktop/desktop-app.txt).
 
 
 LIVE NOW, OR THE LOG
 
-A sensor window is live: the last 60 seconds at 10 Hz, and it says so under the
+A sensor window is live: the last 60 seconds at 10 Hz, and it says so beside the
 title. Its past readings are one page away — every chart, and the button beside
 the title, opens that window's log.
 
@@ -85,31 +199,52 @@ from every laptop rather than just this one's (lib/web.ts, tauri-plugin-opener).
 DECISIONS
 
 - Home opens first, not Control. An operator who has just installed this needs
-  the next step, not six tabs. Its steps are derived from the agent's own state
-  machine, so the page cannot claim a step the agent would refuse.
-- The Auto/Manual toggle lives in the top bar and changes which controls Control
-  shows. It is locked while busy: switching mid-air would hand the drone to a
-  different command source with no warning.
+  the next step, not eight tabs. Its steps are derived from the agent's own
+  state machine, so the page cannot claim a step the agent would refuse.
+- The Auto/Manual toggle lives in the SIDEBAR and changes which controls Control
+  shows. It is a mode, not an action, so it belongs with navigation. It is
+  locked while busy: switching mid-air would hand the drone to a different
+  command source with no warning.
 - Land is always visible during a session and bound to L. Emergency stop is
   hold-for-one-second with no key binding, because cutting the motors drops the
   drone.
+- SQUARE CORNERS, SET ONCE. styles.css overrides Tailwind v4's `--radius-*`
+  namespace to 0, so every `rounded-*` already written in the app is square
+  without editing thirty class strings — and there is no way to reintroduce a
+  stray radius by hand. `rounded-full` is a static utility in v4 and is
+  deliberately unaffected: the spinner and the avatar are circles, not corners.
+- FRAUNCES IS THE BRAND MARK ONLY. Page titles are Inter. A display serif over
+  a terminal and an attitude indicator reads as a marketing page rather than an
+  instrument panel; keeping it on the sidebar's mark is enough for the app and
+  the website to read as one product.
+- The console's monospace is the SYSTEM stack, not a bundled font. The window's
+  CSP allows no remote fonts, and a system stack is never fetched at all — so it
+  costs nothing in the installer and is the face the operator's terminal
+  already uses.
+- ONE battery & motor test button, TWO result tiles. The agent runs both tests
+  in a single call (POST /session/health-test); two buttons firing the same
+  request would be a lie. The split the operator wants is in the reading.
+- The keypad's caps are NOT buttons and must not become buttons — see the
+  invariant below.
 - The live windows read the same 10 Hz stream as the guards and the CSV. There
   is no second, prettier source of truth.
 - Headings use --heading, a token separate from --primary: a title is text, so
   it must clear 4.5:1 on every surface. Measured 6.63/6.07/6.46 light and
   5.33/4.82/5.83 dark (surface / surface-2 / background). --primary itself
   measures 4.38 and 3.95 in dark, which is why it is not used for text.
+- The attitude indicator's sky and ground do NOT swap with the theme. It is a
+  self-contained instrument, its ink is defined against its own fill, and an
+  operator reading bank angle should not have to relearn which half is the
+  ground. Because the fills are fixed, one measurement holds for both themes:
+  white is 5.17:1 on --adi-sky and 7.94:1 on --adi-ground, so even the
+  pitch-ladder numbers (text, not graphics) clear 4.5:1.
 - Values that are text (an email, a hardware id) render smaller and break
   anywhere; figures keep the tabular numerals and the large size.
 - A log shows its readings on arrival. Asking for the log is already the click;
   a second one per session to see anything made the pages read as empty.
 - Three sessions open, not ten: ten open tables is 450 rows of scrolling, and
   the sessions below would never be seen.
-- One dashboard link per page, at the top. The second one ("flights from other
-  computers") said the same thing in different words.
-- Fraunces for page titles, Inter for everything else — the portfolio site's
-  pairing. Bundled with @fontsource, never fetched: the window's CSP allows no
-  remote fonts, and a lab laptop may be offline.
+- One dashboard link per page, at the top.
 - Closing the window ends the session, but waits at most 8 s: a close that can
   hang is a window that will not close. The agent still lands the drone itself
   when the window stops answering.
@@ -117,6 +252,11 @@ DECISIONS
 
 INVARIANTS
 
+- THE KEYPAD CAPS ARE NOT BUTTONS. The window reports which keys are *held* and
+  the agent runs the 50 Hz loop from that; a click has no hold, so a clickable
+  key would either do nothing or need a second control path into the flight
+  loop. They light from `intent`, the same state the agent is being sent, so a
+  cap lit here is a key the drone knows about.
 - The close button needs core:window:allow-destroy in capabilities/default.json.
   Without it destroy() is refused and the window ignores the close button
   entirely — which is what happened.
@@ -127,11 +267,45 @@ INVARIANTS
   button on Space keyup.
 - Losing focus releases every key: a window that loses focus never sees keyup,
   and a stuck key means a drifting drone.
-- Measure the layout, do not eyeball it. `harness.html` renders every page with
-  worst-case data in an ordinary browser (the app itself cannot be measured in
-  one — it reaches the agent through Tauri's `invoke`). Checked at 720 px (the
-  window's minimum), 1000 and 1280: no element crosses the viewport, in both
-  themes. It is not shipped; `vite build` only builds index.html.
+- `run(action, label?)` takes the label as an OPTIONAL second parameter. That is
+  what let the console's command log be added without touching a single call
+  site's error path.
+- Measure the layout, do not eyeball it. `harness.html` renders every page
+  INSIDE THE REAL SHELL — sidebar, strip and all — with worst-case data, in an
+  ordinary browser (the app itself cannot be measured in one: it reaches the
+  agent through Tauri's `invoke`). `?measure=1` walks the rendered DOM for
+  anything crossing the viewport and writes the verdict into the page, so a
+  headless browser can read it:
+
+      "$CHROME" --headless=new --window-size=720,900 --virtual-time-budget=4000 \
+        --dump-dom 'http://localhost:5199/harness.html?measure=1&theme=dark'
+
+  `?theme=dark|light` pins the tokens rather than trusting whichever one the
+  machine is set to.
+
+  MEASURED 2026-09-22, all PASS — nothing crossing the viewport, no page-level
+  horizontal scroll:
+
+      720  light   720  dark      the window's minimum, stacked layout
+     1280  light  1280  dark      the window's default, two-column layout
+     1600  light
+
+  1000 was not run: the split is a single `lg` breakpoint at 1024, so 1000 is
+  in the same stacked regime as 720 and both regimes are covered above.
+
+  RUN THE SELF-TEST BESIDE IT. `?selftest=1` plants one 3000 px element and must
+  report FAIL; it does, naming `div#selftest-overflow right=3000`. This is not
+  ceremony — the first version of isInsideScroller() checked only whether an
+  ancestor's `overflow-x` was `auto`, and because `overflow-y: auto` makes the
+  browser resolve `overflow-x` to `auto` too, every element inside `main` was
+  skipped and the suite passed while measuring nothing. A PASS is only worth
+  reading next to a failing self-test. The check now also requires real
+  horizontal scroll extent (scrollWidth > clientWidth), which still exempts the
+  readings table — which does scroll sideways, legitimately.
+
+  Headless Chrome clamps --window-size to a minimum width of 500, so no
+  narrower control case can be measured this way. Neither harness.html nor
+  measure.ts is shipped; `vite build` only builds index.html.
 - The session views need real sessions, so the harness can stand in for the
   Tauri bridge: `harness.html?agent=<token>[&mode=][&session=<id>]` points them
   at the agent already running on this machine. The token is the running
@@ -140,4 +314,24 @@ INVARIANTS
 - Tailwind v4 does not give buttons a hand cursor. styles.css sets it for
   button, summary and [role=link] rather than each component remembering.
 - A value that is missing says so. A blank panel where a battery voltage belongs
-  reads as "fine" to an operator about to fly.
+  reads as "fine" to an operator about to fly. The attitude indicator obeys this
+  too: with no roll and pitch it prints NO ATTITUDE DATA rather than drawing a
+  level horizon, which would say the drone is sitting flat when nothing at all
+  is known.
+
+
+DELIBERATE DIVERGENCES FROM web/
+
+styles.css and components/ui.tsx were copied from web/app/globals.css and
+web/components/ui/states.tsx and say so in their own headers. Two changes here
+were NOT propagated back, on purpose (2026-09-22):
+
+  radius 0        the desktop app is an instrument panel; the site is not
+  Inter titles    the site keeps Fraunces for page titles
+
+Colour tokens, the status tones, .eyebrow and .tabular remain identical, and
+should stay that way.
+
+
+LAST VERIFIED  2026-09-22, against desktop/src and a headless measurement pass
+at 720/1000/1280/1600 in both themes.

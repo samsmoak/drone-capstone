@@ -1,0 +1,213 @@
+DESKTOP UI REDESIGN — the 100 stages
+====================================
+
+A cosmetic pass over the whole desktop app: the web app's sidebar shell adapted
+to a desktop window, sharp corners everywhere, and the Control page rebuilt as
+two columns — a console on the left, the controls on the right.
+
+NOT IN THIS PLAN, deliberately:
+  - Every api.* call, KEY_MAP, the keyboard handlers, HoldToStop's 1000 ms,
+    LiveConnection, the 50 Hz loop, anything under backend/. Untouched.
+  - Splitting the battery and motor tests. One agent endpoint runs both
+    (rest.py:334) — two buttons would need backend work.
+  - A real camera datalink. There is no camera code in this project and the
+    window's CSP cannot display a frame from the AI deck. The tab ships as a
+    complete UI with an honest empty state.
+
+WHY THE COUNT IS 100: the walk reached 8 nodes, which the checklist classes as
+architectural. Phases, not a flat list.
+
+
+PHASE 0 — FOUNDATIONS                                        stages 1–12
+─────────────────────────────────────────────────────────────────────────
+  1  Branch feat/desktop-shell-and-console off main.
+  2  styles.css: add --radius / --radius-sm / --radius-lg as tokens.
+  3  styles.css: override Tailwind v4's --radius-* theme namespace to 0, so
+     every existing rounded-sm|md|lg|xl|2xl goes sharp with no component edit.
+  4  Leave rounded-full alone: the spinner and the avatar are circles, not
+     corners.
+  5  styles.css: add --font-mono using the system stack. No bundled font — the
+     CSP allows no remote fonts and a system stack is never fetched.
+  6  styles.css: .mono utility, tabular numerals on by default.
+  7  styles.css: .console utility — the terminal surface (mono, 12px/1.45).
+  8  styles.css: --sidebar-w token so the shell and the pages agree on one width.
+  9  Verify --heading still measures >= 4.5:1 on surface / surface-2 /
+     background in both themes. Radius does not change contrast, but the file
+     records measurements and they must stay true.
+ 10  ui.tsx: keep Panel/Stat/Button class strings as they are — stage 3 already
+     made them sharp. Only density changes.
+ 11  ui.tsx: tighten Panel padding p-6 -> p-5, Stat p-5 -> p-4. Desktop density,
+     not web density.
+ 12  Build gate: pnpm build. Nothing should have moved except shape.
+
+
+PHASE 1 — THE SHELL                                          stages 13–26
+─────────────────────────────────────────────────────────────────────────
+ 13  components/nav-items.ts — copy-adapt web/components/operator/nav-items.ts.
+     Same shape (24x24 path data, groups), desktop's own pages.
+ 14  Two groups: "Operate" (Home, Control, Sessions) and "Live sensors"
+     (Flight, Power, Environment, Motion, Positioning).
+ 15  Icons for all eight, matching the web set's weight.
+ 16  components/Sidebar.tsx — copy-adapt OperatorSidebar.tsx: brand at the top,
+     grouped nav, account pinned at the foot.
+ 17  Sidebar: the active item keeps the web's treatment — surface-2 fill plus a
+     3px inset bar — but on the left edge, sharp.
+ 18  Sidebar: the Auto/Manual toggle moves here, under the brand. It is a mode,
+     not an action, so it belongs with navigation.
+ 19  Sidebar: ProfileMenu at the foot with placement="up".
+ 20  Sidebar: "Open the dashboard" above the account, the web's "View site" slot.
+ 21  components/FlightStrip.tsx — the persistent top strip: sync badge, Land,
+     Emergency stop, End session. ~44 px, sharp, border-b.
+ 22  FlightStrip keeps Land and Emergency stop ALWAYS VISIBLE during a session.
+     pages-and-windows.txt records that as a safety decision; a sidebar scrolls,
+     so they cannot live in it.
+ 23  App.tsx: retire CONTAINER (max-w-6xl). A desktop window should use its
+     width.
+ 24  App.tsx: sidebar + strip + scrolling main, with the page router unchanged.
+ 25  App.tsx: the connection and error Messages move into the strip's own row so
+     they cannot push the page down.
+ 26  Build gate.
+
+
+PHASE 2 — CONTROL, RIGHT COLUMN                              stages 27–42
+─────────────────────────────────────────────────────────────────────────
+ 27  ControlPage: split into <ConsolePane/> (left) and <ControlColumn/> (right),
+     lg:grid-cols-2, controls first in DOM order so they are on top when the
+     window is narrow.
+ 28  Below lg the two stack. At the 720 px minimum width two halves would be
+     ~230 px each — unusable, so the split is a breakpoint, not a fixed 50/50.
+ 29  ActionRail.tsx — the four buttons at the top of the right column, in the
+     order asked for: Battery & motor test, Hover demo, Start session,
+     End session.
+ 30  Each rail button renders disabled with the agent's own reason when it
+     cannot act, never hidden and never silently dead (WCAG 2.2 AA).
+ 31  Hover demo stays Auto + assisted only; disabled elsewhere with the reason.
+ 32  Health test keeps ONE trigger (one endpoint) but gains two labelled result
+     tiles, Motors and Battery — which is the visual split that was wanted.
+ 33  Sign-in form restyled: sharp, tighter, same fields.
+ 34  Checklist panel: rows become a mono two-column table, label left, status
+     right, so a running check does not reflow the ones below it.
+ 35  Checklist: the confirmation block keeps both checkboxes and the warning
+     border, sharp.
+ 36  RetryPanel restyled. Wording untouched — it describes a real failure mode.
+ 37  AutoControls: the hover-test fields become a compact inline row.
+ 38  ManualControls: the keypad is rebuilt as two physical clusters.
+ 39  Keypad left cluster: W / S / A / D — rise, descend, rotate left, rotate
+     right, drawn as a real key arrangement.
+ 40  Keypad right cluster: the arrow keys as a cross — forward, back, left,
+     right.
+ 41  Keypad: a held key still lights from intent[key.field]. The highlight
+     source does not change, only its shape.
+ 42  Keypad: L shown apart, labelled "Land", because it is a command not an axis.
+
+
+PHASE 3 — CONTROL, LEFT COLUMN: TABS 1                       stages 43–60
+─────────────────────────────────────────────────────────────────────────
+ 43  components/Tabs.tsx — a sharp tab strip primitive: role=tablist, arrow-key
+     navigation, aria-selected.
+ 44  lib/commandLog.ts — LogLine { id, at, kind, text, detail } and a ring
+     buffer capped at 500.
+ 45  Kinds: command, ok, refused, state, check, flight, link. Each gets a
+     one-character glyph and a tone token.
+ 46  App.tsx: run(action, label?) — an OPTIONAL second parameter, so no existing
+     call site breaks. The catch path is untouched.
+ 47  run() pushes "> label" on entry and "ok" or the verbatim refusal on exit.
+ 48  useSessionNarration(session, push): diff the previous session frame against
+     the next and push what changed. This is the "order of execution" log.
+ 49  Narrate state transitions: idle -> starting -> awaiting_confirmation -> ...
+ 50  Narrate each check as its status changes, with the agent's own detail text.
+     This is the part that makes a failed pre-flight readable.
+ 51  Narrate flight phase changes from session.flight.phase.
+ 52  Narrate the link going up and down, and every refusal.
+ 53  Label every run() call site in App.tsx, ControlPage.tsx and HomePage.tsx.
+ 54  CommandLog.tsx — the top-left pane. Mono, newest last, autoscroll.
+ 55  CommandLog: autoscroll pauses when the operator scrolls up, with a
+     "jump to newest" affordance. A log that yanks itself away cannot be read.
+ 56  CommandLog: says plainly that it starts when the window opens and is not
+     the agent's audit trail. It is not a substitute for the flight record.
+ 57  VitalsTail.tsx — the bottom-left pane: a current-values header row plus a
+     one-line-per-second tail, downsampled from the history buffer that already
+     exists. No new subscription, no extra radio traffic.
+ 58  AttitudeIndicator.tsx — inline SVG. Horizon rotates by -roll, pitch ladder
+     translates, sky/ground split, fixed aircraft reference.
+ 59  AttitudeIndicator: a yaw compass strip beneath, and gyro x/y/z rates as
+     numbers. Data is already streaming (stream.py:50,58) — nothing new.
+ 60  Tab 1 assembled: attitude at the top, command log, vitals tail.
+
+
+PHASE 4 — CONTROL, LEFT COLUMN: TAB 2, CAMERA                stages 61–68
+─────────────────────────────────────────────────────────────────────────
+ 61  CameraPane.tsx with a 4:3 frame in the console surface.
+ 62  State: loading — while the deck is being probed.
+ 63  State: empty — "No camera datalink", naming the AI deck and why.
+ 64  State: error — actionable, with a retry.
+ 65  State: content — the <img> slot a real MJPEG stream would occupy.
+ 66  A note saying what is actually needed: a datalink, an agent relay route,
+     and a CSP entry. Written so the next person does not re-discover it.
+ 67  Reticle and a frame-age readout drawn in the frame, so the shell is
+     recognisably a camera view rather than a grey box.
+ 68  Build gate.
+
+
+PHASE 5 — EVERY OTHER PAGE                                   stages 69–88
+─────────────────────────────────────────────────────────────────────────
+ 69  PageHeader: Inter, not Fraunces. Fraunces stays on the sidebar brand mark
+     only — a display serif over a terminal is a marketing signal.
+ 70  PageHeader: tighter, with an eyebrow slot for the section name.
+ 71  Home: the 5-up status row becomes a denser 4-up with the email given its
+     own width. Never truncated (ui.tsx's own rule).
+ 72  Home: "What to do next" steps become a tighter numbered rail.
+ 73  Home: "Before you fly" and "Stopping it" side by side at a lower breakpoint
+     now that there is more width.
+ 74  Home: "Always in the top bar" wording -> the flight strip, so the page does
+     not describe a bar that no longer exists.
+ 75  Home: the Positioning cross-link kept, restyled.
+ 76  Sessions: header and the Refresh action tightened.
+ 77  Sessions: SessionRow becomes a mono-figure row, columns aligned on the
+     numbers.
+ 78  Sessions: SessionDetail's two 4-up Stat rows merged into one 8-up grid.
+ 79  Sessions: Disclosure rows sharp, with a mono summary line.
+ 80  Sessions: ReadingsTable — sharper, denser, sticky header kept, figures mono.
+ 81  WindowLog: header and back-link tightened.
+ 82  WindowLog: disclosure summaries aligned with Sessions so the two read the
+     same.
+ 83  SensorWindow: the header row becomes header + live badge + log button on
+     one line.
+ 84  SensorWindow: Stat grids go denser — 4-up and 6-up where they were 3-up.
+ 85  SensorWindow: LiveChart panels sharp, with tighter padding.
+ 86  SensorWindow: Positioning's warning block sharp, wording untouched — it
+     describes the drone-into-a-wall incident.
+ 87  StartupPage: skeletons match the new sidebar shell, not the old bar.
+ 88  ProfileMenu: sharp, and repositioned for a sidebar foot (opens upward).
+
+
+PHASE 6 — CONTROL, LEFT COLUMN: TAB 3, THE 3D VIEW           stages 89–96
+─────────────────────────────────────────────────────────────────────────
+ 89  SceneView.tsx — a <canvas> with a hand-rolled isometric projection. No
+     three.js: ~170 KB gzipped for one body, four rotors and a room box, into an
+     installer whose size is documented.
+ 90  Room box drawn as a wireframe with a floor grid, so translation is legible.
+ 91  Drone body: the Crazyflie's X cross, oriented by roll / pitch / yaw.
+ 92  Four rotor discs, spin rate derived from motor.m1..m4. Indicative, and
+     labelled as such — 10 Hz sampling cannot show a real rotor.
+ 93  Position from stateEstimate x/y/z, height above the captured ground.
+ 94  A fading trail of past positions from the history buffer.
+ 95  prefers-reduced-motion: no rotor animation, static redraw on each frame.
+     styles.css:200 already sets the global rule; this honours it in canvas.
+ 96  Telemetry read through a ref inside requestAnimationFrame, so 10 Hz frames
+     do not re-render the React tree.
+
+
+PHASE 7 — MEASURE, GATE, DOCUMENT, SHIP                      stages 97–100
+─────────────────────────────────────────────────────────────────────────
+ 97  Update harness.tsx for the new shell and the new Control page, and widen
+     the window default to ~1180x800 (minWidth stays 720).
+ 98  Measure in harness.html at 720 / 1000 / 1280 / 1600, both themes. No
+     element crossing the viewport. Measure, do not eyeball — the invariant at
+     pages-and-windows.txt:130.
+ 99  Gate: pnpm build. Rewrite pages-and-windows.txt (its TOP BAR section is
+     now false). Record the two deliberate divergences from web/.
+100  Commit, push, open a PR into main.
+
+
+LAST VERIFIED  2026-09-22, against desktop/src on main at f1540ea.

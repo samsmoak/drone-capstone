@@ -73,11 +73,13 @@ export function SessionRow({ record, onOpen }: { record: SessionRecord; onOpen: 
       <button
         type="button"
         onClick={onOpen}
-        className="grid w-full gap-x-6 gap-y-1 rounded-lg px-4 py-3 text-left transition-colors hover:bg-[var(--surface-2)] sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto]"
+        className="grid w-full gap-x-6 gap-y-1 px-4 py-2.5 text-left transition-colors hover:bg-[var(--surface-2)] sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto]"
       >
         <span className="min-w-0">
-          <span className="block font-semibold">{formatDateTime(record.started_at)}</span>
-          <span className="block text-sm text-[var(--muted)]">
+          {/* Times and durations are figures: monospace, so a column of rows
+              lines up on the digits instead of drifting. */}
+          <span className="mono block text-sm font-semibold">{formatDateTime(record.started_at)}</span>
+          <span className="mono block text-xs text-[var(--muted)]">
             {record.ended_at
               ? `to ${formatTime(record.ended_at)} · ${formatDuration(record.duration_s)}`
               : "Still running"}
@@ -237,28 +239,30 @@ export function ReadingsTable({ sessionId, variables, mode, limit = READINGS_SHO
           The latest {rows.length} of {state.data.length} readings — the dashboard has them all.
         </p>
       )}
-      <div className="max-h-[28rem] overflow-auto rounded-lg border border-[var(--border)]">
-        <table className="w-full text-sm">
+      {/* Denser than a page table, because this IS a readout: every cell is a
+          figure, and the scroll box shows more of them per screen this way. */}
+      <div className="console-scroll max-h-[28rem] overflow-auto border border-[var(--border)]">
+        <table className="w-full text-xs">
           <caption className="sr-only">Readings, one per second</caption>
           <thead className="sticky top-0 bg-[var(--surface-2)]">
             <tr>
-              <th scope="col" className="px-3 py-2 text-left font-semibold">Time</th>
+              <th scope="col" className="px-3 py-1.5 text-left font-semibold">Time</th>
               {variables.map((v) => (
-                <th key={v.name} scope="col" className="px-3 py-2 text-right font-semibold">
+                <th key={v.name} scope="col" className="px-3 py-1.5 text-right font-semibold">
                   {v.label}
                   {v.unit ? <span className="font-normal text-[var(--muted)]"> {v.unit}</span> : null}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-[var(--border)]">
+          <tbody className="mono divide-y divide-[var(--border)]">
             {rows.map((row, i) => (
               <tr key={`${row.recorded_at}-${i}`}>
-                <td className="tabular whitespace-nowrap px-3 py-1.5">{formatTime(row.recorded_at)}</td>
+                <td className="whitespace-nowrap px-3 py-1">{formatTime(row.recorded_at)}</td>
                 {variables.map((v) => {
                   const raw = row[v.name];
                   return (
-                    <td key={v.name} className="tabular px-3 py-1.5 text-right">
+                    <td key={v.name} className="px-3 py-1 text-right">
                       {formatNumber(typeof raw === "number" ? raw : null, v.digits ?? 2)}
                     </td>
                   );

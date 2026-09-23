@@ -28,7 +28,7 @@ export function WindowLog({ windowKey, refreshKey, mode, onBack }: {
   const { state, hidden, reload } = useSessions(SESSIONS_SHOWN, refreshKey, filter);
 
   return (
-    <div className="grid gap-6">
+    <div className="grid gap-4">
       <div>
         <button type="button" onClick={onBack}
                 className="text-sm font-semibold text-[var(--muted)] hover:text-[var(--foreground)]">
@@ -36,8 +36,8 @@ export function WindowLog({ windowKey, refreshKey, mode, onBack }: {
         </button>
       </div>
 
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <PageHeader title={`${page.label} log${allModes ? "" : ` · ${MODE_LABEL[mode]}`}`}>
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <PageHeader eyebrow="Live sensors" title={`${page.label} log${allModes ? "" : ` · ${MODE_LABEL[mode]}`}`}>
           Past sessions on this computer — the latest {SESSIONS_SHOWN}, with their most recent
           {" "}{READINGS_SHOWN} {page.label.toLowerCase()} readings each. The live page shows what
           the drone is doing right now.
