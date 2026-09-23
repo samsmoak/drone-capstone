@@ -47,8 +47,10 @@ which is what a test about Auto should do anyway.
   auto    Hover test (rise, hold a steady height, land where it started)
   both    Battery & motor test (each motor on its own, then the battery under
           all four — the firmware's two health tests)
-  manual  Start (props idle on the ground), then held keys fly it — see
-          manual-control.txt
+  manual  Start (props idle on the ground), then held keys fly it — or Hover,
+          which rises to a height and holds it without W being held. Unlike the
+          Auto hover test it needs no position estimate, so it works on the
+          barometer. See manual-control.txt
 
 Both modes run the same checks and take the same confirmation. When the checks
 warn about positioning, the session is UNASSISTED (snapshot.assisted = False,

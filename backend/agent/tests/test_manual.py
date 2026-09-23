@@ -866,3 +866,121 @@ class TestWhatTheEstimatorSays:
         rig.ctl.arm()
         assert rig.ctl.target is None
 
+
+
+class TestHoldAt:
+    """Rise to a height and hold it, without the operator holding W.
+
+    The point of the feature is that it adds no control law: it asks the same
+    glide the W key asks for, so everything already pinned about the glide,
+    the ceiling, the guards and Land keeps applying. These tests pin the part
+    that is new — that it arrives, that it stops, and that the operator can
+    always take it back.
+    """
+
+    def test_it_climbs_to_the_goal_and_stops_there(self):
+        rig = Rig()
+        rig.ctl.arm()
+        rig.ctl.hold_at(0.40)
+        # Long enough to cover the eased climb plus its ease-out.
+        rig.run(6.0)
+        assert rig.ctl.target_height == pytest.approx(0.40, abs=0.02)
+        assert rig.ctl.state is ControlState.FLYING
+
+    def test_it_holds_after_arriving_without_being_asked_again(self):
+        rig = Rig()
+        rig.ctl.arm()
+        rig.ctl.hold_at(0.35)
+        rig.run(6.0)
+        arrived = rig.ctl.target_height
+        rig.run(4.0)                       # no keys, no goal
+        assert rig.ctl.target_height == pytest.approx(arrived, abs=0.001)
+
+    def test_it_descends_to_a_lower_goal(self):
+        rig = Rig()
+        rig.fly_to(0.60)
+        rig.ctl.hold_at(0.25)
+        rig.run(6.0)
+        assert rig.ctl.target_height == pytest.approx(0.25, abs=0.02)
+
+    def test_the_climb_is_eased_not_a_jump(self):
+        """One tick must not move the target more than the climb rate allows."""
+        rig = Rig()
+        rig.ctl.arm()
+        rig.ctl.hold_at(0.80)
+        rig.run(TICK_S)
+        assert rig.ctl.target_height <= CLIMB_RATE_M_S * TICK_S + 1e-6
+
+    def test_holding_w_takes_over_from_the_goal(self):
+        rig = Rig()
+        rig.ctl.arm()
+        rig.ctl.hold_at(0.20)
+        rig.run(0.5, intent=Intent(up=True))
+        rig.run(4.0, intent=Intent(up=True))
+        # The goal was 0.20; W kept climbing well past it.
+        assert rig.ctl.target_height > 0.30
+
+    def test_holding_s_cancels_the_goal(self):
+        rig = Rig()
+        rig.fly_to(0.50)
+        rig.ctl.hold_at(0.80)
+        rig.run(0.4, intent=Intent(down=True))
+        rig.run(1.0, intent=Intent())       # released: the goal must be gone
+        assert rig.ctl.target_height < 0.50
+
+    def test_landing_cancels_the_goal(self):
+        rig = Rig()
+        rig.fly_to(0.50)
+        rig.ctl.hold_at(0.80)
+        rig.ctl.land()
+        rig.run(0.5)
+        assert rig.ctl.state in (ControlState.LANDING, ControlState.LANDED)
+
+    def test_an_emergency_stop_cancels_the_goal(self):
+        rig = Rig()
+        rig.fly_to(0.50)
+        rig.ctl.hold_at(0.80)
+        rig.ctl.emergency_stop()
+        rig.run(0.5)
+        assert rig.ctl.state is ControlState.STOPPED
+
+    def test_it_will_not_exceed_the_assisted_ceiling(self):
+        rig = Rig()
+        rig.ctl.arm()
+        with pytest.raises(ValueError, match="at most"):
+            rig.ctl.hold_at(MAX_HEIGHT_M + 0.01)
+
+    def test_the_unassisted_ceiling_is_lower(self):
+        rig = Rig(assisted=False, fix=None)
+        rig.ctl.arm()
+        with pytest.raises(ValueError, match="at most"):
+            rig.ctl.hold_at(MAX_UNASSISTED_HEIGHT_M + 0.01)
+
+    def test_it_works_unassisted(self):
+        """The whole reason this exists: Auto is refused without base stations,
+        so the one-press hover has to work on the barometer."""
+        rig = Rig(assisted=False, fix=None)
+        rig.ctl.arm()
+        rig.ctl.hold_at(0.40)
+        rig.run(6.0)
+        assert rig.ctl.target_height == pytest.approx(0.40, abs=0.02)
+
+    def test_it_is_refused_before_the_props_are_running(self):
+        rig = Rig()
+        with pytest.raises(RuntimeError, match="not running"):
+            rig.ctl.hold_at(0.30)
+
+    def test_a_zero_or_negative_height_is_refused(self):
+        rig = Rig()
+        rig.ctl.arm()
+        for bad in (0.0, -0.2):
+            with pytest.raises(ValueError):
+                rig.ctl.hold_at(bad)
+
+    def test_the_heartbeat_still_lands_it_mid_climb(self):
+        """A goal must not outlive the window that asked for it."""
+        rig = Rig()
+        rig.fly_to(0.40)
+        rig.ctl.hold_at(0.80)
+        rig.run(HEARTBEAT_TIMEOUT_S + 0.2, heartbeat=False)
+        assert rig.ctl.state in (ControlState.LANDING, ControlState.LANDED)

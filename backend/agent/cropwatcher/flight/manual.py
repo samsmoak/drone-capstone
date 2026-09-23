@@ -118,6 +118,7 @@ HEARTBEAT_TIMEOUT_S = 0.5
 IDLE_THRUST = 11000
 
 CLIMB_RATE_M_S = 0.15               # gentle rise and fall while W / S are held
+GOAL_REACHED_M = 0.01               # a held goal is done within a centimetre
 LIFTOFF_HEIGHT_M = 0.05             # target above this means "flying"
 TOUCHDOWN_HEIGHT_M = 0.05           # lowering below this lands
 MAX_HEIGHT_M = 1.00
@@ -311,6 +312,11 @@ class ManualController:
         self._lock = threading.Lock()
         self._intent = Intent()
         self._target_height = 0.0
+        #: A height the agent is driving the target TOWARDS on the operator's
+        #: behalf — "hold at 0.4 m" instead of holding W until it gets there.
+        #: None whenever the keys are in charge, which is nearly always. See
+        #: hold_at() for why this is a goal and not a jump.
+        self._goal_height: float | None = None
         self._last_heartbeat = clock()
         self._last_tick = clock()
         self._state = ControlState.IDLE
@@ -385,6 +391,7 @@ class ManualController:
                 return
             self._intent = Intent()
             self._target_height = 0.0
+            self._goal_height = None
             self._reset_glide_locked()
             self._last_heartbeat = self._clock()
             self._last_tick = self._clock()
@@ -395,6 +402,37 @@ class ManualController:
         # The lab's working scripts do the same (hop_test.py, keyboard_fly.py).
         self._commander.send_setpoint(0.0, 0.0, 0.0, 0)
         log.info("manual control: armed")
+
+    def hold_at(self, height_m: float) -> None:
+        """Rise to a height and hold it, without the operator holding W.
+
+        THIS ADDS NO CONTROL LAW. It sets a goal that the EXISTING height glide
+        drives towards at the same eased CLIMB_RATE_M_S the W key produces, and
+        stops at the same ceiling. The drone is flown by exactly the code that
+        already flies it; the only difference is what is asking for the climb.
+        Everything else is untouched — the guards, the heartbeat dead-man, the
+        leash, Land, and the position hold that happens when nothing is being
+        asked for.
+
+        IT IS A GOAL, NOT A JUMP. Writing `_target_height` directly would move
+        the commanded height instantly, and the leash and the firmware's own
+        controller would answer a step input with everything they have. The
+        whole reason the glide exists (see "THE GLIDE" in manual-control.txt) is
+        that a step at either end made the motors hammer.
+
+        THE KEYS ALWAYS WIN. Any W or S cancels the goal on the next tick, so
+        the operator can take over mid-climb without a mode to leave first.
+        """
+        with self._lock:
+            if self._state not in (ControlState.ARMED, ControlState.FLYING):
+                raise RuntimeError("the propellers are not running")
+            ceiling = MAX_HEIGHT_M if self._assisted else MAX_UNASSISTED_HEIGHT_M
+            if not 0.0 < height_m <= ceiling:
+                raise ValueError(
+                    f"hold height must be above 0 and at most {ceiling:.2f} m"
+                )
+            self._goal_height = height_m
+        log.info("manual control: holding at %.2f m", height_m)
 
     def set_intent(self, intent: Intent) -> None:
         with self._lock:
@@ -423,6 +461,7 @@ class ManualController:
         """Stop the motors now. Acts immediately, not on the next tick."""
         with self._lock:
             self._intent = Intent()
+            self._goal_height = None
             self._state = ControlState.STOPPED
             self.stats.emergency_stops += 1
         self._commander.send_stop_setpoint()
@@ -496,7 +535,9 @@ class ManualController:
                     send = self._commander.send_stop_setpoint
                 else:
                     intent = self._intent
-                    self._glide_height_locked(CLIMB_RATE_M_S if intent.up else 0.0, dt)
+                    # Before liftoff only W lifts: S has nothing to lower yet.
+                    self._glide_height_locked(
+                        self._height_velocity_locked(intent, allow_down=False), dt)
                     if self._target_height > LIFTOFF_HEIGHT_M:
                         self._state = ControlState.FLYING
                         send = self._flight_setpoint_locked(intent, dt)
@@ -510,8 +551,8 @@ class ManualController:
                     self._begin_landing_locked()
                 else:
                     intent = self._intent
-                    climb = (1 if intent.up else 0) - (1 if intent.down else 0)
-                    self._glide_height_locked(climb * CLIMB_RATE_M_S, dt)
+                    self._glide_height_locked(
+                        self._height_velocity_locked(intent, allow_down=True), dt)
                     if intent.down and self._target_height <= TOUCHDOWN_HEIGHT_M:
                         self._begin_landing_locked()
                     else:
@@ -598,6 +639,54 @@ class ManualController:
                     return None
         self._last_fix = (now, fix)
         return fix
+
+    def _height_velocity_locked(self, intent: Intent, allow_down: bool) -> float:
+        """What moves the height target this tick — the keys, or the goal.
+
+        ONE PLACE DECIDES, deliberately. The first version cancelled the goal
+        inside the goal's own branch, so holding S took the other branch, never
+        cancelled anything, and the goal resumed the moment the key was
+        released — the drone climbed back to a height the operator had just
+        flown away from. A test pins that now.
+        """
+        up = intent.up
+        down = intent.down and allow_down
+        if up or down:
+            # THE KEYS ALWAYS WIN, and they win by cancelling rather than by
+            # out-voting: two things moving one target is the bug above.
+            self._goal_height = None
+            return CLIMB_RATE_M_S * ((1 if up else 0) - (1 if down else 0))
+        return self._goal_velocity_locked()
+
+    def _goal_velocity_locked(self) -> float:
+        """The climb the GOAL is asking for, or zero if nothing is.
+
+        It closes on the TARGET, not on where the drone actually is. The target
+        is the thing this controller owns; the drone follows it on the leash,
+        and closing on a measured position here would be a second controller
+        chasing the first at 50 Hz over a 10 Hz link — the arrangement that was
+        deleted from this file once already (flight-tuning.txt).
+        """
+        goal = self._goal_height
+        if goal is None:
+            return 0.0
+        error = goal - self._target_height
+        if abs(error) <= GOAL_REACHED_M:
+            # Arrived: let go, and the ordinary "no keys held" behaviour holds
+            # the height from here. There is no separate hold mode to leave.
+            self._goal_height = None
+            return 0.0
+
+        # SLOW DOWN BEFORE ARRIVING, not on arrival. The glide eases the climb
+        # velocity out at CLIMB_ACCEL_M_S2, so a goal that asks for full climb
+        # speed right up to the last centimetre still coasts the stopping
+        # distance past it — v^2/2a = 0.15^2/0.6 = 3.7 cm, measured as a 2.6 cm
+        # overshoot before this was added. Capping the request at the speed the
+        # remaining distance can still be stopped from makes it arrive AT the
+        # goal instead of near it, and it is the same profile the leash uses.
+        approach = math.sqrt(2.0 * CLIMB_ACCEL_M_S2 * abs(error))
+        speed = min(CLIMB_RATE_M_S, approach)
+        return speed if error > 0 else -speed
 
     def _glide_height_locked(self, desired_velocity: float, dt: float) -> None:
         """Move the height target at an eased climb speed, within the ceiling."""
@@ -719,6 +808,8 @@ class ManualController:
 
     def _begin_landing_locked(self) -> None:
         self._intent = Intent()
+        # Coming down outranks any goal that was still climbing.
+        self._goal_height = None
         self._state = ControlState.LANDING
         self._landing_started = False
         self._landing_until = self._clock() + LAND_S

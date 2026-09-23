@@ -37,6 +37,7 @@ ENDPOINTS
     POST /session/prop-test         Start test
     POST /session/program           Hover test {height_m, hold_s, ambient}
     POST /session/manual/arm        props idle on the ground
+    POST /session/manual/hold       rise to a height and hold it {height_m}
     POST /session/land              graceful landing
     POST /session/emergency-stop    cut the motors
     POST /session/end               land if needed, close, flush

@@ -11,7 +11,39 @@ key moves ONE coordinate of a commanded point; the rest stay locked.
 
 Pressing Start does not take off. It idles the propellers on the ground at
 IDLE_THRUST (11000, just above cflib's "10001 = next to no power") so the
-operator can see the drone is live. It leaves the ground only while W is held.
+operator can see the drone is live. It leaves the ground only while W is held —
+or when HOLD AT is asked for.
+
+
+HOLD AT — RISE TO A HEIGHT WITHOUT HOLDING W
+
+`hold_at(height)` is one press instead of a held finger, and it exists because
+Auto cannot do this job: a preset program needs a position estimate and is
+refused without one (flight-safety.txt), so on the barometer — the state this
+drone is usually in — there was no way to simply go up and hover.
+
+IT ADDS NO CONTROL LAW. It sets a GOAL that the existing height glide drives
+towards at the same eased CLIMB_RATE_M_S the W key produces, stopping at the
+same ceiling. The drone is flown by exactly the code that already flew it; only
+what asks for the climb is new. The guards, the heartbeat dead-man, the leash
+and Land are untouched.
+
+IT IS A GOAL, NOT A JUMP. Writing the target directly would step the commanded
+height, and the leash and the firmware's controller would answer a step with
+everything they have — which is the whole reason the glide exists.
+
+IT SLOWS DOWN BEFORE ARRIVING. Asking for full climb speed up to the last
+centimetre coasts the stopping distance past the goal: v^2/2a = 0.15^2/0.6 =
+3.7 cm, measured as a 2.6 cm overshoot before the approach profile was added.
+The request is capped at sqrt(2 * CLIMB_ACCEL_M_S2 * error), the same shape the
+leash uses, so it arrives AT the goal rather than near it.
+
+THE KEYS ALWAYS WIN, and they win by CANCELLING the goal, not by out-voting it.
+One place decides (`_height_velocity_locked`): the first version cancelled
+inside the goal's own branch, so holding S took the other branch, cancelled
+nothing, and the goal resumed the moment the key was released — the drone
+climbed back to a height the operator had just flown away from. A test pins
+that. Land, an emergency stop and re-arming all clear it too.
 
 
 WHERE IT LIVES
@@ -133,7 +165,8 @@ THE NUMBERS
   TICK_HZ             50            setpoints per second
   HEARTBEAT_TIMEOUT_S 0.5           no word from the window -> land
   IDLE_THRUST         11000         props turning, no lift
-  CLIMB_RATE_M_S      0.15          W / S, gentle by design
+  CLIMB_RATE_M_S      0.15          W / S and hold-at, gentle by design
+  GOAL_REACHED_M      0.01          a held goal is done within a centimetre
   LIFTOFF_HEIGHT_M    0.05          above this counts as flying
   MAX_HEIGHT_M        1.00          ceiling (assisted)
   MAX_UNASSISTED_HEIGHT_M 0.80      ceiling on the barometer
