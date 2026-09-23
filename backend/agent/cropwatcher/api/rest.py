@@ -94,6 +94,14 @@ class ManualRequest(BaseModel):
     ambient: str = "22C"
 
 
+class HoldRequest(BaseModel):
+    # The ceiling is the controller's, and it depends on whether the drone can
+    # see the base stations (1.00 m assisted, 0.80 m on the barometer), so the
+    # real check is there. This bound only keeps an absurd number out of the
+    # flight code.
+    height_m: float = Field(0.30, gt=0, le=1.0, description="metres above the floor")
+
+
 class ConfirmRequest(BaseModel):
     #: The operator accepts flying with no base stations: height from the
     #: barometer only, no position hold, no drift or fence guard. Required only
@@ -354,6 +362,12 @@ def run_program(request: ProgramRequest) -> dict:
 @app.post("/session/manual/arm", dependencies=[Command])
 def arm_manual(request: ManualRequest) -> dict:
     return _run(lambda: agent.session.arm_manual(ambient=request.ambient))
+
+
+@app.post("/session/manual/hold", dependencies=[Command])
+def hold_manual(request: HoldRequest) -> dict:
+    """Rise to a height and hold it, without the operator holding W."""
+    return _run(lambda: agent.session.hold_manual(height_m=request.height_m))
 
 
 @app.post("/session/land", dependencies=[Command])

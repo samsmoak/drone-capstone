@@ -697,6 +697,29 @@ class Session:
                       "lifts; let go and the throttle stays put — you hold the height."
                   ))
 
+    def hold_manual(self, height_m: float = 0.30) -> None:
+        """Rise to a height and hold it, in Manual, without holding W.
+
+        This is NOT the Auto hover test. That one is a preset program that
+        flies itself and needs a position estimate to fly to (run_program
+        refuses without one). This asks the manual controller for the same
+        climb the W key asks for, and then stops asking — so it works
+        unassisted, on the barometer, which is the state this drone is
+        usually in.
+
+        The operator stays in the loop throughout: W and S cancel it on the
+        next tick, Land still lands, and every guard and the heartbeat
+        dead-man are untouched.
+        """
+        controller = self.manual
+        if controller is None or self._snapshot.activity != "manual":
+            raise SessionError("Start the motors first.")
+        try:
+            controller.hold_at(height_m)
+        except (RuntimeError, ValueError) as e:
+            raise SessionError(str(e)) from None
+        self._set(message=f"Rising to {height_m:.2f} m and holding. W or S takes over.")
+
     def _start_trace(self, link: Any, controller: Any, flight_id: str, applied: list[dict]) -> None:
         """A 10 Hz control trace beside the flight CSV (telemetry/trace.py)."""
         stream = getattr(link, "stream", None)

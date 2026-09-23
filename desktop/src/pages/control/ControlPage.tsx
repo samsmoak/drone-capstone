@@ -153,6 +153,7 @@ function ControlColumn({ session, telemetry, run }: {
             <ManualControls
               session={session} telemetry={telemetry}
               ambient={ambient} setAmbient={setAmbient}
+              height={height} setHeight={setHeight}
             />
           )}
         </>
@@ -218,15 +219,27 @@ function ActionRail({ session, run, ready, height, hold, ambient }: {
           `Hover demo — ${height} m for ${hold} s`,
         ),
       }
-    : {
-        label: session.activity === "manual" ? "Motors running" : "Start motors",
-        variant: "primary",
-        disabled: !ready || session.activity === "manual",
-        reason: session.activity === "manual"
-          ? "The propellers are already turning. Hold W to rise."
-          : flightReason(),
-        onClick: () => void run(() => api.armManual(ambient), "Start motors"),
-      };
+    : session.activity === "manual"
+      ? {
+          // Once the props are turning, the useful button is the one that gets
+          // the drone off the ground. This is NOT the Auto hover test: it asks
+          // the manual controller for the climb W asks for, so it works on the
+          // barometer — which is the state this drone is usually in.
+          label: `Hover at ${height} m`,
+          variant: "primary",
+          disabled: false,
+          onClick: () => void run(
+            () => api.holdManual(Number(height)),
+            `Hover at ${height} m`,
+          ),
+        }
+      : {
+          label: "Start motors",
+          variant: "primary",
+          disabled: !ready,
+          reason: flightReason(),
+          onClick: () => void run(() => api.armManual(ambient), "Start motors"),
+        };
 
   const actions: RailAction[] = [
     {
@@ -596,21 +609,24 @@ function Field({
 
 // ── manual ───────────────────────────────────────────────────────────
 
-function ManualControls({ session, telemetry, ambient, setAmbient }: {
+function ManualControls({ session, telemetry, ambient, setAmbient, height, setHeight }: {
   session: Session;
   telemetry: Telemetry | null;
   ambient: string;
   setAmbient: (v: string) => void;
+  /** Shared with the action rail's "Hover at N m" button. */
+  height: string;
+  setHeight: (v: string) => void;
 }) {
   const armed = session.activity === "manual";
   const assisted = session.assisted;
 
   const note = assisted
     ? armed
-      ? "The propellers are turning. Hold W to rise gently; let go and the drone holds its height."
+      ? "Hold W to rise, or press Hover to go up and hold on its own. Either way, letting go holds the height."
       : "Start motors turns the propellers gently on the ground so you can see the drone is live. It only leaves the ground when you hold W."
     : armed
-      ? "Barometer height hold: hold W to rise gently, let go and it holds that height (roughly — it wanders by tens of centimetres). It does not hold its position: use the arrows to correct drift."
+      ? "Barometer height hold — roughly, wandering by tens of centimetres. Hold W to rise, or press Hover. It does not hold its position: use the arrows to correct drift."
       : "The drone cannot see the base stations, so height comes from the barometer. Start motors idles the propellers; hold W to lift off and rise gently. Land descends slowly to the floor.";
 
   return (
@@ -621,10 +637,17 @@ function ManualControls({ session, telemetry, ambient, setAmbient }: {
 
       <Panel title={assisted ? "Manual flight" : "Manual flight — barometer height"} note={note}>
         {armed ? (
-          <div className="flex flex-wrap items-center gap-5">
+          <div className="flex flex-wrap items-end gap-5">
             <Stat label="Height" value={telemetry?.height_m ?? null} unit="m"
                   hint={assisted ? "From the base stations" : "From the barometer — approximate"} />
+            <div className="w-28">
+              <Field label="Hover to (m)" value={height} onChange={setHeight}
+                     type="number" step="0.05" min="0.1"
+                     max={assisted ? "1" : "0.8"} />
+            </div>
             <p className="text-sm text-[var(--muted)]">
+              <strong>Hover</strong> rises and holds; W or S takes over at any point.
+              <br />
               Use <strong>Land</strong> (or press <kbd>L</kbd>) to come down.
             </p>
           </div>

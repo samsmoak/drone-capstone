@@ -102,10 +102,20 @@ than removed — L still lands in both modes — because a control that disappea
 between modes is one the operator has to relearn.
 
 The right column opens with the ACTION RAIL: four buttons, always in the same
-place whatever step the session is on — Battery & motor test, Hover demo (or
-Start motors in Manual), Start session, End session. A button that cannot act
-right now is disabled WITH THE REASON, both as a tooltip and as a line beneath
-the rail, never hidden. The old page revealed each control when its step
+place whatever step the session is on — Battery & motor test, the mode slot,
+Start session, End session.
+
+THE MODE SLOT FOLLOWS THE MODE AND THE STEP. In Auto it is the preset Hover
+demo. In Manual it is Start motors until the props are turning, and then
+"Hover at N m" — which is NOT the Auto program. That one needs a position
+estimate and is refused without base stations; this one asks the manual
+controller to rise and hold (../backend/manual-control.txt), so it works on the
+barometer, which is the state this drone is usually in. The height field beside
+it is the one the button uses.
+
+A button that cannot act right now is disabled WITH THE REASON, both as a
+tooltip and as a line beneath the rail, never hidden. The old page revealed
+each control when its step
 arrived, which meant the operator relearned the layout at every stage.
 
 The left column is three tabs:

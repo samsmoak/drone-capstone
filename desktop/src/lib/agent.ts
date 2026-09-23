@@ -144,6 +144,9 @@ export const api = {
   runProgram: (height_m: number, hold_s: number, ambient: string) =>
     command<Session>("/session/program", { height_m, hold_s, ambient }),
   armManual: (ambient: string) => command<Session>("/session/manual/arm", { ambient }),
+  /** Rise to a height and hold it, in Manual, without holding W. Not the Auto
+   *  hover test — that one needs base stations; this works on the barometer. */
+  holdManual: (height_m: number) => command<Session>("/session/manual/hold", { height_m }),
   land: () => command<Session>("/session/land"),
   emergencyStop: () => command<Session>("/session/emergency-stop"),
   endSession: () => command<Session>("/session/end"),
