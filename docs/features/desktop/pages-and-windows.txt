@@ -99,10 +99,13 @@ keeps its scroll position and the scene keeps its trail.
 THE COMMAND LOG IS NOT THE AUDIT TRAIL
 
 It is built entirely from what the window can already see: the commands it
-issues through `run`, and the session frames arriving on the live socket. The
-agent has an audit trail (../backend/audit-trail.txt) but exposes no route to
-read it back, so this starts when the window opens and dies with it. The pane
-says so on screen.
+issues through `run`, and the session frames arriving on the live socket.
+
+The real audit trail is elsewhere and is not this: the agent writes it into
+Supabase (`audit_events`, append-only) and the WEB DASHBOARD reads it back with
+filters — ../backend/audit-trail.txt. The agent offers no local route to it, so
+this pane starts when the window opens and dies with it. It says so on screen,
+because a log that looks like the record but is not one is worse than none.
 
 It earns its place by narrating a session in order. `useSessionNarration` diffs
 each session frame against the one before it and writes only what changed, so
@@ -217,6 +220,11 @@ DECISIONS
   a terminal and an attitude indicator reads as a marketing page rather than an
   instrument panel; keeping it on the sidebar's mark is enough for the app and
   the website to read as one product.
+- BOTH BUNDLED FONTS ARE BUNDLED, NEVER FETCHED. Inter and Fraunces ship with
+  the app through @fontsource (`main.tsx` imports them), because the window's
+  CSP allows no remote fonts and a lab laptop may be offline. This predates the
+  2026-09-22 redesign and still holds — narrowing Fraunces to the brand mark
+  changed which font is used where, not how either one is loaded.
 - The console's monospace is the SYSTEM stack, not a bundled font. The window's
   CSP allows no remote fonts, and a system stack is never fetched at all — so it
   costs nothing in the installer and is the face the operator's terminal

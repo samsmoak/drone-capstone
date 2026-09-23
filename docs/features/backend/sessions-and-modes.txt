@@ -30,9 +30,11 @@ THE STATES
   busy                  -> land / emergency_stop
   ending                -> land if needed, close the flight, flush the upload
 
-MODE is auto or manual, chosen in the top bar, and defaults to AUTO. It cannot
-change while busy: swapping controller mid-air would hand the drone to a
-different command source with no warning.
+MODE is auto or manual, chosen in the desktop app's SIDEBAR, and defaults to
+AUTO. It cannot change while busy: swapping controller mid-air would hand the
+drone to a different command source with no warning. (It sat in a top bar until
+2026-09-22; the window is a sidebar and a flight strip now — see
+../desktop/pages-and-windows.txt.)
 
   auto    Hover test (rise, hold a steady height, land where it started)
   both    Battery & motor test (each motor on its own, then the battery under

@@ -286,6 +286,32 @@ Both would otherwise be drawn as working arrows:
                         and the agent serves only /ws/live. That page cannot
                         connect.
 
+Browser manual flight, re-verified 2026-09-22, is broken in THREE ways and the
+third decides the work:
+
+  1. /ws/manual does not exist. The only socket is /ws/live (api/rest.py:384).
+  2. The page sends NO auth frame. The agent closes any socket whose first
+     message is not {type:"auth", token} with code 1008.
+  3. Its frame contract ({ready} | {state,thrust}) is an old one; the agent now
+     sends {type: session|sync|telemetry|pong} and ignores the {panic}|{land}
+     frames the page sends.
+
+Fixing 1 and 2 would move the failure from 404 to "not authorised" and LOOK
+fixed. THE BLOCKER IS THE TOKEN: it is generated per launch by the Tauri shell
+and handed to the desktop window, and web/ has no plumbing to obtain it. Wiring
+this needs a decision about how a browser on the same network gets that token —
+an operator-pasted token, or a pairing step — not a mechanical fix. The desktop
+app does not have this problem because the shell hands it the token directly.
+
+CROP-HEALTH PREDICTIONS are a third entry as of 2026-09-22, and this one changes
+what Task 4 can be. The previous team's best_lnn_stable.pt cannot be loaded and
+fed by this airframe: 1280 of its 1291 inputs are an EfficientNet-B0 embedding
+of a PHOTOGRAPH of a labelled pomegranate tracked weekly, and this drone's
+camera does not work. Of the remaining 11 columns it can measure 2 — the rest
+are outdoor weather-station readings, several of them meaningless indoors.
+Zero-padding the image half would write confident nonsense into `predictions`
+and colour the zone map with it. The options are in ../ROADMAP.md phase 11.
+
 Also out of scope by decision: the AI deck's camera link, Docker for the agent,
 real-time stick control over the internet.
 
