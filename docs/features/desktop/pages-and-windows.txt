@@ -94,8 +94,19 @@ back to the right on wide screens. At the window's 720 px minimum width, two
 halves would be about 230 px each, so the split has to be a breakpoint and not
 a fixed 50/50.
 
-THE KEYS SIT ABOVE BOTH COLUMNS, in Auto as well as Manual, because scrolling
-counts as hidden. They were a panel below the action rail, the checks and the
+THE STRIP ABOVE BOTH COLUMNS carries the six vitals on the LEFT and the keys on
+the right. Both are there for the same reason: they are what an operator glances
+at while the drone is in the air, and neither can be behind anything.
+
+The vitals — battery, height, uncertainty, thrust, raw temperature and the
+drone's own "will it arm" — used to live inside the console's Vitals tab, where
+switching to Camera or Scene hid the battery reading. Moving them out also gave
+the command log its height back: it had been sharing the console with that grid,
+the tail and the attitude indicator, and is now roughly twice as tall. Thrust and
+height came OFF the attitude indicator in the same pass, because the strip shows
+them and two places for one number is worse than either.
+
+THE KEYS ARE THERE IN AUTO TOO, because scrolling counts as hidden. They were a panel below the action rail, the checks and the
 mode controls, which meant the bindings could be off-screen while the drone was
 in the air. In Auto the movement keys are dimmed and said to be inactive rather
 than removed — L still lands in both modes — because a control that disappears
@@ -121,7 +132,8 @@ arrived, which meant the operator relearned the layout at every stage.
 The left column is three tabs:
 
   Vitals   the attitude indicator, then the command log, then the vitals tail
-  Camera   a finished camera UI with nothing behind it yet — see below
+           (the current VALUES moved up into the strip — see below)
+  Camera   the real frame path, on a test pattern — see camera.txt
   Scene    the drone drawn in the room, from its own position and attitude
 
 The command log opens FULL SCREEN from its own footer. The inline pane is about

@@ -116,6 +116,11 @@ class Snapshot:
     assisted: bool = True
     #: Why assistance is unavailable, in words, or None.
     unassisted_reason: str | None = None
+    #: Whether the AI deck — the one carrying the camera — is fitted, as the
+    #: DRONE reports it (deck.bcAI, over the radio during the checks). None
+    #: until a drone has been asked, which is NOT the same as "not fitted".
+    #: Recorded and shown; it gates nothing.
+    ai_deck: bool | None = None
     #: The last flight ended abnormally — a tumble, a guard, an emergency stop.
     #: Nothing flies until Retry has re-run the checks in this same session:
     #: after a tumble the firmware holds the motors at zero, and a flight armed
@@ -129,6 +134,7 @@ class Snapshot:
             "checks": self.checks, "health_test": self.health_test, "flight": self.flight,
             "message": self.message, "can_fly": self.can_fly, "restoring": self.restoring,
             "assisted": self.assisted, "unassisted_reason": self.unassisted_reason,
+            "ai_deck": self.ai_deck,
             "retry_required": self.retry_required,
         }
 
@@ -406,11 +412,12 @@ class Session:
                    "endurance_s": round(report.endurance_s)},
             assisted=report.assisted,
             unassisted_reason=report.unassisted_reason,
+            ai_deck=report.ai_deck,
             message=(
                 "Put the drone on a flat, clear surface, then confirm."
                 if report.assisted else
                 "The drone cannot hold a height by itself right now. Put it on a flat, "
-                "clear surface and confirm both boxes to fly it by hand."
+                "clear surface, then confirm to fly it by hand."
             ),
         )
         if self._syncer is not None:
@@ -511,11 +518,12 @@ class Session:
             drone={"hardware_id": report.hardware_id, "battery_v": round(report.vbat, 2),
                    "endurance_s": round(report.endurance_s)},
             assisted=report.assisted, unassisted_reason=report.unassisted_reason,
+            ai_deck=report.ai_deck,
             message=(
                 "Checked again. Put the drone on a flat, clear surface, then confirm."
                 if report.assisted else
                 "Checked again. The drone cannot hold a height by itself right now — put it "
-                "on a flat, clear surface and confirm both boxes to fly it by hand."
+                "on a flat, clear surface, then confirm to fly it by hand."
             ),
         )
 

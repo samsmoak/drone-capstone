@@ -31,6 +31,7 @@ import { api, KEY_LABELS, type HealthTest, type Intent, type Session, type Telem
 import type { LogLine } from "@/lib/commandLog";
 import { Button, Message, PageHeader, Panel, Spinner, Stat, StatusDot } from "@/components/ui";
 import { ConsolePane } from "./ConsolePane";
+import { VitalsNow } from "./VitalsNow";
 
 type Props = {
   session: Session | null;
@@ -66,7 +67,7 @@ export function ControlPage({
           modes. They were in a panel below five other things; the panel's own
           note says a control surface whose keys are hidden is a crash waiting
           to happen, and scrolling counts as hidden. */}
-      <Keypad intent={intent} mode={session.mode} />
+      <Keypad intent={intent} mode={session.mode} telemetry={telemetry} session={session} />
 
       {session.message && (
         <Message
@@ -90,7 +91,6 @@ export function ControlPage({
           </div>
           <div className="lg:order-1">
             <ConsolePane
-              session={session}
               telemetry={telemetry}
               history={history}
               logLines={logLines}
@@ -680,7 +680,12 @@ function ManualControls({ session, telemetry, ambient, setAmbient, height, setHe
  * path into the flight loop. They light from `intent`, which is the same state
  * the agent is being sent — so a key lit here is a key the drone knows about.
  */
-function Keypad({ intent, mode }: { intent: Intent; mode: Session["mode"] }) {
+function Keypad({ intent, mode, telemetry, session }: {
+  intent: Intent;
+  mode: Session["mode"];
+  telemetry: Telemetry | null;
+  session: Session | null;
+}) {
   const land = KEY_LABELS.find((b) => b.keys.every((k) => !k.field));
   // In Auto the drone flies itself: the movement keys reach nothing. L still
   // lands in both modes (App.tsx binds it unconditionally), so the cluster is
@@ -693,8 +698,15 @@ function Keypad({ intent, mode }: { intent: Intent; mode: Session["mode"] }) {
       aria-label="Keys"
       // items-start, so every cluster's caption sits on the same line. Centred,
       // the one-row "Down" cluster floated below the two-row ones.
-      className="flex flex-wrap items-start gap-x-8 gap-y-3 border border-[var(--border)] bg-[var(--surface)] px-4 py-3"
+      className="flex flex-wrap items-start gap-x-8 gap-y-4 border border-[var(--border)] bg-[var(--surface)] px-4 py-3"
     >
+      {/* The vitals sit LEFT of the keys and never move: they used to live in
+          the console's Vitals tab, where switching to Camera or Scene hid the
+          battery reading. */}
+      <VitalsNow telemetry={telemetry} session={session} />
+
+      <div aria-hidden="true" className="hidden self-stretch border-l border-[var(--border)] lg:block" />
+
       <div className={`flex items-start gap-6 ${movementLive ? "" : "opacity-45"}`}>
         <Cluster caption="Height · rotation">
           <div className="grid grid-cols-3 gap-1">
@@ -725,11 +737,8 @@ function Keypad({ intent, mode }: { intent: Intent; mode: Session["mode"] }) {
         </Cluster>
       )}
 
-      <p className="mono min-w-0 flex-1 text-[10px] leading-relaxed text-[var(--muted)]">
-        {movementLive
-          ? "W/S rise · A/D rotate · arrows move · L lands"
-          : "Auto flies itself — the movement keys are inactive. L still lands."}
-        <br />
+      <p className="mono min-w-0 flex-1 self-center text-[10px] leading-relaxed text-[var(--muted)]">
+        {!movementLive && <>Auto flies itself — the movement keys are inactive. L still lands.<br /></>}
         Emergency stop is in the strip at the top and has no key.
       </p>
     </section>

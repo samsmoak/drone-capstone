@@ -17,18 +17,7 @@
 
 import { useLayoutEffect, useMemo, useRef } from "react";
 import { HISTORY_S, type History } from "@/App";
-import type { Session, Telemetry } from "@/lib/agent";
 import { formatNumber } from "@/lib/format";
-import { StatusDot, type Tone } from "@/components/ui";
-
-const read = (telemetry: Telemetry | null, name: string): number | null =>
-  telemetry?.values[name] ?? null;
-
-/** Position uncertainty in cm — the worst of the two horizontal variances. */
-function uncertaintyCm(values: Record<string, number>): number | null {
-  const worst = Math.max(values["kalman.varPX"] ?? 0, values["kalman.varPY"] ?? 0);
-  return worst ? Math.sqrt(worst) * 100 : null;
-}
 
 /** One line per whole second of the buffer, newest last. */
 function perSecond(history: History): History {
@@ -43,11 +32,7 @@ function perSecond(history: History): History {
   return out;
 }
 
-export function VitalsTail({ telemetry, history, session }: {
-  telemetry: Telemetry | null;
-  history: History;
-  session: Session | null;
-}) {
+export function VitalsTail({ history }: { history: History }) {
   const tail = useMemo(() => perSecond(history), [history]);
   const box = useRef<HTMLDivElement>(null);
 
@@ -58,38 +43,8 @@ export function VitalsTail({ telemetry, history, session }: {
     if (el) el.scrollTop = el.scrollHeight;
   }, [tail]);
 
-  const vbat = read(telemetry, "pm.vbat") ?? session?.drone?.battery_v ?? null;
-  const varCm = telemetry ? uncertaintyCm(telemetry.values) : null;
-  const canfly = read(telemetry, "sys.canfly");
-
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* Now. Six figures, each with the unit and a tone where one applies. */}
-      <div className="mono grid grid-cols-3 gap-x-4 gap-y-2 border-b border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 text-xs">
-        <Vital
-          label="Battery" value={vbat} unit="V" digits={2}
-          tone={vbat == null ? undefined : vbat < 3.3 ? "critical" : vbat < 3.75 ? "warning" : "good"}
-        />
-        <Vital label="Height" value={telemetry?.height_m ?? null} unit="m" digits={2} />
-        <Vital
-          label="Uncertainty" value={varCm} unit="cm" digits={1}
-          tone={varCm == null ? undefined : varCm < 5 ? "good" : "warning"}
-        />
-        <Vital label="Thrust" value={read(telemetry, "stabilizer.thrust")} unit="" digits={0} />
-        <Vital label="Temp, raw" value={read(telemetry, "baro.temp")} unit="°C" digits={1} />
-        {/* The drone's own verdict, never a voltage threshold guessed here. */}
-        <div className="min-w-0">
-          <p className="text-[10px] uppercase tracking-[0.08em] text-[var(--muted)]">Will it arm</p>
-          <p className="mt-0.5 font-semibold">
-            {canfly == null ? (
-              <span className="text-[var(--muted)]">—</span>
-            ) : (
-              <StatusDot tone={canfly ? "good" : "critical"}>{canfly ? "Yes" : "No"}</StatusDot>
-            )}
-          </p>
-        </div>
-      </div>
-
       <div className="mono grid grid-cols-[3.6rem_1fr] gap-x-2 border-b border-[var(--console-line)] bg-[var(--console)] px-3 py-1 text-[10px] uppercase tracking-[0.06em] text-[var(--console-dim)]">
         <span>Elapsed</span>
         <span>z · vbat · roll · pitch · yaw · thrust · motors</span>
@@ -144,29 +99,6 @@ export function VitalsTail({ telemetry, history, session }: {
   );
 }
 
-function Vital({ label, value, unit, digits, tone }: {
-  label: string;
-  value: number | null;
-  unit: string;
-  digits: number;
-  tone?: Tone;
-}) {
-  return (
-    <div className="min-w-0">
-      <p className="text-[10px] uppercase tracking-[0.08em] text-[var(--muted)]">{label}</p>
-      {/* The label is muted; the figure never is. */}
-      <p className="mt-0.5 font-semibold">
-        {value === null ? (
-          <span className="text-[var(--muted)]">—</span>
-        ) : tone ? (
-          <StatusDot tone={tone}>{`${formatNumber(value, digits)}${unit && ` ${unit}`}`}</StatusDot>
-        ) : (
-          `${formatNumber(value, digits)}${unit && ` ${unit}`}`
-        )}
-      </p>
-    </div>
-  );
-}
 
 /** Right-align inside a monospace column without a table. */
 const pad = (text: string, width: number) => text.padStart(width, " ");
