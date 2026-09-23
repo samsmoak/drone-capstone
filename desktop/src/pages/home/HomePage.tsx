@@ -197,7 +197,10 @@ export function HomePage({ session, telemetry, sync, connected, run, onGo }: Pro
         </ol>
       </Panel>
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      {/* Two up from md, not lg: with the sidebar taking 15rem there is room
+          for both of these side by side well before a 1024 px viewport, and
+          stacking them pushed "Stopping it" below the fold. */}
+      <div className="grid gap-3 md:grid-cols-2">
         <Panel title="Before you fly">
           <ul className="grid gap-2 text-sm leading-relaxed">
             <li>The Crazyradio dongle is in a USB port on this computer.</li>

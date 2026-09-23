@@ -78,5 +78,10 @@ INVARIANTS
 - After applying a migration by hand, reload PostgREST's schema cache
   (`notify pgrst, 'reload schema'`). Until then new tables answer 404
   PGRST205 "could not find the table" even though they exist.
-- Never run `supabase db reset` against the hosted project.
+- Never run `supabase db reset` against the hosted project. It drops
+  everything. `supabase db push` is the one that applies migrations there.
+- The LOCAL database carries synthetic rows added while the pages were built:
+  flights aaaaaaaa-…-0001 to -0004, their telemetry, 8 predictions and a few
+  missions. Local only — they are not on the hosted project, and a local
+  `supabase db reset` clears them. Do not read a local row count as real data.
 - Flight data never goes in git.

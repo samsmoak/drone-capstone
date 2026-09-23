@@ -33,6 +33,22 @@ const TABS: readonly TabDef<ConsoleTab>[] = [
   { key: "scene", label: "Scene" },
 ];
 
+/**
+ * Which tab to open on.
+ *
+ * Always "vitals" in the app — index.html is loaded with no query string. The
+ * override exists for the harness, which has to be able to put the Camera and
+ * Scene tabs on screen to measure or screenshot them: they are behind a click
+ * that a headless browser cannot easily make, and the Scene canvas does not
+ * draw at all while its tab is inactive.
+ *
+ * Same spirit as `?agent=` and `?measure=` — see harness.tsx and measure.ts.
+ */
+function initialTab(): ConsoleTab {
+  const wanted = new URLSearchParams(window.location.search).get("tab");
+  return wanted === "camera" || wanted === "scene" ? wanted : "vitals";
+}
+
 export function ConsolePane({
   session, telemetry, history, logLines, onClearLog,
 }: {
@@ -42,7 +58,7 @@ export function ConsolePane({
   logLines: LogLine[];
   onClearLog: () => void;
 }) {
-  const [tab, setTab] = useState<ConsoleTab>("vitals");
+  const [tab, setTab] = useState<ConsoleTab>(initialTab);
 
   return (
     <section

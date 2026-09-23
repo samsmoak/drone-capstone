@@ -24,7 +24,16 @@ import {
 
 export type Sample = { t: number; value: number | null };
 
-const AXIS_TICK = { fill: "var(--muted)", fontSize: 11 };
+/**
+ * Axis labels are figures, so they get tabular numerals: without them a tick
+ * reading 3.82 and the next reading 3.90 occupy different widths, and the axis
+ * shuffles sideways ten times a second on a live chart.
+ */
+const AXIS_TICK = {
+  fill: "var(--muted)",
+  fontSize: 10,
+  fontVariantNumeric: "tabular-nums",
+} as const;
 
 /** A scale that fits the data and ticks on round numbers. */
 function niceScale(samples: Sample[]): { domain: [number, number]; ticks: number[] } {
@@ -50,15 +59,17 @@ function niceScale(samples: Sample[]): { domain: [number, number]; ticks: number
 }
 
 export function LiveChart({
-  samples, unit, height = 150,
+  samples, unit, height = 132,
 }: {
   samples: Sample[];
   unit: string;
   height?: number;
 }) {
   if (samples.length === 0) {
+    // The placeholder is the chart's own height, so a window does not jump
+    // when the first reading lands.
     return (
-      <p className="flex h-[150px] items-center text-sm text-[var(--muted)]">
+      <p className="flex items-center text-sm text-[var(--muted)]" style={{ height }}>
         Waiting for readings…
       </p>
     );
@@ -86,7 +97,7 @@ export function LiveChart({
             tick={AXIS_TICK}
             tickLine={false}
             axisLine={false}
-            width={52}
+            width={44}
             label={{ value: unit, angle: -90, position: "insideLeft",
                      fill: "var(--muted)", fontSize: 11 }}
           />
