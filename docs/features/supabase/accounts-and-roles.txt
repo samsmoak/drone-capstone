@@ -65,3 +65,12 @@ INVARIANTS
   every policy reads it there.
 - Never log a password or a raw provider error. Sign-in failures surface as
   plain words the operator can act on.
+- SEEDING auth.users NEEDS EMPTY STRINGS, NOT NULL, in the token columns. NULL
+  makes every subsequent sign-in fail with a 500 reading "Database error
+  querying schema" — which looks like a schema or a policy problem and is
+  nothing of the kind. It cost a debugging session; the fix is in seed.sql.
+- GOOGLE SIGN-IN NEEDS A REDIRECT URL REGISTERED BY HAND, once, by the project
+  owner: Supabase -> Authentication -> URL Configuration -> Redirect URLs, add
+  https://drone-capstone.vercel.app/auth/callback. Nothing in this repo can do
+  it. Email and password work without it, so the gap shows up only when someone
+  tries the Google button.

@@ -109,7 +109,17 @@ Legend: `[x]` done · `[ ]` not started · **⚠** blocked on something external
 74. [x] Browser sends intent; agent generates 50 Hz setpoints itself
 75. [x] Heartbeat — auto-land after 0.5 s of silence
 76. [x] Bind to localhost by default; LAN only behind an explicit flag
-77. [ ] Telemetry broadcast over the same socket (not built: the socket reports only `{state, thrust}`, and manual control starts no telemetry reader)
+77. [ ] Telemetry broadcast over the same socket. The agent side is **done** — `/ws/live` sends telemetry and the desktop console consumes it. Two things remain, and the first is bigger than this line used to suggest:
+
+    **77a. `web/components/manual-control.tsx` CANNOT CONNECT AT ALL.** Verified 2026-09-22, three independent breaks:
+    - It opens `/ws/manual` (line 25). The agent serves only `/ws/live` (`api/rest.py:384`). **There is no such route** — the socket 404s.
+    - The agent closes any socket whose first message is not `{type:"auth", token}` with code 1008. The web client sends **no auth frame at all** (0 occurrences).
+    - Its documented frame contract (`{ready:true} | {state,thrust}`) is an old one. The agent now sends `{type:"session"|"sync"|"telemetry"|"pong"}`, and ignores the `{type:"panic"|"land"}` frames this client sends.
+
+    Fixing the path and the frames alone would only move the failure from 404 to "not authorised", which would *look* fixed. **The blocker is the token:** it is generated per launch by the Tauri shell and handed to the desktop window, and `web/` has no plumbing to obtain it (0 references). Making this work needs a decision on how a browser on the same network gets that token — an operator-pasted token, or a pairing step. That is a design call, not a mechanical fix, which is why it was left rather than half-done.
+
+    **77b. Manual control starts no `TelemetryReader`**, so a manual flight records nothing at all. Fixing it means an in-memory broadcast sink plus starting the reader during manual control. **Needs a lab check first: logging and 50 Hz control share one radio.**
+77b. [ ] `serve` does not run the mission poller (confirmed: nothing calls `claim_mission` on a loop — `sync/cloud.py:281` is the only reference). An installed desktop app therefore never flies missions queued from the website, which is the whole point of the Supabase leg. Run the poller inside the desktop agent.
 78. [x] Tests: dropped heartbeat triggers land
 79. [x] Tests: malformed control frame is rejected, not crashed on
 
@@ -149,8 +159,60 @@ the only instructions. Added:
 
 ## Phase 11 — ML
 
-97. [ ] Port the notebook's feature extraction into `telemetry/features.py`
-98. [ ] Load `best_lnn_stable.pt`, infer after correction, write to `predictions`
+> **⚠ BLOCKED, AND NOT BY EFFORT.** Read this before planning Task 4 around the
+> previous team's model. Established 2026-09-22 by reading
+> `~/Desktop/drone project/code/pomegranate-tree-prediction.ipynb` directly.
+>
+> `best_lnn_stable.pt` is an **EfficientNet-B0 + 2-layer CfC** classifier whose
+> input is
+>
+> ```
+> IN_DIM = FEAT_DIM + len(ENV_COLS)   # 1291
+> FEAT_DIM = 1280                     # EfficientNet-B0 image embedding
+> ENV_COLS = ['temp','dewpt','rh','precip_rate','solar_rad',
+>             'ghi','dhi','dni','pres','wind_spd','vis']
+> ```
+>
+> **1280 of its 1291 inputs are a photograph.** `extract_features(df)` runs
+> EfficientNet-B0 over `df['image_path']`, one image per `(fruit_id, week)` — a
+> per-fruit weekly series of pomegranate photos. This drone's camera does not
+> work (see `docs/features/desktop/pages-and-windows.txt`), and it does not
+> photograph individual labelled fruits over weeks.
+>
+> **Of the remaining 11 columns, this drone can measure 2**: `temp` (after
+> thermal correction) and `pres`. The other nine are outdoor weather-station
+> readings — dew point, humidity, precipitation, three solar irradiance
+> channels, wind speed, visibility — and several are meaningless for an INDOOR
+> greenhouse.
+>
+> So the model cannot be loaded and fed. Zero-padding the 1280 image dimensions
+> would produce confident output from an input the network has never seen, and
+> that output would be written into `predictions` and used to colour zones on
+> the dashboard. **Do not do that.** A plausible wrong number on a health map is
+> worse than an empty one.
+>
+> There is a third cost even if the data existed: torch + torchvision + `ncps`
+> inside the PyInstaller one-file binary, which today is 27 MB and ships in a
+> 30 MB .dmg to operators (`docs/features/desktop/desktop-app.txt`).
+>
+> **The honest options**, none of which is "port the notebook":
+> 1. **Zone-level thermal aggregates** — mean and spread of corrected
+>    temperature per zone, position-tagged, deviation from the greenhouse mean.
+>    Buildable today from data already recorded, and it is what the system
+>    already promises. It is statistics, and must be labelled as statistics, not
+>    as a model.
+> 2. **Train something on this drone's own sensors.** Needs labelled data that
+>    does not exist yet.
+> 3. **Fix the camera datalink first**, then revisit — but the model is still
+>    trained on pomegranates, not greenhouse crops.
+
+97. [ ] ~~Port the notebook's feature extraction~~ — see above. Nine of the
+    eleven environmental columns cannot be measured by this airframe, so there
+    is nothing faithful to port.
+98. [ ] ~~Load `best_lnn_stable.pt`, infer after correction~~ — blocked on the
+    camera and on the feature space, not on time.
+98b. [ ] **Decide what Task 4 actually is**, given the above. Option 1 is the
+    only one that ships without new hardware.
 
 ## Phase 12 — Desktop + ship
 

@@ -1,7 +1,14 @@
 # CLAUDE.md
 
-> **Picking this up fresh? Read `NEXT-STEPS.txt` at the repo root** — it lists
-> exactly what is built, what is not, and what to do next.
+> **Picking this up fresh?** Read `docs/README.md` — it routes to a doc per
+> feature. `docs/ROADMAP.md` is what is built and what is not.
+>
+> There used to be a `NEXT-STEPS.txt` here. It was deleted on 2026-09-22 after
+> drifting six days out of date — it still claimed 177 tests (501), that the
+> public pages were unbuilt (they ship), and that nothing had ever talked to a
+> real Crazyradio (see `docs/flight-log.txt`). Everything in it that was still
+> true was moved into the docs below. **Do not recreate it:** a hand-maintained
+> status file beside a generated router is the thing that drifted.
 
 **drone-capstone** — CropWatcher: an indoor greenhouse crop-health monitoring system built
 around a Crazyflie 2.1. The drone flies autonomous scouting missions, logs position-tagged
@@ -38,13 +45,46 @@ The agent is the only process that touches the radio. Nothing else — ever.
 ```bash
 # agent
 cd backend/agent && source .venv/bin/activate
-pytest                                    # gate
-cropwatcher serve                         # serve (the api module has no entry point)
+ruff check . && mypy cropwatcher && pytest   # gates
+cropwatcher serve                            # serve (the api module has no entry point)
 
 # web
 cd web && pnpm dev
-pnpm typecheck && pnpm lint && pnpm build # gates
+pnpm typecheck && pnpm lint && pnpm build    # gates
+
+# desktop
+cd desktop && pnpm build                     # gate (tsc, then vite)
 ```
+
+`pnpm typecheck` runs `next typegen` first, and must. A bare `tsc` fails on a
+fresh clone because the `PageProps` route types only exist after generation.
+
+**With the radio plugged in and a charged battery**, the lab pass is:
+
+```bash
+cd backend/agent && source .venv/bin/activate
+cropwatcher check
+cropwatcher hover --height 0.3 --secs 30 --ambient 74F   # writes organized_flights/
+pytest -m hardware                                       # deselected without a drone
+```
+
+Report pass, fail or skipped honestly. Never claim done on a gate that was not
+run.
+
+### Three things only the project owner can do
+
+1. **Rotate the Supabase secret key and the database password.** Both were
+   shared outside the dashboard during development, and the secret key bypasses
+   every RLS policy. Nothing in this repo reads either, so rotating breaks
+   nothing here — but update the `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
+   GitHub Actions secrets or desktop releases stop publishing.
+2. **Register the Google redirect URL** — see
+   `docs/features/supabase/accounts-and-roles.txt`.
+3. **Delete the two junk Vercel projects, `agent` and `agent-kpqe`.** They are
+   still connected to this repo and fail on every push to `main` with "No
+   FastAPI entrypoint found" — those are the failed-deployment emails.
+   `drone-capstone` itself deploys fine. See *Deploying* below for why giving
+   them an entrypoint is the wrong fix.
 
 ## Flight invariants
 

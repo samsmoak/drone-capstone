@@ -140,10 +140,12 @@ function SessionDetailBody({ record, mode }: { record: SessionRecord; mode: Mode
         <Disclosure
           key={w.key}
           open={index === 0}
-          summaryClassName="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4"
+          summaryClassName="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-2.5"
           summary={
             <>
-              <span className="font-medium text-[var(--heading)]">{w.label} readings</span>
+              <span className="mono text-xs font-bold uppercase tracking-[0.06em] text-[var(--heading)]">
+                {w.label} readings
+              </span>
               <span aria-hidden="true" className="text-[var(--muted)] transition-transform group-open:rotate-90">›</span>
             </>
           }

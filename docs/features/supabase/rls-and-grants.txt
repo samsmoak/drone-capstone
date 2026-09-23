@@ -66,3 +66,12 @@ INVARIANTS
   and acts as `authenticated`.
 - Authorization is enforced server-side on every request. A client-side role
   check is UX.
+- HOSTED AND LOCAL DO NOT START THE SAME. The hosted project grants
+  `authenticated` ALL privileges on `public` by default; a local `supabase
+  start` does not. Migration 0004 revokes and re-grants explicitly so the two
+  agree. ADD A TABLE AND YOU MUST CHECK ITS GRANTS ON THE HOSTED PROJECT, not
+  only locally — locally it will look correct while hosted silently allows more.
+- A SECURITY TEST THAT ONLY CHECKS FOR DENIAL PROVES NOTHING. Confirm the
+  permitted path works in the same test, or a missing grant is indistinguishable
+  from a working policy: both deny, for opposite reasons, and only one is what
+  you wanted.

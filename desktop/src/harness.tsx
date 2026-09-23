@@ -127,7 +127,17 @@ const logLines: LogLine[] = [
  * with a 15rem rail taken out of the width it would measure a window nobody
  * runs.
  */
+/**
+ * `?only=<substring>` renders just the sections whose label matches.
+ *
+ * The harness stacks every page, so a screenshot captures whichever one happens
+ * to be at the top. Isolating a section is how a canvas — the Scene tab, which
+ * the DOM measurement cannot see into — gets looked at at all.
+ */
+const only = query.get("only")?.toLowerCase();
+
 function Shell({ label, children }: { label: string; children: React.ReactNode }) {
+  if (only && !label.toLowerCase().includes(only)) return null;
   return (
     <section className="border-b-4 border-[var(--primary)]">
       <p className="bg-[var(--primary)] px-3 py-1 text-xs font-bold text-[var(--on-primary)]">{label}</p>

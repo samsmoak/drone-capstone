@@ -71,3 +71,8 @@ INVARIANTS
   ground-relative z, so never subtract it again here.
 - The nav marks the LONGEST matching route active. A prefix test marked /app
   active on every page.
+- ZONE HEALTH COLOURS ASSUME health_score IS 0–1. Nothing enforces that yet,
+  because nothing writes the column: the model that will (see ROADMAP phase 11)
+  is not wired up. Pin the range when it lands, or a score on a 0–100 scale
+  will paint every zone at the top of the sequential ramp and look like a
+  uniformly healthy greenhouse.

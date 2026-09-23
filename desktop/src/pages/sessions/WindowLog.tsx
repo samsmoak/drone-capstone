@@ -59,17 +59,20 @@ export function WindowLog({ windowKey, refreshKey, mode, onBack }: {
               <Disclosure
                 key={r.id}
                 open={i < OPEN_ON_ARRIVAL}
-                summaryClassName="grid cursor-pointer list-none gap-1 px-5 py-4 sm:grid-cols-[1fr_auto] sm:items-center"
+                // Same summary shape and the same monospace figures as
+                // SessionRow on the Sessions page: the two lists show the same
+                // sessions, so they must not read as two different things.
+                summaryClassName="grid cursor-pointer list-none gap-1 px-4 py-2.5 sm:grid-cols-[1fr_auto] sm:items-center"
                 summary={
                   <>
-                    <span>
-                      <span className="block font-semibold">{formatDateTime(r.started_at)}</span>
-                      <span className="block text-sm text-[var(--muted)]">
+                    <span className="min-w-0">
+                      <span className="mono block text-sm font-semibold">{formatDateTime(r.started_at)}</span>
+                      <span className="mono block text-xs text-[var(--muted)]">
                         <Who record={r} /> · {MODE_LABEL[r.mode as Mode] ?? r.mode} ·{" "}
                         {r.ended_at ? formatDuration(r.duration_s) : "running"} · {r.summary.samples} readings
                       </span>
                     </span>
-                    <span className="text-sm text-[var(--muted)]">
+                    <span className="text-xs text-[var(--muted)]">
                       <span className="group-open:hidden">Show readings ›</span>
                       <span className="hidden group-open:inline">Hide readings</span>
                     </span>
