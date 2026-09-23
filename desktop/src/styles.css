@@ -90,8 +90,10 @@
   --console-dim: #5a5a55;
   --console-line: #dededa;
 
-  /* The window's left rail. One token so the shell and the pages agree. */
+  /* The window's left rail, in its two locked widths. One token pair so the
+     shell, the overlay and the Control page's height maths all agree. */
   --sidebar-w: 15rem;
+  --sidebar-w-collapsed: 3.25rem;
 
   /* The attitude indicator. Sky and ground do NOT swap with the theme: an ADI
      is a self-contained instrument, its ink is defined against its own fill,

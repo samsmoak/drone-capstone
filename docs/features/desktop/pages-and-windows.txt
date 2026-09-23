@@ -10,9 +10,9 @@ stop.
 
   Home         where you are and what to do next; the sign-in form when signed
                out. Opens first.
-  Control      two columns: the console on the left (vitals, camera, scene),
-               the controls on the right (the action rail, the step's own
-               controls, the keypad). Recent sessions beneath both.
+  Control      the keys across the top, then two columns: the console on the
+               left (vitals, camera, scene), the controls on the right (the
+               action rail and the step's own controls).
   Sessions     every session (who, when, how it ended) and one session's detail
   Flight       position, speed, attitude, thrust
   Power        battery, will-it-arm, per-motor
@@ -53,6 +53,21 @@ moving a file does not rewrite a dozen relative imports.
 
 THE SHELL: A SIDEBAR THAT NAVIGATES, A STRIP THAT STOPS
 
+The sidebar has THREE STATES: locked expanded, locked collapsed (icons only),
+and hover — collapsed in the LAYOUT, expanded OVER the page. Hover expands as an
+overlay rather than by widening, so crossing the rail with the pointer never
+reflows Control's two columns; the layout box is always the locked width and
+only the painted aside grows. The pinned state is remembered per machine in
+localStorage, which is the right home for a per-viewer convenience and the wrong
+home for anything that has to be reliable — every read is guarded and the
+default is a usable state.
+
+HOVER IS SUPPRESSED WHILE FLYING. Expanded, the rail covers the left console —
+the command log and the vitals tail — which is what an operator watches while
+the drone is in the air. The locked states still work and the pin is still
+there; only the rail opening itself is withheld.
+
+
 The sidebar is copy-adapted from web/components/operator/OperatorSidebar.tsx —
 brand at the top, the pages in groups, the way out and the account at the foot —
 so the app and the dashboard navigate the same way.
@@ -79,6 +94,13 @@ back to the right on wide screens. At the window's 720 px minimum width, two
 halves would be about 230 px each, so the split has to be a breakpoint and not
 a fixed 50/50.
 
+THE KEYS SIT ABOVE BOTH COLUMNS, in Auto as well as Manual, because scrolling
+counts as hidden. They were a panel below the action rail, the checks and the
+mode controls, which meant the bindings could be off-screen while the drone was
+in the air. In Auto the movement keys are dimmed and said to be inactive rather
+than removed — L still lands in both modes — because a control that disappears
+between modes is one the operator has to relearn.
+
 The right column opens with the ACTION RAIL: four buttons, always in the same
 place whatever step the session is on — Battery & motor test, Hover demo (or
 Start motors in Manual), Start session, End session. A button that cannot act
@@ -91,6 +113,11 @@ The left column is three tabs:
   Vitals   the attitude indicator, then the command log, then the vitals tail
   Camera   a finished camera UI with nothing behind it yet — see below
   Scene    the drone drawn in the room, from its own position and attitude
+
+The command log opens FULL SCREEN from its own footer. The inline pane is about
+six lines once the attitude indicator and the vitals tail have taken their
+share — enough to watch, not enough to read a failed pre-flight back through.
+Escape closes it, focus moves in on open and back on close.
 
 Panels are hidden rather than unmounted on a tab switch, so the command log
 keeps its scroll position and the scene keeps its trail.
@@ -190,9 +217,11 @@ signed-out page and swapped it for the operator's account a second later.
 
 WHEN A LOG LOOKS EMPTY
 
-Every history view follows the Auto/Manual toggle, and the toggle starts on
-Auto. An operator whose flights were all manual therefore saw "no sessions" on
-every log page with 45 readings sitting on disk (2026-09-17). The views now
+Every history view follows the Auto/Manual toggle. The toggle started on Auto
+until 2026-09-23, and an operator whose flights were all manual therefore saw
+"no sessions" on every log page with 45 readings sitting on disk (2026-09-17).
+THE DEFAULT IS NOW MANUAL (../backend/sessions-and-modes.txt), which removes the
+usual cause rather than only its symptom. The views still
 count what the filter hid and offer it — "2 manual sessions are hidden by the
 Auto toggle · Show every session" — and each page's heading carries the link
 that opens the web dashboard in the operator's browser, which holds every flight
@@ -207,7 +236,20 @@ DECISIONS
 - The Auto/Manual toggle lives in the SIDEBAR and changes which controls Control
   shows. It is a mode, not an action, so it belongs with navigation. It is
   locked while busy: switching mid-air would hand the drone to a different
-  command source with no warning.
+  command source with no warning. It opens on MANUAL — see
+  ../backend/sessions-and-modes.txt for why Auto was the wrong default.
+- NO TICK BOXES BEFORE FLYING. The agent still requires `accept_unassisted` and
+  refuses confirm_area without it (session.py); what changed on 2026-09-23 is
+  how the window obtains it. A button whose LABEL states what is being accepted
+  ("Confirm — I am flying it by eye"), under the warning that states why, is
+  that consent in one deliberate act instead of two. The label has to keep
+  carrying the consequence: a generic "Continue" here would be the UI accepting
+  on the operator's behalf. The old first box ("the area is clear") gated
+  nothing server-side and is now simply what pressing the button means.
+- Home is a masthead, not a manual. It carried 151 words in five blocks — a
+  paragraph under every step plus two reference panels — above the thing the
+  operator opens the app for. Status is one strip, the steps are titles only,
+  and the reference is one disclosure that starts closed.
 - Land is always visible during a session and bound to L. Emergency stop is
   hold-for-one-second with no key binding, because cutting the motors drops the
   drone.

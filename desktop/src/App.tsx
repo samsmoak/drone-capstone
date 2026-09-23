@@ -221,8 +221,10 @@ export default function App() {
     !["signed_out", "idle"].includes(session.state);
   // History reloads whenever a session starts or ends.
   const historyKey = `${session?.session_id ?? "none"}:${session?.state ?? ""}`;
-  // The Auto/Manual toggle also chooses which history every page shows.
-  const viewMode: Mode = session?.mode ?? "auto";
+  // The Auto/Manual toggle also chooses which history every page shows. The
+  // fallback matches the AGENT's own default (session.py) so the filter does
+  // not flip under the operator when the first frame lands.
+  const viewMode: Mode = session?.mode ?? "manual";
 
   return (
     <div className="flex h-screen bg-[var(--background)] text-[var(--foreground)]">
@@ -231,6 +233,9 @@ export default function App() {
         onNavigate={setPage}
         session={session}
         starting={starting}
+        // Hover-to-expand is suppressed while flying: expanded, the rail covers
+        // the Control page's console, which is what the operator is watching.
+        flying={Boolean(flying)}
         onSetMode={(mode) => void run(() => api.setMode(mode), `Set mode to ${mode}`)}
         onSignOut={() => void run(api.signOut, "Sign out")}
       />
@@ -281,8 +286,6 @@ export default function App() {
                 run={run}
                 logLines={logLines}
                 onClearLog={clearLog}
-                historyKey={historyKey}
-                onOpenSession={(id) => { setPageState("sessions"); setSessionId(id); }}
                 onOpenSessions={() => setPage("sessions")}
               />
             ) : page === "sessions" ? (

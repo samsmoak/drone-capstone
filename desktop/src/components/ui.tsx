@@ -91,6 +91,52 @@ export function Stat({
 }
 
 /**
+ * A row of always-on status, as one strip rather than a row of cards.
+ *
+ * `Stat` is a card because on a sensor window one figure per card IS the
+ * content. Home's five status values are not that: they are a masthead an
+ * operator glances at, and five bordered boxes spend a third of the page
+ * saying what one line can.
+ *
+ * The rules come with it, unchanged from `Stat`: the label is muted, the
+ * FIGURE NEVER IS, and a missing value says so rather than rendering blank.
+ * Tone ships as icon + words, never colour alone.
+ */
+export function StatusBar({ items }: {
+  items: { label: string; value: string | null; tone?: Tone; hint?: string; grow?: boolean }[];
+}) {
+  return (
+    <section
+      aria-label="Status"
+      className="mono flex flex-wrap items-stretch border border-[var(--border)] bg-[var(--surface)] text-xs"
+    >
+      {items.map((item, i) => (
+        <div
+          key={item.label}
+          className={`min-w-0 px-3 py-2 ${i > 0 ? "border-l border-[var(--border)]" : ""} ${
+            item.grow ? "flex-1" : ""
+          }`}
+        >
+          <p className="text-[10px] uppercase tracking-[0.08em] text-[var(--muted)]">{item.label}</p>
+          <p className="mt-0.5 font-semibold wrap-anywhere">
+            {item.value === null || item.value === "" ? (
+              <span className="text-[var(--muted)]">—</span>
+            ) : item.tone ? (
+              <StatusDot tone={item.tone}>{item.value}</StatusDot>
+            ) : (
+              item.value
+            )}
+          </p>
+          {item.hint && (
+            <p className="mt-0.5 text-[10px] leading-tight text-[var(--muted)]">{item.hint}</p>
+          )}
+        </div>
+      ))}
+    </section>
+  );
+}
+
+/**
  * The title of whichever page is showing.
  *
  * Every page carries one, in the same place and the same colour, so the window
