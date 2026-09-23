@@ -3,11 +3,14 @@
  * are doing, drawn as one picture.
  *
  * NO THREE.JS, DELIBERATELY. The scene is one body, four rotors, a floor grid
- * and a trail; three.js is ~170 KB gzipped for that, into an installer whose
- * size is documented (27 MB binary, 30 MB .dmg). This is an axonometric
- * projection and a 3×3 rotation matrix in about a hundred lines, with no
- * dependency and no change to the window's content policy. Reach for three.js
- * if this ever needs an orbitable camera or real lighting.
+ * and a trail; three.js is ~170 KB gzipped for that, against a frontend bundle
+ * that is 194 KB gzipped in total — it would roughly double the window's
+ * JavaScript. (The .dmg is 48 MB, but almost all of that is the frozen agent;
+ * see ../../../../docs/features/desktop/desktop-app.txt for the measurement.)
+ * This is an axonometric projection and a 3×3 rotation matrix in about a
+ * hundred lines, with no dependency and no change to the window's content
+ * policy. Reach for three.js if this ever needs an orbitable camera or real
+ * lighting.
  *
  * EVERY NUMBER HERE IS REAL: position from `stateEstimate.x/y`, height from the
  * frame's own `height_m` (metres above the ground captured at takeoff, not
