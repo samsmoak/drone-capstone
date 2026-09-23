@@ -109,16 +109,10 @@ Legend: `[x]` done · `[ ]` not started · **⚠** blocked on something external
 74. [x] Browser sends intent; agent generates 50 Hz setpoints itself
 75. [x] Heartbeat — auto-land after 0.5 s of silence
 76. [x] Bind to localhost by default; LAN only behind an explicit flag
-77. [ ] Telemetry broadcast over the same socket. The agent side is **done** — `/ws/live` sends telemetry and the desktop console consumes it. Two things remain, and the first is bigger than this line used to suggest:
-
-    **77a. `web/components/manual-control.tsx` CANNOT CONNECT AT ALL.** Verified 2026-09-22, three independent breaks:
-    - It opens `/ws/manual` (line 25). The agent serves only `/ws/live` (`api/rest.py:384`). **There is no such route** — the socket 404s.
-    - The agent closes any socket whose first message is not `{type:"auth", token}` with code 1008. The web client sends **no auth frame at all** (0 occurrences).
-    - Its documented frame contract (`{ready:true} | {state,thrust}`) is an old one. The agent now sends `{type:"session"|"sync"|"telemetry"|"pong"}`, and ignores the `{type:"panic"|"land"}` frames this client sends.
-
-    Fixing the path and the frames alone would only move the failure from 404 to "not authorised", which would *look* fixed. **The blocker is the token:** it is generated per launch by the Tauri shell and handed to the desktop window, and `web/` has no plumbing to obtain it (0 references). Making this work needs a decision on how a browser on the same network gets that token — an operator-pasted token, or a pairing step. That is a design call, not a mechanical fix, which is why it was left rather than half-done.
-
-    **77b. Manual control starts no `TelemetryReader`**, so a manual flight records nothing at all. Fixing it means an in-memory broadcast sink plus starting the reader during manual control. **Needs a lab check first: logging and 50 Hz control share one radio.**
+77. [ ] Telemetry broadcast over the same socket. The agent side is **done** — `/ws/live` sends telemetry and the desktop console consumes it. Two gaps remain:
+    - **Browser manual flight** — the detail lives in its own home, `features/architecture-at-a-glance.txt` under *DESIGNED BUT NOT WIRED*. Do not re-derive it here.
+    - **Manual control starts no `TelemetryReader`**, so a manual flight records nothing at all. Fixing it means an in-memory broadcast sink plus starting the reader during manual control. **Needs a lab check first: logging and 50 Hz control share one radio.**
+77b. [ ] `serve` does not run the mission poller — also in *DESIGNED BUT NOT WIRED*.
 77b. [ ] `serve` does not run the mission poller (confirmed: nothing calls `claim_mission` on a loop — `sync/cloud.py:281` is the only reference). An installed desktop app therefore never flies missions queued from the website, which is the whole point of the Supabase leg. Run the poller inside the desktop agent.
 78. [x] Tests: dropped heartbeat triggers land
 79. [x] Tests: malformed control frame is rejected, not crashed on

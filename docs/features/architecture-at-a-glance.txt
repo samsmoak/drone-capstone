@@ -93,6 +93,13 @@ DESIGNED BUT NOT WIRED
                           never called; Auto runs from the desktop app only
   Browser manual flight   the page opens /ws/manual; the agent serves /ws/live
 
+  Crop-health predictions  best_lnn_stable.pt cannot be fed by this airframe:
+                          1280 of its 1291 inputs are an embedding of a
+                          PHOTOGRAPH, and the camera does not work
+
+  Each of the three is broken for a reason that decides the work, not for want
+  of an afternoon. architecture.txt has them in full; do not re-derive them.
+
 
 FULL DETAIL
 

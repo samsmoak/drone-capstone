@@ -1,10 +1,14 @@
 /**
  * What the window did, and what the agent said back.
  *
- * WHAT THIS IS NOT: the agent's audit trail. That lives on the agent, is
- * written against a person and a drone, and survives a crash. The agent
- * exposes no route to read it back, so this is built entirely from what the
- * window can already see:
+ * WHAT THIS IS NOT: the audit trail. That one is written BY the agent INTO
+ * Supabase (`audit_events`, append-only) against a person and a drone, and the
+ * WEB DASHBOARD is what reads it back with filters — see
+ * docs/features/backend/audit-trail.txt. It survives a crash and it is the
+ * record that counts.
+ *
+ * The agent offers no local route to read it, so this pane is built entirely
+ * from what the window can already see:
  *
  *   - the commands the window itself issues (through App.tsx's `run`)
  *   - the session frames arriving on the live socket
