@@ -4,9 +4,19 @@ TELEMETRY STREAM — one subscription, many readers
 WHAT IT IS
 
 A single persistent 10 Hz log subscription to the drone. The safety guards, the
-CSV writer, the desktop app's live windows and the Supabase upload all read the
-same frames. One subscription, many readers — so what the operator sees on
-screen is exactly what the flight recorded.
+CSV writer, the desktop app's live windows, its Control-page console and the
+Supabase upload all read the same frames. One subscription, many readers — so
+what the operator sees on screen is exactly what the flight recorded.
+
+The console readers were added 2026-09-22 and added NO subscription of their
+own — they are the reason to say so here. The attitude indicator reads
+`stabilizer.roll/pitch/yaw` and `gyro.x/y/z`; the vitals tail reads the whole
+frame and downsamples it to 1 Hz; the 3D scene reads `stateEstimate.x/y`,
+`height_m` and `motor.m1..m4`. All of it was already being streamed and going
+unused on that page, because `ALL_VARIABLES` flattens every window group into
+one subscription. A new on-screen reading here costs no radio traffic — which
+is the whole point of the module and the reason it must stay that way.
+See ../desktop/pages-and-windows.txt.
 
 It replaced a pattern that hurt the hover: the old Flight.position() built a
 brand-new log subscription on every call, four times a second during a hover,

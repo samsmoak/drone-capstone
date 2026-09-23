@@ -1,10 +1,21 @@
 @import "tailwindcss";
 
-/* Design tokens — copied verbatim from web/app/globals.css.
+/* Design tokens — copied from web/app/globals.css.
    Same rule applies here: raw hex ONLY in these definitions, components
    reference the variables, and both themes swap in one place. The chart palette
    is the validated one (re-checked 2026-09-16: light worst adjacent CVD ΔE 9.1,
-   dark 8.4 — all pass). */
+   dark 8.4 — all pass).
+
+   DELIBERATE DIVERGENCES from the web file (2026-09-22), NOT to be propagated
+   back — a desktop instrument panel is not a marketing site:
+
+     --radius-*    0 here, so every rounded-* in the app is square
+     page titles   Inter here; the site keeps Fraunces (see ui.tsx PageHeader)
+
+   Everything else — the colours, the status tones, .eyebrow, .tabular — is
+   identical and should stay identical. The tokens added below (--console*,
+   --adi-*, --sidebar-w, --font-mono) are desktop-only and have no counterpart
+   on the site. */
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -68,6 +79,29 @@
   /* Recessive chart furniture */
   --grid: #ebebe8;
   --axis: #9a9993;
+
+  /* The console surface: the command log, the vitals tail, the camera frame.
+     Darker than --surface-2 in light mode and darker than --background in dark,
+     because a terminal reads as a recessed well in both. Measured against it:
+     --console-ink 14.84:1 light / 14.89:1 dark, --console-dim (timestamps,
+     which are data, so they clear 4.5:1 too) 6.03:1 light / 5.61:1 dark. */
+  --console: #f0efec;
+  --console-ink: #1c1c1a;
+  --console-dim: #5a5a55;
+  --console-line: #dededa;
+
+  /* The window's left rail. One token so the shell and the pages agree. */
+  --sidebar-w: 15rem;
+
+  /* The attitude indicator. Sky and ground do NOT swap with the theme: an ADI
+     is a self-contained instrument, its ink is defined against its own fill,
+     and an operator reading bank angle should not have to relearn which half
+     is the ground. Because the fills are fixed, one measurement holds for both
+     themes — white ink is 5.17:1 on the sky and 7.94:1 on the ground, so even
+     the pitch-ladder NUMBERS (which are text, not graphics) clear 4.5:1. */
+  --adi-sky: #2f6fb5;
+  --adi-ground: #6b4a2e;
+  --adi-ink: #ffffff;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -104,6 +138,11 @@
 
     --grid: #2e2e2b;
     --axis: #6b6a65;
+
+    --console: #141413;
+    --console-ink: #e8e7e2;
+    --console-dim: #8f8e87;
+    --console-line: #2b2b28;
   }
 }
 
@@ -137,6 +176,11 @@
 
   --grid: #2e2e2b;
   --axis: #6b6a65;
+
+  --console: #141413;
+  --console-ink: #e8e7e2;
+  --console-dim: #8f8e87;
+  --console-line: #2b2b28;
 }
 
 @theme inline {
@@ -159,12 +203,44 @@
   --color-serious: var(--status-serious);
   --color-critical: var(--status-critical);
 
+  --color-console: var(--console);
+  --color-console-ink: var(--console-ink);
+  --color-console-line: var(--console-line);
+
+  /* ── Sharp corners, in one place ──────────────────────────────────
+     This is Tailwind v4's radius namespace, so setting it to 0 makes every
+     `rounded-sm|md|lg|xl|2xl|3xl` already written in this app square. Thirty
+     class strings do not get edited, and there is no way for the next person
+     to reintroduce a stray radius by hand.
+
+     `rounded-full` is a static utility in v4 and is NOT affected — which is
+     what we want: the spinner and the account avatar are circles, not corners.
+
+     This is a deliberate divergence from web/app/globals.css, which these
+     tokens were otherwise copied from verbatim. A desktop instrument panel is
+     square; the marketing site is not. */
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
+  --radius-4xl: 0px;
+
   /* Fraunces for page titles, Inter for everything else — the pairing the
      project's portfolio site uses, so the desktop app and the website read as
      one product. Bundled with the app (@fontsource), never fetched: the window
      allows no remote fonts, and a lab laptop may be offline. */
   --font-sans: "Inter Variable", system-ui, sans-serif;
   --font-display: "Fraunces Variable", Georgia, serif;
+
+  /* The console's font. Deliberately NOT bundled: the window's CSP allows no
+     remote fonts, and a system stack is never fetched at all — so this costs
+     nothing in an installer whose size is documented, and it is the face the
+     operator's own terminal already uses. */
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas,
+    "Liberation Mono", monospace;
 }
 
 body {
@@ -210,6 +286,33 @@ body {
 .tabular {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum", "zero";
+}
+
+/* ── The console ──────────────────────────────────────────────────────
+   The command log, the vitals tail and the camera frame sit on one recessed
+   surface in a monospace face. Tabular numerals are not optional here: a
+   vitals column that reflows as the digits change is unreadable at 10 Hz. */
+.console {
+  background: var(--console);
+  color: var(--console-ink);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum", "zero";
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum", "zero";
+}
+
+/* The console panes scroll a lot. A thin scrollbar keeps a 12px line grid
+   from being crowded by a 15px-wide gutter. */
+.console-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--console-line) transparent;
 }
 
 /* The hand cursor on anything clickable. Tailwind v4 no longer sets it on

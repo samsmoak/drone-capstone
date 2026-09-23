@@ -121,25 +121,26 @@ export function SensorWindow({
   onOpenLog: () => void;
 }) {
   const page = WINDOWS.find((w) => w.key === windowKey)!;
+  // Title, live state and the way to the log all on one row: three stacked
+  // blocks of chrome above every window was most of a screen before a reading
+  // appeared.
   const header = (
-    <div className="flex flex-wrap items-end justify-between gap-4">
-      <div className="grid gap-2">
-        <PageHeader title={page.label}>{page.note}</PageHeader>
-        <p className="text-sm text-[var(--muted)]">
+    <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+      <PageHeader eyebrow="Live sensors" title={page.label}>{page.note}</PageHeader>
+      <div className="flex flex-wrap items-center gap-4">
+        <p className="mono text-xs uppercase tracking-[0.06em]">
           <StatusDot tone={telemetry ? "good" : "idle"}>
-            {telemetry
-              ? `Live — the last ${HISTORY_S} seconds, updating ten times a second.`
-              : "Live readings appear here once the drone is connected."}
+            {telemetry ? `Live · last ${HISTORY_S}s · 10 Hz` : "Waiting for the drone"}
           </StatusDot>
         </p>
+        <Button onClick={onOpenLog}>Past sessions log →</Button>
       </div>
-      <Button onClick={onOpenLog}>Past sessions log →</Button>
     </div>
   );
 
   if (session === null || session.state === "signed_out") {
     return (
-      <div className="grid gap-5">
+      <div className="grid gap-4">
         {header}
         <Panel title="No readings">Sign in and start a session to see live readings.</Panel>
       </div>
@@ -147,7 +148,7 @@ export function SensorWindow({
   }
   if (telemetry === null) {
     return (
-      <div className="grid gap-5">
+      <div className="grid gap-4">
         {header}
         <Panel title="No readings">
           Nothing is arriving yet. Readings start when the session connects to the drone.
@@ -157,7 +158,7 @@ export function SensorWindow({
   }
 
   return (
-    <div className="grid gap-5">
+    <div className="grid gap-4">
       {header}
       {windowKey === "flight" && <FlightWindow telemetry={telemetry} history={history} onOpenLog={onOpenLog} />}
       {windowKey === "power" && <PowerWindow telemetry={telemetry} history={history} onOpenLog={onOpenLog} />}
@@ -170,8 +171,8 @@ export function SensorWindow({
 
 function FlightWindow({ telemetry, history, onOpenLog }: WindowProps) {
   return (
-    <div className="grid gap-5">
-      <section className="grid grid-cols-2 gap-4 md:grid-cols-4">
+    <div className="grid gap-4">
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Height above floor" value={telemetry.height_m} unit="m" />
         <Stat label="x" value={value(telemetry, "stateEstimate.x")} unit="m" digits={2} />
         <Stat label="y" value={value(telemetry, "stateEstimate.y")} unit="m" digits={2} />
@@ -182,12 +183,12 @@ function FlightWindow({ telemetry, history, onOpenLog }: WindowProps) {
           <LiveChart samples={series(history, (f) => f.height_m)} unit="m" />
         </ChartLink>
       </Panel>
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      {/* Attitude and speed in one row of six: they are read together, and two
+          separate rows of three left a gap in the middle of the page. */}
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         <Stat label="Roll" value={value(telemetry, "stabilizer.roll")} unit="°" digits={1} />
         <Stat label="Pitch" value={value(telemetry, "stabilizer.pitch")} unit="°" digits={1} />
         <Stat label="Yaw" value={value(telemetry, "stabilizer.yaw")} unit="°" digits={1} />
-      </section>
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Stat label="Speed x" value={value(telemetry, "stateEstimate.vx")} unit="m/s" />
         <Stat label="Speed y" value={value(telemetry, "stateEstimate.vy")} unit="m/s" />
         <Stat label="Speed up" value={value(telemetry, "stateEstimate.vz")} unit="m/s" />
@@ -200,8 +201,8 @@ function PowerWindow({ telemetry, history, onOpenLog }: WindowProps) {
   const vbat = value(telemetry, "pm.vbat");
   const canfly = value(telemetry, "sys.canfly");
   return (
-    <div className="grid gap-5">
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+    <div className="grid gap-4">
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Stat
           label="Battery" value={vbat} unit="V"
           tone={vbat == null ? undefined : vbat < 3.3 ? "critical" : vbat < 3.75 ? "warning" : "good"}
@@ -219,7 +220,7 @@ function PowerWindow({ telemetry, history, onOpenLog }: WindowProps) {
           <LiveChart samples={series(history, (f) => f.values["pm.vbat"] ?? null)} unit="V" />
         </ChartLink>
       </Panel>
-      <section className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {[1, 2, 3, 4].map((motor) => (
           <Stat key={motor} label={`Motor ${motor}`}
                 value={value(telemetry, `motor.m${motor}`)} digits={0} />
@@ -236,8 +237,8 @@ const POWER_STATES: Record<number, string> = {
 
 function EnvironmentWindow({ telemetry, history, onOpenLog }: WindowProps) {
   return (
-    <div className="grid gap-5">
-      <section className="grid gap-4 sm:grid-cols-2">
+    <div className="grid gap-4">
+      <section className="grid gap-3 sm:grid-cols-2">
         <Stat label="Temperature, raw sensor" value={value(telemetry, "baro.temp")} unit="°C"
               digits={1} hint="Reads warm: the drone heats its own sensor" />
         <Stat label="Pressure" value={value(telemetry, "baro.pressure")} unit="hPa" digits={1} />
@@ -261,22 +262,24 @@ function EnvironmentWindow({ telemetry, history, onOpenLog }: WindowProps) {
 
 function MotionWindow({ telemetry, history, onOpenLog }: WindowProps) {
   return (
-    <div className="grid gap-5">
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+    <div className="grid gap-4">
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         <Stat label="Accel x" value={value(telemetry, "acc.x")} unit="g" />
         <Stat label="Accel y" value={value(telemetry, "acc.y")} unit="g" />
         <Stat label="Accel z" value={value(telemetry, "acc.z")} unit="g" />
+        <Stat label="Gyro x" value={value(telemetry, "gyro.x")} unit="°/s" digits={1} />
+        <Stat label="Gyro y" value={value(telemetry, "gyro.y")} unit="°/s" digits={1} />
+        <Stat label="Gyro z" value={value(telemetry, "gyro.z")} unit="°/s" digits={1} />
       </section>
       <Panel title="Vertical acceleration (g)">
         <ChartLink onOpen={onOpenLog}>
           <LiveChart samples={series(history, (f) => f.values["acc.z"] ?? null)} unit="g" />
         </ChartLink>
       </Panel>
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Stat label="Gyro x" value={value(telemetry, "gyro.x")} unit="°/s" digits={1} />
-        <Stat label="Gyro y" value={value(telemetry, "gyro.y")} unit="°/s" digits={1} />
-        <Stat label="Gyro z" value={value(telemetry, "gyro.z")} unit="°/s" digits={1} />
-      </section>
+      <p className="text-sm text-[var(--muted)]">
+        The same gyroscope readings drive the attitude indicator on Control, in the
+        console's Vitals tab — this page is the raw stream, that one is the picture.
+      </p>
     </div>
   );
 }
@@ -292,8 +295,8 @@ function PositioningWindow({ telemetry, history, onOpenLog }: WindowProps) {
   );
 
   return (
-    <div className="grid gap-5">
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+    <div className="grid gap-4">
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Stat
           label="Base stations received" value={received.length ? received.join(", ") : "none"}
           tone={usable.length >= 2 ? "good" : "critical"}

@@ -1,9 +1,13 @@
 /**
- * The account menu in the top bar.
+ * The account menu at the foot of the sidebar.
  *
- * The bar shows an initial, not an email address: a full address crowded the
- * pages off the bar at the window's minimum width, and it is not something an
+ * The trigger shows an initial, not an email address: a full address crowded
+ * the pages out at the window's minimum width, and it is not something an
  * operator needs to read every second. The menu shows it in full.
+ *
+ * `placement="up"` is the sidebar's: the trigger sits at the bottom of the
+ * rail, so a menu opening downwards would be off-screen. It mirrors the web
+ * sidebar's own ProfileMenu, which takes the same prop for the same reason.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -14,9 +18,12 @@ type Props = {
   session: Session | null;
   onSignIn: () => void;
   onSignOut: () => void;
+  placement?: "up" | "down";
+  /** In the sidebar the trigger is a full-width row, not a bare avatar. */
+  wide?: boolean;
 };
 
-export function ProfileMenu({ session, onSignIn, onSignOut }: Props) {
+export function ProfileMenu({ session, onSignIn, onSignOut, placement = "down", wide = false }: Props) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const operator = session?.operator ?? null;
@@ -47,24 +54,47 @@ export function ProfileMenu({ session, onSignIn, onSignOut }: Props) {
         aria-expanded={open}
         aria-label={operator ? `Account: ${operator.email}` : "Account: not signed in"}
         onClick={() => setOpen((v) => !v)}
-        className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold transition-colors ${
-          operator
-            ? "bg-[var(--primary)] text-[var(--on-primary)]"
-            : "border border-[var(--border)] bg-[var(--surface-2)] text-[var(--muted)]"
+        className={`flex min-h-10 items-center text-sm transition-colors ${
+          wide
+            ? "w-full gap-2.5 px-2 text-left font-medium text-[var(--foreground)] hover:bg-[var(--surface-2)]"
+            : "h-10 w-10 justify-center font-semibold"
         }`}
       >
-        {operator ? initialOf(operator.name, operator.email) : (
-          <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8}>
-            <circle cx="12" cy="8" r="4" />
-            <path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6" strokeLinecap="round" />
-          </svg>
+        <span
+          aria-hidden="true"
+          className={`flex shrink-0 items-center justify-center rounded-full font-semibold ${
+            wide ? "h-8 w-8 text-xs" : "h-10 w-10 text-sm"
+          } ${
+            operator
+              ? "bg-[var(--primary)] text-[var(--on-primary)]"
+              : "border border-[var(--border)] bg-[var(--surface-2)] text-[var(--muted)]"
+          }`}
+        >
+          {operator ? initialOf(operator.name, operator.email) : (
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8}>
+              <circle cx="12" cy="8" r="4" />
+              <path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6" strokeLinecap="round" />
+            </svg>
+          )}
+        </span>
+        {/* In the sidebar the row carries a name too — there is width for it
+            there, and an initial alone at the foot of a rail reads as
+            decoration. Never the bare email: that is what the menu is for. */}
+        {wide && (
+          <span className="min-w-0 flex-1 truncate">
+            {operator
+              ? (operator.name && operator.name !== operator.email ? operator.name : "Account")
+              : "Not signed in"}
+          </span>
         )}
       </button>
 
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-12 z-30 w-72 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-lg"
+          className={`absolute z-30 w-72 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-lg ${
+            placement === "up" ? "bottom-12 left-0" : "right-0 top-12"
+          }`}
         >
           {operator ? (
             <>

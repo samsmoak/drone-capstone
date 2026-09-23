@@ -31,7 +31,7 @@ Feature docs are plain `.txt`, grouped by the surface they describe.
 | Doc | What it covers |
 |---|---|
 | [features/desktop/desktop-app.txt](features/desktop/desktop-app.txt) | The shell, the bundled agent sidecar, installers and CI |
-| [features/desktop/pages-and-windows.txt](features/desktop/pages-and-windows.txt) | Home, Control and the five live sensor windows |
+| [features/desktop/pages-and-windows.txt](features/desktop/pages-and-windows.txt) | The sidebar shell, Control's two columns and its console, the five live sensor windows, and how the layout is measured |
 
 ## Frontend — the web app (`web/`)
 
@@ -69,6 +69,8 @@ are the only thing that survives a session.
 ## Plans
 
 [plans/2026-09-16-sessions-flight-portfolio.txt](plans/2026-09-16-sessions-flight-portfolio.txt) — the 70-stage plan for sessions, barometer flight, the desktop redesign and the portfolio.
+
+[plans/2026-09-22-desktop-ui-redesign.txt](plans/2026-09-22-desktop-ui-redesign.txt) — the 100-stage plan for the desktop sidebar shell, the two-column Control page and its three console tabs. What shipped is in [features/desktop/pages-and-windows.txt](features/desktop/pages-and-windows.txt).
 
 ## Platform — not written yet
 

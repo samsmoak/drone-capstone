@@ -21,7 +21,7 @@ export function RecentSessions({ refreshKey, mode, onOpen, onOpenAll }: {
       note="Kept on this computer, online or not."
       action={<Button onClick={onOpenAll}>All sessions →</Button>}
     >
-      <div className="grid gap-4">
+      <div className="grid gap-3">
         <HiddenByMode mode={mode} hidden={hidden} onShowAll={() => setAllModes(true)} />
         <LoadState
           state={state}
@@ -33,7 +33,8 @@ export function RecentSessions({ refreshKey, mode, onOpen, onOpenAll }: {
           }
         >
           {(records) => (
-            <ul className="-mx-4 divide-y divide-[var(--border)]">
+            // -mx-5 bleeds the rows to the panel's edge: its body padding is 5.
+            <ul className="-mx-5 divide-y divide-[var(--border)]">
               {records.map((r) => <SessionRow key={r.id} record={r} onOpen={() => onOpen(r.id)} />)}
             </ul>
           )}

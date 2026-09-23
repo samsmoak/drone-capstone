@@ -57,6 +57,18 @@ export function endReasonLabel(reason: string | null | undefined): string {
   }
 }
 
+/**
+ * A wall-clock stamp for the console, from an epoch in milliseconds.
+ *
+ * Zero-padded and fixed width, unlike Intl's "9:04:01" — a console gutter whose
+ * width changes at 10:00 is a column that stops lining up.
+ */
+export function formatClock(epochMs: number): string {
+  const d = new Date(epochMs);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 export function initialOf(name: string | null | undefined, email: string | null | undefined): string {
   const source = (name || email || "?").trim();
   return source.charAt(0).toUpperCase() || "?";
