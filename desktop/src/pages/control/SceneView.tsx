@@ -162,12 +162,7 @@ export function SceneView({ telemetry, history, active }: {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* Its own floor: the scene is ONLY a canvas, so unlike Vitals and
-          Camera it has no content to give it height, and in a content-tall
-          console it collapsed to 0 px (2026-09-24). A floor here fixes the
-          Scene alone — making the whole console fill instead changed the
-          Vitals split and cut off its compass. */}
-      <div className="relative min-h-[26rem] flex-1 bg-[var(--console)]">
+      <div className="relative min-h-0 flex-1 bg-[var(--console)]">
         <canvas
           ref={canvas}
           className="absolute inset-0 h-full w-full"
