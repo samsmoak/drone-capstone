@@ -1,22 +1,27 @@
 /**
  * Drone Wi-Fi — which network the drone's camera is on, and changing it.
  *
- * THREE DIFFERENT "CONNECTED"s, kept apart on purpose, because running them
- * together is what made a failed join look like a success:
+ * Laid out like Control (2026-09-24: "follow the UI design language of the
+ * control page"): the console on the left — the link, and the camera itself,
+ * so "is it working" is answered by looking — and the setting on the right.
+ * The picker only opens on Change; with a network saved the right column is
+ * one small card.
  *
- *   Radio    the laptop talks to the drone over the Crazyradio (flight, vitals)
- *   Network  the drone's AI deck has joined a Wi-Fi network and has an address
- *   Camera   this laptop can actually reach that address and frames arrive
+ * THREE DIFFERENT "CONNECTED"s, kept apart, because running them together is
+ * what made a failed join look like success:
  *
- * The first can be true while the other two are not; the second can be true
- * while the third is not (a network that blocks devices from each other).
+ *   Radio    the laptop talks to the drone over the Crazyradio
+ *   Network  the drone's AI deck joined a Wi-Fi network and has an address
+ *   Camera   this laptop can reach that address and frames arrive
  */
 
 import { useEffect, useState } from "react";
 import { api, type CameraStatus, type CameraWifi, type Session } from "@/lib/agent";
-import { PHASE_LABEL, PHASE_TONE } from "@/lib/droneWifi";
+import { PHASE_LABEL, PHASE_TONE, droneWifi } from "@/lib/droneWifi";
+import { useMediaQuery, WIDE } from "@/lib/useMediaQuery";
 import { DroneWifiForm } from "@/components/DroneWifiForm";
-import { PageHeader, Panel, StatusDot } from "@/components/ui";
+import { CameraPane } from "@/pages/control/CameraPane";
+import { Button, PageHeader, Panel, StatusDot, TONE_COLOR, TONE_ICON, type Tone } from "@/components/ui";
 
 /** How often the camera's reachability is re-read while this page is open. */
 const CAMERA_POLL_MS = 3000;
@@ -26,7 +31,11 @@ export function WifiPage({ wifi, session, onSaved }: {
   session: Session | null;
   onSaved: (state: CameraWifi) => void;
 }) {
+  const wide = useMediaQuery(WIDE);
   const [camera, setCamera] = useState<CameraStatus | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let stopped = false;
@@ -38,60 +47,107 @@ export function WifiPage({ wifi, session, onSaved }: {
     return () => { stopped = true; window.clearInterval(timer); };
   }, []);
 
+  useEffect(() => {
+    droneWifi.saved().then(setSaved).catch(() => setSaved(null));
+  }, [wifi?.ssid]);
+
+  const radio = session?.radio;
   const phase = wifi?.phase ?? "not-set";
-  const radio = session?.radio?.state === "connected";
+  const showForm = editing || !saved;
+
+  const forget = async () => {
+    setBusy(true);
+    try {
+      await droneWifi.forget();
+      setSaved(null);
+      onSaved({ ssid: null, phase: "not-set", ip: null, message: null });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const link = (
+    <section aria-label="Link" className="flex min-h-0 flex-1 flex-col border border-[var(--console-line)] bg-[var(--console)]">
+      <h2 className="mono shrink-0 border-b border-[var(--console-line)] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--console-dim)]">
+        Link
+      </h2>
+      <dl className="grid shrink-0 border-b border-[var(--console-line)] px-3 py-2">
+        <Line
+          tone={radio?.state === "connected" ? "good" : radio?.state === "searching" ? "warning" : "idle"}
+          label="Radio"
+          value={radio?.state === "connected" ? radio.hardware_id ?? "Connected" : radio?.message ?? "Not connected"}
+        />
+        <Line
+          tone={PHASE_TONE[phase]}
+          label="Network"
+          value={phase === "joined" && wifi?.ip ? `${wifi.ssid} · ${wifi.ip}` : PHASE_LABEL[phase]}
+        />
+        <Line
+          tone={camera?.live ? "good" : "idle"}
+          label="Camera"
+          value={camera?.live
+            ? `Streaming${camera.width && camera.height ? ` · ${camera.width}×${camera.height}` : ""}`
+            : "No frames"}
+        />
+      </dl>
+      <CameraPane active />
+    </section>
+  );
+
+  const setting = (
+    <Panel
+      title="Network"
+      action={saved && !showForm ? (
+        <div className="flex gap-2">
+          <Button onClick={() => setEditing(true)}>Change</Button>
+          <Button onClick={() => void forget()} disabled={busy}>Forget</Button>
+        </div>
+      ) : undefined}
+    >
+      {showForm ? (
+        <DroneWifiForm
+          onSaved={(state) => { setSaved(state.ssid); setEditing(false); onSaved(state); }}
+          onCancel={saved ? () => setEditing(false) : undefined}
+        />
+      ) : (
+        <div className="grid gap-2 text-sm">
+          <p className="wrap-anywhere text-base font-semibold">{saved}</p>
+          <StatusDot tone={PHASE_TONE[phase]}>{wifi?.message ?? PHASE_LABEL[phase]}</StatusDot>
+        </div>
+      )}
+      {editing && phase === "joined" && (
+        <p className="mt-3 text-xs text-[var(--muted)]">
+          The drone keeps its current network until it restarts.
+        </p>
+      )}
+    </Panel>
+  );
 
   return (
-    <div className="grid max-w-3xl gap-5">
-      <PageHeader eyebrow="Operate" title="Drone Wi-Fi">
-        The drone&apos;s camera streams over Wi-Fi. Put it on the network this laptop uses and
-        the video arrives without the laptop going offline.
-      </PageHeader>
+    <div className="grid gap-4">
+      <PageHeader eyebrow="Operate" title="Drone Wi-Fi" />
+      {wide ? (
+        <div className="grid h-[calc(100vh-9.5rem)] min-h-[28rem] grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-3">
+          <div className="flex min-h-0 flex-col">{link}</div>
+          <div className="min-h-0 overflow-y-auto">{setting}</div>
+        </div>
+      ) : (
+        <div className="grid gap-3">
+          {setting}
+          <div className="flex h-[32rem] flex-col">{link}</div>
+        </div>
+      )}
+    </div>
+  );
+}
 
-      <Panel title="Now">
-        <dl className="grid gap-3 text-sm sm:grid-cols-[9rem_1fr]">
-          <dt className="text-[var(--muted)]">Radio</dt>
-          <dd>
-            <StatusDot tone={radio ? "good" : "idle"}>
-              {radio
-                ? `Drone connected${session?.radio?.hardware_id ? ` (${session.radio.hardware_id})` : ""}`
-                : session?.radio?.message ?? "No drone connected"}
-            </StatusDot>
-          </dd>
-
-          <dt className="text-[var(--muted)]">Drone&apos;s network</dt>
-          <dd className="wrap-anywhere font-medium">{wifi?.ssid ?? "Not set"}</dd>
-
-          <dt className="text-[var(--muted)]">Joining</dt>
-          <dd>
-            <StatusDot tone={PHASE_TONE[phase]}>{wifi?.message ?? PHASE_LABEL[phase]}</StatusDot>
-          </dd>
-
-          <dt className="text-[var(--muted)]">Address</dt>
-          <dd className="mono">{wifi?.ip ?? "—"}</dd>
-
-          <dt className="text-[var(--muted)]">Camera</dt>
-          <dd>
-            {camera === null ? (
-              <StatusDot tone="idle">Not reported</StatusDot>
-            ) : camera.live ? (
-              <StatusDot tone="good">
-                Streaming{camera.width && camera.height ? ` · ${camera.width}×${camera.height}` : ""}
-              </StatusDot>
-            ) : (
-              <StatusDot tone="warning">{camera.reason ?? "No frames"}</StatusDot>
-            )}
-          </dd>
-        </dl>
-        <p className="mt-4 text-sm text-[var(--muted)]">
-          The drone applies a network once per power-on. To switch networks after it has
-          joined one, save the new network here, then restart the drone.
-        </p>
-      </Panel>
-
-      <Panel title={wifi?.ssid ? "Change network" : "Choose a network"}>
-        <DroneWifiForm onSaved={onSaved} />
-      </Panel>
+/** One status row, in the console's own grammar: glyph, label, value. */
+function Line({ tone, label, value }: { tone: Tone; label: string; value: string }) {
+  return (
+    <div className="grid grid-cols-[1.25rem_5rem_minmax(0,1fr)] items-baseline gap-x-2 py-1 text-xs">
+      <span aria-hidden="true" style={{ color: TONE_COLOR[tone] }}>{TONE_ICON[tone]}</span>
+      <dt className="mono text-[10px] uppercase tracking-[0.08em] text-[var(--console-dim)]">{label}</dt>
+      <dd className="wrap-anywhere text-[var(--console-ink)]">{value}</dd>
     </div>
   );
 }

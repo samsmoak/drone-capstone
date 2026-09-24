@@ -188,11 +188,7 @@ export function CameraPane({ active }: {
                 {load.status.reason ?? "No camera is connected."}
               </p>
               <DeckLine fitted={load.status.deck_fitted} />
-              {load.wifi && load.wifi.phase !== "not-set" && load.wifi.message && (
-                <p className="text-xs leading-relaxed text-[var(--console-dim)]">
-                  Drone Wi-Fi: {load.wifi.message}
-                </p>
-              )}
+
               <div className="flex justify-center">
                 <Button onClick={showDroneWifi}>Change Wi-Fi</Button>
               </div>
@@ -259,29 +255,13 @@ export function CameraPane({ active }: {
  * it just means no session has run the checks yet.
  */
 function DeckLine({ fitted }: { fitted: boolean | null }) {
-  if (fitted === null) {
-    return (
-      <p className="text-xs leading-relaxed text-[var(--console-dim)]">
-        The drone has not been asked whether the AI deck is fitted — that happens
-        during the checks. Start a session to find out.
-      </p>
-    );
-  }
-  if (!fitted) {
-    return (
-      <p className="text-xs leading-relaxed text-[var(--console-dim)]">
-        The drone reports <strong>no AI deck</strong> (deck.bcAI = 0). There is no
-        camera on this airframe to connect to.
-      </p>
-    );
-  }
+  // One line. The long explanation of why frames need Wi-Fi lives in
+  // camera.txt, not on an operator's screen every time the feed is down.
+  const text = fitted === null ? "AI deck: not asked yet"
+    : fitted ? "AI deck: fitted" : "AI deck: not fitted — no camera on this drone";
   return (
-    <p className="text-xs leading-relaxed text-[var(--console-dim)]">
-      The drone reports the <strong>AI deck is fitted</strong> (deck.bcAI = 1), so the
-      camera is there — what is missing is the link to it. Frames cannot come over
-      the radio: that link carries the 50 Hz setpoint stream the drone stays in the
-      air on. The deck's own Wi-Fi is the route, and getting it working is a lab
-      job.
+    <p className="mono text-[10px] uppercase tracking-[0.08em] text-[var(--console-dim)]">
+      {text}
     </p>
   );
 }
