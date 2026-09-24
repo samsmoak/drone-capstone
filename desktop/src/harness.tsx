@@ -48,6 +48,7 @@ const session: Session = {
     battery_error: null,
   },
   retry_required: false,
+  radio: { state: "connected", hardware_id: "cf-002f002a3334471239333335", message: null },
   flight: null,
   message: "The checks did not pass, so the drone will not arm.",
   can_fly: false,

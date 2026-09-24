@@ -120,6 +120,16 @@ class FakeLink:
     def restore_estimator(self) -> None:
         self.estimator_restored = True
 
+    # standby
+    def identify(self):
+        return "cf-lab", True
+
+    def camera_cf(self):
+        return "the-cf"
+
+    def on_lost(self, callback) -> None:
+        self.lose = callback
+
     def manual_guard(self, report, **kwargs):
         verdict = self.guard_verdict
         return SimpleNamespace(check=lambda snap, now: verdict or Verdict(GuardAction.OK))
@@ -891,3 +901,162 @@ class TestWhatIsRunning:
         finally:
             release.set()
             session.wait_idle(timeout=5)
+
+
+# ── standby: the drone connected with no session ─────────────────────────
+
+
+@pytest.fixture
+def standby(tmp_path, monkeypatch):
+    """A session whose link opens count, and whose Wi-Fi hand-off is recorded.
+
+    The loop thread is never started: `_standby_tick` is driven directly, so
+    each test says exactly when the agent looks for the drone.
+    """
+    monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+    cloud = FakeCloud()
+    cloud.sign_in = lambda email, password: Operator("user-1", email, "Ada", "operator")
+    cloud.sign_out = lambda: None
+    link = FakeLink()
+    opens: list[int] = []
+    real_open = link.open
+
+    def counting_open() -> None:
+        opens.append(1)
+        real_open()
+
+    link.open = counting_open                      # type: ignore[method-assign]
+    handed: list[Any] = []
+    events: list[tuple[str, dict]] = []
+    session = Session(cloud=cloud, outbox=Outbox(tmp_path / "outbox"),
+                      link_factory=lambda: link, on_link_ready=handed.append,
+                      publish=lambda kind, payload: events.append((kind, payload)))
+    return SimpleNamespace(session=session, link=link, opens=opens, handed=handed,
+                           events=events)
+
+
+class TestStandby:
+    def test_nothing_is_opened_while_signed_out(self, standby):
+        standby.session._standby_tick()
+        assert standby.opens == []
+        assert standby.session.snapshot().radio["state"] == "off"
+
+    def test_signed_in_and_idle_it_connects_and_says_which_drone(self, standby):
+        standby.session.sign_in("ada@example.com", "pw")
+        standby.session._standby_tick()
+        snap = standby.session.snapshot()
+        assert standby.link.is_open
+        assert snap.radio == {"state": "connected", "hardware_id": "cf-lab", "message": None}
+        assert snap.ai_deck is True
+        assert snap.state is State.IDLE          # standby is not a session
+
+    def test_vitals_stream_but_nothing_is_recorded(self, standby):
+        standby.session.sign_in("ada@example.com", "pw")
+        standby.session._standby_tick()
+        assert standby.link.stream.subscribers, "vitals are published"
+        standby.link.stream.subscribers[0](standby.link.stream.snapshot())
+        assert any(kind == "telemetry" for kind, _ in standby.events)
+        assert standby.session.history is None   # a file only ever comes from a session
+
+    def test_the_camera_gets_its_network_once_per_link(self, standby):
+        standby.session.sign_in("ada@example.com", "pw")
+        standby.session._standby_tick()
+        assert wait_for(lambda: standby.handed == ["the-cf"])
+        standby.session._standby_tick()          # still connected: nothing new
+        time.sleep(0.05)
+        assert standby.handed == ["the-cf"]
+
+    def test_a_session_takes_the_link_over_and_still_runs_every_check(self, standby):
+        standby.session.sign_in("ada@example.com", "pw")
+        standby.session._standby_tick()
+        standby.session.start()
+        standby.session.wait_idle()
+        assert standby.opens == [1]              # the standby link, not a second one
+        assert standby.link.checks_runs == 1
+        assert standby.session.snapshot().state is State.AWAITING_CONFIRMATION
+
+    def test_standby_never_arms_or_tests_the_motors(self, standby):
+        standby.session.sign_in("ada@example.com", "pw")
+        standby.session._standby_tick()
+        assert standby.link.flight.landed is False and standby.link.flight.stopped is False
+        assert standby.link.manual_controller.events == []
+        assert standby.link.checks_runs == 0     # not even the checks
+        assert standby.session.snapshot().can_fly is False
+
+    def test_it_leaves_the_radio_alone_while_a_session_owns_it(self, standby):
+        standby.session.sign_in("ada@example.com", "pw")
+        standby.session.start()
+        standby.session.wait_idle()
+        opens = len(standby.opens)
+        standby.link.is_open = False             # even with the link down
+        standby.session._standby_tick()
+        assert len(standby.opens) == opens
+
+    def test_after_a_session_ends_it_connects_again(self, standby):
+        standby.session.sign_in("ada@example.com", "pw")
+        standby.session.start()
+        standby.session.wait_idle()
+        standby.session.end()
+        standby.session.wait_idle()
+        assert not standby.link.is_open          # the session let go
+        standby.session._standby_tick()
+        assert standby.link.is_open
+        assert standby.session.snapshot().radio["state"] == "connected"
+
+    def test_no_drone_found_says_why(self, standby):
+        standby.session.sign_in("ada@example.com", "pw")
+        standby.link.open_error = LinkError("No Crazyradio was found on USB.")
+        standby.session._standby_tick()
+        radio = standby.session.snapshot().radio
+        assert radio["state"] == "searching"
+        assert "Crazyradio" in radio["message"]
+
+    def test_a_drone_switched_off_is_released_and_looked_for_again(self, standby):
+        standby.session.sign_in("ada@example.com", "pw")
+        standby.session._standby_tick()
+        standby.link.lose("Too many packets lost")
+        assert wait_for(lambda: standby.session.snapshot().radio["state"] == "searching")
+        assert standby.session.link is None
+        assert "Too many packets lost" in standby.session.snapshot().radio["message"]
+
+    def test_disconnect_frees_the_radio_until_connect(self, standby):
+        standby.session.sign_in("ada@example.com", "pw")
+        standby.session._standby_tick()
+        standby.session.disconnect_drone()
+        assert not standby.link.is_open
+        assert standby.session.snapshot().radio["state"] == "paused"
+        standby.session._standby_tick()
+        assert not standby.link.is_open          # stays free
+        standby.session.connect_drone()
+        standby.session._standby_tick()
+        assert standby.link.is_open
+
+    def test_disconnect_is_refused_mid_session(self, standby):
+        standby.session.sign_in("ada@example.com", "pw")
+        standby.session.start()
+        standby.session.wait_idle()
+        with pytest.raises(SessionError):
+            standby.session.disconnect_drone()
+
+    def test_signing_out_releases_the_drone(self, standby):
+        standby.session.sign_in("ada@example.com", "pw")
+        standby.session._standby_tick()
+        standby.session.sign_out()
+        assert not standby.link.is_open
+        assert standby.session.snapshot().radio["state"] == "off"
+
+
+class TestLinkDownHook:
+    def test_every_close_reports_it(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+        cloud = FakeCloud()
+        cloud.sign_in = lambda email, password: Operator("user-1", email, "Ada", "operator")
+        cloud.sign_out = lambda: None
+        link = FakeLink()
+        downs: list[int] = []
+        session = Session(cloud=cloud, outbox=Outbox(tmp_path / "outbox"),
+                          link_factory=lambda: link, on_link_down=lambda: downs.append(1))
+        session.sign_in("ada@example.com", "pw")
+        session._standby_tick()
+        link.lose("Too many packets lost")
+        assert wait_for(lambda: downs == [1])

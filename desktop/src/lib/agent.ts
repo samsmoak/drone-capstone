@@ -50,6 +50,16 @@ export type Session = {
   /** The last flight ended abnormally. Nothing flies until Retry has run every
    *  check again in this session — after a tumble the drone holds its motors. */
   retry_required: boolean;
+  /** The radio, apart from any session: signed in and idle, the agent holds
+   *  the drone on standby — vitals and the camera, never the motors. */
+  radio: Radio;
+};
+
+export type Radio = {
+  state: "off" | "searching" | "connected" | "paused";
+  hardware_id: string | null;
+  /** Why it is not connected, in words. */
+  message: string | null;
 };
 
 /** The firmware's propeller test, then its battery test under load. */
@@ -173,6 +183,10 @@ export const api = {
   holdManual: (height_m: number) => command<Session>("/session/manual/hold", { height_m }),
   cameraStatus: () => command<CameraStatus>("/camera", undefined, "GET"),
   cameraWifi: () => command<CameraWifi>("/camera/wifi", undefined, "GET"),
+  /** Hold the drone on standby now (vitals, camera). Never arms. */
+  connectDrone: () => command<Session>("/drone/connect"),
+  /** Release the radio until Connect, for another tool. */
+  disconnectDrone: () => command<Session>("/drone/disconnect"),
   land: () => command<Session>("/session/land"),
   emergencyStop: () => command<Session>("/session/emergency-stop"),
   endSession: () => command<Session>("/session/end"),

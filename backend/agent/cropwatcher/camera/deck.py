@@ -61,8 +61,13 @@ MAX_FRAME_BYTES = 2_000_000
 
 #: A frame older than this is not "live". The window treats 2 s as stale too.
 STALE_S = 2.0
-#: How long a read may block before the stream is considered stalled.
-READ_TIMEOUT_S = 5.0
+#: How long a read may block before the stream is considered stalled. A healthy
+#: raw frame arrives in ~32 ms (the GAP8's own count), so 2 s of silence is a
+#: stall — and every second spent waiting on it is a second of frozen picture
+#: when a drone swings through a weak spot. Was 5 s.
+READ_TIMEOUT_S = 2.0
+#: First retry after a drop, then doubling to RECONNECT_MAX_S.
+RECONNECT_FIRST_S = 0.2
 RECONNECT_MAX_S = 5.0
 
 
@@ -259,7 +264,7 @@ class DeckStream:
             self._problem = None
 
     def _run(self) -> None:
-        backoff = 0.5
+        backoff = RECONNECT_FIRST_S
         while not self._stop.is_set():
             addr = self.addr
             host, port = addr
@@ -269,7 +274,7 @@ class DeckStream:
                 self._set_problem(_unreachable(host, port, e))
             else:
                 log.info("deck camera connected at %s:%s", host, port)
-                backoff = 0.5
+                backoff = RECONNECT_FIRST_S
                 with self._lock:
                     self._sock = sock
                 try:

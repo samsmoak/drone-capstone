@@ -61,6 +61,13 @@ log = logging.getLogger(__name__)
 
 MANUAL_GUARD_PERIOD_S = 0.1
 
+#: How often a signed-in agent with no drone looks for one. NOT faster: polling
+#: the radio every 2 s (from /status) wedged the agent with [Errno 19] No such
+#: device — sessions-and-modes.txt. It never scans while a link is open.
+STANDBY_RETRY_S = 15.0
+#: After a drone drops off or a session ends, look again this soon.
+STANDBY_SOON_S = 2.0
+
 
 class Mode(StrEnum):
     AUTO = "auto"
@@ -121,6 +128,13 @@ class Snapshot:
     #: until a drone has been asked, which is NOT the same as "not fitted".
     #: Recorded and shown; it gates nothing.
     ai_deck: bool | None = None
+    #: The radio, apart from any session. "off" (signed out, or not started),
+    #: "searching" (no drone found yet — `message` says why), "connected" (a
+    #: link is open: vitals stream, the camera gets its network), "paused" (the
+    #: operator disconnected, to free the radio for another tool). A session
+    #: takes over a connected link rather than opening a second one.
+    radio: dict[str, Any] = field(default_factory=lambda: {
+        "state": "off", "hardware_id": None, "message": None})
     #: The last flight ended abnormally — a tumble, a guard, an emergency stop.
     #: Nothing flies until Retry has re-run the checks in this same session:
     #: after a tumble the firmware holds the motors at zero, and a flight armed
@@ -135,6 +149,7 @@ class Snapshot:
             "message": self.message, "can_fly": self.can_fly, "restoring": self.restoring,
             "assisted": self.assisted, "unassisted_reason": self.unassisted_reason,
             "ai_deck": self.ai_deck,
+            "radio": self.radio,
             "retry_required": self.retry_required,
         }
 
@@ -152,6 +167,7 @@ class Session:
         fence_half_extent_m: float = DEFAULT_FENCE_M,
         max_height_m: float = DEFAULT_MAX_HEIGHT_M,
         on_link_ready: Callable[[Any], object] | None = None,
+        on_link_down: Callable[[], object] | None = None,
     ) -> None:
         self._cloud = cloud
         #: Called with the Crazyflie once a link has passed its checks and the
@@ -159,6 +175,9 @@ class Session:
         #: runs on its own thread: joining a network takes seconds and must
         #: never hold up a flight.
         self._on_link_ready = on_link_ready
+        #: Called whenever the link closes, however — the Wi-Fi state stops
+        #: claiming "joined" for a drone nobody can reach any more.
+        self._on_link_down = on_link_down
         self._outbox = outbox or Outbox()
         self._syncer = syncer
         self._link_factory = link_factory
@@ -192,6 +211,16 @@ class Session:
         self._manual_lock = threading.Lock()
         self._trace: flight_trace.FlightTrace | None = None
         self._unsubscribe_trace: Callable[[], None] | None = None
+        #: Opening and closing `self.link` happen under this, whoever does it —
+        #: the standby loop, a session start, a retry, an end. Never held while
+        #: waiting on anything but the radio itself.
+        self._link_lock = threading.RLock()
+        #: The link the Wi-Fi hand-off last ran for, so it runs once per link.
+        self._link_ready_for: int | None = None
+        self._standby_wake = threading.Event()
+        self._standby_stop = threading.Event()
+        self._standby_paused = False
+        self._standby_thread: threading.Thread | None = None
 
     # ── events ───────────────────────────────────────────────────────────
 
@@ -293,10 +322,14 @@ class Session:
         )
         if self._syncer is not None:
             self._syncer.trigger()
+        self._wake_standby(0)
 
     def sign_out(self) -> None:
         if self.snapshot().state not in (State.SIGNED_OUT, State.IDLE):
             self.end("signed out")
+        # A drone held on standby is released: no one is signed in to see it.
+        if self.snapshot().state == State.IDLE:
+            self._close_link()
         if self.audit is not None:
             self.audit.record(Action.SIGN_OUT)
         if self._syncer is not None:
@@ -304,7 +337,8 @@ class Session:
         self._cloud.sign_out()
         auth_store.clear()
         self.operator, self.audit = None, None
-        self._set(state=State.SIGNED_OUT, operator=None, message=None, restoring=False)
+        self._set(state=State.SIGNED_OUT, operator=None, message=None, restoring=False,
+                  radio={"state": "off", "hardware_id": None, "message": None})
 
     def _require_operator(self) -> tuple[Operator, AuditLog]:
         if self.operator is None or self.audit is None:
@@ -446,20 +480,25 @@ class Session:
             steps = [s for s in steps if s["key"] != str(step.key)] + [step.to_dict()]
             self._set(checks=steps)
 
-        link = self.link
-        if link is None or not link.is_open:
-            try:
-                link = self._link_factory()
-                link.open()
-                self.link = link
-            except LinkError as e:
-                on_refused({"reason": str(e)})
-                self._set(state=State.CHECKS_FAILED, message=str(e))
-                return None
-            # Live telemetry reaches the app's windows from the moment the link
-            # is open — before, during and after a flight.
-            if link.stream is not None:
-                self._unsubscribe_telemetry = link.stream.subscribe(self._publish_telemetry)
+        with self._link_lock:
+            link = self.link
+            if link is None or not link.is_open:
+                # No standby link to take over: open one. (With standby
+                # running, the session usually inherits the link it opened.)
+                try:
+                    link = self._link_factory()
+                    link.open()
+                    self.link = link
+                except LinkError as e:
+                    on_refused({"reason": str(e)})
+                    self._set(state=State.CHECKS_FAILED, message=str(e),
+                              radio={"state": "searching", "hardware_id": None,
+                                     "message": str(e)})
+                    return None
+                # Live telemetry reaches the app's windows from the moment the
+                # link is open — before, during and after a flight.
+                if link.stream is not None:
+                    self._unsubscribe_telemetry = link.stream.subscribe(self._publish_telemetry)
 
         try:
             report = collect(link.checks(), on_step)
@@ -485,14 +524,21 @@ class Session:
             self._close_link()
             self._set(state=State.CHECKS_FAILED, message=message)
             return None
-        self._link_ready(link, report)
+        self._set(radio={"state": "connected", "hardware_id": report.hardware_id,
+                         "message": None})
+        self._link_ready(link, report.ai_deck)
         return report
 
-    def _link_ready(self, link: DroneLink, report: ReadyReport) -> None:
+    def _link_ready(self, link: DroneLink, ai_deck: bool | None) -> None:
+        """Hand the link to the Wi-Fi hand-off, once per link."""
         hook = self._on_link_ready
-        if hook is None or not report.ai_deck or link.scf is None:
+        if hook is None or not ai_deck or self._link_ready_for == id(link):
             return
-        cf = link.scf.cf
+        camera_cf = getattr(link, "camera_cf", None)
+        cf = camera_cf() if camera_cf is not None else None
+        if cf is None:
+            return
+        self._link_ready_for = id(link)
 
         def run() -> None:
             try:
@@ -958,7 +1004,127 @@ class Session:
         self._set(state=State.IDLE, activity=None, session_id=None, drone=None, checks=[],
                   health_test=None, flight=None, assisted=True, unassisted_reason=None,
                   retry_required=False,
+                  radio=self._radio_idle(),
                   message="Session ended. Data is uploading in the background.")
+
+    # ── standby: the drone connected with no session ─────────────────────
+    #
+    # Signed in and idle, the agent holds a link to the drone so the operator
+    # sees its vitals and its camera before starting anything. A standby link
+    # NEVER arms: nothing here commands the motors, every flight command still
+    # requires a session, and a session that takes the link over runs every
+    # check exactly as if it had opened the link itself. Nothing is recorded:
+    # telemetry reaches a file only through a session's history.
+
+    def start_standby(self) -> None:
+        """Begin looking for the drone. Idempotent; called once by the agent."""
+        if self._standby_thread is not None:
+            return
+        self._standby_stop.clear()
+        self._standby_thread = threading.Thread(
+            target=self._standby_loop, name="standby", daemon=True)
+        self._standby_thread.start()
+        self._wake_standby(0)
+
+    def stop_standby(self) -> None:
+        self._standby_stop.set()
+        self._standby_wake.set()
+
+    def connect_drone(self) -> None:
+        """The operator's Connect: look now, and keep looking."""
+        self._require_operator()
+        self._standby_paused = False
+        self._set(radio={"state": "searching", "hardware_id": None,
+                         "message": "Looking for the drone…"})
+        self._wake_standby(0)
+
+    def disconnect_drone(self) -> None:
+        """The operator's Disconnect: release the radio until Connect.
+
+        So another tool (a flasher, the CLI) can use it. Refused mid-session —
+        End session is how a session lets go of the drone.
+        """
+        self._require_operator()
+        if self.snapshot().state != State.IDLE:
+            raise SessionError("End the session first — it is using the drone.")
+        self._standby_paused = True
+        self._close_link()
+        self._set(radio={"state": "paused", "hardware_id": None,
+                         "message": "Disconnected. The radio is free for other tools."})
+
+    def _wake_standby(self, after_s: float) -> None:
+        if after_s <= 0:
+            self._standby_wake.set()
+        else:
+            timer = threading.Timer(after_s, self._standby_wake.set)
+            timer.daemon = True
+            timer.start()
+
+    def _radio_idle(self) -> dict[str, Any]:
+        if self._standby_paused:
+            return {"state": "paused", "hardware_id": None,
+                    "message": "Disconnected. The radio is free for other tools."}
+        return {"state": "searching", "hardware_id": None, "message": "Looking for the drone…"}
+
+    def _standby_loop(self) -> None:
+        while not self._standby_stop.is_set():
+            self._standby_wake.wait(STANDBY_RETRY_S)
+            self._standby_wake.clear()
+            if self._standby_stop.is_set():
+                return
+            try:
+                self._standby_tick()
+            except Exception:
+                log.exception("standby: unexpected failure; will look again")
+
+    def _standby_tick(self) -> None:
+        """One look for the drone, when — and only when — standby may hold it."""
+        snap = self.snapshot()
+        if snap.state != State.IDLE or self.operator is None or self._standby_paused:
+            return                                   # a session owns the radio, or no one
+        with self._link_lock:
+            if self.link is not None and self.link.is_open:
+                return                               # already connected
+            if self.snapshot().state != State.IDLE:
+                return                               # a session started meanwhile
+            link = self._link_factory()
+            try:
+                link.open()
+            except LinkError as e:
+                self._set(radio={"state": "searching", "hardware_id": None,
+                                 "message": str(e)})
+                return
+            self.link = link
+            if link.stream is not None:
+                self._unsubscribe_telemetry = link.stream.subscribe(self._publish_telemetry)
+        try:
+            hardware_id, ai_deck = link.identify()
+        except Exception:
+            log.warning("standby: could not identify the drone")
+            hardware_id, ai_deck = None, None
+        link.on_lost(lambda reason: self._standby_lost(link, reason))
+        self._set(ai_deck=ai_deck, radio={"state": "connected", "hardware_id": hardware_id,
+                                          "message": None})
+        log.info("standby: connected to %s", hardware_id or link.uri)
+        self._link_ready(link, ai_deck)
+
+    def _standby_lost(self, link: DroneLink, reason: str) -> None:
+        """cflib's thread: record it, and let another thread close the link."""
+        def drop() -> None:
+            with self._link_lock:
+                if self.link is not link:
+                    return                           # already replaced or closed
+                if self.snapshot().state != State.IDLE:
+                    # A session owns this link; its own guards handle a loss.
+                    # The radio state is still worth showing.
+                    self._set(radio={"state": "searching", "hardware_id": None,
+                                     "message": f"The drone's radio link dropped ({reason})."})
+                    return
+                self._close_link()
+            self._set(radio={"state": "searching", "hardware_id": None,
+                             "message": f"The drone disconnected ({reason}). Looking again…"})
+
+        threading.Thread(target=drop, name="standby-lost", daemon=True).start()
 
     # ── flight records ───────────────────────────────────────────────────
 
@@ -1049,15 +1215,25 @@ class Session:
         return self.report
 
     def _close_link(self) -> None:
-        if self._unsubscribe_telemetry is not None:
-            try:
-                self._unsubscribe_telemetry()
-            except Exception:
-                log.debug("telemetry unsubscribe failed")
-            self._unsubscribe_telemetry = None
-        if self.link is not None:
-            try:
-                self.link.close()
-            except Exception:
-                log.exception("closing the link failed")
-            self.link = None
+        with self._link_lock:
+            if self._unsubscribe_telemetry is not None:
+                try:
+                    self._unsubscribe_telemetry()
+                except Exception:
+                    log.debug("telemetry unsubscribe failed")
+                self._unsubscribe_telemetry = None
+            if self.link is not None:
+                try:
+                    self.link.close()
+                except Exception:
+                    log.exception("closing the link failed")
+                self.link = None
+                self._link_ready_for = None
+                if self._on_link_down is not None:
+                    try:
+                        self._on_link_down()
+                    except Exception:
+                        log.exception("link-down hook failed")
+        # Whatever closed it, the radio is free: look for the drone again soon
+        # (the standby loop decides whether it may — not during a session).
+        self._wake_standby(STANDBY_SOON_S)
