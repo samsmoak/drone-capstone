@@ -53,6 +53,7 @@
 
 #include "FreeRTOS.h"
 #include "task.h"
+#include "param.h"
 
 #define DEBUG_MODULE "DRONEWIFI"
 #include "debug.h"
@@ -83,6 +84,21 @@ static char key[KEY_MAX + 1];
 static bool applied = false;
 
 static CPXPacket_t cpxTx;
+
+/* What the desktop's Set up page reads to decide what to install.
+ *   cwsetup.fw    this app's version — its presence means drone_wifi is on
+ *   cwsetup.deck  the camera-software bundle last installed on the AI deck,
+ *                 written by the desktop after a VERIFIED install and kept
+ *                 across power-offs (the deck's chips cannot report their own
+ *                 firmware over the radio). 0 = never set up. */
+#define DRONE_WIFI_VERSION 2
+static uint8_t fwVersion = DRONE_WIFI_VERSION;
+static uint8_t deckBundle = 0;
+
+PARAM_GROUP_START(cwsetup)
+PARAM_ADD(PARAM_UINT8 | PARAM_RONLY, fw, &fwVersion)
+PARAM_ADD(PARAM_UINT8 | PARAM_PERSISTENT, deck, &deckBundle)
+PARAM_GROUP_STOP(cwsetup)
 
 static void reply(uint8_t cmd, uint8_t code) {
   uint8_t out[3] = {(uint8_t)(0x80 | cmd), code, applied ? 1 : 0};

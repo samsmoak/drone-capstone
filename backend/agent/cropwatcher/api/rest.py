@@ -21,6 +21,7 @@ a signed-in operator, passing checks and a confirmed area.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import threading
@@ -42,6 +43,7 @@ from cropwatcher.camera import DeckStream, FrameSource, NoCamera, TestPattern
 from cropwatcher.camera.deck import parse_addr
 from cropwatcher.camera.recording import Recorder
 from cropwatcher.camera.wifi import DeckWifi, Phase, WifiError
+from cropwatcher.drone_setup import DroneSetup, SetupError
 from cropwatcher.paths import data_dir
 from cropwatcher.session import Mode, Session, SessionError, State
 from cropwatcher.sync.cloud import SupabaseCloud
@@ -168,6 +170,11 @@ class Agent:
             on_link_down=self._link_down,
             on_session_open=self.recorder.start, on_session_close=self.recorder.stop,
         )
+        #: The Set up page: installs the camera software on a drone.
+        self.setup = DroneSetup(
+            pause_radio=self._hold_radio, resume_radio=self._release_radio,
+            publish=lambda state: self.hub.publish("setup", state),
+        )
 
     #: Stops following the deck's console, once the link it came from closes.
     _unwatch: Callable[[], None] | None = None
@@ -233,6 +240,15 @@ class Agent:
         if unwatch is not None:
             unwatch()
         self.deck_wifi.link_down()
+
+    def _hold_radio(self) -> None:
+        """Set up flashes over the radio: standby lets go of it first."""
+        with contextlib.suppress(SessionError):
+            self.session.disconnect_drone()
+
+    def _release_radio(self) -> None:
+        with contextlib.suppress(SessionError):
+            self.session.connect_drone()
 
     def _deck_joined(self, ip: str) -> None:
         if isinstance(self.camera, DeckStream):
@@ -693,6 +709,40 @@ def drone_disconnect() -> dict:
     except SessionError as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
     return agent.session.snapshot().to_dict()
+
+
+@app.get("/setup", dependencies=[Command])
+def setup_state() -> dict:
+    """Where Set up is: what the drone has, what is installing, how far."""
+    return agent.setup.state()
+
+
+def _setup_allowed() -> None:
+    if agent.session.snapshot().state is not State.IDLE:
+        raise HTTPException(status_code=409, detail="End the session first — Set up "
+                                                    "needs the radio to itself.")
+
+
+@app.post("/setup/check", dependencies=[Command])
+def setup_check() -> dict:
+    """Read what the drone has installed. Changes nothing on the drone."""
+    _setup_allowed()
+    try:
+        agent.setup.check()
+    except SetupError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    return agent.setup.state()
+
+
+@app.post("/setup/install", dependencies=[Command])
+def setup_install() -> dict:
+    """Install whatever is missing, in order, then guide the battery unplug."""
+    _setup_allowed()
+    try:
+        agent.setup.install()
+    except SetupError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    return agent.setup.state()
 
 
 @app.post("/sync/now", dependencies=[Command])

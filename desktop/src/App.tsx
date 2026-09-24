@@ -33,6 +33,7 @@ import {
   type Intent,
   type Mode,
   type CameraWifi,
+  type SetupState,
   type Session,
   type SyncStatus,
   type Telemetry,
@@ -50,6 +51,7 @@ import { Message } from "@/components/ui";
 import { DroneWifiDialog } from "@/components/DroneWifiDialog";
 import { PHASE_LABEL, PHASE_TONE, SHOW_DRONE_WIFI, droneWifi } from "@/lib/droneWifi";
 import { WifiPage } from "@/pages/wifi/WifiPage";
+import { SetupPage } from "@/pages/setup/SetupPage";
 
 /** Physical key → intent field. `code`, so the keys stay in the same place on AZERTY. */
 export const KEY_MAP: Record<string, keyof Intent> = {
@@ -68,7 +70,7 @@ const HISTORY_LIMIT = HISTORY_S * 10;      // 10 Hz
 
 export type History = { t: number; values: Record<string, number>; height_m: number | null }[];
 
-export type Page = "home" | "control" | "sessions" | "wifi" | WindowKey;
+export type Page = "home" | "setup" | "control" | "sessions" | "wifi" | WindowKey;
 
 /** A command, and what to call it in the log. */
 export type Run = (action: () => Promise<unknown>, label?: string) => Promise<void>;
@@ -94,6 +96,8 @@ export default function App() {
   // Drone Wi-Fi: the agent's live account of the deck joining, and the dialog.
   const [cameraWifi, setCameraWifi] = useState<CameraWifi | null>(null);
   const [wifiOpen, setWifiOpen] = useState(false);
+  // Set up's progress, live from the agent (drone_setup.py).
+  const [setupState, setSetupState] = useState<SetupState | null>(null);
   // Asked at most once per launch: "Not now" means not now, not every reconnect.
   const wifiAsked = useRef(false);
   // Handing the saved network over is instant — unless macOS is asking whether
@@ -121,6 +125,7 @@ export default function App() {
         onSync: setSync,
         onConnection: setConnected,
         onCameraWifi: setCameraWifi,
+        onSetup: setSetupState,
         onTelemetry: (frame) => {
           setTelemetry(frame);
           if (startedAt.current === null) startedAt.current = frame.at;
@@ -162,6 +167,12 @@ export default function App() {
       .catch((e) => { if (!cancelled) pushLog("refused", "Drone Wi-Fi not sent", String(e)); });
     return () => { cancelled = true; window.clearTimeout(slow); };
   }, [connected, signedIn, pushLog]);
+
+  // Set up's state survives a window reload: ask once on (re)connecting.
+  useEffect(() => {
+    if (!connected || !signedIn) return;
+    api.setupState().then(setSetupState).catch(() => undefined);
+  }, [connected, signedIn]);
 
   // "Change Wi-Fi" from the Camera tab and the account menu lands on the page.
   useEffect(() => {
@@ -362,6 +373,8 @@ export default function App() {
                 onClearLog={clearLog}
                 onOpenSessions={() => setPage("sessions")}
               />
+            ) : page === "setup" ? (
+              <SetupPage session={session} setup={setupState} wifi={cameraWifi} run={run} onGo={setPage} />
             ) : page === "wifi" ? (
               <WifiPage wifi={cameraWifi} session={session} onSaved={setCameraWifi} />
             ) : page === "sessions" ? (

@@ -21,6 +21,7 @@ time, and the drone reboots at the end.
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 #: The platform and target cflib's bootloader uses for a Crazyflie 2.x STM32.
@@ -28,7 +29,9 @@ PLATFORM = "cf2"
 TARGET = "stm32"
 
 
-def flash(path: Path, uri: str = "radio://0/80/2M") -> int:
+def flash(path: Path, uri: str = "radio://0/80/2M",
+          on_progress: Callable[[float], None] | None = None) -> int:
+    """0 on success. `on_progress` gets 0..1 as it writes (the Set up page)."""
     import cflib.crtp
     from cflib.bootloader import Bootloader, Target
 
@@ -45,6 +48,8 @@ def flash(path: Path, uri: str = "radio://0/80/2M") -> int:
 
     def progress(message: str, percent: int) -> None:
         print(f"  {percent:3d}%  {message}", flush=True)
+        if on_progress is not None:
+            on_progress(max(0.0, min(1.0, percent / 100)))
 
     try:
         loader.flash_full(

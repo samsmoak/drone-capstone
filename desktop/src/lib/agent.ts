@@ -191,6 +191,9 @@ export const api = {
   /** Restart the drone over the radio so its camera rejoins and reports its
    *  address. Between sessions only. */
   reconnectCamera: () => command<CameraWifi>("/camera/wifi/rejoin"),
+  setupState: () => command<SetupState>("/setup", undefined, "GET"),
+  setupCheck: () => command<SetupState>("/setup/check"),
+  setupInstall: () => command<SetupState>("/setup/install"),
   recordedFrames: (after: number, limit: number) =>
     command<{ frames: RecordedFrameInfo[] }>(
       `/camera/recording/frames?after=${after}&limit=${limit}`, undefined, "GET"),
@@ -254,6 +257,19 @@ export type SessionRecord = {
 
 export type SampleRow = { recorded_at: string } & Record<string, number | string | null>;
 
+/** Set up: installing the camera software on a drone (drone_setup.py). */
+export type SetupPart = "main" | "camera" | "wifi";
+export type SetupState = {
+  phase: "idle" | "checking" | "ready" | "installing" | "unplug" | "verifying" | "done" | "failed";
+  message: string | null;
+  facts: { battery_v: number | null; ai_deck: boolean | null } | null;
+  parts: Partial<Record<SetupPart, "installed" | "needed" | "installing" | "done">>;
+  current: SetupPart | null;
+  progress: number;
+  labels: Record<SetupPart, string>;
+  order: SetupPart[];
+};
+
 /** A session's camera recording (camera/recording.py). */
 export type Recording =
   | { recording: false }
@@ -310,6 +326,7 @@ export type LiveHandlers = {
   onTelemetry: (telemetry: Telemetry) => void;
   onConnection: (connected: boolean) => void;
   onCameraWifi?: (state: CameraWifi) => void;
+  onSetup?: (state: SetupState) => void;
 };
 
 export class LiveConnection {
@@ -355,6 +372,7 @@ export class LiveConnection {
       else if (message.type === "sync") this.handlers.onSync(message as SyncStatus);
       else if (message.type === "telemetry") this.handlers.onTelemetry(message as Telemetry);
       else if (message.type === "camera_wifi") this.handlers.onCameraWifi?.(message as CameraWifi);
+      else if (message.type === "setup") this.handlers.onSetup?.(message as SetupState);
     });
 
     const dropped = () => {

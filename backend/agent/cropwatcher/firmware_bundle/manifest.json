@@ -1,0 +1,25 @@
+{
+  "bundle": 1,
+  "drone_wifi": 2,
+  "platform": "Crazyflie 2.1 + AI deck",
+  "parts": {
+    "main": {
+      "file": "cf2.bin",
+      "chip": "stm32",
+      "sha256": "ad821d15839165fe0ff12ed17932f11fef8bd56fcf563fce3ca9a65ebf436bc0",
+      "source": "crazyflie-firmware 2025.12.1 + firmware/drone-wifi (drone_wifi v2)"
+    },
+    "camera": {
+      "file": "aideck_gap8.bin",
+      "chip": "gap8",
+      "sha256": "13348d9303fc39baef0d99c269afa2f7c692f260f2c3b937cbf649aea6888034",
+      "source": "bitcraze/aideck-gap8-examples 2025.02 aideck_gap8_wifi_img_streamer_with_ap.bin (official release)"
+    },
+    "wifi": {
+      "file": "aideck_esp.bin",
+      "chip": "esp",
+      "sha256": "f75675f0873fc77320d573a9e7275748fbbc0bae52f54e3207a6e2028a9d79cc",
+      "source": "bitcraze/aideck-esp-firmware 2025.02 + firmware/aideck-esp/close-client-once.patch"
+    }
+  }
+}

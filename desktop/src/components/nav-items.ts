@@ -19,6 +19,8 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Operate",
     items: [
       { key: "home", label: "Home", icon: "M12 3l9 8h-3v9h-5v-6H11v6H6v-9H3l9-8z" },
+      // A checklist: the steps from a drone out of the box to a session.
+      { key: "setup", label: "Set up", icon: "M4 5h2v2H4V5zm4 0h12v2H8V5zM4 11h2v2H4v-2zm4 0h12v2H8v-2zm-4 6h2v2H4v-2zm4 0h12v2H8v-2z" },
       // The gamepad, taken verbatim from the web sidebar's "Manual" item: the
       // Control page IS the gamepad page, so the shared icon is the right one.
       { key: "control", label: "Control", icon: "M7 9h10a4 4 0 014 4v2a4 4 0 01-4 4H7a4 4 0 01-4-4v-2a4 4 0 014-4zm1 3v2H6v1.5h2V17h1.5v-1.5h2V14h-2v-2H8zm8 1a1 1 0 100 2 1 1 0 000-2z" },

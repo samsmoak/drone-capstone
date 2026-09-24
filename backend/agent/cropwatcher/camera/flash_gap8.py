@@ -23,6 +23,7 @@ from __future__ import annotations
 import logging
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -35,7 +36,9 @@ TARGET = TARGETS["gap8"]
 BOOTLOADER_WAIT_S = 20.0
 
 
-def flash(path: Path, uri: str = "radio://0/80/2M", *, chip: str = "gap8") -> int:
+def flash(path: Path, uri: str = "radio://0/80/2M", *, chip: str = "gap8",
+          on_progress: Callable[[float], None] | None = None) -> int:
+    """0 on success. `on_progress` gets 0..1 as it writes (the Set up page)."""
     target_name = TARGETS[chip]
     import cflib.crtp
     from cflib.crazyflie import Crazyflie
@@ -85,8 +88,12 @@ def flash(path: Path, uri: str = "radio://0/80/2M", *, chip: str = "gap8") -> in
         # cflib calls this with (message, progress) — a one-argument callback
         # raises inside its packet thread MID-WRITE, which is how the first
         # attempt left the deck part-written.
-        deck.write_sync(0, data, lambda message, progress: print(
-            f"  {message} {progress}", flush=True))
+        def written(message: str, progress: int) -> None:
+            print(f"  {message} {progress}", flush=True)
+            if on_progress is not None:
+                on_progress(max(0.0, min(1.0, progress / 100)))
+
+        deck.write_sync(0, data, written)
         print("written; resetting to firmware", flush=True)
         deck.reset_to_fw()
         print("\nDone. Power-cycle the drone so both deck chips start clean.")
