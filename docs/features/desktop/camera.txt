@@ -25,6 +25,28 @@ WHERE IT LIVES
   desktop/src-tauri/tauri.conf.json            the img-src the frames need
 
 
+MEASURED 2026-09-23, IN THE LAB, ON cf-002f002a3334471239333335
+
+  before reseating   every deck param 0 · 1-Wire memories enumerated: 0
+  after reseating    deck.bcAI YES    · 1-Wire memories enumerated: 1
+
+Deck detection reads an EEPROM on each deck over a SINGLE shared pin, at boot.
+Zero memories with the boards visibly attached was one contact fault, not
+several missing decks — reseating fixed it and the AI deck is now detected.
+
+deck.bcLighthouse4 IS STILL 0, and only one memory enumerates. Whatever was
+wrong for the AI deck is still wrong for that one, and it costs every flight
+its position (flight-safety.txt). Worth the same treatment.
+
+CPX OVER THE RADIO DOES NOT WORK, and the reason is cflib, not the firmware.
+cflib ships `cflib.cpx.transports.CRTPTransport`, which is why it first looked
+viable — but READ IT: every method is `pass` and its own comment says "This
+connection will not really work...". The only real transports are
+SocketTransport (TCP, i.e. the deck's Wi-Fi) and UARTTransport. So the deck's
+Wi-Fi IS required after all, and an earlier note here saying otherwise was
+wrong.
+
+
 WHAT THE RADIO CAN AND CANNOT DO
 
   ask whether the deck is fitted      YES — deck.bcAI, a param read

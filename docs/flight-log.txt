@@ -136,6 +136,19 @@ RUNG 1 (again) — stations re-read while the cage was worked on
                though on a station dropout rather than on stale geometry.
   CHANGED      nothing — still open.
 
+2026-09-23 — DECK DETECTION WAS FAILING ENTIRELY
+  MEASURED     every deck param 0; 1-Wire memories enumerated 0, with both
+               decks visibly attached. Every deck driver present in the param
+               TOC, so the firmware supported them — nothing bound.
+  MEANT        deck detection reads an EEPROM per deck over ONE shared pin at
+               boot. Zero memories is a contact fault on that pin, not missing
+               boards. It also means the drone believed it had no Lighthouse
+               deck, so it could not use Lighthouse AT ALL — which accounts for
+               every session coming back unassisted and geometry never running.
+  CHANGED      reseated. deck.bcAI now YES, 1 memory enumerated.
+               deck.bcLighthouse4 STILL 0 — not yet recovered.
+  RE-RUN IT    cd backend/agent && .venv/bin/python -m cropwatcher.camera.probe
+
 WHAT IS FITTED — asked the drone directly, read-only
   MEASURED     deck.bcLighthouse4   1   YES
                deck.bcAI            1   YES
