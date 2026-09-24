@@ -24,6 +24,7 @@ import asyncio
 import logging
 import os
 import threading
+import time
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from typing import Any
@@ -42,7 +43,7 @@ from cropwatcher.camera.deck import parse_addr
 from cropwatcher.camera.recording import Recorder
 from cropwatcher.camera.wifi import DeckWifi, Phase, WifiError
 from cropwatcher.paths import data_dir
-from cropwatcher.session import Mode, Session, SessionError
+from cropwatcher.session import Mode, Session, SessionError, State
 from cropwatcher.sync.cloud import SupabaseCloud
 from cropwatcher.sync.outbox import Outbox
 from cropwatcher.sync.syncer import Syncer
@@ -50,6 +51,12 @@ from cropwatcher.sync.syncer import Syncer
 log = logging.getLogger(__name__)
 
 DEFAULT_HOST = "127.0.0.1"
+#: How long a REMEMBERED deck address may go unanswered before the window is
+#: told it is stale and the drone needs a restart (wifi.WifiState.remembered).
+STALE_ADDRESS_S = 15.0
+#: At most one automatic deck restart per this many seconds: a deck out of
+#: range will not come back by being restarted in a loop.
+REJOIN_EVERY_S = 60.0
 DEFAULT_PORT = 8765
 
 # The desktop window itself. WebKit serves it from `tauri://localhost` on macOS
@@ -164,14 +171,59 @@ class Agent:
 
     #: Stops following the deck's console, once the link it came from closes.
     _unwatch: Callable[[], None] | None = None
+    #: The Crazyflie of the link that is up; None when down.
+    _cf: Any = None
+    _last_rejoin: float = 0.0
 
     def _link_ready(self, cf: Any) -> None:
         """A link is up (standby's or a session's): follow the deck's Wi-Fi
         reports for as long as it lasts, then hand it the network."""
+        self._cf = cf
         self._unwatch = self.deck_wifi.watch(cf)
         self.deck_wifi.apply(cf)
 
+    def rejoin(self, *, reason: str) -> bool:
+        """Make the deck join afresh and ANNOUNCE ITS ADDRESS — by restarting
+        the drone over the radio (Session.restart_drone), between sessions only.
+
+        The deck's address is the network's to give, not ours to fix: on a
+        campus network it changed under us without the drone restarting
+        (2026-09-24), a static address is not ours to take there, and the deck
+        firmware has no name lookup (mDNS was never finished — Bitcraze). The
+        one reliable source is the drone saying it over the radio; this makes it
+        say it again. False when a session runs, or no one is signed in.
+        """
+        try:
+            self.session.restart_drone(reason=reason)
+        except SessionError as e:
+            log.info("not restarting the drone (%s): %s", reason, e)
+            return False
+        self._last_rejoin = time.monotonic()
+        return True
+
+    def watchdog(self) -> None:
+        """Every few seconds: is the camera stuck on an address that no longer
+        answers? Then have the deck say its current one. Never in a loop."""
+        while True:
+            time.sleep(5.0)
+            try:
+                wifi = self.deck_wifi.state()
+                camera = self.camera
+                if (self._cf is None or not isinstance(camera, DeckStream)
+                        or time.monotonic() - self._last_rejoin < REJOIN_EVERY_S):
+                    continue
+                stale = (wifi.phase is Phase.JOINED and not camera.status().live
+                         and camera.unreachable_for() > STALE_ADDRESS_S)
+                if stale:
+                    self.rejoin(reason=f"no answer at {wifi.ip} for "
+                                       f"{camera.unreachable_for():.0f} s")
+                elif wifi.phase is Phase.FAILED and wifi.needs_restart:
+                    self.rejoin(reason="joined earlier with an unknown address")
+            except Exception:
+                log.exception("camera watchdog failed; it keeps running")
+
     def _link_down(self) -> None:
+        self._cf = None
         unwatch, self._unwatch = self._unwatch, None
         if unwatch is not None:
             unwatch()
@@ -223,6 +275,7 @@ async def lifespan(_app: FastAPI):
     # turns it off — for tests, and for a developer who wants the radio free.
     if os.environ.get("CROPWATCHER_STANDBY", "1").strip() != "0":
         agent.session.start_standby()
+        threading.Thread(target=agent.watchdog, name="camera-watchdog", daemon=True).start()
     log.info("agent API on %s:%d", DEFAULT_HOST, DEFAULT_PORT)
     yield
     agent.session.stop_standby()
@@ -356,7 +409,11 @@ def camera_status() -> dict:
     #: spinner and the reason, not "no signal".
     payload["connecting"] = False
     if not status.live and isinstance(agent.camera, DeckStream):
-        if not radio_up:
+        if snapshot.radio.get("state") == "restarting":
+            payload["connecting"] = True
+            payload["reason"] = ("Restarting the drone so its camera rejoins and reports "
+                                 "its address — about 15 s.")
+        elif not radio_up:
             payload["reason"] = (
                 "The drone is not connected — it may be switched off or its battery "
                 "flat. Its camera streams once the drone is on and connected."
@@ -364,6 +421,17 @@ def camera_status() -> dict:
         elif wifi.phase in (Phase.SENDING, Phase.JOINING, Phase.RECONNECTING):
             payload["connecting"] = True
             payload["reason"] = wifi.message
+        elif wifi.phase is Phase.JOINED and \
+                agent.camera.unreachable_for() > STALE_ADDRESS_S:
+            # Not at that address any more. The watchdog restarts the deck so it
+            # says its new one; the window says what is happening meanwhile.
+            payload["connecting"] = True
+            payload["reason"] = (
+                f"The drone is no longer at {wifi.ip}. Restarting it so it reports its "
+                "current address — about 15 s."
+                if snapshot.state is State.IDLE else
+                f"The drone is no longer at {wifi.ip}. End the session to let it rejoin."
+            )
         elif wifi.phase is Phase.JOINED:
             payload["connecting"] = True
     return payload
@@ -426,12 +494,24 @@ def set_camera_wifi(body: DeckWifiRequest) -> dict:
         raise HTTPException(status_code=422, detail=str(e)) from e
     # A link already open — a session's, or standby's — gets it now; otherwise
     # the next link does.
-    link = agent.session.link
-    cf = link.camera_cf() if link is not None and link.is_open else None
+    # A connected drone is handed it now. If it already joined a network this
+    # power-on it answers ALREADY_APPLIED, the state says needs_restart, and the
+    # watchdog restarts it between sessions — no restart when none is needed.
+    cf = agent._cf
     if cf is not None and agent.session.snapshot().ai_deck:
         threading.Thread(target=agent.deck_wifi.apply, args=(cf,),
                          name="deck-wifi", daemon=True).start()
     return state.to_dict()
+
+
+@app.post("/camera/wifi/rejoin", dependencies=[Command])
+def rejoin_camera_wifi() -> dict:
+    """Restart the drone over the radio so its camera rejoins and announces its
+    address — the operator's "Reconnect camera". Between sessions only."""
+    if not agent.rejoin(reason="the operator asked"):
+        raise HTTPException(status_code=409, detail="End the session first — the drone "
+                                                    "is only restarted between sessions.")
+    return agent.deck_wifi.state().to_dict()
 
 
 @app.delete("/camera/wifi", dependencies=[Command])

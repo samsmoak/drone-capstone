@@ -43,6 +43,7 @@ from typing import Any
 from cropwatcher.audit import Action, AuditLog, Result
 from cropwatcher.flight.checks import CheckResult, ChecksFailed, ReadyReport, collect
 from cropwatcher.flight.control import GuardedFlight, PhaseEvent
+from cropwatcher.flight.core import DEFAULT_URI
 from cropwatcher.flight.link import DEFAULT_FENCE_M, DEFAULT_MAX_HEIGHT_M, DroneLink, LinkError
 from cropwatcher.flight.programs import HoverTest, Outcome, run_hover_test
 from cropwatcher.history import SessionLog, SessionMeta, sessions_dir
@@ -68,6 +69,21 @@ MANUAL_GUARD_PERIOD_S = 0.1
 STANDBY_RETRY_S = 15.0
 #: After a drone drops off or a session ends, look again this soon.
 STANDBY_SOON_S = 2.0
+#: After a restart over the radio, the drone takes ~3 s to answer again
+#: (measured 2026-09-24: power-cycle at 1.0 s, link back at 4.6 s). Looking
+#: sooner starts a connect that blocks for its full timeout.
+RESTART_SETTLE_S = 4.0
+
+
+def _power_cycle(uri: str) -> None:
+    """Restart the drone's electronics through its radio chip (cflib)."""
+    from cflib.utils.power_switch import PowerSwitch
+
+    switch = PowerSwitch(uri)
+    try:
+        switch.stm_power_cycle()
+    finally:
+        switch.close()
 
 
 class Mode(StrEnum):
@@ -132,7 +148,8 @@ class Snapshot:
     #: The radio, apart from any session. "off" (signed out, or not started),
     #: "searching" (no drone found yet — `message` says why), "connected" (a
     #: link is open: vitals stream, the camera gets its network), "paused" (the
-    #: operator disconnected, to free the radio for another tool). A session
+    #: operator disconnected, to free the radio for another tool), "restarting"
+    #: (restarted over the radio on purpose — restart_drone — back in seconds). A session
     #: takes over a connected link rather than opening a second one.
     radio: dict[str, Any] = field(default_factory=lambda: {
         "state": "off", "hardware_id": None, "message": None})
@@ -171,6 +188,7 @@ class Session:
         on_link_down: Callable[[], object] | None = None,
         on_session_open: Callable[[str, Path], object] | None = None,
         on_session_close: Callable[[], object] | None = None,
+        power_cycle: Callable[[str], None] = _power_cycle,
     ) -> None:
         self._cloud = cloud
         #: Called with the Crazyflie once a link has passed its checks and the
@@ -185,6 +203,7 @@ class Session:
         #: get recorded only inside a session (camera/recording.py).
         self._on_session_open = on_session_open
         self._on_session_close = on_session_close
+        self._power_cycle = power_cycle
         self._outbox = outbox or Outbox()
         self._syncer = syncer
         self._link_factory = link_factory
@@ -228,6 +247,8 @@ class Session:
         self._standby_stop = threading.Event()
         self._standby_paused = False
         self._standby_thread: threading.Thread | None = None
+        #: Standby does not look before this (monotonic): a drone restarting.
+        self._standby_not_before = 0.0
 
     # ── events ───────────────────────────────────────────────────────────
 
@@ -1086,6 +1107,38 @@ class Session:
         self._set(radio={"state": "paused", "hardware_id": None,
                          "message": "Disconnected. The radio is free for other tools."})
 
+    def restart_drone(self, *, reason: str) -> None:
+        """Restart the drone's electronics over the radio — BETWEEN SESSIONS ONLY.
+
+        The one supported way to make the AI deck rejoin Wi-Fi and announce its
+        address again. Resetting only the deck was tried and does not work: the
+        STM32's UART link to the ESP32 syncs once, at boot ("There's no support
+        for re-initializing the UART transport" — cpx_uart_transport.c). A
+        restart runs that boot, and standby reconnects: measured 2026-09-24 at
+        4.6 s to the radio, 12.1 s to the first frame.
+
+        Refused unless idle: a session's checks describe the drone as it is, and
+        a restart in the air drops it.
+        """
+        self._require_operator()
+        if self.snapshot().state != State.IDLE:
+            raise SessionError("A session is using the drone. End it first.")
+        with self._link_lock:
+            uri = self.link.uri if self.link is not None else DEFAULT_URI
+            self._close_link()
+            self._standby_not_before = time.monotonic() + RESTART_SETTLE_S
+            try:
+                self._power_cycle(uri)
+            except Exception as e:
+                log.warning("restart over the radio failed: %s", e)
+                self._set(radio={"state": "searching", "hardware_id": None,
+                                 "message": "Could not restart the drone over the radio."})
+                return
+        log.info("restarted the drone: %s", reason)
+        self._set(radio={"state": "restarting", "hardware_id": None,
+                         "message": "Restarting the drone…"})
+        self._wake_standby(RESTART_SETTLE_S)
+
     def _wake_standby(self, after_s: float) -> None:
         if after_s <= 0:
             self._standby_wake.set()
@@ -1116,6 +1169,8 @@ class Session:
         snap = self.snapshot()
         if snap.state != State.IDLE or self.operator is None or self._standby_paused:
             return                                   # a session owns the radio, or no one
+        if time.monotonic() < self._standby_not_before:
+            return                                   # the drone is still restarting
         with self._link_lock:
             if self.link is not None and self.link.is_open:
                 return                               # already connected

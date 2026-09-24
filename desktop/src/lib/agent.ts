@@ -56,7 +56,7 @@ export type Session = {
 };
 
 export type Radio = {
-  state: "off" | "searching" | "connected" | "paused";
+  state: "off" | "searching" | "connected" | "paused" | "restarting";
   hardware_id: string | null;
   /** Why it is not connected, in words. */
   message: string | null;
@@ -188,6 +188,9 @@ export const api = {
   cameraStatus: () => command<CameraStatus>("/camera", undefined, "GET"),
   cameraWifi: () => command<CameraWifi>("/camera/wifi", undefined, "GET"),
   cameraRecording: () => command<Recording>("/camera/recording", undefined, "GET"),
+  /** Restart the drone over the radio so its camera rejoins and reports its
+   *  address. Between sessions only. */
+  reconnectCamera: () => command<CameraWifi>("/camera/wifi/rejoin"),
   recordedFrames: (after: number, limit: number) =>
     command<{ frames: RecordedFrameInfo[] }>(
       `/camera/recording/frames?after=${after}&limit=${limit}`, undefined, "GET"),
@@ -291,6 +294,10 @@ export type CameraWifi = {
   rssi?: number | null;
   /** Times it has dropped off since it last joined. */
   drops?: number;
+  /** The address is remembered from an earlier join — unverified. */
+  remembered?: boolean;
+  /** Only a restart of the drone gets it onto this network now. */
+  needs_restart?: boolean;
 };
 
 // ── the live socket ───────────────────────────────────────────────────

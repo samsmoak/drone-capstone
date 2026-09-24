@@ -61,9 +61,9 @@ KEY_MIN, KEY_MAX = 8, 47
 #: How long to wait for the drone_wifi app to answer one packet. Stock firmware
 #: has no app and never answers, which is the signature of "not flashed".
 REPLY_TIMEOUT_S = 1.5
-#: The firmware refuses an apply in its first 8 s (the GAP8 raises its own
+#: The firmware refuses an apply in the deck's first 8 s (the GAP8 raises its own
 #: access point at 2 s and would override it). Retry within this window.
-EARLY_RETRY_S = 12.0
+EARLY_RETRY_S = 14.0
 #: How long the deck gets to join and report an address.
 JOIN_TIMEOUT_S = 30.0
 #: The ESP32 logs a disconnect on every failed attempt and retries forever. This
@@ -106,10 +106,19 @@ class WifiState:
     rssi: int | None = None
     #: How many times it has dropped off since it last joined.
     drops: int = 0
+    #: The address is REMEMBERED from an earlier join, not heard this link.
+    #: On a campus network the deck can be given a new one (roaming, a renewed
+    #: lease) without restarting — measured 2026-09-24 — so it is unverified
+    #: until the camera reaches it.
+    remembered: bool = False
+    #: Only a restart of the drone gets it onto this network now: it applied a
+    #: network already this power-on (the ESP32 cannot re-apply without one).
+    needs_restart: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {"ssid": self.ssid, "phase": str(self.phase), "ip": self.ip,
-                "message": self.message, "rssi": self.rssi, "drops": self.drops}
+                "message": self.message, "rssi": self.rssi, "drops": self.drops,
+                "remembered": self.remembered, "needs_restart": self.needs_restart}
 
 
 def validate(ssid: str, password: str) -> tuple[bytes, bytes]:
@@ -396,12 +405,16 @@ class DeckWifi:
                 known = joined[1] if joined is not None and joined[0] == creds.ssid else None
                 if known:
                     self._on_ip(known)
-                    return self._set(Phase.JOINED, creds.ssid, ip=known,
-                                     message=f"On {creds.ssid} at {known}.")
+                    return self._set(Phase.JOINED, creds.ssid, ip=known, remembered=True,
+                                     message=f"Joined {creds.ssid} earlier, at {known} — "
+                                             "checking it is still there.")
+                # Nothing remembered for this network. Only a restart makes the
+                # deck join afresh and say where it is; on standby the agent
+                # does that itself (Agent.watchdog), so say what is next.
                 return self._set(
-                    Phase.FAILED, creds.ssid,
-                    message="The drone already joined a network since it was switched "
-                            "on. Restart the drone to apply this one.")
+                    Phase.FAILED, creds.ssid, needs_restart=True,
+                    message="The drone joined a network earlier and its address is not "
+                            "known. It needs a restart to rejoin.")
             return self._set(Phase.FAILED, creds.ssid,
                              message="The drone refused the network's name or password.")
 
@@ -452,10 +465,12 @@ class DeckWifi:
     # ── state ────────────────────────────────────────────────────────────
 
     def _set(self, phase: Phase, ssid: str | None, *, ip: str | None = None,
-             message: str | None = None, drops: int = 0) -> WifiState:
+             message: str | None = None, drops: int = 0,
+             remembered: bool = False, needs_restart: bool = False) -> WifiState:
         with self._lock:
             self._state = WifiState(ssid=ssid, phase=phase, ip=ip, message=message,
-                                    rssi=self._rssi, drops=drops)
+                                    rssi=self._rssi, drops=drops, remembered=remembered,
+                                    needs_restart=needs_restart)
         self._changed()
         return self.state()
 

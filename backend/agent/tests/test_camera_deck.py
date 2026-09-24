@@ -211,3 +211,26 @@ class TestKick:
             assert len(attempts) > before, "the kick did not bring a retry forward"
         finally:
             source.close()
+
+
+class TestUnreachableFor:
+    def test_it_counts_from_the_first_failure_and_resets_on_a_new_host(self):
+        clock = Clock()
+        seen = threading.Event()
+
+        def refuse(addr):
+            seen.set()
+            raise OSError(113, "No route to host")
+
+        source = DeckStream(connect=refuse, clock=clock)
+        try:
+            assert seen.wait(2)
+            wait = time.monotonic() + 2
+            while source.unreachable_for() == 0.0 and time.monotonic() < wait:
+                time.sleep(0.01)
+            clock.t += 20
+            assert source.unreachable_for() >= 20
+            source.set_host("10.0.0.9")
+            assert source.unreachable_for() == 0.0
+        finally:
+            source.close()
