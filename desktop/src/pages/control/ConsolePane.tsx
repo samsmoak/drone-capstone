@@ -161,7 +161,7 @@ export function ConsolePane({
         // is a floor, not a preference — below about that the command log and
         // the vitals tail each get fewer than four lines once their own header
         // and footer bars are subtracted, which is not a log.
-        className={`flex flex-col border border-[var(--border)] bg-[var(--surface)] ${
+        className={`flex min-w-0 flex-col overflow-hidden border border-[var(--border)] bg-[var(--surface)] ${
           fill ? "min-h-0 flex-1" : "min-h-[46rem]"
         }`}
       >

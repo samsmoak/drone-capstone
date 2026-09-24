@@ -45,7 +45,7 @@ export function VitalsTail({ history }: { history: History }) {
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="mono grid grid-cols-[3.6rem_1fr] gap-x-2 border-b border-[var(--console-line)] bg-[var(--console)] px-3 py-1 text-[10px] uppercase tracking-[0.06em] text-[var(--console-dim)]">
+      <div className="mono grid shrink-0 grid-cols-[3.6rem_1fr] gap-x-2 border-b border-[var(--console-line)] bg-[var(--console)] px-3 py-1 text-[10px] uppercase tracking-[0.06em] text-[var(--console-dim)]">
         <span>Elapsed</span>
         <span>z · vbat · roll · pitch · yaw · thrust · motors</span>
       </div>
