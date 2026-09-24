@@ -44,7 +44,7 @@ export function VitalsTail({ history }: { history: History }) {
   }, [tail]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="mono grid grid-cols-[3.6rem_1fr] gap-x-2 border-b border-[var(--console-line)] bg-[var(--console)] px-3 py-1 text-[10px] uppercase tracking-[0.06em] text-[var(--console-dim)]">
         <span>Elapsed</span>
         <span>z · vbat · roll · pitch · yaw · thrust · motors</span>
@@ -54,7 +54,7 @@ export function VitalsTail({ history }: { history: History }) {
         ref={box}
         role="log"
         aria-label="Vitals, one line per second"
-        className="console console-scroll min-h-0 flex-1 overflow-y-auto px-3 py-1.5"
+        className="console console-scroll min-h-0 min-w-0 flex-1 overflow-auto px-3 py-1.5"
       >
         {tail.length === 0 ? (
           <p className="text-[var(--console-dim)]">

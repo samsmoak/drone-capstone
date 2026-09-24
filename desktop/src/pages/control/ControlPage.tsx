@@ -203,7 +203,6 @@ function ControlColumn({ session, telemetry, run }: {
         </Panel>
       )}
 
-      {session.drone && <DroneSummary session={session} telemetry={telemetry} />}
     </>
   );
 }
@@ -311,8 +310,6 @@ function ActionRail({ session, run, ready, height, hold, ambient }: {
     },
   ];
 
-  const blocked = actions.filter((a) => a.disabled && a.reason);
-
   return (
     <Panel title="Actions">
       <div className="grid grid-cols-2 gap-2">
@@ -328,18 +325,6 @@ function ActionRail({ session, run, ready, height, hold, ambient }: {
           </Button>
         ))}
       </div>
-      {blocked.length > 0 && (
-        // The tooltip is not enough on its own: it needs a hover, and an
-        // operator wants to know why before reaching for the mouse.
-        <ul className="mt-3 grid gap-1.5 text-xs text-[var(--muted)]">
-          {blocked.map((action) => (
-            <li key={action.label}>
-              <span className="font-semibold text-[var(--foreground)]">{action.label}</span>
-              {" — "}{action.reason}
-            </li>
-          ))}
-        </ul>
-      )}
     </Panel>
   );
 }
@@ -824,18 +809,3 @@ function Cap({ label, field, intent, wide = false }: {
 }
 
 
-// ── shared ───────────────────────────────────────────────────────────
-
-function DroneSummary({ session, telemetry }: { session: Session; telemetry: Telemetry | null }) {
-  const vbat = telemetry?.values["pm.vbat"] ?? session.drone?.battery_v ?? null;
-  return (
-    <section aria-label="Drone" className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-      <Stat label="Drone" value={session.drone?.hardware_id ?? null} digits={0} fit />
-      <Stat label="Battery" value={vbat} unit="V"
-            tone={vbat == null ? undefined : vbat < 3.75 ? "warning" : "good"}
-            hint={vbat != null && vbat < 3.75 ? "Below the arming threshold" : "Good"} />
-      <Stat label="Height" value={telemetry?.height_m ?? null} unit="m"
-            hint="Above the floor captured at takeoff" />
-    </section>
-  );
-}

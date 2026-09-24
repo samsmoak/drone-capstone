@@ -21,30 +21,41 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
-/** How much of the container the FIRST pane may take, at the extremes. */
-const MIN_FRACTION = 0.2;
-const MAX_FRACTION = 0.8;
+/** How much of the container the FIRST pane may take, at the extremes.
+ *
+ * Per instance, because the two splitters want different room. The console's
+ * inner divider has to fold the attitude indicator almost away — that is the
+ * whole point of dragging it up to read the log — while the outer one should
+ * never let either column become a sliver. A single 20 % floor made the inner
+ * one feel broken: it stopped a fifth of the way down with nothing to explain
+ * why.
+ *
+ * NEVER 0. A pane dragged to nothing takes the divider to the frame edge with
+ * it, and there is no handle left to bring it back. */
+const DEFAULT_MIN = 0.2;
+const DEFAULT_MAX = 0.8;
 
 /** Arrow keys move by this much; with Shift, five times as much. */
 const KEY_STEP = 0.02;
 
-function load(key: string, fallback: number): number {
+function load(key: string, fallback: number, min: number, max: number): number {
   try {
     const raw = localStorage.getItem(key);
     if (raw === null) return fallback;
     const value = Number(raw);
     // A stored value from an older build, or a hand-edited one, must not be
     // able to collapse a pane.
-    return Number.isFinite(value) ? clamp(value) : fallback;
+    return Number.isFinite(value) ? clampTo(value, min, max) : fallback;
   } catch {
     return fallback;
   }
 }
 
-const clamp = (f: number) => Math.min(MAX_FRACTION, Math.max(MIN_FRACTION, f));
+const clampTo = (f: number, min: number, max: number) => Math.min(max, Math.max(min, f));
 
 export function SplitPane({
   orientation, storageKey, defaultFraction, first, second, label, className = "",
+  min = DEFAULT_MIN, max = DEFAULT_MAX,
 }: {
   /** "vertical" = panes side by side, divider runs up and down.
    *  "horizontal" = panes stacked, divider runs across. Matches
@@ -58,8 +69,12 @@ export function SplitPane({
   /** Names the divider for a screen reader — "Console and controls". */
   label: string;
   className?: string;
+  /** How small the first pane may get. Below DEFAULT_MIN for a pane that is
+   *  meant to fold away, never 0 — see the note on the constants. */
+  min?: number;
+  max?: number;
 }) {
-  const [fraction, setFraction] = useState(() => load(storageKey, defaultFraction));
+  const [fraction, setFraction] = useState(() => load(storageKey, defaultFraction, min, max));
   const [dragging, setDragging] = useState(false);
   const box = useRef<HTMLDivElement>(null);
 
@@ -76,8 +91,8 @@ export function SplitPane({
     const next = sideBySide
       ? (event.clientX - rect.left) / rect.width
       : (event.clientY - rect.top) / rect.height;
-    setFraction(clamp(next));
-  }, [sideBySide]);
+    setFraction(clampTo(next, min, max));
+  }, [sideBySide, min, max]);
 
   // Listeners go on the WINDOW, not the divider: a pointer moving faster than
   // React re-renders leaves the element behind, and the drag would stick.
@@ -106,11 +121,11 @@ export function SplitPane({
     const step = event.shiftKey ? KEY_STEP * 5 : KEY_STEP;
     const back = sideBySide ? "ArrowLeft" : "ArrowUp";
     const forward = sideBySide ? "ArrowRight" : "ArrowDown";
-    if (event.key === back) { event.preventDefault(); setFraction((f) => clamp(f - step)); }
-    else if (event.key === forward) { event.preventDefault(); setFraction((f) => clamp(f + step)); }
-    else if (event.key === "Home") { event.preventDefault(); setFraction(MIN_FRACTION); }
-    else if (event.key === "End") { event.preventDefault(); setFraction(MAX_FRACTION); }
-    else if (event.key === "Enter") { event.preventDefault(); setFraction(clamp(defaultFraction)); }
+    if (event.key === back) { event.preventDefault(); setFraction((f) => clampTo(f - step, min, max)); }
+    else if (event.key === forward) { event.preventDefault(); setFraction((f) => clampTo(f + step, min, max)); }
+    else if (event.key === "Home") { event.preventDefault(); setFraction(min); }
+    else if (event.key === "End") { event.preventDefault(); setFraction(max); }
+    else if (event.key === "Enter") { event.preventDefault(); setFraction(clampTo(defaultFraction, min, max)); }
   };
 
   return (
@@ -127,11 +142,11 @@ export function SplitPane({
         aria-orientation={orientation}
         aria-label={label}
         aria-valuenow={Math.round(fraction * 100)}
-        aria-valuemin={Math.round(MIN_FRACTION * 100)}
-        aria-valuemax={Math.round(MAX_FRACTION * 100)}
+        aria-valuemin={Math.round(min * 100)}
+        aria-valuemax={Math.round(max * 100)}
         tabIndex={0}
         onPointerDown={(e) => { e.preventDefault(); setDragging(true); fromPointer(e); }}
-        onDoubleClick={() => setFraction(clamp(defaultFraction))}
+        onDoubleClick={() => setFraction(clampTo(defaultFraction, min, max))}
         onKeyDown={onKeyDown}
         title="Drag to resize · double-click to reset · arrow keys work"
         // The hit area is wider than the line: a 1px target is a WCAG failure
