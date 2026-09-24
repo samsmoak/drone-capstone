@@ -37,7 +37,7 @@ export function VitalsNow({ telemetry, session }: {
   const canfly = read(telemetry, "sys.canfly");
 
   return (
-    <div className="mono grid shrink-0 grid-cols-3 gap-x-5 gap-y-2 text-xs">
+    <div className="mono grid shrink-0 grid-cols-2 gap-x-4 gap-y-2 text-xs xl:grid-cols-3">
       <Vital
         label="Battery" value={vbat} unit="V" digits={2}
         tone={vbat == null ? undefined : vbat < 3.3 ? "critical" : vbat < 3.75 ? "warning" : "good"}

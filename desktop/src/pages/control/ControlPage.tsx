@@ -307,6 +307,8 @@ function ActionRail({ session, run, ready, height, hold, ambient }: {
     modeSlot,
     {
       label: session.state === "starting" ? "Starting…" : "Start session",
+      variant: "start",
+      icon: POWER_ICON,
       disabled: session.state !== "idle",
       reason: session.state === "signed_out"
         ? "Sign in first — flights are recorded against a person."
@@ -330,6 +332,7 @@ function ActionRail({ session, run, ready, height, hold, ambient }: {
         <RailButton
           key={action.label}
           variant={action.variant ?? "secondary"}
+          icon={action.icon}
           disabled={action.disabled}
           title={action.disabled ? action.reason ?? undefined : undefined}
           onClick={action.onClick}
@@ -349,23 +352,26 @@ function ActionRail({ session, run, ready, height, hold, ambient }: {
  * bought back is what the checks below needed. Land and Emergency stop keep
  * their 44 px in the flight strip — those are the ones reached for in a hurry.
  */
-function RailButton({ children, onClick, variant = "secondary", disabled, title }: {
+function RailButton({ children, onClick, variant = "secondary", disabled, title, icon }: {
   children: ReactNode;
   onClick?: () => void;
-  variant?: "primary" | "secondary" | "danger";
+  variant?: "primary" | "secondary" | "start" | "danger";
   disabled?: boolean;
   title?: string;
+  icon?: ReactNode;
 }) {
   const styles = {
     primary: "bg-[var(--primary)] text-[var(--on-primary)] border-transparent",
     secondary: "border-[var(--border)] text-[var(--foreground)]",
+    start: "border-[var(--status-good)] bg-[var(--status-good)] text-[var(--on-primary)] font-semibold",
     danger: "border-[var(--status-critical)] bg-[var(--status-critical)] text-[var(--on-critical)] font-bold",
   }[variant];
   return (
     <button
       type="button" onClick={onClick} disabled={disabled} title={title}
-      className={`inline-flex min-h-8 w-full cursor-pointer items-center justify-center border px-2 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50 ${styles}`}
+      className={`inline-flex min-h-8 w-full cursor-pointer items-center justify-center gap-1.5 border px-2 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50 ${styles}`}
     >
+      {icon}
       {children}
     </button>
   );
@@ -376,8 +382,18 @@ type RailAction = {
   onClick: () => void;
   disabled: boolean;
   reason?: string | null;
-  variant?: "primary" | "secondary" | "danger";
+  variant?: "primary" | "secondary" | "start" | "danger";
+  icon?: ReactNode;
 };
+
+/** The IEC power symbol — the one glyph everyone already reads as "on". */
+const POWER_ICON = (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 shrink-0"
+       fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round">
+    <path d="M12 3v9" />
+    <path d="M6.6 6.6a7.5 7.5 0 1010.8 0" />
+  </svg>
+);
 
 // ── steps ────────────────────────────────────────────────────────────
 
@@ -451,21 +467,37 @@ function Checklist({ session, run }: { session: Session; run: Run }) {
           : <Button onClick={() => void run(api.start, "Start session")}>Try again</Button>
       ) : undefined}
     >
-      {/* A fixed two-column grid: the status column is the same width for every
-          row, so a check that finishes does not reflow the ones below it. */}
-      <ol className="mono grid gap-1.5 text-xs">
+      {/* One row per check, the glyph carrying the verdict at a fixed width so
+          a check finishing never reflows the ones below it. The detail is the
+          AGENT'S OWN words — it is the sentence that says what to do. */}
+      <ol className="grid gap-0">
         {session.checks.map((check) => (
-          <li key={check.key} className="grid gap-x-3 gap-y-0.5 sm:grid-cols-[7rem_minmax(0,1fr)]">
-            <span className="font-semibold uppercase tracking-[0.06em]">{check.label}</span>
-            <span className="min-w-0 break-words text-[var(--muted)]">
-              {check.status === "running" && <Spinner label={check.detail || "Checking…"} />}
-              {check.status === "passed" && <StatusDot tone="good">{check.detail}</StatusDot>}
-              {check.status === "warning" && <StatusDot tone="warning">{check.detail}</StatusDot>}
-              {check.status === "failed" && <StatusDot tone="critical">{check.detail}</StatusDot>}
+          <li
+            key={check.key}
+            className={`grid grid-cols-[1.25rem_5.5rem_minmax(0,1fr)] items-baseline gap-x-2 border-l-2 px-2 py-1.5 text-xs ${
+              check.status === "failed" ? "border-[var(--status-critical)] bg-[var(--surface-2)]"
+              : check.status === "warning" ? "border-[var(--status-warning)] bg-[var(--surface-2)]"
+              : "border-transparent"
+            }`}
+          >
+            <span aria-hidden="true" className="text-center" style={{
+              color: check.status === "passed" ? "var(--status-good)"
+                : check.status === "failed" ? "var(--status-critical)"
+                : check.status === "warning" ? "var(--status-warning)" : "var(--muted)",
+            }}>
+              {check.status === "passed" ? "✓" : check.status === "failed" ? "✗"
+                : check.status === "warning" ? "▲" : "·"}
+            </span>
+            <span className="mono font-semibold uppercase tracking-[0.06em]">{check.label}</span>
+            <span className="min-w-0 wrap-anywhere leading-relaxed text-[var(--muted)]">
+              {check.detail || (check.status === "running" ? "Checking…" : "")}
+              <span className="sr-only"> — {check.status}</span>
             </span>
           </li>
         ))}
-        {session.checks.length === 0 && <Spinner label="Connecting to the drone…" />}
+        {session.checks.length === 0 && (
+          <li className="px-2 py-1.5"><Spinner label="Connecting to the drone…" /></li>
+        )}
       </ol>
 
       {awaiting && (
@@ -771,48 +803,49 @@ function FlightDeck({ intent, mode, telemetry, session, run, ready, height, hold
 
   return (
     <section
-      aria-label="Vitals and keys"
+      aria-label="Vitals, keys and actions"
       className="shrink-0 border border-[var(--border)] bg-[var(--surface)]"
     >
-      <div className="border-b border-[var(--border)] px-3 py-2.5">
-        <VitalsNow telemetry={telemetry} session={session} />
-      </div>
+      <div className="flex gap-4 p-3">
+        {/* One column: what the drone reports, then what you press on the
+            keyboard. Both are read with the same glance. */}
+        <div className="grid min-w-0 flex-1 content-start gap-3">
+          <VitalsNow telemetry={telemetry} session={session} />
 
-      <div className="flex flex-wrap items-start gap-x-6 gap-y-3 px-3 py-2.5">
-        <div className={`flex items-start gap-5 ${movementLive ? "" : "opacity-45"}`}>
-          <Cluster caption="Height · rotation">
-            <div className="grid grid-cols-3 gap-1">
-              <span />
-              <Cap label="W" field="up" intent={intent} />
-              <span />
-              <Cap label="A" field="yaw_left" intent={intent} />
-              <Cap label="S" field="down" intent={intent} />
-              <Cap label="D" field="yaw_right" intent={intent} />
-            </div>
-          </Cluster>
+          <div className={`flex flex-wrap items-start gap-x-5 gap-y-3 border-t border-[var(--border)] pt-3 ${movementLive ? "" : "opacity-45"}`}>
+            <Cluster caption="Height · rotation">
+              <div className="grid grid-cols-3 gap-1">
+                <span />
+                <Cap label="W" field="up" intent={intent} />
+                <span />
+                <Cap label="A" field="yaw_left" intent={intent} />
+                <Cap label="S" field="down" intent={intent} />
+                <Cap label="D" field="yaw_right" intent={intent} />
+              </div>
+            </Cluster>
 
-          <Cluster caption="Position">
-            <div className="grid grid-cols-3 gap-1">
-              <span />
-              <Cap label="↑" field="forward" intent={intent} />
-              <span />
-              <Cap label="←" field="left" intent={intent} />
-              <Cap label="↓" field="back" intent={intent} />
-              <Cap label="→" field="right" intent={intent} />
-            </div>
-          </Cluster>
+            <Cluster caption="Position">
+              <div className="grid grid-cols-3 gap-1">
+                <span />
+                <Cap label="↑" field="forward" intent={intent} />
+                <span />
+                <Cap label="←" field="left" intent={intent} />
+                <Cap label="↓" field="back" intent={intent} />
+                <Cap label="→" field="right" intent={intent} />
+              </div>
+            </Cluster>
+
+            {land && (
+              <Cluster caption="Down">
+                <Cap label="L" intent={intent} wide />
+              </Cluster>
+            )}
+          </div>
         </div>
 
-        {land && (
-          <Cluster caption="Down">
-            <Cap label="L" intent={intent} wide />
-          </Cluster>
-        )}
-
-        {/* Beside the keys, not above them. Stacked full-width they were four
-            buttons of vertical space the checks needed more. */}
+        {/* The other column: the four things you press with the mouse. */}
         {session && (
-          <div className="min-w-[8.5rem] flex-1">
+          <div className="w-[9.5rem] shrink-0 border-l border-[var(--border)] pl-4">
             <p className="eyebrow pb-1.5">Actions</p>
             <ActionRail
               session={session} run={run} ready={ready}

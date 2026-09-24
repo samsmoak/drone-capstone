@@ -66,7 +66,7 @@ export function CommandLog({ lines, onClear, canExpand = true }: {
             Nothing yet. Commands and the agent's replies appear here as they happen.
           </p>
         ) : (
-          <ol>
+          <ol className="min-w-0">
             {lines.map((line) => (
               <li key={line.id} className="flex min-w-0 gap-2">
                 <span className="shrink-0 text-[var(--console-dim)]">{formatClock(line.at)}</span>
@@ -74,7 +74,7 @@ export function CommandLog({ lines, onClear, canExpand = true }: {
                 <span aria-hidden="true" className="w-3 shrink-0" style={{ color: KIND_COLOR[line.kind] }}>
                   {KIND_GLYPH[line.kind]}
                 </span>
-                <span className="min-w-0 break-words">
+                <span className="min-w-0 wrap-anywhere">
                   <span style={{ color: KIND_COLOR[line.kind] }}>{line.text}</span>
                   {line.detail && (
                     <span className="text-[var(--console-dim)]"> — {line.detail}</span>
@@ -194,7 +194,7 @@ function FullScreenLog({ lines, onClear, onClose }: {
                 <span aria-hidden="true" className="w-3 shrink-0" style={{ color: KIND_COLOR[line.kind] }}>
                   {KIND_GLYPH[line.kind]}
                 </span>
-                <span className="min-w-0 break-words">
+                <span className="min-w-0 wrap-anywhere">
                   <span style={{ color: KIND_COLOR[line.kind] }}>{line.text}</span>
                   {line.detail && <span className="text-[var(--console-dim)]"> — {line.detail}</span>}
                 </span>
