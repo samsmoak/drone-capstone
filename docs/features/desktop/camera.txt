@@ -27,6 +27,7 @@ WHERE IT LIVES
   desktop/src/pages/control/CameraPane.tsx     the tab and its four states
   desktop/src/lib/agent.ts                     cameraFrameUrl, api.cameraStatus
   desktop/src-tauri/tauri.conf.json            the img-src the frames need
+  desktop/src-tauri/src/lib.rs                 spawn_agent sets CROPWATCHER_CAMERA=deck
 
 
 MEASURED 2026-09-23, IN THE LAB, ON cf-002f002a3334471239333335
@@ -80,7 +81,12 @@ THE SOURCES — chosen by CROPWATCHER_CAMERA
   test     TestPattern  a generated 320x320 PNG
   deck     DeckStream   the deck at CROPWATCHER_DECK_ADDR (192.168.4.1:5000)
 
-`deck` is opt-in because it needs the laptop JOINED to the deck's access point
+THE DESKTOP APP SETS `deck` for its bundled agent (lib.rs, spawn_agent), so
+`pnpm app` is the whole test: build, launch, join the deck's Wi-Fi, open the
+Camera tab. An app opened from Finder never sees a terminal's variables, so
+leaving it to the environment meant the app's agent always had no camera.
+
+For a bare `cropwatcher serve`, `deck` stays opt-in because it needs the laptop JOINED to the deck's access point
 ("WiFi streaming example"), and while it is, the laptop has no internet — the
 agent cannot sync, and a remote assistant driving the laptop loses its link.
 A second network adapter (USB Wi-Fi or ethernet for the internet) removes that.
