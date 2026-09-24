@@ -84,12 +84,15 @@ export type Telemetry = {
 /** What the agent says about the camera. See backend camera/source.py. */
 export type CameraStatus = {
   live: boolean;
-  /** "none" | "test-pattern" | the deck, once one exists. */
+  /** "none" | "test-pattern" | "ai-deck". */
   kind: string;
   reason: string | null;
   /** The DRONE's own answer (deck.bcAI). null until a drone has been asked,
    *  which is not the same as "not fitted". */
   deck_fitted: boolean | null;
+  /** The size of the frames being served; null until one has arrived. */
+  width: number | null;
+  height: number | null;
 };
 
 export type Intent = {

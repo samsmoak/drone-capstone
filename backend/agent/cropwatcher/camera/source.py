@@ -22,8 +22,9 @@ import zlib
 from dataclasses import dataclass
 from typing import Protocol
 
-#: The AI deck's own sensor is 320x320 greyscale. The test pattern matches it so
-#: layout, aspect ratio and payload size are honest rehearsals for the real one.
+#: The generated pattern's size. NOT the deck's: its streamer measured 324x244
+#: on 2026-09-23, and a real source reads the size from every frame's own header
+#: rather than trusting a constant.
 FRAME_W = 320
 FRAME_H = 320
 
@@ -42,6 +43,9 @@ class CameraStatus:
     #: (deck.bcAI, read over the radio during the checks). None when no drone
     #: has been asked yet — which is not the same as "not fitted".
     deck_fitted: bool | None = None
+    #: The size of the frames being served, once one has arrived.
+    width: int | None = None
+    height: int | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -49,6 +53,8 @@ class CameraStatus:
             "kind": self.kind,
             "reason": self.reason,
             "deck_fitted": self.deck_fitted,
+            "width": self.width,
+            "height": self.height,
         }
 
 
@@ -118,7 +124,7 @@ class TestPattern:
             count = self._count
         elapsed = time.monotonic() - self._started
         band = int((elapsed * self._fps * 4) % FRAME_H)
-        return _png_grey(_pattern_rows(band, count))
+        return png_grey(_pattern_rows(band, count), FRAME_W, FRAME_H)
 
     def status(self) -> CameraStatus:
         return CameraStatus(
@@ -126,6 +132,8 @@ class TestPattern:
             kind="test-pattern",
             reason=None,
             deck_fitted=self.deck_fitted,
+            width=FRAME_W,
+            height=FRAME_H,
         )
 
 
@@ -152,7 +160,7 @@ def _pattern_rows(band: int, count: int) -> list[bytearray]:
     return rows
 
 
-def _png_grey(rows: list[bytearray]) -> bytes:
+def png_grey(rows: list[bytearray], width: int, height: int) -> bytes:
     """Encode 8-bit greyscale rows as a PNG. Standard library only."""
     raw = bytearray()
     for row in rows:
@@ -167,7 +175,7 @@ def _png_grey(rows: list[bytearray]) -> bytes:
             + struct.pack(">I", binascii.crc32(tag + payload) & 0xFFFFFFFF)
         )
 
-    header = struct.pack(">IIBBBBB", FRAME_W, FRAME_H, 8, 0, 0, 0, 0)
+    header = struct.pack(">IIBBBBB", width, height, 8, 0, 0, 0, 0)
     return (
         b"\x89PNG\r\n\x1a\n"
         + chunk(b"IHDR", header)
