@@ -96,18 +96,30 @@ export function ConsolePane({
             </div>
           }
           second={
-            <div className="flex min-h-0 flex-1 flex-col">
-              {/* The log takes most of what is below the divider; the tail is
-                  one fixed-width line per second and needs less. */}
-              <div className="flex min-h-0 flex-8 flex-col border-b border-[var(--border)]">
-                <PaneTitle>Command log</PaneTitle>
-                <CommandLog lines={logLines} onClear={onClearLog} canExpand={!fullScreen} />
-              </div>
-              <div className="flex min-h-0 flex-4 flex-col">
-                <PaneTitle>Vitals</PaneTitle>
-                <VitalsTail history={history} />
-              </div>
-            </div>
+            // The log and the vitals tail, with the same kind of divider as
+            // the one above: drag it up and the vitals tail folds over the log,
+            // down and the log takes the room (2026-09-24).
+            <SplitPane
+              orientation="horizontal"
+              storageKey="cropwatcher.split.logtail"
+              defaultFraction={0.67}
+              min={0.06}
+              max={0.94}
+              label="Command log and vitals"
+              className="min-h-0 flex-1"
+              first={
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <PaneTitle>Command log</PaneTitle>
+                  <CommandLog lines={logLines} onClear={onClearLog} canExpand={!fullScreen} />
+                </div>
+              }
+              second={
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <PaneTitle>Vitals</PaneTitle>
+                  <VitalsTail history={history} />
+                </div>
+              }
+            />
           }
         />
       </TabPanel>
