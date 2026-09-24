@@ -19,7 +19,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, cameraFrameUrl, type CameraStatus, type CameraWifi } from "@/lib/agent";
-import { openDroneWifi } from "@/lib/droneWifi";
+import { showDroneWifi } from "@/lib/droneWifi";
 import { Button, Message, Spinner, StatusDot } from "@/components/ui";
 
 /** How often a new frame is pulled while the feed is live. */
@@ -136,7 +136,7 @@ export function CameraPane({ active }: {
                 </p>
               )}
               <div className="flex justify-center">
-                <Button onClick={openDroneWifi}>Drone Wi-Fi…</Button>
+                <Button onClick={showDroneWifi}>Change Wi-Fi</Button>
               </div>
             </div>
           )}
@@ -184,6 +184,13 @@ export function CameraPane({ active }: {
                 .filter(Boolean).join(" · ")
             : "AI deck · not connected"}
         </span>
+        <button
+          type="button"
+          onClick={showDroneWifi}
+          className="min-h-8 px-1 uppercase tracking-[0.08em] text-[var(--console-ink)] underline underline-offset-2"
+        >
+          Wi-Fi
+        </button>
         <span>
           {live ? (
             <StatusDot tone={fresh ? "good" : "warning"}>

@@ -10,6 +10,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type { CameraWifi } from "@/lib/agent";
+import type { Tone } from "@/components/ui";
 
 export type WifiBand = "2.4" | "5" | "6";
 export type WifiSecurity = "open" | "personal" | "enterprise" | "other";
@@ -30,7 +31,9 @@ export type WifiScan = {
 };
 
 export const droneWifi = {
-  scan: () => invoke<WifiScan>("wifi_scan"),
+  /** `live: false` is the OS's last scan, instant; `live: true` scans the air
+   *  and takes seconds (12.5 s measured on a MacBook Pro). */
+  scan: (live: boolean) => invoke<WifiScan>("wifi_scan", { live }),
   requestPermission: () => invoke<void>("wifi_request_permission"),
   /** The saved network's name, or null. Never the password. */
   saved: () => invoke<string | null>("drone_wifi_saved"),
@@ -48,7 +51,8 @@ export const droneWifi = {
  */
 export function whyNotJoinable(network: WifiNetwork): string | null {
   if (network.security === "enterprise") {
-    return "Needs a username sign-in (university or company Wi-Fi). The drone cannot use it.";
+    return "Signs in with a personal username and password (like eduroam), not one shared " +
+      "password. The drone's Wi-Fi chip cannot sign in that way.";
   }
   if (network.security === "other") {
     return "Uses a security type the drone cannot use.";
@@ -62,11 +66,33 @@ export function whyNotJoinable(network: WifiNetwork): string | null {
 export const bandLabel = (bands: WifiBand[]) =>
   bands.length === 0 ? "" : bands.map((b) => `${b} GHz`).join(" + ");
 
+/** The longest password the drone holds: the AI deck's ESP32 keeps it in a
+ *  50-byte buffer (firmware/drone-wifi/src/wire.h), so not WPA2's 63. */
+export const PASSWORD_MAX = 47;
+
 /**
- * Open the Drone Wi-Fi dialog from anywhere in the window. The dialog is owned
- * by App (it is asked for after sign-in), and the Camera tab and the account
- * menu sit several components away — an event keeps them from threading a
- * callback through every page in between.
+ * Go to the Drone Wi-Fi page from anywhere in the window. Navigation is owned
+ * by App, and the Camera tab and the account menu sit several components away —
+ * an event keeps them from threading a callback through every page in between.
  */
-export const OPEN_DRONE_WIFI = "cropwatcher:open-drone-wifi";
-export const openDroneWifi = () => window.dispatchEvent(new Event(OPEN_DRONE_WIFI));
+export const SHOW_DRONE_WIFI = "cropwatcher:show-drone-wifi";
+export const showDroneWifi = () => window.dispatchEvent(new Event(SHOW_DRONE_WIFI));
+
+export const PHASE_TONE: Record<CameraWifi["phase"], Tone> = {
+  "not-set": "idle",
+  waiting: "idle",
+  sending: "warning",
+  joining: "warning",
+  joined: "good",
+  failed: "critical",
+};
+
+/** What the phase means, when the agent sent no message of its own. */
+export const PHASE_LABEL: Record<CameraWifi["phase"], string> = {
+  "not-set": "No network set",
+  waiting: "Waiting for the drone to connect",
+  sending: "Sending the network to the drone",
+  joining: "The drone is joining",
+  joined: "On the network",
+  failed: "Could not join",
+};

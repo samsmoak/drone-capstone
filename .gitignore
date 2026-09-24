@@ -56,3 +56,11 @@ backend/supabase/.temp/
 
 # The AI deck firmware binary is fetched, not committed.
 aideck_gap8_*.bin
+
+# ── Feature docs: local until the owner says they are ready to share ────
+# The 28 files already on GitHub are frozen with `git update-index
+# --skip-worktree` (their GitHub versions stay; local edits are not
+# committed). This line keeps NEW docs out. To share: remove this block and
+# run `git ls-files -v docs/features | grep '^S' | cut -c3- |
+#   xargs git update-index --no-skip-worktree`.
+docs/features/

@@ -50,12 +50,17 @@ pub struct Scan {
     pub error: Option<String>,
 }
 
-/// Scan for nearby networks. Blocking — a real scan takes a second or two.
-pub fn scan() -> Scan {
+/// Nearby networks. `live: false` answers from the OS's last scan, instantly;
+/// `live: true` scans the air, which BLOCKS — measured 12.5 s on a MacBook Pro
+/// (2026-09-24). The window asks for the cache first and a live scan behind it,
+/// so the list is never a 12-second spinner.
+pub fn scan(live: bool) -> Scan {
     #[cfg(target_os = "macos")]
-    return macos::scan();
+    return macos::scan(live);
     #[cfg(windows)]
-    return windows::scan();
+    return windows::scan(live);
+    #[allow(unreachable_code)]
+    let _ = live;
     #[allow(unreachable_code)]
     Scan {
         permission: "unsupported",

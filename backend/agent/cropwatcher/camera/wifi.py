@@ -13,9 +13,10 @@ the stock CPX task prints "WiFi connected to ip: a.b.c.d" to the drone's
 console, and that line is what is read here.
 
 WHAT THE DECK CANNOT JOIN, and this module refuses up front rather than letting
-the operator wait: a name over 32 bytes, a password of 1-7 or over 63
-characters (WPA2-Personal's own limits). It cannot tell from here whether a
-network is 5 GHz-only or enterprise — the desktop's network list does that.
+the operator wait: a name over 32 bytes; a password of 1-7 characters (WPA2's
+minimum) or over 47 — NOT WPA2's 63, because the ESP32 keeps the password in a
+50-byte buffer (firmware/drone-wifi/src/wire.h). It cannot tell from here
+whether a network is 5 GHz-only or enterprise — the desktop's list does that.
 
 THE PASSWORD. Held in memory for the life of the agent, sent over the radio,
 never written to disk, never logged, never returned by any route. The radio
@@ -24,6 +25,7 @@ link is not encrypted: this is a network for the drone, not a home network.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import threading
@@ -31,6 +33,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
+from pathlib import Path
 from typing import Any
 
 log = logging.getLogger(__name__)
@@ -51,7 +54,8 @@ MTU = 30
 _CHUNK = MTU - 2
 
 SSID_MAX = 32
-KEY_MIN, KEY_MAX = 8, 63
+#: 8 is WPA2's minimum. 47 is the AI deck's ESP32 buffer, not WPA2's 63.
+KEY_MIN, KEY_MAX = 8, 47
 
 #: How long to wait for the drone_wifi app to answer one packet. Stock firmware
 #: has no app and never answers, which is the signature of "not flashed".
@@ -101,8 +105,8 @@ def validate(ssid: str, password: str) -> tuple[bytes, bytes]:
         raise WifiError("A Wi-Fi network name is 1 to 32 bytes.")
     key = password.encode("utf-8")
     if key and not KEY_MIN <= len(key) <= KEY_MAX:
-        raise WifiError("A Wi-Fi password is 8 to 63 characters, or empty for an "
-                        "open network.")
+        raise WifiError("The drone takes a Wi-Fi password of 8 to 47 characters, or "
+                        "none for an open network.")
     return name, key
 
 
@@ -163,6 +167,7 @@ class DeckWifi:
         on_ip: Callable[[str], None] = lambda _ip: None,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
+        joined_file: Path | None = None,
     ) -> None:
         self._lock = threading.Lock()
         self._creds: _Credentials | None = None
@@ -170,7 +175,14 @@ class DeckWifi:
         #: The last network the deck joined and its address. Kept apart from the
         #: live state, which "sending" overwrites before the drone can say it
         #: already applied this network in the same power-on.
-        self._joined: tuple[str, str] | None = None
+        #:
+        #: ALSO ON DISK (joined_file): the drone refuses a second apply until it
+        #: restarts, so an agent that restarted without the drone doing so would
+        #: otherwise not know where the camera is. Not secret — a name and an
+        #: address — and valid exactly as long as the drone stays on, which is
+        #: exactly when the drone answers ALREADY_APPLIED.
+        self._joined_file = joined_file
+        self._joined: tuple[str, str] | None = self._load_joined()
         self._on_change = on_change
         self._on_ip = on_ip
         self._clock = clock
@@ -192,8 +204,8 @@ class DeckWifi:
     def forget(self) -> WifiState:
         with self._lock:
             self._creds = None
-            self._joined = None
             self._state = WifiState()
+        self._remember(None)
         self._changed()
         return self.state()
 
@@ -273,6 +285,7 @@ class DeckWifi:
                     joined = self._joined
                 known = joined[1] if joined is not None and joined[0] == creds.ssid else None
                 if known:
+                    self._on_ip(known)
                     return self._set(Phase.JOINED, creds.ssid, ip=known,
                                      message=f"On {creds.ssid} at {known}.")
                 return self._set(
@@ -289,8 +302,7 @@ class DeckWifi:
             watch.changed.wait(0.5)
             watch.changed.clear()
             if watch.ip is not None:
-                with self._lock:
-                    self._joined = (creds.ssid, watch.ip)
+                self._remember((creds.ssid, watch.ip))
                 self._on_ip(watch.ip)
                 return self._set(Phase.JOINED, creds.ssid, ip=watch.ip,
                                  message=f"On {creds.ssid} at {watch.ip}.")
@@ -301,6 +313,30 @@ class DeckWifi:
             message=f"The drone could not join {creds.ssid}. Check the password, that the "
                     "network is 2.4 GHz and in range, and that it has no sign-in page. "
                     "Then restart the drone to try again.")
+
+    # ── the last join, kept across agent restarts ────────────────────────
+
+    def _load_joined(self) -> tuple[str, str] | None:
+        if self._joined_file is None:
+            return None
+        try:
+            data = json.loads(self._joined_file.read_text())
+            return (str(data["ssid"]), str(data["ip"]))
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+
+    def _remember(self, joined: tuple[str, str] | None) -> None:
+        with self._lock:
+            self._joined = joined
+        if self._joined_file is None:
+            return
+        try:
+            if joined is None:
+                self._joined_file.unlink(missing_ok=True)
+            else:
+                self._joined_file.write_text(json.dumps({"ssid": joined[0], "ip": joined[1]}))
+        except OSError:
+            log.warning("could not record the deck's address")
 
     # ── state ────────────────────────────────────────────────────────────
 

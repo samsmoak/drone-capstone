@@ -21,11 +21,12 @@ import type { ReactNode } from "react";
 
 export type Tone = "good" | "warning" | "serious" | "critical" | "idle";
 
-const TONE_ICON: Record<Tone, string> = {
+/** Shape AND colour, so a status never rests on colour alone (WCAG 1.4.1). */
+export const TONE_ICON: Record<Tone, string> = {
   good: "●", warning: "▲", serious: "▲", critical: "■", idle: "○",
 };
 
-const TONE_COLOR: Record<Tone, string> = {
+export const TONE_COLOR: Record<Tone, string> = {
   good: "var(--status-good)",
   warning: "var(--status-warning)",
   serious: "var(--status-serious)",
