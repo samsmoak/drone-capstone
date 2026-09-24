@@ -51,7 +51,7 @@ export function CommandLog({ lines, onClear, canExpand = true }: {
   }, []);
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       <div
         ref={box}
         // A log region, announced only when the operator has asked for it by
@@ -59,7 +59,7 @@ export function CommandLog({ lines, onClear, canExpand = true }: {
         role="log"
         aria-label="Command log"
         aria-live="polite"
-        className="console console-scroll min-h-0 flex-1 overflow-y-auto px-3 py-2"
+        className="console console-scroll min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-2"
       >
         {lines.length === 0 ? (
           <p className="text-[var(--console-dim)]">
@@ -68,7 +68,7 @@ export function CommandLog({ lines, onClear, canExpand = true }: {
         ) : (
           <ol>
             {lines.map((line) => (
-              <li key={line.id} className="flex gap-2">
+              <li key={line.id} className="flex min-w-0 gap-2">
                 <span className="shrink-0 text-[var(--console-dim)]">{formatClock(line.at)}</span>
                 {/* Glyph AND colour, never colour alone. */}
                 <span aria-hidden="true" className="w-3 shrink-0" style={{ color: KIND_COLOR[line.kind] }}>

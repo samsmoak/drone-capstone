@@ -82,6 +82,12 @@ export function ConsolePane({
           orientation="horizontal"
           storageKey="cropwatcher.split.console"
           defaultFraction={0.34}
+          // Folds almost away: dragging this up to read the log is the point,
+          // and the shared 20 % floor made it stop a fifth of the way down with
+          // nothing to explain why. Never 0 — the divider would reach the frame
+          // edge and leave no handle to bring it back.
+          min={0.06}
+          max={0.85}
           label="Attitude indicator and the log"
           className="min-h-0 flex-1"
           first={
