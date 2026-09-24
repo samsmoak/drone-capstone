@@ -48,7 +48,7 @@ class FakeDrone:
         self.join = join                # "ip" | "fail" | "silent"
         self.ip = ip
         self.ssid = bytearray(32)
-        self.key = bytearray(63)
+        self.key = bytearray(47)
         self.sent: list[bytes] = []
         outer = self
 
@@ -126,8 +126,9 @@ class TestValidate:
         with pytest.raises(WifiError):
             validate(ssid, "")
 
-    @pytest.mark.parametrize("password", ["short", "x" * 64])
-    def test_refuses_a_password_outside_wpa2_limits(self, password):
+    @pytest.mark.parametrize("password", ["short", "x" * 48])
+    def test_refuses_a_password_outside_what_the_deck_holds(self, password):
+        """48+ is legal WPA2 but overflows the ESP32's 50-byte key buffer."""
         with pytest.raises(WifiError):
             validate("Lab", password)
 
@@ -137,14 +138,17 @@ class TestValidate:
 
 
 class TestPackets:
+    def test_the_longest_password_the_deck_holds_is_accepted(self):
+        assert validate("Lab", "k" * 47)[1] == b"k" * 47
+
     def test_every_packet_fits_the_app_channel(self):
-        for pkt in packets(b"n" * 32, b"k" * 63):
+        for pkt in packets(b"n" * 32, b"k" * 47):
             assert len(pkt) <= wifi.MTU
 
     def test_a_long_password_is_chunked_at_increasing_offsets(self):
-        chunks = [p for p in packets(b"n", b"k" * 63) if p[0] == CMD_KEY]
-        assert [c[1] for c in chunks] == [0, 28, 56]
-        assert b"".join(c[2:] for c in chunks) == b"k" * 63
+        chunks = [p for p in packets(b"n", b"k" * 47) if p[0] == CMD_KEY]
+        assert [c[1] for c in chunks] == [0, 28]
+        assert b"".join(c[2:] for c in chunks) == b"k" * 47
 
     def test_an_open_network_sends_no_key_chunks(self):
         assert [p[0] for p in packets(b"Cafe", b"")] == [CMD_SSID, CMD_APPLY]
@@ -250,3 +254,48 @@ class TestState:
         deck.configure("Lab", "password1")
         assert deck.forget().phase is Phase.NOT_SET
         assert deck.state().ssid is None
+
+
+class TestRememberedAddress:
+    def test_a_restarted_agent_still_knows_where_the_camera_is(self, tmp_path):
+        """The drone refuses a second apply until it restarts; an agent that
+        restarted without it must not be left asking for a drone restart."""
+        joined = tmp_path / "deck-wifi.json"
+        first = DeckWifi(sleep=lambda _s: None, joined_file=joined)
+        first.configure("Lab", "password1")
+        drone = FakeDrone()
+        assert first.apply(drone).phase is Phase.JOINED
+
+        ips: list = []
+        second = DeckWifi(on_ip=ips.append, sleep=lambda _s: None, joined_file=joined)
+        second.configure("Lab", "password1")
+        state = second.apply(drone)            # the same power-on: ALREADY_APPLIED
+        assert (state.phase, state.ip) == (Phase.JOINED, "10.0.0.42")
+        assert ips == ["10.0.0.42"]            # and the camera is pointed there
+
+    def test_the_address_is_for_that_network_only(self, tmp_path):
+        joined = tmp_path / "deck-wifi.json"
+        joined.write_text('{"ssid": "Other", "ip": "10.9.9.9"}')
+        deck = DeckWifi(sleep=lambda _s: None, joined_file=joined)
+        deck.configure("Lab", "password1")
+        assert deck.apply(FakeDrone(applied=True)).phase is Phase.FAILED
+
+    def test_forget_removes_it(self, tmp_path):
+        joined = tmp_path / "deck-wifi.json"
+        joined.write_text('{"ssid": "Lab", "ip": "10.0.0.42"}')
+        DeckWifi(joined_file=joined).forget()
+        assert not joined.exists()
+
+    def test_a_corrupt_file_is_ignored(self, tmp_path):
+        joined = tmp_path / "deck-wifi.json"
+        joined.write_text("not json")
+        deck = DeckWifi(sleep=lambda _s: None, joined_file=joined)
+        deck.configure("Lab", "password1")
+        assert deck.apply(FakeDrone(applied=True)).phase is Phase.FAILED
+
+    def test_the_file_never_holds_the_password(self, tmp_path):
+        joined = tmp_path / "deck-wifi.json"
+        deck = DeckWifi(sleep=lambda _s: None, joined_file=joined)
+        deck.configure("Lab", "hunter2hunter2")
+        deck.apply(FakeDrone())
+        assert "hunter2" not in joined.read_text()

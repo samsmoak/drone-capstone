@@ -40,7 +40,11 @@ fn ssid_of(ssid: &DOT11_SSID) -> String {
     String::from_utf8_lossy(&ssid.ucSSID[..len]).into_owned()
 }
 
-pub fn scan() -> Scan {
+/// How long a fresh scan takes to land in the network list after WlanScan.
+/// Microsoft documents drivers as finishing within 4 seconds.
+const SCAN_SETTLE: std::time::Duration = std::time::Duration::from_secs(4);
+
+pub fn scan(live: bool) -> Scan {
     let mut raw = Vec::new();
     // SAFETY: the WLAN API's documented call sequence; every list it allocates
     // is released with WlanFreeMemory and the handle with WlanCloseHandle.
@@ -65,6 +69,14 @@ pub fn scan() -> Scan {
         }
         let count = (*interfaces).dwNumberOfItems as usize;
         let first = (*interfaces).InterfaceInfo.as_ptr();
+        if live {
+            // The list below is Windows' last scan; ask for a fresh one first.
+            for i in 0..count {
+                let guid: GUID = (*first.add(i)).InterfaceGuid;
+                let _ = WlanScan(handle, &guid, None, None, None);
+            }
+            std::thread::sleep(SCAN_SETTLE);
+        }
         let mut denied = false;
         for i in 0..count {
             let guid: GUID = (*first.add(i)).InterfaceGuid;

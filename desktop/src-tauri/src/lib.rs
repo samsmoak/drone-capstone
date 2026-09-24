@@ -114,8 +114,8 @@ async fn stop_motors(token: State<'_, ControlToken>) -> Result<(), String> {
 
 /// Nearby networks, with the permission state the scan ran under.
 #[tauri::command]
-async fn wifi_scan() -> Result<wifi::Scan, String> {
-    tauri::async_runtime::spawn_blocking(wifi::scan)
+async fn wifi_scan(live: bool) -> Result<wifi::Scan, String> {
+    tauri::async_runtime::spawn_blocking(move || wifi::scan(live))
         .await
         .map_err(|e| format!("the scan did not finish: {e}"))
 }

@@ -126,8 +126,9 @@ def _unreachable(host: str, port: int, e: OSError) -> str:
         return (f"Cannot reach the AI deck at {host}:{port}, its own access point. "
                 "Set the drone's Wi-Fi network in Drone Wi-Fi, or join this laptop to "
                 f"\"WiFi streaming example\". ({detail})")
-    return (f"Cannot reach the AI deck at {host}:{port}. Is this laptop on the same "
-            f"network as the drone? ({detail})")
+    return (f"The drone joined its Wi-Fi at {host}, but this laptop cannot reach it. "
+            "Is this laptop on the same network? Campus and guest networks often block "
+            f"devices from reaching each other. ({detail})")
 
 
 def parse_addr(value: str | None) -> tuple[str, int]:

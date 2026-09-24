@@ -56,7 +56,7 @@ fn security_of(network: &objc2_core_wlan::CWNetwork) -> &'static str {
     }
 }
 
-pub fn scan() -> Scan {
+pub fn scan(live: bool) -> Scan {
     let permission = permission();
     // SAFETY: CoreWLAN's documented entry points; scanning off the main
     // thread is supported and is the only way not to freeze the window.
@@ -69,17 +69,22 @@ pub fn scan() -> Scan {
             };
         };
         let current = interface.ssid().map(|s| s.to_string());
-        let found = match interface.scanForNetworksWithName_error(None) {
-            Ok(set) => set,
-            Err(e) => match interface.cachedScanResults() {
-                Some(set) => set,
-                None => {
-                    return Scan {
-                        permission,
-                        networks: vec![],
-                        error: Some(format!("The Wi-Fi scan failed: {}", e.localizedDescription())),
+        // The cache when asked for it and it exists; otherwise the air.
+        let cached = if live { None } else { interface.cachedScanResults() };
+        let found = match cached {
+            Some(set) => set,
+            None => match interface.scanForNetworksWithName_error(None) {
+                Ok(set) => set,
+                Err(e) => match interface.cachedScanResults() {
+                    Some(set) => set,
+                    None => {
+                        return Scan {
+                            permission,
+                            networks: vec![],
+                            error: Some(format!("The Wi-Fi scan failed: {}", e.localizedDescription())),
+                        }
                     }
-                }
+                },
             },
         };
         let mut raw = Vec::new();

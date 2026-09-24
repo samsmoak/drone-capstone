@@ -7,12 +7,17 @@
 # radio: 0x252b4134 = 2025.12.1, unmodified). Building from any other release
 # changes flight behaviour this project has tuned against, not just Wi-Fi.
 set -euo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
 
 FW_TAG=2025.12.1
 TC_VER=13.3.rel1
 CACHE="${CROPWATCHER_CACHE:-$HOME/.cache/cropwatcher}"
-HERE="$(cd "$(dirname "$0")" && pwd)"
 FW="$CACHE/crazyflie-firmware"
+
+# The bytes sent to the deck, through an exact copy of the ESP32's handling.
+# A firmware that mangles the network name must not get built at all.
+cc -Wall -Wextra -Werror -o "${TMPDIR:-/tmp}/drone_wifi_test_wire" "$HERE/test/test_wire.c"
+"${TMPDIR:-/tmp}/drone_wifi_test_wire"
 
 case "$(uname -s)-$(uname -m)" in
   Darwin-arm64) TC_HOST=darwin-arm64 ;;

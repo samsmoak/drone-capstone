@@ -48,7 +48,8 @@ import { StartupPage } from "@/pages/startup/StartupPage";
 import { SensorWindow, type WindowKey } from "@/pages/windows/SensorWindow";
 import { Message } from "@/components/ui";
 import { DroneWifiDialog } from "@/components/DroneWifiDialog";
-import { OPEN_DRONE_WIFI, droneWifi } from "@/lib/droneWifi";
+import { PHASE_LABEL, PHASE_TONE, SHOW_DRONE_WIFI, droneWifi } from "@/lib/droneWifi";
+import { WifiPage } from "@/pages/wifi/WifiPage";
 
 /** Physical key → intent field. `code`, so the keys stay in the same place on AZERTY. */
 export const KEY_MAP: Record<string, keyof Intent> = {
@@ -67,7 +68,7 @@ const HISTORY_LIMIT = HISTORY_S * 10;      // 10 Hz
 
 export type History = { t: number; values: Record<string, number>; height_m: number | null }[];
 
-export type Page = "home" | "control" | "sessions" | WindowKey;
+export type Page = "home" | "control" | "sessions" | "wifi" | WindowKey;
 
 /** A command, and what to call it in the log. */
 export type Run = (action: () => Promise<unknown>, label?: string) => Promise<void>;
@@ -155,11 +156,18 @@ export default function App() {
     return () => { cancelled = true; };
   }, [connected, signedIn, pushLog]);
 
+  // "Change Wi-Fi" from the Camera tab and the account menu lands on the page.
   useEffect(() => {
-    const open = () => setWifiOpen(true);
-    window.addEventListener(OPEN_DRONE_WIFI, open);
-    return () => window.removeEventListener(OPEN_DRONE_WIFI, open);
-  }, []);
+    const show = () => setPage("wifi");
+    window.addEventListener(SHOW_DRONE_WIFI, show);
+    return () => window.removeEventListener(SHOW_DRONE_WIFI, show);
+  }, [setPage]);
+
+  const wifiPhase = cameraWifi?.phase ?? "not-set";
+  const wifiBadge = {
+    tone: PHASE_TONE[wifiPhase],
+    label: cameraWifi?.ssid ? `${cameraWifi.ssid} — ${PHASE_LABEL[wifiPhase]}` : PHASE_LABEL[wifiPhase],
+  };
 
   const closeWifi = useCallback(() => setWifiOpen(false), []);
 
@@ -267,7 +275,7 @@ export default function App() {
   return (
     <div className="flex h-screen bg-[var(--background)] text-[var(--foreground)]">
       {wifiOpen && (
-        <DroneWifiDialog wifi={cameraWifi} onClose={closeWifi} onSaved={setCameraWifi} />
+        <DroneWifiDialog onClose={closeWifi} onSaved={setCameraWifi} />
       )}
       <Sidebar
         page={page}
@@ -279,6 +287,7 @@ export default function App() {
         flying={Boolean(flying)}
         onSetMode={(mode) => void run(() => api.setMode(mode), `Set mode to ${mode}`)}
         onSignOut={() => void run(api.signOut, "Sign out")}
+        badges={signedIn ? { wifi: wifiBadge } : {}}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -329,6 +338,8 @@ export default function App() {
                 onClearLog={clearLog}
                 onOpenSessions={() => setPage("sessions")}
               />
+            ) : page === "wifi" ? (
+              <WifiPage wifi={cameraWifi} session={session} onSaved={setCameraWifi} />
             ) : page === "sessions" ? (
               <SessionsPage refreshKey={historyKey} mode={viewMode} selectedId={sessionId} onSelect={setSessionId} />
             ) : logWindow === page ? (

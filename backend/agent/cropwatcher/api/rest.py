@@ -38,6 +38,7 @@ from cropwatcher.api.tokens import HEADER, load_or_create_token
 from cropwatcher.camera import DeckStream, FrameSource, NoCamera, TestPattern
 from cropwatcher.camera.deck import parse_addr
 from cropwatcher.camera.wifi import DeckWifi, WifiError
+from cropwatcher.paths import data_dir
 from cropwatcher.session import Mode, Session, SessionError
 from cropwatcher.sync.cloud import SupabaseCloud
 from cropwatcher.sync.outbox import Outbox
@@ -144,6 +145,7 @@ class Agent:
         self.deck_wifi = DeckWifi(
             on_change=lambda state: self.hub.publish("camera_wifi", state.to_dict()),
             on_ip=self._deck_joined,
+            joined_file=data_dir() / "deck-wifi.json",
         )
         self.session = Session(
             cloud=self.cloud, outbox=self.outbox, syncer=self.syncer,

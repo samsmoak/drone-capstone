@@ -24,6 +24,10 @@
  *
  * RULES THIS APP ENFORCES, and the failures they prevent
  *
+ *   VALUES GO WITH THEIR NUL. The ESP32 terminates one byte too far and keeps
+ *   a stale byte of the previous SSID; "VT Open WiFi" joined as "VT Open
+ *   WiFin". See wire.h, which also caps the password at 47 for its buffer.
+ *
  *   ONE APPLY PER POWER-ON. The ESP32 creates its station interface every time
  *   it is told to connect; a second creation fails an assert and reboots the
  *   ESP32 (aideck-esp-firmware main/wifi.c, wifi_init_sta). So a second apply
@@ -39,6 +43,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
+
+#include "wire.h"
 
 #include "app.h"
 #include "app_channel.h"
@@ -67,8 +73,8 @@
 #define WIFI_CONNECT_CMD    0x20
 #define WIFI_CONNECT_AS_STA 0x00
 
-#define SSID_MAX 32  // 802.11
-#define KEY_MAX  63  // WPA2-PSK passphrase
+#define SSID_MAX WIRE_SSID_MAX
+#define KEY_MAX  WIRE_VALUE_MAX  // NOT WPA2's 63: the ESP32's buffer — see wire.h
 
 #define BOOT_GRACE_MS 8000
 
@@ -98,9 +104,8 @@ static bool store(char *dst, size_t cap, const uint8_t *pkt, size_t len) {
 
 static void sendWifiCtrl(uint8_t cmd, const char *value, size_t valueLen) {
   cpxInitRoute(CPX_T_STM32, CPX_T_ESP32, CPX_F_WIFI_CTRL, &cpxTx.route);
-  cpxTx.data[0] = cmd;
-  memcpy(&cpxTx.data[1], value, valueLen);
-  cpxTx.dataLength = 1 + valueLen;
+  // With its NUL, or the ESP32 keeps a stale byte of the previous value.
+  cpxTx.dataLength = wireCtrlPayload(cmd, value, valueLen, cpxTx.data);
   cpxSendPacketBlocking(&cpxTx);
 }
 

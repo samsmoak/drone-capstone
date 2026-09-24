@@ -33,6 +33,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Mode, Session } from "@/lib/agent";
+import { TONE_COLOR, TONE_ICON, type Tone } from "@/components/ui";
 import type { Page } from "@/App";
 import { NAV_GROUPS } from "@/components/nav-items";
 import { ProfileMenu } from "@/components/ProfileMenu";
@@ -59,8 +60,10 @@ function loadLocked(): Locked {
 }
 
 export function Sidebar({
-  page, onNavigate, session, starting, flying, onSetMode, onSignOut,
+  page, onNavigate, session, starting, flying, onSetMode, onSignOut, badges = {},
 }: {
+  /** A status dot beside an item — Drone Wi-Fi's join state, for one. */
+  badges?: Partial<Record<Page, { tone: Tone; label: string }>>;
   page: Page;
   onNavigate: (page: Page) => void;
   session: Session | null;
@@ -190,6 +193,7 @@ export function Sidebar({
               <ul>
                 {group.items.map((item) => {
                   const current = page === item.key;
+                  const badge = badges[item.key];
                   return (
                     <li key={item.key}>
                       <button
@@ -199,7 +203,7 @@ export function Sidebar({
                         // Collapsed, the label is the accessible name and the
                         // native tooltip — an icon alone names nothing.
                         title={expanded ? undefined : item.label}
-                        aria-label={item.label}
+                        aria-label={badge ? `${item.label}: ${badge.label}` : item.label}
                         className={`flex min-h-9 w-full items-center gap-2.5 px-2 text-left text-sm font-medium transition-colors ${
                           current
                             ? "bg-[var(--surface-2)] text-[var(--heading)] shadow-[inset_3px_0_0_var(--primary)]"
@@ -209,7 +213,17 @@ export function Sidebar({
                         <svg viewBox="0 0 24 24" fill="currentColor" className="h-[18px] w-[18px] shrink-0" aria-hidden="true">
                           <path d={item.icon} />
                         </svg>
-                        {expanded && <span className="truncate">{item.label}</span>}
+                        {expanded && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
+                        {badge && (
+                          <span
+                            aria-hidden="true"
+                            title={badge.label}
+                            className={`shrink-0 text-[10px] leading-none ${expanded ? "" : "-ml-2.5 -mt-3"}`}
+                            style={{ color: TONE_COLOR[badge.tone] }}
+                          >
+                            {TONE_ICON[badge.tone]}
+                          </span>
+                        )}
                       </button>
                     </li>
                   );
