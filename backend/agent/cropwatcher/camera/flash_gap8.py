@@ -77,7 +77,11 @@ def flash(path: Path, uri: str = "radio://0/80/2M") -> int:
             return 1
 
         print("bootloader active — writing", flush=True)
-        deck.write_sync(0, data, lambda pct: print(f"  {pct}%", flush=True))
+        # cflib calls this with (message, progress) — a one-argument callback
+        # raises inside its packet thread MID-WRITE, which is how the first
+        # attempt left the deck part-written.
+        deck.write_sync(0, data, lambda message, progress: print(
+            f"  {message} {progress}", flush=True))
         print("written; resetting to firmware", flush=True)
         deck.reset_to_fw()
         print(
