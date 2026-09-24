@@ -30,7 +30,6 @@ import type { History, Run } from "@/App";
 import { api, KEY_LABELS, type HealthTest, type Intent, type Session, type Telemetry } from "@/lib/agent";
 import type { LogLine } from "@/lib/commandLog";
 import { Button, Message, PageHeader, Panel, Spinner, Stat, StatusDot } from "@/components/ui";
-import { ScrollHint } from "@/components/ScrollHint";
 import { SplitPane } from "@/components/SplitPane";
 import { useMediaQuery, WIDE } from "@/lib/useMediaQuery";
 import { ConsolePane } from "./ConsolePane";
@@ -103,7 +102,10 @@ export function ControlPage({
           storageKey="cropwatcher.split.control"
           defaultFraction={0.60}
           label="Console and controls"
-          className="h-[calc(100vh-9.5rem)] gap-0"
+          // A FLOOR, not a cap (2026-09-24): both columns grow with their
+          // content and the page scrolls, instead of each column scrolling
+          // inside a window-high box behind a fade.
+          className="min-h-[calc(100vh-9.5rem)] gap-0"
           first={
             // A flex COLUMN, like the second: ConsolePane's `fill` is flex-1,
             // which only takes height from a flex parent. As a plain block the
@@ -131,14 +133,14 @@ export function ControlPage({
                 run={run} ready={session.state === "ready" && !session.retry_required}
                 height={height} hold={hold} ambient={ambient}
               />
-              <ScrollHint className="grid content-start gap-5 pt-4">
+              <div className="grid content-start gap-5 pt-4">
                 <ControlColumn
                   session={session} telemetry={telemetry} run={run}
                   height={height} setHeight={setHeight}
                   hold={hold} setHold={setHold}
                   ambient={ambient} setAmbient={setAmbient}
                 />
-              </ScrollHint>
+              </div>
             </div>
           }
         />
@@ -471,6 +473,52 @@ function Checklist({ session, run }: { session: Session; run: Run }) {
           : <Button onClick={() => void run(api.start, "Start session")}>Try again</Button>
       ) : undefined}
     >
+      {awaiting && (
+        // NO TICK BOXES. The button IS the acknowledgement.
+        //
+        // The agent requires `accept_unassisted` and refuses confirm_area
+        // without it (session.py:545) — that requirement has not moved. What
+        // changed is how the window obtains it. Its own docstring says the
+        // operator decides "having been told it", and a button whose LABEL
+        // states what is being accepted, under the warning that states why, is
+        // that consent in one deliberate act instead of two. The old first box
+        // ("the area is clear") gated nothing server-side at all and is now
+        // simply what pressing the button means.
+        //
+        // The label must keep carrying the consequence. A generic "Continue"
+        // here would be the UI accepting on the operator's behalf.
+        //
+        // ABOVE the checks, button on its first line (2026-09-24): at the foot
+        // of the list it fell below the fold, and it is the one thing to press.
+        // Styled as a check row — left rule, same surface — so the panel reads
+        // as one list.
+        <div className="mb-3 grid gap-2 border-l-2 border-[var(--status-warning)] bg-[var(--surface-2)] px-3 py-3">
+          <p className="text-sm font-semibold leading-snug">
+            Drone level, area clear above and around, everyone nearby warned.
+          </p>
+          {unassisted && (
+            <p className="text-xs leading-relaxed">
+              <strong>It cannot catch itself.</strong> No base stations: height from the
+              barometer, drifting tens of centimetres. No position hold, no drift
+              landing. Manual only.
+            </p>
+          )}
+          <div className="pt-1">
+            <Button
+              variant="primary"
+              onClick={() => void run(
+                () => api.confirmArea(unassisted),
+                unassisted ? "Confirm the area — flying by eye" : "Confirm the area",
+              )}
+            >
+              {unassisted
+                ? "Confirm — I am flying it by eye"
+                : "Confirm the area is clear"}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* One row per check, the glyph carrying the verdict at a fixed width so
           a check finishing never reflows the ones below it. The detail is the
           AGENT'S OWN words — it is the sentence that says what to do. */}
@@ -504,46 +552,6 @@ function Checklist({ session, run }: { session: Session; run: Run }) {
         )}
       </ol>
 
-      {awaiting && (
-        // NO TICK BOXES. The button IS the acknowledgement.
-        //
-        // The agent requires `accept_unassisted` and refuses confirm_area
-        // without it (session.py:545) — that requirement has not moved. What
-        // changed is how the window obtains it. Its own docstring says the
-        // operator decides "having been told it", and a button whose LABEL
-        // states what is being accepted, under the warning that states why, is
-        // that consent in one deliberate act instead of two. The old first box
-        // ("the area is clear") gated nothing server-side at all and is now
-        // simply what pressing the button means.
-        //
-        // The label must keep carrying the consequence. A generic "Continue"
-        // here would be the UI accepting on the operator's behalf.
-        <div className="mt-5 grid gap-3 border border-[var(--status-warning)] p-4">
-          <p className="text-sm leading-relaxed">
-            Drone level, area clear above and around, everyone nearby warned.
-          </p>
-          {unassisted && (
-            <p className="bg-[var(--surface-2)] p-3 text-sm leading-relaxed">
-              <strong>It cannot catch itself.</strong> No base stations: height from the
-              barometer, drifting tens of centimetres. No position hold, no drift
-              landing. Manual only.
-            </p>
-          )}
-          <div>
-            <Button
-              variant="primary"
-              onClick={() => void run(
-                () => api.confirmArea(unassisted),
-                unassisted ? "Confirm the area — flying by eye" : "Confirm the area",
-              )}
-            >
-              {unassisted
-                ? "Confirm — I am flying it by eye"
-                : "Confirm the area is clear"}
-            </Button>
-          </div>
-        </div>
-      )}
     </Panel>
   );
 }
