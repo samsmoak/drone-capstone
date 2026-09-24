@@ -81,7 +81,11 @@ export function ConsolePane({
         <SplitPane
           orientation="horizontal"
           storageKey="cropwatcher.split.console"
-          defaultFraction={0.34}
+          // Enough for the attitude indicator AND its compass strip (N/E/S/W)
+          // in a one-window console at 900 px; 0.34 cut the compass letters
+          // once the console stopped growing (2026-09-24). A saved position
+          // still wins.
+          defaultFraction={0.42}
           // Folds almost away: dragging this up to read the log is the point,
           // and the shared 20 % floor made it stop a fifth of the way down with
           // nothing to explain why. Never 0 — the divider would reach the frame
