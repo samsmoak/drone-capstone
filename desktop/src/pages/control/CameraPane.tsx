@@ -18,7 +18,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, cameraFrameUrl, type CameraStatus } from "@/lib/agent";
+import { api, cameraFrameUrl, type CameraStatus, type CameraWifi } from "@/lib/agent";
+import { openDroneWifi } from "@/lib/droneWifi";
 import { Button, Message, Spinner, StatusDot } from "@/components/ui";
 
 /** How often a new frame is pulled while the feed is live. */
@@ -36,7 +37,7 @@ const RETRY_MS = 2000;
 type Load =
   | { kind: "probing" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; status: CameraStatus };
+  | { kind: "ready"; status: CameraStatus; wifi?: CameraWifi | null };
 
 export function CameraPane({ active }: {
   /** Whether the Camera tab is the one showing. Frames are not pulled behind a
@@ -56,7 +57,13 @@ export function CameraPane({ active }: {
     setFrameAt(null);
     failures.current = 0;
     try {
-      setLoad({ kind: "ready", status: await api.cameraStatus() });
+      const [status, wifi] = await Promise.all([
+        api.cameraStatus(),
+        // Where the deck is in joining the operator's network. Optional: the
+        // camera can still work on the deck's own access point without it.
+        api.cameraWifi().catch(() => null),
+      ]);
+      setLoad({ kind: "ready", status, wifi });
     } catch (e) {
       setLoad({
         kind: "error",
@@ -123,6 +130,14 @@ export function CameraPane({ active }: {
                 {load.status.reason ?? "No camera is connected."}
               </p>
               <DeckLine fitted={load.status.deck_fitted} />
+              {load.wifi && load.wifi.phase !== "not-set" && load.wifi.message && (
+                <p className="text-xs leading-relaxed text-[var(--console-dim)]">
+                  Drone Wi-Fi: {load.wifi.message}
+                </p>
+              )}
+              <div className="flex justify-center">
+                <Button onClick={openDroneWifi}>Drone Wi-Fi…</Button>
+              </div>
             </div>
           )}
 

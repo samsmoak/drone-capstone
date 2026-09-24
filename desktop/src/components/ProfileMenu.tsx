@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Session } from "@/lib/agent";
 import { initialOf } from "@/lib/format";
+import { openDroneWifi } from "@/lib/droneWifi";
 
 type Props = {
   session: Session | null;
@@ -118,6 +119,14 @@ export function ProfileMenu({ session, onSignIn, onSignOut, placement = "down", 
                     Signing out ends the running session first — landing the drone if it is flying.
                   </p>
                 )}
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => { setOpen(false); openDroneWifi(); }}
+                  className="flex min-h-10 w-full items-center rounded-lg px-3 text-left text-sm font-medium hover:bg-[var(--surface-2)]"
+                >
+                  Drone Wi-Fi…
+                </button>
                 <button
                   type="button"
                   role="menuitem"

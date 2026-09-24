@@ -32,6 +32,7 @@ import {
   connectToShell,
   type Intent,
   type Mode,
+  type CameraWifi,
   type Session,
   type SyncStatus,
   type Telemetry,
@@ -46,6 +47,8 @@ import { WindowLog } from "@/pages/sessions/WindowLog";
 import { StartupPage } from "@/pages/startup/StartupPage";
 import { SensorWindow, type WindowKey } from "@/pages/windows/SensorWindow";
 import { Message } from "@/components/ui";
+import { DroneWifiDialog } from "@/components/DroneWifiDialog";
+import { OPEN_DRONE_WIFI, droneWifi } from "@/lib/droneWifi";
 
 /** Physical key → intent field. `code`, so the keys stay in the same place on AZERTY. */
 export const KEY_MAP: Record<string, keyof Intent> = {
@@ -87,6 +90,11 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
   const [intent, setIntent] = useState<Intent>(EMPTY_INTENT);
+  // Drone Wi-Fi: the agent's live account of the deck joining, and the dialog.
+  const [cameraWifi, setCameraWifi] = useState<CameraWifi | null>(null);
+  const [wifiOpen, setWifiOpen] = useState(false);
+  // Asked at most once per launch: "Not now" means not now, not every reconnect.
+  const wifiAsked = useRef(false);
 
   const live = useRef<LiveConnection | null>(null);
   const startedAt = useRef<number | null>(null);
@@ -106,6 +114,7 @@ export default function App() {
         onRefused: setRefused,
         onSync: setSync,
         onConnection: setConnected,
+        onCameraWifi: setCameraWifi,
         onTelemetry: (frame) => {
           setTelemetry(frame);
           if (startedAt.current === null) startedAt.current = frame.at;
@@ -124,6 +133,35 @@ export default function App() {
     })();
     return () => connection?.close();
   }, []);
+
+  // The agent holds the drone's network in memory only, so it is re-sent every
+  // time the window (re)connects to it — a restarted agent would otherwise
+  // leave the deck on its own access point. With nothing saved, the operator is
+  // asked once after signing in.
+  const signedIn = Boolean(session?.operator);
+  useEffect(() => {
+    if (!connected || !signedIn) return;
+    let cancelled = false;
+    droneWifi.push()
+      .then((state) => {
+        if (cancelled) return;
+        if (state) setCameraWifi(state);
+        else if (!wifiAsked.current) {
+          wifiAsked.current = true;
+          setWifiOpen(true);
+        }
+      })
+      .catch((e) => { if (!cancelled) pushLog("refused", "Drone Wi-Fi not sent", String(e)); });
+    return () => { cancelled = true; };
+  }, [connected, signedIn, pushLog]);
+
+  useEffect(() => {
+    const open = () => setWifiOpen(true);
+    window.addEventListener(OPEN_DRONE_WIFI, open);
+    return () => window.removeEventListener(OPEN_DRONE_WIFI, open);
+  }, []);
+
+  const closeWifi = useCallback(() => setWifiOpen(false), []);
 
   /**
    * Run a command, showing its refusal verbatim if it declines.
@@ -228,6 +266,9 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-[var(--background)] text-[var(--foreground)]">
+      {wifiOpen && (
+        <DroneWifiDialog wifi={cameraWifi} onClose={closeWifi} onSaved={setCameraWifi} />
+      )}
       <Sidebar
         page={page}
         onNavigate={setPage}

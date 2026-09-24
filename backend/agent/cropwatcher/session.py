@@ -151,8 +151,14 @@ class Session:
         agent_id: str = "desktop",
         fence_half_extent_m: float = DEFAULT_FENCE_M,
         max_height_m: float = DEFAULT_MAX_HEIGHT_M,
+        on_link_ready: Callable[[Any], object] | None = None,
     ) -> None:
         self._cloud = cloud
+        #: Called with the Crazyflie once a link has passed its checks and the
+        #: AI deck is fitted — how the deck is put on the operator's Wi-Fi. It
+        #: runs on its own thread: joining a network takes seconds and must
+        #: never hold up a flight.
+        self._on_link_ready = on_link_ready
         self._outbox = outbox or Outbox()
         self._syncer = syncer
         self._link_factory = link_factory
@@ -479,7 +485,22 @@ class Session:
             self._close_link()
             self._set(state=State.CHECKS_FAILED, message=message)
             return None
+        self._link_ready(link, report)
         return report
+
+    def _link_ready(self, link: DroneLink, report: ReadyReport) -> None:
+        hook = self._on_link_ready
+        if hook is None or not report.ai_deck or link.scf is None:
+            return
+        cf = link.scf.cf
+
+        def run() -> None:
+            try:
+                hook(cf)
+            except Exception:
+                log.exception("link-ready hook failed")
+
+        threading.Thread(target=run, name="link-ready", daemon=True).start()
 
     # ── retry ────────────────────────────────────────────────────────────
 

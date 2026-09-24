@@ -31,6 +31,7 @@ reported as live.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import socket
 import struct
@@ -119,6 +120,16 @@ def encode(frame: Frame) -> tuple[bytes, str]:
     raise StreamError(f"unknown image format {frame.format}")
 
 
+def _unreachable(host: str, port: int, e: OSError) -> str:
+    detail = e.strerror or str(e)
+    if (host, port) == DEFAULT_ADDR:
+        return (f"Cannot reach the AI deck at {host}:{port}, its own access point. "
+                "Set the drone's Wi-Fi network in Drone Wi-Fi, or join this laptop to "
+                f"\"WiFi streaming example\". ({detail})")
+    return (f"Cannot reach the AI deck at {host}:{port}. Is this laptop on the same "
+            f"network as the drone? ({detail})")
+
+
 def parse_addr(value: str | None) -> tuple[str, int]:
     if not value:
         return DEFAULT_ADDR
@@ -170,6 +181,7 @@ class DeckStream:
         self._latest: tuple[bytes, str, float, int, int] | None = None
         self._problem: str | None = "Connecting to the AI deck…"
         self._stop = threading.Event()
+        self._sock: socket.socket | None = None
         self.deck_fitted: bool | None = None
         self._thread = threading.Thread(target=self._run, name="deck-camera", daemon=True)
         if start:
@@ -196,7 +208,7 @@ class DeckStream:
                 live=True, kind="ai-deck", reason=None, deck_fitted=self.deck_fitted,
                 width=latest[3], height=latest[4],
             )
-        host, port = self._addr
+        host, port = self.addr
         return CameraStatus(
             live=False,
             kind="ai-deck",
@@ -209,6 +221,32 @@ class DeckStream:
 
     def close(self) -> None:
         self._stop.set()
+        self._drop_socket()
+
+    @property
+    def addr(self) -> tuple[str, int]:
+        with self._lock:
+            return self._addr
+
+    def set_host(self, host: str) -> None:
+        """Stream from the deck at `host` from now on — the address it reported
+        after joining the operator's network. The open connection, if any, is
+        dropped so the next frame comes from the new address."""
+        with self._lock:
+            if self._addr[0] == host:
+                return
+            self._addr = (host, self._addr[1])
+            self._latest = None
+            self._problem = f"Connecting to the AI deck at {host}…"
+        log.info("deck camera moving to %s", host)
+        self._drop_socket()
+
+    def _drop_socket(self) -> None:
+        with self._lock:
+            sock = self._sock
+        if sock is not None:
+            with contextlib.suppress(OSError):
+                sock.shutdown(socket.SHUT_RDWR)
 
     def pump(self, read: Callable[[int], bytes]) -> None:
         """Read one frame and make it the latest. The thread's unit of work,
@@ -221,18 +259,18 @@ class DeckStream:
 
     def _run(self) -> None:
         backoff = 0.5
-        host, port = self._addr
         while not self._stop.is_set():
+            addr = self.addr
+            host, port = addr
             try:
-                sock = self._connect(self._addr)
+                sock = self._connect(addr)
             except OSError as e:
-                self._set_problem(
-                    f"Cannot reach the AI deck at {host}:{port}. Join this laptop "
-                    f"to the deck's Wi-Fi (\"WiFi streaming example\"). ({e.strerror or e})"
-                )
+                self._set_problem(_unreachable(host, port, e))
             else:
                 log.info("deck camera connected at %s:%s", host, port)
                 backoff = 0.5
+                with self._lock:
+                    self._sock = sock
                 try:
                     read = _socket_reader(sock)
                     while not self._stop.is_set():
@@ -243,6 +281,8 @@ class DeckStream:
                         f"The AI deck's stream stopped ({e}). Reconnecting."
                     )
                 finally:
+                    with self._lock:
+                        self._sock = None
                     sock.close()
             self._stop.wait(backoff)
             backoff = min(backoff * 2, RECONNECT_MAX_S)

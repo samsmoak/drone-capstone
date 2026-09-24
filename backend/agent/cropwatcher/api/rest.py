@@ -37,6 +37,7 @@ from cropwatcher.api.events import EventHub
 from cropwatcher.api.tokens import HEADER, load_or_create_token
 from cropwatcher.camera import DeckStream, FrameSource, NoCamera, TestPattern
 from cropwatcher.camera.deck import parse_addr
+from cropwatcher.camera.wifi import DeckWifi, WifiError
 from cropwatcher.session import Mode, Session, SessionError
 from cropwatcher.sync.cloud import SupabaseCloud
 from cropwatcher.sync.outbox import Outbox
@@ -104,6 +105,12 @@ class HoldRequest(BaseModel):
     height_m: float = Field(0.30, gt=0, le=1.0, description="metres above the floor")
 
 
+class DeckWifiRequest(BaseModel):
+    ssid: str = Field(..., min_length=1, max_length=64)
+    #: Empty for an open network. Never logged and never returned.
+    password: str = Field("", max_length=128)
+
+
 class ConfirmRequest(BaseModel):
     #: The operator accepts flying with no base stations: height from the
     #: barometer only, no position hold, no drift or fence guard. Required only
@@ -130,11 +137,22 @@ class Agent:
             lambda: self.cloud if self.cloud.operator is not None else None,
             on_status=lambda status: self.hub.publish("sync", status.to_dict()),
         )
+        self.camera: FrameSource = _camera_from_env()
+        #: The Wi-Fi network the AI deck should join, given by the desktop at
+        #: sign-in and sent to the drone on every link. When the deck reports
+        #: its address, the camera follows it there.
+        self.deck_wifi = DeckWifi(
+            on_change=lambda state: self.hub.publish("camera_wifi", state.to_dict()),
+            on_ip=self._deck_joined,
+        )
         self.session = Session(
             cloud=self.cloud, outbox=self.outbox, syncer=self.syncer,
-            publish=self.hub.publish,
+            publish=self.hub.publish, on_link_ready=self.deck_wifi.apply,
         )
-        self.camera: FrameSource = _camera_from_env()
+
+    def _deck_joined(self, ip: str) -> None:
+        if isinstance(self.camera, DeckStream):
+            self.camera.set_host(ip)
 
 
 def _camera_from_env() -> FrameSource:
@@ -295,6 +313,33 @@ def camera_status() -> dict:
     status = agent.camera.status()
     fitted = agent.session.snapshot().ai_deck
     return {**status.to_dict(), "deck_fitted": fitted}
+
+
+@app.get("/camera/wifi", dependencies=[Command])
+def camera_wifi() -> dict:
+    """The network the deck is set to join, and how far it got. No password."""
+    return agent.deck_wifi.state().to_dict()
+
+
+@app.put("/camera/wifi", dependencies=[Command])
+def set_camera_wifi(body: DeckWifiRequest) -> dict:
+    """Set the network the deck joins. Applied on the next drone link — or now,
+    when a session already holds one."""
+    try:
+        state = agent.deck_wifi.configure(body.ssid, body.password)
+    except WifiError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    link = agent.session.link
+    if link is not None and link.scf is not None and agent.session.snapshot().ai_deck:
+        cf = link.scf.cf
+        threading.Thread(target=agent.deck_wifi.apply, args=(cf,),
+                         name="deck-wifi", daemon=True).start()
+    return state.to_dict()
+
+
+@app.delete("/camera/wifi", dependencies=[Command])
+def forget_camera_wifi() -> dict:
+    return agent.deck_wifi.forget().to_dict()
 
 
 @app.get("/camera/frame")

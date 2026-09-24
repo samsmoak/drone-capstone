@@ -35,6 +35,7 @@ The agent is the only process that touches the radio. Nothing else — ever.
 | `backend/supabase/` | Migrations, seed, RLS | Supabase cloud |
 | `web/` | Next.js 16 · React 19 · Tailwind v4 · Zustand | Vercel |
 | `desktop/` | Tauri v2 — manual control, bundles the agent | User's laptop |
+| `firmware/` | Crazyflie app (drone_wifi) built on the stock release | The drone's STM32 |
 | `docs/hardware/` | Kit photos + the two reference PDFs | — |
 
 `backend/` nests `supabase/` rather than renaming it: the Supabase CLI resolves
