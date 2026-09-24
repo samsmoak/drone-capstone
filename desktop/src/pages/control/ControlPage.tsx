@@ -369,7 +369,7 @@ function RailButton({ children, onClick, variant = "secondary", disabled, title,
   return (
     <button
       type="button" onClick={onClick} disabled={disabled} title={title}
-      className={`inline-flex min-h-8 w-full cursor-pointer items-center justify-center gap-1.5 border px-2 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50 ${styles}`}
+      className={`inline-flex min-h-8 w-full cursor-pointer items-center justify-center gap-1.5 border px-2 text-xs font-medium disabled:cursor-not-allowed disabled:border-[var(--border)] disabled:bg-transparent disabled:text-[var(--muted)] disabled:opacity-40 ${styles}`}
     >
       {icon}
       {children}
@@ -471,7 +471,7 @@ function Checklist({ session, run }: { session: Session; run: Run }) {
           a check finishing never reflows the ones below it. The detail is the
           AGENT'S OWN words — it is the sentence that says what to do. */}
       <ol className="grid gap-0">
-        {session.checks.map((check) => (
+        {[...session.checks].reverse().map((check) => (
           <li
             key={check.key}
             className={`grid grid-cols-[1.25rem_5.5rem_minmax(0,1fr)] items-baseline gap-x-2 border-l-2 px-2 py-1.5 text-xs ${
@@ -516,16 +516,13 @@ function Checklist({ session, run }: { session: Session; run: Run }) {
         // here would be the UI accepting on the operator's behalf.
         <div className="mt-5 grid gap-3 border border-[var(--status-warning)] p-4">
           <p className="text-sm leading-relaxed">
-            The drone is on a flat surface, the area around and above it is clear, and
-            everyone nearby knows it is about to fly.
+            Drone level, area clear above and around, everyone nearby warned.
           </p>
           {unassisted && (
             <p className="bg-[var(--surface-2)] p-3 text-sm leading-relaxed">
-              <strong>It cannot catch itself.</strong> The drone cannot see the base
-              stations, so its height comes from the barometer — it holds roughly,
-              wandering by tens of centimetres — it will not hold its position, and it
-              will not land itself on drift. Only Manual is available until the base
-              stations are seen.
+              <strong>It cannot catch itself.</strong> No base stations: height from the
+              barometer, drifting tens of centimetres. No position hold, no drift
+              landing. Manual only.
             </p>
           )}
           <div>
@@ -806,10 +803,10 @@ function FlightDeck({ intent, mode, telemetry, session, run, ready, height, hold
       aria-label="Vitals, keys and actions"
       className="shrink-0 border border-[var(--border)] bg-[var(--surface)]"
     >
-      <div className="flex gap-4 p-3">
+      <div className="flex flex-wrap gap-4 p-3">
         {/* One column: what the drone reports, then what you press on the
             keyboard. Both are read with the same glance. */}
-        <div className="grid min-w-0 flex-1 content-start gap-3">
+        <div className="grid min-w-[14rem] flex-[3] content-start gap-3">
           <VitalsNow telemetry={telemetry} session={session} />
 
           <div className={`flex flex-wrap items-start gap-x-5 gap-y-3 border-t border-[var(--border)] pt-3 ${movementLive ? "" : "opacity-45"}`}>
@@ -845,7 +842,7 @@ function FlightDeck({ intent, mode, telemetry, session, run, ready, height, hold
 
         {/* The other column: the four things you press with the mouse. */}
         {session && (
-          <div className="w-[9.5rem] shrink-0 border-l border-[var(--border)] pl-4">
+          <div className="min-w-[9.5rem] flex-1 border-[var(--border)] sm:max-w-[11rem] sm:border-l sm:pl-4">
             <p className="eyebrow pb-1.5">Actions</p>
             <ActionRail
               session={session} run={run} ready={ready}

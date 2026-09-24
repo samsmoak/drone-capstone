@@ -113,12 +113,18 @@ export function SceneView({ telemetry, history, active }: {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
     resize();
+    // The tab was display:none until this frame, so the first measurement can
+    // legitimately be 0x0. Re-measure for a few frames; a canvas that starts
+    // 0-sized otherwise stays blank until the window itself is resized, which
+    // is exactly the "scene stopped coming" symptom.
+    let settle = 0;
     const observer = new ResizeObserver(resize);
     observer.observe(el);
 
     const frame = (time: number) => {
       const dt = Math.min(0.1, (time - last) / 1000);
       last = time;
+      if (settle < 10) { settle += 1; resize(); }
 
       if (sincePalette++ % 30 === 0) palette = readPalette(el);
 
