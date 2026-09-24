@@ -19,6 +19,8 @@ Built via `packaging/build_sidecar.sh`, which names the output with the target
 triple Tauri expects of an `externalBin`.
 """
 
+import os
+
 from PyInstaller.utils.hooks import collect_submodules
 
 hiddenimports = [
@@ -41,7 +43,9 @@ a = Analysis(
     ["sidecar.py"],
     pathex=[".."],
     binaries=[],
-    datas=[],
+    # The camera firmware Set up installs on a drone (drone_setup.py).
+    datas=[(os.path.join(SPECPATH, "..", "cropwatcher", "firmware_bundle"),
+            "cropwatcher/firmware_bundle")],
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},

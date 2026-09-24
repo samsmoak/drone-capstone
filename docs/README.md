@@ -32,6 +32,7 @@ Feature docs are plain `.txt`, grouped by the surface they describe.
 |---|---|
 | [features/desktop/desktop-app.txt](features/desktop/desktop-app.txt) | The shell, the bundled agent sidecar, installers and CI |
 | [features/desktop/camera.txt](features/desktop/camera.txt) | The camera path — test pattern and the AI deck's Wi-Fi stream; the deck has not yet delivered a whole frame |
+| [features/desktop/setup.txt](features/desktop/setup.txt) | The Set up page: install the camera software on a new drone, then Wi-Fi, then a session |
 | [features/desktop/drone-wifi.txt](features/desktop/drone-wifi.txt) | The drone's camera joins the operator's Wi-Fi, set over the radio: the firmware addition, the flasher, the dialog |
 | [features/desktop/pages-and-windows.txt](features/desktop/pages-and-windows.txt) | The sidebar shell, Control's two columns and its console, the five live sensor windows, and how the layout is measured |
 
