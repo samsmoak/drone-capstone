@@ -34,6 +34,19 @@ const STALE_MS = 2000;
  *  seconds looked dead for good. */
 const RETRY_MS = 2000;
 
+/** Missed frames in a row before the tab treats the feed as dropped and goes
+ *  back to asking the agent. At FRAME_MS that is ten seconds: a drone swung
+ *  through a weak spot drops out for a few seconds and comes back. */
+const DROP_AFTER = 50;
+
+/**
+ * How long the LAST GOOD FRAME stays on screen through a drop-out, overlaid
+ * with its age. The picture holding still and saying "3 s old" is the truth;
+ * blanking to "no signal" for every stall was what made the feed feel broken
+ * when the drone moved quickly (2026-09-24).
+ */
+const HOLD_MS = 30_000;
+
 type Load =
   | { kind: "probing" }
   | { kind: "error"; message: string }
@@ -45,8 +58,9 @@ export function CameraPane({ active }: {
   active: boolean;
 }) {
   const [load, setLoad] = useState<Load>({ kind: "probing" });
-  const [stamp, setStamp] = useState(() => Date.now());
-  const [frameAt, setFrameAt] = useState<number | null>(null);
+  // The last frame that arrived whole, as an object URL, and when. Kept across
+  // drop-outs on purpose — see HOLD_MS.
+  const [shown, setShown] = useState<{ url: string; at: number } | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const failures = useRef(0);
 
@@ -54,7 +68,6 @@ export function CameraPane({ active }: {
    *  flash the pane every two seconds. */
   const probe = useCallback(async (quiet = false) => {
     if (!quiet) setLoad({ kind: "probing" });
-    setFrameAt(null);
     failures.current = 0;
     try {
       const [status, wifi] = await Promise.all([
@@ -87,17 +100,62 @@ export function CameraPane({ active }: {
   }, [active, live, load, probe]);
 
   // Pull frames only while the tab is showing AND something is producing them.
+  // One request at a time (no pile-up behind a slow one), fetched as a blob so
+  // a failed request never replaces the picture — an <img> pointed at a URL
+  // that 204s shows nothing at all.
   useEffect(() => {
     if (!active || !live) return;
-    const timer = window.setInterval(() => {
-      setStamp(Date.now());
-      setNow(Date.now());
-    }, FRAME_MS);
-    return () => window.clearInterval(timer);
+    let stopped = false;
+    let timer = 0;
+    const tick = async () => {
+      try {
+        const response = await fetch(cameraFrameUrl(Date.now()), { cache: "no-store" });
+        if (response.status === 200) {
+          const url = URL.createObjectURL(await response.blob());
+          if (stopped) { URL.revokeObjectURL(url); return; }
+          failures.current = 0;
+          setShown((previous) => {
+            if (previous) URL.revokeObjectURL(previous.url);
+            return { url, at: Date.now() };
+          });
+        } else {
+          failures.current += 1;
+        }
+      } catch {
+        failures.current += 1;
+      }
+      if (stopped) return;
+      if (failures.current >= DROP_AFTER) {
+        // Long enough to stop pulling and go back to asking the agent, which
+        // is reconnecting to the deck on its own. The last frame stays up.
+        setLoad((current) => current.kind === "ready"
+          ? { ...current, status: { ...current.status, live: false,
+              reason: "The camera stream stopped — reconnecting." } }
+          : current);
+        return;
+      }
+      timer = window.setTimeout(() => void tick(), FRAME_MS);
+    };
+    void tick();
+    return () => { stopped = true; window.clearTimeout(timer); };
   }, [active, live]);
 
-  const age = frameAt === null ? null : now - frameAt;
+  // A clock for the frame's age, only while there is a frame to age.
+  useEffect(() => {
+    if (!active || shown === null) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(timer);
+  }, [active, shown]);
+
+  // Release the last object URL when the pane goes away.
+  const shownRef = useRef(shown);
+  shownRef.current = shown;
+  useEffect(() => () => { if (shownRef.current) URL.revokeObjectURL(shownRef.current.url); }, []);
+
+  const age = shown === null ? null : Math.max(0, now - shown.at);
   const fresh = age !== null && age < STALE_MS;
+  // The last frame stays up through a drop-out, for HOLD_MS.
+  const holding = shown !== null && age !== null && age < HOLD_MS;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -121,7 +179,7 @@ export function CameraPane({ active }: {
             </div>
           )}
 
-          {load.kind === "ready" && !load.status.live && (
+          {load.kind === "ready" && !load.status.live && !holding && (
             <div className="absolute inset-0 grid content-center gap-3 px-6 text-center">
               <p className="mono text-xs uppercase tracking-[0.1em] text-[var(--console-dim)]">
                 No signal
@@ -141,38 +199,26 @@ export function CameraPane({ active }: {
             </div>
           )}
 
-          {load.kind === "ready" && load.status.live && (
+          {holding && shown && (
             <>
               <img
-                // `stamp` in the URL is what makes this a feed rather than one
-                // cached image; the agent also sends no-store.
-                src={cameraFrameUrl(stamp)}
+                src={shown.url}
                 alt="The drone's camera view"
-                className="h-full w-full object-contain"
-                onLoad={() => { failures.current = 0; setFrameAt(Date.now()); }}
-                onError={() => {
-                  // One dropped frame is a hiccup; several in a row is a feed
-                  // that has stopped, and saying so at the first is noise.
-                  failures.current += 1;
-                  if (failures.current >= 5) {
-                    setLoad({
-                      kind: "ready",
-                      status: {
-                        ...load.status,
-                        live: false,
-                        reason:
-                          "The camera stream stopped — reconnecting. If this laptop left " +
-                          "the deck's Wi-Fi, rejoin \"WiFi streaming example\".",
-                      },
-                    });
-                  }
-                }}
+                className={`h-full w-full object-contain ${fresh ? "" : "opacity-70"}`}
               />
               <Reticle />
+              {!fresh && age !== null && (
+                <p
+                  role="status"
+                  className="mono absolute left-2 top-2 border border-[var(--console-line)] bg-[var(--console)] px-2 py-1 text-[10px] uppercase tracking-[0.08em] text-[var(--console-ink)]"
+                >
+                  Reconnecting · last frame {(age / 1000).toFixed(1)} s ago
+                </p>
+              )}
             </>
           )}
 
-          {!live && <Reticle dim />}
+          {!holding && !live && <Reticle dim />}
         </div>
       </div>
 
@@ -192,7 +238,7 @@ export function CameraPane({ active }: {
           Wi-Fi
         </button>
         <span>
-          {live ? (
+          {live || holding ? (
             <StatusDot tone={fresh ? "good" : "warning"}>
               {age === null ? "Waiting for a frame" : fresh ? `Live · ${age} ms` : `Stale · ${(age / 1000).toFixed(1)} s`}
             </StatusDot>

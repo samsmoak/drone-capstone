@@ -39,7 +39,7 @@ export function WifiPage({ wifi, session, onSaved }: {
   }, []);
 
   const phase = wifi?.phase ?? "not-set";
-  const radio = Boolean(session?.drone);
+  const radio = session?.radio?.state === "connected";
 
   return (
     <div className="grid max-w-3xl gap-5">
@@ -53,7 +53,9 @@ export function WifiPage({ wifi, session, onSaved }: {
           <dt className="text-[var(--muted)]">Radio</dt>
           <dd>
             <StatusDot tone={radio ? "good" : "idle"}>
-              {radio ? "Drone connected" : "No drone connected"}
+              {radio
+                ? `Drone connected${session?.radio?.hardware_id ? ` (${session.radio.hardware_id})` : ""}`
+                : session?.radio?.message ?? "No drone connected"}
             </StatusDot>
           </dd>
 

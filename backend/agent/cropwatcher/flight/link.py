@@ -32,6 +32,8 @@ from cropwatcher.flight.checks import (
     HealthTestResult,
     PropTestResult,
     ReadyReport,
+    _ai_deck_fitted,
+    read_hardware_id,
     run_battery_test,
     run_checks,
     run_prop_test,
@@ -277,6 +279,35 @@ class DroneLink:
 
     def __exit__(self, *_exc: object) -> None:
         self.close()
+
+    # ── standby: what a link with no session needs ───────────────────────
+
+    def identify(self) -> tuple[str, bool | None]:
+        """The drone's hardware id and whether the AI deck is fitted — param
+        reads only, the two facts a link with no session shows. Never arms."""
+        scf, _ = self._require_open()
+        return read_hardware_id(scf.cf), _ai_deck_fitted(scf.cf)
+
+    def camera_cf(self) -> Any:
+        """The Crazyflie, for the Wi-Fi hand-off (camera/wifi.py), or None."""
+        return self.scf.cf if self.scf is not None else None
+
+    def on_lost(self, callback: Callable[[str], None]) -> None:
+        """Call `callback(reason)` once if the radio link drops by itself.
+
+        cflib reports it on its own thread, and closing the link from inside
+        that callback can deadlock cflib — so the callback must not close the
+        link itself; it should hand the work to another thread.
+        """
+        scf, _ = self._require_open()
+        fired = threading.Event()
+
+        def lost(_uri: str, message: str) -> None:
+            if not fired.is_set():
+                fired.set()
+                callback(str(message))
+
+        scf.cf.connection_lost.add_callback(lost)
 
     # ── reading ──────────────────────────────────────────────────────────
 

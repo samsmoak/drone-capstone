@@ -19,7 +19,7 @@
  */
 
 import type { Page, Run } from "@/App";
-import type { Mode, Session, SyncStatus, Telemetry } from "@/lib/agent";
+import { api, type Mode, type Session, type SyncStatus, type Telemetry } from "@/lib/agent";
 import { SignIn } from "@/pages/control/ControlPage";
 import { Button, PageHeader, StatusBar, StatusDot } from "@/components/ui";
 
@@ -69,6 +69,46 @@ function greeting(session: Session | null): string {
   return name ? `Welcome back, ${name}` : "Welcome back";
 }
 
+function droneValue(session: Session | null): string {
+  const radio = session?.radio;
+  if (!radio || radio.state === "off") return "Not connected";
+  if (radio.state === "connected") return radio.hardware_id ?? "Connected";
+  if (radio.state === "paused") return "Disconnected";
+  return "Looking…";
+}
+
+/**
+ * The drone's link when no session is running — standby.
+ *
+ * Signed in, the agent holds the drone so vitals and the camera show before a
+ * session starts. It never arms. Disconnect frees the radio for another tool
+ * (a flasher, the command line); Connect takes it back. Mid-session neither is
+ * offered: End session is how a session lets go.
+ */
+function RadioRow({ session, run }: { session: Session; run: Run }) {
+  const radio = session.radio;
+  if (!radio || session.state !== "idle") return null;
+  const connected = radio.state === "connected";
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm">
+      <StatusDot tone={connected ? "good" : radio.state === "searching" ? "warning" : "idle"}>
+        {connected
+          ? `Drone on standby${radio.hardware_id ? ` (${radio.hardware_id})` : ""} — vitals and camera live, motors off.`
+          : radio.message ?? "No drone connected."}
+      </StatusDot>
+      {connected ? (
+        <Button onClick={() => void run(api.disconnectDrone, "Disconnect the drone")}>
+          Disconnect
+        </Button>
+      ) : (
+        <Button onClick={() => void run(api.connectDrone, "Connect the drone")}>
+          {radio.state === "searching" ? "Look now" : "Connect"}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 export function HomePage({ session, telemetry, sync, connected, run, onGo }: Props) {
   // After an abnormal end the next thing in front of the operator is the checks
   // again, not flying — Retry puts them back there.
@@ -104,8 +144,10 @@ export function HomePage({ session, telemetry, sync, connected, run, onGo }: Pro
           },
           {
             label: "Drone",
-            value: session?.drone?.hardware_id ?? "Not connected",
-            tone: session?.drone ? "good" : "idle",
+            value: droneValue(session),
+            tone: session?.radio?.state === "connected" ? "good" : "idle",
+            hint: session?.radio?.state === "connected" && !session.session_id
+              ? "Standby — vitals and camera, motors off" : undefined,
           },
           {
             label: "Battery",
@@ -126,6 +168,8 @@ export function HomePage({ session, telemetry, sync, connected, run, onGo }: Pro
       />
 
       {session?.state === "signed_out" && <SignIn run={run} />}
+
+      {session && session.state !== "signed_out" && <RadioRow session={session} run={run} />}
 
       {/* The steps, as a rail. Titles only — the current one is the answer to
           "what now", and five paragraphs buried it. */}

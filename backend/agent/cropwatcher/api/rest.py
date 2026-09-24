@@ -150,6 +150,7 @@ class Agent:
         self.session = Session(
             cloud=self.cloud, outbox=self.outbox, syncer=self.syncer,
             publish=self.hub.publish, on_link_ready=self.deck_wifi.apply,
+            on_link_down=self.deck_wifi.link_down,
         )
 
     def _deck_joined(self, ip: str) -> None:
@@ -192,8 +193,14 @@ async def lifespan(_app: FastAPI):
     # Signing back in is a network call; the API must answer /health while it
     # happens, so it runs beside startup rather than in front of it.
     threading.Thread(target=_restore_sign_in, daemon=True, name="restore-sign-in").start()
+    # Hold the drone on standby whenever someone is signed in and no session
+    # runs: vitals and the camera before any session. CROPWATCHER_STANDBY=0
+    # turns it off — for tests, and for a developer who wants the radio free.
+    if os.environ.get("CROPWATCHER_STANDBY", "1").strip() != "0":
+        agent.session.start_standby()
     log.info("agent API on %s:%d", DEFAULT_HOST, DEFAULT_PORT)
     yield
+    agent.session.stop_standby()
     try:
         agent.session.end("agent shutting down")
     except Exception:
@@ -313,8 +320,18 @@ def camera_status() -> dict:
     reports what was asked rather than what someone typed.
     """
     status = agent.camera.status()
-    fitted = agent.session.snapshot().ai_deck
-    return {**status.to_dict(), "deck_fitted": fitted}
+    snapshot = agent.session.snapshot()
+    payload = {**status.to_dict(), "deck_fitted": snapshot.ai_deck}
+    # No frames AND no radio link: the likeliest reason is the drone itself —
+    # off, or its battery flat — not the network. Say that first, rather than
+    # a network theory about an address the drone may no longer have.
+    if not status.live and snapshot.radio.get("state") != "connected" \
+            and isinstance(agent.camera, DeckStream):
+        payload["reason"] = (
+            "The drone is not connected — it may be switched off or its battery "
+            "flat. Its camera streams once the drone is on and connected."
+        )
+    return payload
 
 
 @app.get("/camera/wifi", dependencies=[Command])
@@ -331,9 +348,11 @@ def set_camera_wifi(body: DeckWifiRequest) -> dict:
         state = agent.deck_wifi.configure(body.ssid, body.password)
     except WifiError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
+    # A link already open — a session's, or standby's — gets it now; otherwise
+    # the next link does.
     link = agent.session.link
-    if link is not None and link.scf is not None and agent.session.snapshot().ai_deck:
-        cf = link.scf.cf
+    cf = link.camera_cf() if link is not None and link.is_open else None
+    if cf is not None and agent.session.snapshot().ai_deck:
         threading.Thread(target=agent.deck_wifi.apply, args=(cf,),
                          name="deck-wifi", daemon=True).start()
     return state.to_dict()
@@ -490,6 +509,27 @@ def emergency_stop() -> dict:
 @app.post("/session/end", dependencies=[Command])
 def end_session() -> dict:
     return _run(lambda: agent.session.end("operator"))
+
+
+@app.post("/drone/connect", dependencies=[Command])
+def drone_connect() -> dict:
+    """Look for the drone now and hold it on standby — vitals and camera with
+    no session. Never arms."""
+    try:
+        agent.session.connect_drone()
+    except SessionError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    return agent.session.snapshot().to_dict()
+
+
+@app.post("/drone/disconnect", dependencies=[Command])
+def drone_disconnect() -> dict:
+    """Release the radio until Connect, so another tool can use it."""
+    try:
+        agent.session.disconnect_drone()
+    except SessionError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    return agent.session.snapshot().to_dict()
 
 
 @app.post("/sync/now", dependencies=[Command])

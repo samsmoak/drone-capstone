@@ -171,6 +171,14 @@ export default function App() {
 
   const closeWifi = useCallback(() => setWifiOpen(false), []);
 
+  // Vitals are only true while the radio is up. Without this the last frame
+  // stayed on every sensor page marked "Live" after the drone switched off —
+  // the same stale claim the Wi-Fi page made about a join (2026-09-24).
+  const radioState = session?.radio?.state;
+  useEffect(() => {
+    if (radioState !== undefined && radioState !== "connected") setTelemetry(null);
+  }, [radioState]);
+
   /**
    * Run a command, showing its refusal verbatim if it declines.
    *

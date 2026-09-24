@@ -209,6 +209,26 @@ class DeckWifi:
         self._changed()
         return self.state()
 
+    def link_down(self) -> WifiState:
+        """The radio link to the drone closed or dropped.
+
+        A "joined" shown after that is a claim nobody can check any more — the
+        drone may be off, or restarted onto its own access point. It becomes
+        "waiting", naming where it was last. Measured 2026-09-24: with the
+        drone's battery flat, the page read "Radio: no drone" beside "On VT Open
+        WiFi" — two statements that could not both be true.
+        """
+        with self._lock:
+            state = self._state
+            if state.phase not in (Phase.JOINED, Phase.JOINING, Phase.SENDING):
+                return WifiState(**vars(state))
+            last = f" Last on {state.ssid} at {state.ip}." if state.ip else ""
+            self._state = WifiState(
+                ssid=state.ssid, phase=Phase.WAITING, ip=None,
+                message=f"Waiting for the drone to connect.{last}")
+        self._changed()
+        return self.state()
+
     def apply(self, cf: Any) -> WifiState:
         """Send the network to the drone and wait for the deck's address.
 

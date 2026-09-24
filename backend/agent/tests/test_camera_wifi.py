@@ -299,3 +299,33 @@ class TestRememberedAddress:
         deck.configure("Lab", "hunter2hunter2")
         deck.apply(FakeDrone())
         assert "hunter2" not in joined.read_text()
+
+
+class TestLinkDown:
+    def test_a_join_is_not_claimed_once_the_drone_is_gone(self):
+        deck, _, _ = make()
+        deck.configure("Lab", "password1")
+        deck.apply(FakeDrone())
+        state = deck.link_down()
+        assert state.phase is Phase.WAITING
+        assert state.ip is None
+        assert "Last on Lab at 10.0.0.42" in (state.message or "")
+
+    def test_nothing_changes_when_nothing_was_joined(self):
+        deck, _, _ = make()
+        deck.configure("Lab", "password1")
+        assert deck.link_down().phase is Phase.WAITING
+        assert deck.forget().phase is Phase.NOT_SET
+        assert deck.link_down().phase is Phase.NOT_SET
+
+    def test_the_address_is_still_remembered_for_an_already_applied_drone(self, tmp_path):
+        """link_down clears what is SHOWN, not what the agent knows: a drone
+        that comes back without restarting is still at its address."""
+        joined = tmp_path / "deck-wifi.json"
+        deck = DeckWifi(sleep=lambda _s: None, joined_file=joined)
+        deck.configure("Lab", "password1")
+        drone = FakeDrone()
+        deck.apply(drone)
+        deck.link_down()
+        state = deck.apply(drone)                # ALREADY_APPLIED, same power-on
+        assert (state.phase, state.ip) == (Phase.JOINED, "10.0.0.42")
