@@ -100,6 +100,10 @@ export type CameraStatus = {
   /** The DRONE's own answer (deck.bcAI). null until a drone has been asked,
    *  which is not the same as "not fitted". */
   deck_fitted: boolean | null;
+  /** The agent is actively working towards a picture (the drone is joining or
+   *  rejoining Wi-Fi, or the camera is reconnecting): show progress, not "no
+   *  signal". */
+  connecting?: boolean;
   /** The size of the frames being served; null until one has arrived. */
   width: number | null;
   height: number | null;
@@ -183,6 +187,10 @@ export const api = {
   holdManual: (height_m: number) => command<Session>("/session/manual/hold", { height_m }),
   cameraStatus: () => command<CameraStatus>("/camera", undefined, "GET"),
   cameraWifi: () => command<CameraWifi>("/camera/wifi", undefined, "GET"),
+  cameraRecording: () => command<Recording>("/camera/recording", undefined, "GET"),
+  recordedFrames: (after: number, limit: number) =>
+    command<{ frames: RecordedFrameInfo[] }>(
+      `/camera/recording/frames?after=${after}&limit=${limit}`, undefined, "GET"),
   /** Hold the drone on standby now (vitals, camera). Never arms. */
   connectDrone: () => command<Session>("/drone/connect"),
   /** Release the radio until Connect, for another tool. */
@@ -243,13 +251,46 @@ export type SessionRecord = {
 
 export type SampleRow = { recorded_at: string } & Record<string, number | string | null>;
 
+/** A session's camera recording (camera/recording.py). */
+export type Recording =
+  | { recording: false }
+  | {
+      recording: true;
+      session_id: string;
+      count: number;
+      latest_seq: number;
+      latest_t_s: number | null;
+      upload_fps: number;
+      write_errors: number;
+    };
+
+export type RecordedFrameInfo = { seq: number; t_s: number; recorded_at: string; upload: boolean };
+
+/**
+ * One recorded frame read back from disk, by number or "latest". A fetch with
+ * the token, not an <img> URL: recorded frames are session data. Null on 204.
+ */
+export async function recordedFrame(which: number | "latest"): Promise<Blob | null> {
+  const response = await fetch(`${base()}/camera/recording/frame/${which}`, {
+    headers: { "X-Agent-Token": token },
+    cache: "no-store",
+  });
+  if (response.status === 204) return null;
+  if (!response.ok) throw new AgentError("That frame could not be read.");
+  return response.blob();
+}
+
 /** Where the AI deck is in joining the operator's Wi-Fi. No password, ever. */
 export type CameraWifi = {
   ssid: string | null;
-  phase: "not-set" | "waiting" | "sending" | "joining" | "joined" | "failed";
+  phase: "not-set" | "waiting" | "sending" | "joining" | "joined" | "reconnecting" | "failed";
   /** The deck's address on that network, once it has one. */
   ip: string | null;
   message: string | null;
+  /** The deck's last reported signal, dBm. Below about -75 it drops out. */
+  rssi?: number | null;
+  /** Times it has dropped off since it last joined. */
+  drops?: number;
 };
 
 // ── the live socket ───────────────────────────────────────────────────

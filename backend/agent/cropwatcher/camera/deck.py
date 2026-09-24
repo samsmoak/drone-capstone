@@ -131,9 +131,10 @@ def _unreachable(host: str, port: int, e: OSError) -> str:
         return (f"Cannot reach the AI deck at {host}:{port}, its own access point. "
                 "Set the drone's Wi-Fi network in Drone Wi-Fi, or join this laptop to "
                 f"\"WiFi streaming example\". ({detail})")
-    return (f"The drone joined its Wi-Fi at {host}, but this laptop cannot reach it. "
-            "Is this laptop on the same network? Campus and guest networks often block "
-            f"devices from reaching each other. ({detail})")
+    # Not "is this laptop on the same network?" first: on 2026-09-24 it was, and
+    # the deck had dropped off the network. The Wi-Fi state says which.
+    return (f"No answer from the camera at {host} ({detail}). The drone's Wi-Fi may "
+            "have dropped — it rejoins by itself, and the camera retries.")
 
 
 def parse_addr(value: str | None) -> tuple[str, int]:
@@ -187,7 +188,12 @@ class DeckStream:
         self._latest: tuple[bytes, str, float, int, int] | None = None
         self._problem: str | None = "Connecting to the AI deck…"
         self._stop = threading.Event()
+        #: Cuts a reconnect backoff short — the deck just reported an address.
+        self._kick = threading.Event()
         self._sock: socket.socket | None = None
+        #: Called with every decoded frame (data, content type, width, height),
+        #: on this source's thread — how a session records them.
+        self._listeners: list[Callable[[bytes, str, int, int], None]] = []
         self.deck_fitted: bool | None = None
         self._thread = threading.Thread(target=self._run, name="deck-camera", daemon=True)
         if start:
@@ -227,7 +233,13 @@ class DeckStream:
 
     def close(self) -> None:
         self._stop.set()
+        self._kick.set()
         self._drop_socket()
+
+    def kick(self) -> None:
+        """Try again NOW: the deck has just (re)joined, so waiting out a
+        backoff earned while it was away is only lost picture."""
+        self._kick.set()
 
     @property
     def addr(self) -> tuple[str, int]:
@@ -246,6 +258,7 @@ class DeckStream:
             self._problem = f"Connecting to the AI deck at {host}…"
         log.info("deck camera moving to %s", host)
         self._drop_socket()
+        self.kick()
 
     def _drop_socket(self) -> None:
         with self._lock:
@@ -253,6 +266,9 @@ class DeckStream:
         if sock is not None:
             with contextlib.suppress(OSError):
                 sock.shutdown(socket.SHUT_RDWR)
+
+    def add_listener(self, listener: Callable[[bytes, str, int, int], None]) -> None:
+        self._listeners.append(listener)
 
     def pump(self, read: Callable[[int], bytes]) -> None:
         """Read one frame and make it the latest. The thread's unit of work,
@@ -262,6 +278,11 @@ class DeckStream:
         with self._lock:
             self._latest = (data, ctype, self._clock(), frame.width, frame.height)
             self._problem = None
+        for listener in self._listeners:
+            try:
+                listener(data, ctype, frame.width, frame.height)
+            except Exception:
+                log.exception("a frame listener failed; the stream carries on")
 
     def _run(self) -> None:
         backoff = RECONNECT_FIRST_S
@@ -290,8 +311,11 @@ class DeckStream:
                     with self._lock:
                         self._sock = None
                     sock.close()
-            self._stop.wait(backoff)
-            backoff = min(backoff * 2, RECONNECT_MAX_S)
+            if self._kick.wait(backoff):
+                self._kick.clear()
+                backoff = RECONNECT_FIRST_S
+            else:
+                backoff = min(backoff * 2, RECONNECT_MAX_S)
 
     def _set_problem(self, reason: str) -> None:
         with self._lock:

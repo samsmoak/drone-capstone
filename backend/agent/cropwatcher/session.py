@@ -37,6 +37,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
+from pathlib import Path
 from typing import Any
 
 from cropwatcher.audit import Action, AuditLog, Result
@@ -44,7 +45,7 @@ from cropwatcher.flight.checks import CheckResult, ChecksFailed, ReadyReport, co
 from cropwatcher.flight.control import GuardedFlight, PhaseEvent
 from cropwatcher.flight.link import DEFAULT_FENCE_M, DEFAULT_MAX_HEIGHT_M, DroneLink, LinkError
 from cropwatcher.flight.programs import HoverTest, Outcome, run_hover_test
-from cropwatcher.history import SessionLog, SessionMeta
+from cropwatcher.history import SessionLog, SessionMeta, sessions_dir
 from cropwatcher.paths import flights_dir
 from cropwatcher.safety.flight_guard import Action as GuardAction
 from cropwatcher.safety.flight_guard import Reason as GuardReason
@@ -168,6 +169,8 @@ class Session:
         max_height_m: float = DEFAULT_MAX_HEIGHT_M,
         on_link_ready: Callable[[Any], object] | None = None,
         on_link_down: Callable[[], object] | None = None,
+        on_session_open: Callable[[str, Path], object] | None = None,
+        on_session_close: Callable[[], object] | None = None,
     ) -> None:
         self._cloud = cloud
         #: Called with the Crazyflie once a link has passed its checks and the
@@ -178,6 +181,10 @@ class Session:
         #: Called whenever the link closes, however — the Wi-Fi state stops
         #: claiming "joined" for a drone nobody can reach any more.
         self._on_link_down = on_link_down
+        #: A session opened (its id and folder) / closed — how camera frames
+        #: get recorded only inside a session (camera/recording.py).
+        self._on_session_open = on_session_open
+        self._on_session_close = on_session_close
         self._outbox = outbox or Outbox()
         self._syncer = syncer
         self._link_factory = link_factory
@@ -446,6 +453,13 @@ class Session:
         except OSError:
             log.exception("could not open the session history; flying without it")
             self.history = None
+        if self._on_session_open is not None:
+            folder = (self.history.folder if self.history is not None
+                      else sessions_dir() / session_id)
+            try:
+                self._on_session_open(session_id, folder)
+            except Exception:
+                log.exception("session-open hook failed; the session carries on")
         self._set(
             state=State.AWAITING_CONFIRMATION, session_id=session_id,
             drone={"hardware_id": report.hardware_id, "battery_v": round(report.vbat, 2),
@@ -987,6 +1001,11 @@ class Session:
             except OSError:
                 log.warning("could not close the session history")
             self.history = None
+        if self._on_session_close is not None:
+            try:
+                self._on_session_close()
+            except Exception:
+                log.exception("session-close hook failed")
         self._height_reference = None
 
         session_id = self._snapshot.session_id
@@ -1006,6 +1025,21 @@ class Session:
                   retry_required=False,
                   radio=self._radio_idle(),
                   message="Session ended. Data is uploading in the background.")
+
+    def position(self) -> tuple[float, float, float] | None:
+        """The drone's position estimate now, or None — for tagging frames."""
+        link = self.link
+        if link is None or not link.is_open:
+            return None
+        try:
+            snap = link.snapshot()
+        except Exception:
+            return None
+        xyz = (snap.get("stateEstimate.x"), snap.get("stateEstimate.y"),
+               snap.get("stateEstimate.z"))
+        if any(v is None for v in xyz):
+            return None
+        return (float(xyz[0]), float(xyz[1]), float(xyz[2]))  # type: ignore[arg-type]
 
     # ── standby: the drone connected with no session ─────────────────────
     #

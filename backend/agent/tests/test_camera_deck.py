@@ -190,3 +190,24 @@ class TestSetHost:
         # The old address's frame is not presented as the new one's.
         assert source.frame() is None
         assert "10.0.0.42" in (source.status().reason or "")
+
+
+class TestKick:
+    def test_a_kick_cuts_the_backoff_short(self):
+        attempts: list[float] = []
+
+        def refuse(addr):
+            attempts.append(time.monotonic())
+            raise OSError(113, "No route to host")
+
+        source = DeckStream(connect=refuse)
+        try:
+            time.sleep(1.2)                      # let the backoff grow past 0.8 s
+            before = len(attempts)
+            source.kick()
+            deadline = time.monotonic() + 0.3
+            while len(attempts) == before and time.monotonic() < deadline:
+                time.sleep(0.01)
+            assert len(attempts) > before, "the kick did not bring a retry forward"
+        finally:
+            source.close()

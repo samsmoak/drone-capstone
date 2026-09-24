@@ -15,10 +15,19 @@
  * `deck_fitted` is the drone's answer, not a sentence someone typed: the pane
  * distinguishes "the deck is fitted and the link is down" from "nothing has
  * asked yet", because those need different things done about them.
+ *
+ * TWO SOURCES (2026-09-24). Outside a session: the live feed, as it comes, even
+ * when it is not smooth. INSIDE a session: the RECORDING — every frame is
+ * written to disk first (camera/recording.py) and read back from there, so
+ * what is watched is what was saved and what uploads. A scrubber walks back
+ * through the session's frames; Live returns to the newest.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, cameraFrameUrl, type CameraStatus, type CameraWifi } from "@/lib/agent";
+import {
+  api, cameraFrameUrl, recordedFrame,
+  type CameraStatus, type CameraWifi, type RecordedFrameInfo, type Recording,
+} from "@/lib/agent";
 import { showDroneWifi } from "@/lib/droneWifi";
 import { Button, Message, Spinner, StatusDot } from "@/components/ui";
 
@@ -47,6 +56,12 @@ const DROP_AFTER = 50;
  */
 const HOLD_MS = 30_000;
 
+/** How often the session's recording is asked about (frame count, latest). */
+const RECORDING_POLL_MS = 1000;
+
+/** Seconds as m:ss, for a frame's place in the session. */
+const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+
 type Load =
   | { kind: "probing" }
   | { kind: "error"; message: string }
@@ -63,6 +78,16 @@ export function CameraPane({ active }: {
   const [shown, setShown] = useState<{ url: string; at: number } | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const failures = useRef(0);
+  // The session's recording, when one runs; and what is being looked at —
+  // "live" (the newest frame) or a frame number, scrubbed back to.
+  const [recording, setRecording] = useState<Recording | null>(null);
+  const [view, setView] = useState<"live" | number>("live");
+  const [viewInfo, setViewInfo] = useState<RecordedFrameInfo | null>(null);
+  const recordingOn = recording?.recording === true;
+  // The recorded frame number on screen. A frame counts as NEW only when this
+  // goes up: "latest" keeps answering with the last frame after the deck
+  // stalls, and taking that as fresh would present a frozen picture as live.
+  const shownSeq = useRef(0);
 
   /** `quiet` re-asks without the spinner, so a background retry does not
    *  flash the pane every two seconds. */
@@ -99,25 +124,82 @@ export function CameraPane({ active }: {
     return () => window.clearTimeout(timer);
   }, [active, live, load, probe]);
 
+  // Is a session recording? Asked while the tab shows; a session ending drops
+  // back to the live feed and to "live".
+  useEffect(() => {
+    if (!active) return;
+    let stopped = false;
+    const read = () => api.cameraRecording()
+      .then((r) => { if (!stopped) setRecording(r); })
+      .catch(() => { if (!stopped) setRecording(null); });
+    void read();
+    const timer = window.setInterval(read, RECORDING_POLL_MS);
+    return () => { stopped = true; window.clearInterval(timer); };
+  }, [active]);
+
+  useEffect(() => {
+    if (!recordingOn) setView("live");
+    shownSeq.current = 0;
+  }, [recordingOn]);
+
+  // Back to Live from a scrubbed frame: the newest must be fetched again.
+  useEffect(() => {
+    if (view === "live") shownSeq.current = 0;
+  }, [view]);
+
+  const showBlob = useCallback((blob: Blob) => {
+    const url = URL.createObjectURL(blob);
+    setShown((previous) => {
+      if (previous) URL.revokeObjectURL(previous.url);
+      return { url, at: Date.now() };
+    });
+  }, []);
+
+  // A scrubbed-to frame: fetched once, from disk.
+  useEffect(() => {
+    if (!active || view === "live") return;
+    let stopped = false;
+    void (async () => {
+      const [blob, info] = await Promise.all([
+        recordedFrame(view).catch(() => null),
+        api.recordedFrames(view - 1, 1).then((r) => r.frames[0] ?? null).catch(() => null),
+      ]);
+      if (stopped) return;
+      if (blob) showBlob(blob);
+      setViewInfo(info);
+    })();
+    return () => { stopped = true; };
+  }, [active, view, showBlob]);
+
   // Pull frames only while the tab is showing AND something is producing them.
   // One request at a time (no pile-up behind a slow one), fetched as a blob so
   // a failed request never replaces the picture — an <img> pointed at a URL
   // that 204s shows nothing at all.
+  // In a session the newest frame comes from the RECORDING (read back from
+  // disk); outside one, straight from the feed.
   useEffect(() => {
-    if (!active || !live) return;
+    if (!active || !live || view !== "live") return;
     let stopped = false;
     let timer = 0;
     const tick = async () => {
       try {
-        const response = await fetch(cameraFrameUrl(Date.now()), { cache: "no-store" });
-        if (response.status === 200) {
-          const url = URL.createObjectURL(await response.blob());
-          if (stopped) { URL.revokeObjectURL(url); return; }
+        let blob: Blob | null = null;
+        if (recordingOn) {
+          const now = await api.cameraRecording();
+          if (stopped) return;
+          setRecording(now);
+          if (now.recording && now.latest_seq > shownSeq.current) {
+            blob = await recordedFrame(now.latest_seq);
+            if (blob) shownSeq.current = now.latest_seq;
+          }
+        } else {
+          const response = await fetch(cameraFrameUrl(Date.now()), { cache: "no-store" });
+          if (response.status === 200) blob = await response.blob();
+        }
+        if (stopped) return;
+        if (blob) {
           failures.current = 0;
-          setShown((previous) => {
-            if (previous) URL.revokeObjectURL(previous.url);
-            return { url, at: Date.now() };
-          });
+          showBlob(blob);
         } else {
           failures.current += 1;
         }
@@ -138,7 +220,7 @@ export function CameraPane({ active }: {
     };
     void tick();
     return () => { stopped = true; window.clearTimeout(timer); };
-  }, [active, live]);
+  }, [active, live, view, recordingOn, showBlob]);
 
   // A clock for the frame's age, only while there is a frame to age.
   useEffect(() => {
@@ -152,10 +234,12 @@ export function CameraPane({ active }: {
   shownRef.current = shown;
   useEffect(() => () => { if (shownRef.current) URL.revokeObjectURL(shownRef.current.url); }, []);
 
+  const scrubbed = view !== "live";
   const age = shown === null ? null : Math.max(0, now - shown.at);
-  const fresh = age !== null && age < STALE_MS;
+  // A scrubbed frame is old by design — never "stale", never "reconnecting".
+  const fresh = scrubbed || (age !== null && age < STALE_MS);
   // The last frame stays up through a drop-out, for HOLD_MS.
-  const holding = shown !== null && age !== null && age < HOLD_MS;
+  const holding = shown !== null && (scrubbed || (age !== null && age < HOLD_MS));
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -179,7 +263,17 @@ export function CameraPane({ active }: {
             </div>
           )}
 
-          {load.kind === "ready" && !load.status.live && !holding && (
+          {load.kind === "ready" && !load.status.live && !holding && load.status.connecting && (
+            // Working towards a picture — say so, and why it takes a moment.
+            <div className="absolute inset-0 grid content-center justify-items-center gap-3 px-6 text-center">
+              <Spinner label="Connecting to the camera…" />
+              {load.status.reason && (
+                <p className="text-xs leading-relaxed text-[var(--console-dim)]">{load.status.reason}</p>
+              )}
+            </div>
+          )}
+
+          {load.kind === "ready" && !load.status.live && !holding && !load.status.connecting && (
             <div className="absolute inset-0 grid content-center gap-3 px-6 text-center">
               <p className="mono text-xs uppercase tracking-[0.1em] text-[var(--console-dim)]">
                 No signal
@@ -203,6 +297,11 @@ export function CameraPane({ active }: {
                 className={`h-full w-full object-contain ${fresh ? "" : "opacity-70"}`}
               />
               <Reticle />
+              {scrubbed && (
+                <p className="mono absolute left-2 top-2 border border-[var(--console-line)] bg-[var(--console)] px-2 py-1 text-[10px] uppercase tracking-[0.08em] text-[var(--console-ink)]">
+                  Recorded · frame {view}{viewInfo ? ` · ${clock(viewInfo.t_s)}` : ""}
+                </p>
+              )}
               {!fresh && age !== null && (
                 <p
                   role="status"
@@ -217,6 +316,15 @@ export function CameraPane({ active }: {
           {!holding && !live && <Reticle dim />}
         </div>
       </div>
+
+      {recording?.recording && recording.latest_seq > 0 && (
+        <Backlog
+          latest={recording.latest_seq}
+          latestT={recording.latest_t_s}
+          view={view}
+          onView={setView}
+        />
+      )}
 
       <div className="mono flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-[var(--console-line)] bg-[var(--console)] px-3 py-1.5 text-[10px] uppercase tracking-[0.08em]">
         <span className="text-[var(--console-dim)]">
@@ -243,6 +351,56 @@ export function CameraPane({ active }: {
           )}
         </span>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The session's frames, as a scrubber: step back, drag, or return to Live.
+ * The frames are on disk (camera/recording.py); this only chooses which one.
+ */
+function Backlog({ latest, latestT, view, onView }: {
+  latest: number;
+  latestT: number | null;
+  view: "live" | number;
+  onView: (view: "live" | number) => void;
+}) {
+  const at = view === "live" ? latest : view;
+  const step = (delta: number) => {
+    const next = Math.min(latest, Math.max(1, at + delta));
+    onView(next >= latest && delta > 0 ? "live" : next);
+  };
+  const button = "mono min-h-8 min-w-8 border border-[var(--console-line)] px-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--console-ink)] disabled:opacity-40";
+  return (
+    <div className="flex items-center gap-2 border-t border-[var(--console-line)] bg-[var(--console)] px-3 py-1.5">
+      <button type="button" className={button} onClick={() => step(-1)} disabled={at <= 1}
+        aria-label="Previous frame">◀</button>
+      <input
+        type="range"
+        min={1}
+        max={latest}
+        value={at}
+        onChange={(e) => {
+          const seq = Number(e.target.value);
+          onView(seq >= latest ? "live" : seq);
+        }}
+        aria-label="Recorded frame"
+        aria-valuetext={`Frame ${at} of ${latest}`}
+        className="min-w-0 flex-1 accent-[var(--primary)]"
+      />
+      <button type="button" className={button} onClick={() => step(1)} disabled={view === "live"}
+        aria-label="Next frame">▶</button>
+      <span className="mono shrink-0 text-[10px] uppercase tracking-[0.08em] text-[var(--console-dim)]">
+        {at}/{latest}{latestT !== null ? ` · ${clock(latestT)}` : ""}
+      </span>
+      <button
+        type="button"
+        onClick={() => onView("live")}
+        aria-pressed={view === "live"}
+        className={`${button} ${view === "live" ? "border-[var(--status-critical)]" : ""}`}
+      >
+        <span aria-hidden="true" style={{ color: "var(--status-critical)" }}>● </span>Live
+      </button>
     </div>
   );
 }

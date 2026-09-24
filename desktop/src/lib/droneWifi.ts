@@ -92,6 +92,7 @@ export const PHASE_TONE: Record<CameraWifi["phase"], Tone> = {
   sending: "warning",
   joining: "warning",
   joined: "good",
+  reconnecting: "warning",
   failed: "critical",
 };
 
@@ -102,5 +103,6 @@ export const PHASE_LABEL: Record<CameraWifi["phase"], string> = {
   sending: "Sending the network to the drone",
   joining: "The drone is joining",
   joined: "On the network",
+  reconnecting: "Dropped off — rejoining",
   failed: "Could not join",
 };

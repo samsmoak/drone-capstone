@@ -25,6 +25,8 @@ from typing import Any, Protocol
 log = logging.getLogger(__name__)
 
 TELEMETRY_BUCKET = "flight-logs"
+#: Private, like flight-logs — migration 20260924000011_flight_frames.sql.
+FRAMES_BUCKET = "flight-frames"
 BACKFILL_FUNCTION = "import-flight-log"
 
 
@@ -61,6 +63,8 @@ class Cloud(Protocol):
     def insert_telemetry(self, rows: list[dict[str, Any]]) -> None: ...
     def upload_flight_csv(self, object_path: str, csv_path: Path) -> None: ...
     def request_backfill(self, flight_id: str, object_path: str) -> None: ...
+    def upload_frame(self, object_path: str, path: Path, content_type: str,
+                     *, replace: bool = False) -> None: ...
 
 
 class SupabaseCloud:
@@ -247,6 +251,28 @@ class SupabaseCloud:
                 log.info("flight log %s already uploaded", object_path)
                 return
             raise CloudError(f"could not upload the flight log: {type(e).__name__}") from e
+
+    # ── camera frames ────────────────────────────────────────────────────
+
+    def upload_frame(self, object_path: str, path: Path, content_type: str,
+                     *, replace: bool = False) -> None:
+        """Upload one recorded frame (or, with replace, a session's frames.csv).
+
+        A frame never changes, so "already exists" is success: a previous try
+        landed and its reply was lost. The index is replaced, since it is
+        written once more at the session's end."""
+        try:
+            options = {"content-type": content_type}
+            if replace:
+                options["upsert"] = "true"
+            self._connect().storage.from_(FRAMES_BUCKET).upload(
+                object_path, path.read_bytes(), options)
+        except FileNotFoundError:
+            log.warning("recorded frame %s is gone from disk; skipping it", path)
+        except Exception as e:
+            if "Duplicate" in str(e) or "already exists" in str(e):
+                return
+            raise CloudError(f"could not upload a camera frame: {type(e).__name__}") from e
 
     def request_backfill(self, flight_id: str, object_path: str) -> None:
         """Ask the server to fill any missing rows from the uploaded file.
