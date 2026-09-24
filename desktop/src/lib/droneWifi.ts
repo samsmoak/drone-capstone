@@ -63,6 +63,14 @@ export function whyNotJoinable(network: WifiNetwork): string | null {
   return null;
 }
 
+/** The same verdict in two or three words, for a list row. */
+export function shortWhyNot(network: WifiNetwork): string | null {
+  if (network.security === "enterprise") return "personal login (like eduroam)";
+  if (network.security === "other") return "unsupported security";
+  if (network.bands.length > 0 && !network.bands.includes("2.4")) return "5 GHz only";
+  return null;
+}
+
 export const bandLabel = (bands: WifiBand[]) =>
   bands.length === 0 ? "" : bands.map((b) => `${b} GHz`).join(" + ");
 

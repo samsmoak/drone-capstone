@@ -110,8 +110,8 @@ class TestOpen:
         finally:
             sys.modules.pop("usb", None)
             sys.modules.pop("usb.core", None)
-        assert "Another program" in reason
-        assert "Quit the CropWatcher app" in reason
+        assert "other program" in reason and "quit" in reason.lower()
+        assert "switch it on" in reason.lower()
         assert "battery" not in reason.lower()[:120]   # not the first thing blamed
 
     def test_radio_unavailable(self):

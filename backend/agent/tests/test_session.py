@@ -1005,7 +1005,7 @@ class TestStandby:
 
     def test_no_drone_found_says_why(self, standby):
         standby.session.sign_in("ada@example.com", "pw")
-        standby.link.open_error = LinkError("No Crazyradio was found on USB.")
+        standby.link.open_error = LinkError("No Crazyradio found.")
         standby.session._standby_tick()
         radio = standby.session.snapshot().radio
         assert radio["state"] == "searching"

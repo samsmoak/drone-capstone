@@ -106,18 +106,17 @@ def _nothing_found_reason() -> str:
     except Exception:
         present = False                    # cannot tell; fall back to the old advice
 
+    # SHORT, because with standby (sessions-and-modes.txt) this line is on
+    # screen whenever the drone is off. BOTH causes, and NOT the battery first:
+    # blaming the battery sent an operator to re-plug a working dongle four
+    # times while another program held it (2026-09-22). The long form, though,
+    # blamed "another program" for a drone that was simply off (2026-09-24).
     if present:
         return (
-            "The Crazyradio is plugged in but nothing could be reached through it. "
-            "Another program is almost certainly using it — a USB radio can only be "
-            "held by one at a time. Quit the CropWatcher app (or any other tool "
-            "talking to the drone) and try again. If nothing else is running, check "
-            "the drone is switched on and within a few metres."
+            "No drone answering. Switch it on — or quit any other program "
+            "using the Crazyradio."
         )
-    return (
-        "No Crazyradio was found on USB. Plug the dongle in — directly into the "
-        "computer rather than through a hub — then try again."
-    )
+    return "No Crazyradio found. Plug the dongle in, directly rather than through a hub."
 
 
 def _fix(snapshot: Snapshot) -> Fix | None:
