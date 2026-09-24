@@ -30,6 +30,7 @@ import type { History, Run } from "@/App";
 import { api, KEY_LABELS, type HealthTest, type Intent, type Session, type Telemetry } from "@/lib/agent";
 import type { LogLine } from "@/lib/commandLog";
 import { Button, Message, PageHeader, Panel, Spinner, Stat, StatusDot } from "@/components/ui";
+import { ScrollHint } from "@/components/ScrollHint";
 import { SplitPane } from "@/components/SplitPane";
 import { useMediaQuery, WIDE } from "@/lib/useMediaQuery";
 import { ConsolePane } from "./ConsolePane";
@@ -54,6 +55,11 @@ export function ControlPage({
   // Below `lg` the two columns stack, so there is no divider to drag and the
   // split would be splitting nothing.
   const wide = useMediaQuery(WIDE);
+  // Held here because two subtrees need them: the action rail, which starts a
+  // flight, and the step panels, which set one up.
+  const [height, setHeight] = useState("0.30");
+  const [hold, setHold] = useState("10");
+  const [ambient, setAmbient] = useState("22C");
 
   if (session === null) {
     return <Spinner label="Connecting to the flight agent…" />;
@@ -81,7 +87,12 @@ export function ControlPage({
           split starts once there is something to observe. */}
       {session.state === "signed_out" ? (
         <div className="max-w-md">
-          <ControlColumn session={session} telemetry={telemetry} run={run} />
+          <ControlColumn
+                  session={session} telemetry={telemetry} run={run}
+                  height={height} setHeight={setHeight}
+                  hold={hold} setHold={setHold}
+                  ambient={ambient} setAmbient={setAmbient}
+                />
         </div>
       ) : wide ? (
         // Side by side, with a divider the operator owns. The console starts
@@ -92,7 +103,7 @@ export function ControlPage({
           storageKey="cropwatcher.split.control"
           defaultFraction={0.60}
           label="Console and controls"
-          className="h-[calc(100vh-11rem)] gap-0"
+          className="h-[calc(100vh-9.5rem)] gap-0"
           first={
             <div className="min-w-0 flex-1">
               <ConsolePane
@@ -113,10 +124,17 @@ export function ControlPage({
               <FlightDeck
                 intent={intent} mode={session.mode}
                 telemetry={telemetry} session={session}
+                run={run} ready={session.state === "ready" && !session.retry_required}
+                height={height} hold={hold} ambient={ambient}
               />
-              <div className="console-scroll grid min-h-0 flex-1 content-start gap-5 overflow-y-auto pt-4">
-                <ControlColumn session={session} telemetry={telemetry} run={run} />
-              </div>
+              <ScrollHint className="grid content-start gap-5 pt-4">
+                <ControlColumn
+                  session={session} telemetry={telemetry} run={run}
+                  height={height} setHeight={setHeight}
+                  hold={hold} setHold={setHold}
+                  ambient={ambient} setAmbient={setAmbient}
+                />
+              </ScrollHint>
             </div>
           }
         />
@@ -127,8 +145,15 @@ export function ControlPage({
           <FlightDeck
             intent={intent} mode={session.mode}
             telemetry={telemetry} session={session}
+            run={run} ready={session.state === "ready" && !session.retry_required}
+            height={height} hold={hold} ambient={ambient}
           />
-          <ControlColumn session={session} telemetry={telemetry} run={run} />
+          <ControlColumn
+                  session={session} telemetry={telemetry} run={run}
+                  height={height} setHeight={setHeight}
+                  hold={hold} setHold={setHold}
+                  ambient={ambient} setAmbient={setAmbient}
+                />
           <ConsolePane
             telemetry={telemetry}
             history={history}
@@ -143,33 +168,22 @@ export function ControlPage({
 
 // ── the right column ─────────────────────────────────────────────────
 
-function ControlColumn({ session, telemetry, run }: {
+function ControlColumn({ session, telemetry, run, height, setHeight, hold, setHold, ambient, setAmbient }: {
   session: Session;
   telemetry: Telemetry | null;
   run: Run;
+  height: string; setHeight: (v: string) => void;
+  hold: string; setHold: (v: string) => void;
+  ambient: string; setAmbient: (v: string) => void;
 }) {
   // The flight parameters live here, not inside a panel, because the action
   // rail's Hover demo button is their trigger and the ambient temperature is
   // shared with arming in Manual.
-  const [height, setHeight] = useState("0.30");
-  const [hold, setHold] = useState("10");
-  const [ambient, setAmbient] = useState("22C");
-
-  const ready = session.state === "ready" && !session.retry_required;
   const showFlightControls =
     (session.state === "ready" || session.state === "busy") && !session.retry_required;
 
   return (
     <>
-      <ActionRail
-        session={session}
-        run={run}
-        ready={ready}
-        height={height}
-        hold={hold}
-        ambient={ambient}
-      />
-
       {session.state === "signed_out" && <SignIn run={run} />}
       {(session.state === "starting" || session.state === "checks_failed" ||
         session.state === "awaiting_confirmation") && (
@@ -311,21 +325,49 @@ function ActionRail({ session, run, ready, height, hold, ambient }: {
   ];
 
   return (
-    <Panel title="Actions">
-      <div className="grid grid-cols-2 gap-2">
-        {actions.map((action) => (
-          <Button
-            key={action.label}
-            variant={action.variant ?? "secondary"}
-            disabled={action.disabled}
-            title={action.disabled ? action.reason ?? undefined : undefined}
-            onClick={action.onClick}
-          >
-            {action.label}
-          </Button>
-        ))}
-      </div>
-    </Panel>
+    <div className="grid content-start gap-1">
+      {actions.map((action) => (
+        <RailButton
+          key={action.label}
+          variant={action.variant ?? "secondary"}
+          disabled={action.disabled}
+          title={action.disabled ? action.reason ?? undefined : undefined}
+          onClick={action.onClick}
+        >
+          {action.label}
+        </RailButton>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * A rail button: 32 px, not the shared Button's 44.
+ *
+ * WCAG 2.2 AA's target minimum is 24x24 (2.5.8); 44 is the AAA figure. These
+ * are wide, in a column, with nothing adjacent to mis-hit, and the height
+ * bought back is what the checks below needed. Land and Emergency stop keep
+ * their 44 px in the flight strip — those are the ones reached for in a hurry.
+ */
+function RailButton({ children, onClick, variant = "secondary", disabled, title }: {
+  children: ReactNode;
+  onClick?: () => void;
+  variant?: "primary" | "secondary" | "danger";
+  disabled?: boolean;
+  title?: string;
+}) {
+  const styles = {
+    primary: "bg-[var(--primary)] text-[var(--on-primary)] border-transparent",
+    secondary: "border-[var(--border)] text-[var(--foreground)]",
+    danger: "border-[var(--status-critical)] bg-[var(--status-critical)] text-[var(--on-critical)] font-bold",
+  }[variant];
+  return (
+    <button
+      type="button" onClick={onClick} disabled={disabled} title={title}
+      className={`inline-flex min-h-8 w-full cursor-pointer items-center justify-center border px-2 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50 ${styles}`}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -709,11 +751,16 @@ function ManualControls({ session, telemetry, ambient, setAmbient, height, setHe
  * into the flight loop. They light from `intent`, which is the same state the
  * agent is being sent — so a cap lit here is a key the drone knows about.
  */
-function FlightDeck({ intent, mode, telemetry, session }: {
+function FlightDeck({ intent, mode, telemetry, session, run, ready, height, hold, ambient }: {
   intent: Intent;
   mode: Session["mode"];
   telemetry: Telemetry | null;
   session: Session | null;
+  run: Run;
+  ready: boolean;
+  height: string;
+  hold: string;
+  ambient: string;
 }) {
   const land = KEY_LABELS.find((b) => b.keys.every((k) => !k.field));
   // In Auto the drone flies itself: the movement keys reach nothing. L still
@@ -760,6 +807,18 @@ function FlightDeck({ intent, mode, telemetry, session }: {
           <Cluster caption="Down">
             <Cap label="L" intent={intent} wide />
           </Cluster>
+        )}
+
+        {/* Beside the keys, not above them. Stacked full-width they were four
+            buttons of vertical space the checks needed more. */}
+        {session && (
+          <div className="min-w-[8.5rem] flex-1">
+            <p className="eyebrow pb-1.5">Actions</p>
+            <ActionRail
+              session={session} run={run} ready={ready}
+              height={height} hold={hold} ambient={ambient}
+            />
+          </div>
         )}
       </div>
 
