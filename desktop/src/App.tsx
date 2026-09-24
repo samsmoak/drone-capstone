@@ -96,6 +96,11 @@ export default function App() {
   const [wifiOpen, setWifiOpen] = useState(false);
   // Asked at most once per launch: "Not now" means not now, not every reconnect.
   const wifiAsked = useRef(false);
+  // Handing the saved network over is instant — unless macOS is asking whether
+  // this build may read it from the Keychain. The app is ad-hoc signed, so
+  // EVERY new build is a new app to the Keychain and asks again (2026-09-24:
+  // the drone sat on "not set" behind an unanswered prompt). Say so.
+  const [keychainWait, setKeychainWait] = useState(false);
 
   const live = useRef<LiveConnection | null>(null);
   const startedAt = useRef<number | null>(null);
@@ -143,7 +148,9 @@ export default function App() {
   useEffect(() => {
     if (!connected || !signedIn) return;
     let cancelled = false;
+    const slow = window.setTimeout(() => { if (!cancelled) setKeychainWait(true); }, 3000);
     droneWifi.push()
+      .finally(() => { window.clearTimeout(slow); if (!cancelled) setKeychainWait(false); })
       .then((state) => {
         if (cancelled) return;
         if (state) setCameraWifi(state);
@@ -153,7 +160,7 @@ export default function App() {
         }
       })
       .catch((e) => { if (!cancelled) pushLog("refused", "Drone Wi-Fi not sent", String(e)); });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; window.clearTimeout(slow); };
   }, [connected, signedIn, pushLog]);
 
   // "Change Wi-Fi" from the Camera tab and the account menu lands on the page.
@@ -309,6 +316,15 @@ export default function App() {
           onStop={() => void run(api.emergencyStop, "Emergency stop")}
           onEndSession={() => void run(api.endSession, "End session")}
         />
+
+        {keychainWait && (
+          <div className="border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2">
+            <Message
+              tone="warning"
+              text="macOS is asking whether CropWatcher may use the saved Wi-Fi password. Answer the Keychain prompt (Always Allow) so the drone can join its network."
+            />
+          </div>
+        )}
 
         {(!connected || error) && (
           <div className="grid gap-2 border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2">
