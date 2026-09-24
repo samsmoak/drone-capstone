@@ -61,7 +61,9 @@ export function CameraPane({ active }: {
     }
   }, []);
 
-  useEffect(() => { void probe(); }, [probe]);
+  useEffect(() => {
+    if (active) void probe();
+  }, [active, probe]);
 
   const live = load.kind === "ready" && load.status.live;
 
