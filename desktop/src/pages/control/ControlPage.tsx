@@ -111,7 +111,12 @@ export function ControlPage({
             // which only takes height from a flex parent. As a plain block the
             // console was content-tall — Vitals and Camera have content and
             // hid it, but the Scene is only a canvas and collapsed to 0 px.
-            <div className="flex min-w-0 flex-1 flex-col">
+            //
+            // A FIXED height, one window, and `self-start` so the row cannot
+            // stretch it (2026-09-24): with the columns flowing, every new
+            // line of the vitals tail made the row — and the console — taller.
+            // Bounded, the tail scrolls and both dividers keep their range.
+            <div className="flex h-[calc(100vh-9.5rem)] min-w-0 flex-1 flex-col self-start">
               <ConsolePane
                 telemetry={telemetry}
                 history={history}
