@@ -118,6 +118,12 @@ fn spawn_agent(app: &tauri::AppHandle) -> Result<(), String> {
         .env("CROPWATCHER_AGENT_TOKEN", token)
         .env("SUPABASE_URL", configured("SUPABASE_URL", SUPABASE_URL))
         .env("SUPABASE_ANON_KEY", configured("SUPABASE_ANON_KEY", SUPABASE_ANON_KEY))
+        // The app reads the AI deck's camera by default. An app opened from
+        // Finder never sees a variable exported in a terminal, so leaving this
+        // to the environment meant the bundled agent always had no camera.
+        // With no deck in reach it retries quietly and the tab says to join
+        // the deck's Wi-Fi.
+        .env("CROPWATCHER_CAMERA", configured("CROPWATCHER_CAMERA", "deck"))
         // `--exit-with-parent` is what actually stops the agent. Killing the
         // child below only reaches PyInstaller's bootloader; the real Python
         // process is its child and survives, orphaned onto launchd, still
