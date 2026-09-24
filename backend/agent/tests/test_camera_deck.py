@@ -234,3 +234,15 @@ class TestUnreachableFor:
             assert source.unreachable_for() == 0.0
         finally:
             source.close()
+
+
+class TestNoFramesFor:
+    def test_counts_from_the_last_frame_even_when_connects_succeed(self):
+        clock = Clock()
+        source = DeckStream(clock=clock, start=False)
+        clock.t += 30
+        assert source.no_frames_for() == 30
+        source.pump(reader(image(2, 1, b"ab")))
+        assert source.no_frames_for() == 0
+        clock.t += 5
+        assert source.no_frames_for() == 5

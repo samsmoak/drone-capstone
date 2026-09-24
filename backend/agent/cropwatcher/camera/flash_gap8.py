@@ -27,11 +27,16 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-TARGET = "bcAI:gap8"
+#: The AI deck's two chips, by the ONLY name that tells them apart. Writing a
+#: GAP8 image to the ESP32 (or the reverse) is how a deck gets bricked, so the
+#: name is matched exactly and a .bin is refused for the wrong chip by size.
+TARGETS = {"gap8": "bcAI:gap8", "esp": "bcAI:esp"}
+TARGET = TARGETS["gap8"]
 BOOTLOADER_WAIT_S = 20.0
 
 
-def flash(path: Path, uri: str = "radio://0/80/2M") -> int:
+def flash(path: Path, uri: str = "radio://0/80/2M", *, chip: str = "gap8") -> int:
+    target_name = TARGETS[chip]
     import cflib.crtp
     from cflib.crazyflie import Crazyflie
     from cflib.crazyflie.mem import MemoryElement
@@ -49,16 +54,16 @@ def flash(path: Path, uri: str = "radio://0/80/2M") -> int:
 
         def target():
             for deck in mgr.query_decks().values():
-                if deck.name == TARGET:
+                if deck.name == target_name:
                     return deck
             return None
 
         deck = target()
         if deck is None:
-            print(f"No {TARGET} deck memory. Is the AI deck seated and detected?")
+            print(f"No {target_name} deck memory. Is the AI deck seated and detected?")
             return 1
         if not deck.supports_fw_upgrade:
-            print(f"{TARGET} does not accept a firmware upgrade.")
+            print(f"{target_name} does not accept a firmware upgrade.")
             return 1
 
         print(f"target {deck.name}: entering its bootloader…", flush=True)
@@ -84,19 +89,18 @@ def flash(path: Path, uri: str = "radio://0/80/2M") -> int:
             f"  {message} {progress}", flush=True))
         print("written; resetting to firmware", flush=True)
         deck.reset_to_fw()
-        print(
-            "\nDone. Power-cycle the drone, then look for a Wi-Fi network the deck "
-            "raises (the 'with_ap' build makes its own). Point CAMERA_URL at it."
-        )
+        print("\nDone. Power-cycle the drone so both deck chips start clean.")
     return 0
 
 
 def main() -> int:
+    """python -m cropwatcher.camera.flash_gap8 <firmware.bin> [gap8|esp]"""
     logging.basicConfig(level=logging.ERROR)
-    if len(sys.argv) < 2:
+    if len(sys.argv) < 2 or (len(sys.argv) > 2 and sys.argv[2] not in TARGETS):
         print(__doc__)
+        print("chip: gap8 (default) or esp")
         return 2
-    return flash(Path(sys.argv[1]))
+    return flash(Path(sys.argv[1]), chip=sys.argv[2] if len(sys.argv) > 2 else "gap8")
 
 
 if __name__ == "__main__":

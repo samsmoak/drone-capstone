@@ -212,11 +212,16 @@ class Agent:
                 if (self._cf is None or not isinstance(camera, DeckStream)
                         or time.monotonic() - self._last_rejoin < REJOIN_EVERY_S):
                     continue
-                stale = (wifi.phase is Phase.JOINED and not camera.status().live
-                         and camera.unreachable_for() > STALE_ADDRESS_S)
-                if stale:
-                    self.rejoin(reason=f"no answer at {wifi.ip} for "
-                                       f"{camera.unreachable_for():.0f} s")
+                # No frames for a while, whatever the cause: the address went
+                # stale (connects fail), OR the deck accepts and sends nothing
+                # (its ESP32 disconnect bug — firmware/aideck-esp). A restart
+                # clears both.
+                stuck = (wifi.phase is Phase.JOINED and not camera.status().live
+                         and camera.no_frames_for() > STALE_ADDRESS_S)
+                if stuck:
+                    why = ("no answer" if camera.unreachable_for() > 0 else "no frames")
+                    self.rejoin(reason=f"{why} at {wifi.ip} for "
+                                       f"{camera.no_frames_for():.0f} s")
                 elif wifi.phase is Phase.FAILED and wifi.needs_restart:
                     self.rejoin(reason="joined earlier with an unknown address")
             except Exception:
@@ -422,15 +427,17 @@ def camera_status() -> dict:
             payload["connecting"] = True
             payload["reason"] = wifi.message
         elif wifi.phase is Phase.JOINED and \
-                agent.camera.unreachable_for() > STALE_ADDRESS_S:
+                agent.camera.no_frames_for() > STALE_ADDRESS_S:
             # Not at that address any more. The watchdog restarts the deck so it
             # says its new one; the window says what is happening meanwhile.
             payload["connecting"] = True
+            unreachable = agent.camera.unreachable_for() > 0
+            what = (f"The drone is no longer at {wifi.ip}." if unreachable else
+                    "The drone's camera accepts the connection but sends nothing.")
             payload["reason"] = (
-                f"The drone is no longer at {wifi.ip}. Restarting it so it reports its "
-                "current address — about 15 s."
+                f"{what} Restarting the drone so it starts clean — about 15 s."
                 if snapshot.state is State.IDLE else
-                f"The drone is no longer at {wifi.ip}. End the session to let it rejoin."
+                f"{what} End the session to let the drone restart."
             )
         elif wifi.phase is Phase.JOINED:
             payload["connecting"] = True

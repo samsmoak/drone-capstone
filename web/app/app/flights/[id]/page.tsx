@@ -4,8 +4,10 @@ import {
   getFlight,
   getFlightTelemetry,
   getPredictionsForFlight,
+  getSessionFrames,
   getZones,
 } from "@/lib/queries";
+import { FrameGallery } from "@/components/flight/FrameGallery";
 import { ErrorState, Stat, StatusBadge } from "@/components/ui/states";
 import { PageHeader } from "@/components/ui/page-header";
 import { TimeSeries } from "@/components/ui/time-series";
@@ -41,6 +43,9 @@ export default async function FlightPage(props: PageProps<"/app/flights/[id]">) 
     getPredictionsForFlight(id),
   ]);
   if (!flight) notFound();
+  // The camera belongs to the SESSION the flight was part of: frames are
+  // recorded from session start to end (camera/recording.py).
+  const frames = flight.session_id ? await getSessionFrames(flight.session_id) : [];
 
   const unit = flight.temp_unit;
   const first = telemetry[0]?.recorded_at;
@@ -186,6 +191,13 @@ export default async function FlightPage(props: PageProps<"/app/flights/[id]">) 
           <FlightPath rows={telemetry} zones={zones} />
         </section>
       </div>
+
+      <section aria-labelledby="camera-heading" className="space-y-3">
+        <h2 id="camera-heading" className="text-lg font-semibold text-[var(--heading)]">
+          Camera
+        </h2>
+        <FrameGallery frames={frames} />
+      </section>
 
       <section aria-labelledby="health-heading" className="space-y-3">
         <h2 id="health-heading" className="text-lg font-semibold text-[var(--heading)]">

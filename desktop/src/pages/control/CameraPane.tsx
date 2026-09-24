@@ -84,6 +84,9 @@ export function CameraPane({ active }: {
   const [view, setView] = useState<"live" | number>("live");
   const [viewInfo, setViewInfo] = useState<RecordedFrameInfo | null>(null);
   const recordingOn = recording?.recording === true;
+  // The scrubber walks back through this session's saved frames. Hidden until
+  // asked for: watching live does not need it (2026-09-24, "why the dial?").
+  const [showBacklog, setShowBacklog] = useState(false);
   // The recorded frame number on screen. A frame counts as NEW only when this
   // goes up: "latest" keeps answering with the last frame after the deck
   // stalls, and taking that as fresh would present a frozen picture as live.
@@ -317,7 +320,7 @@ export function CameraPane({ active }: {
         </div>
       </div>
 
-      {recording?.recording && recording.latest_seq > 0 && (
+      {recording?.recording && recording.latest_seq > 0 && showBacklog && (
         <Backlog
           latest={recording.latest_seq}
           latestT={recording.latest_t_s}
@@ -334,6 +337,16 @@ export function CameraPane({ active }: {
                 .filter(Boolean).join(" · ")
             : "AI deck · not connected"}
         </span>
+        {recordingOn && (
+          <button
+            type="button"
+            onClick={() => { setShowBacklog((v) => !v); if (showBacklog) setView("live"); }}
+            aria-pressed={showBacklog}
+            className="min-h-8 px-1 uppercase tracking-[0.08em] text-[var(--console-ink)] underline underline-offset-2"
+          >
+            {showBacklog ? "Hide history" : "History"}
+          </button>
+        )}
         <button
           type="button"
           onClick={showDroneWifi}
