@@ -1060,3 +1060,45 @@ class TestLinkDownHook:
         session._standby_tick()
         link.lose("Too many packets lost")
         assert wait_for(lambda: downs == [1])
+
+
+class TestRestartDrone:
+    """The one supported way to make the deck rejoin and say its address."""
+
+    def make(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+        cloud = FakeCloud()
+        cloud.sign_in = lambda email, password: Operator("user-1", email, "Ada", "operator")
+        cloud.sign_out = lambda: None
+        link = FakeLink()
+        cycled: list[str] = []
+        session = Session(cloud=cloud, outbox=Outbox(tmp_path / "outbox"),
+                          link_factory=lambda: link, power_cycle=cycled.append)
+        session.sign_in("ada@example.com", "pw")
+        return session, link, cycled
+
+    def test_on_standby_it_closes_the_link_and_restarts_over_the_radio(self, tmp_path, monkeypatch):
+        session, link, cycled = self.make(tmp_path, monkeypatch)
+        session._standby_tick()
+        session.restart_drone(reason="test")
+        assert cycled == ["radio://0/80/2M"]
+        assert not link.is_open
+        assert session.snapshot().radio["state"] == "restarting"
+
+    def test_standby_waits_for_the_drone_to_boot(self, tmp_path, monkeypatch):
+        """Connecting while it boots blocks for the whole connect timeout."""
+        session, link, _ = self.make(tmp_path, monkeypatch)
+        session.restart_drone(reason="test")
+        session._standby_tick()
+        assert not link.is_open
+        session._standby_not_before = 0.0
+        session._standby_tick()
+        assert link.is_open
+
+    def test_never_during_a_session(self, tmp_path, monkeypatch):
+        session, _, cycled = self.make(tmp_path, monkeypatch)
+        session.start()
+        session.wait_idle()
+        with pytest.raises(SessionError):
+            session.restart_drone(reason="test")
+        assert cycled == []

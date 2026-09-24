@@ -55,6 +55,19 @@ export function WifiPage({ wifi, session, onSaved }: {
   const phase = wifi?.phase ?? "not-set";
   const showForm = editing || !saved;
 
+  const [note, setNote] = useState<string | null>(null);
+  const reconnect = async () => {
+    setBusy(true);
+    setNote(null);
+    try {
+      await api.reconnectCamera();
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : "Could not restart the drone.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const forget = async () => {
     setBusy(true);
     try {
@@ -73,7 +86,7 @@ export function WifiPage({ wifi, session, onSaved }: {
       </h2>
       <dl className="grid shrink-0 border-b border-[var(--console-line)] px-3 py-2">
         <Line
-          tone={radio?.state === "connected" ? "good" : radio?.state === "searching" ? "warning" : "idle"}
+          tone={radio?.state === "connected" ? "good" : radio?.state === "searching" || radio?.state === "restarting" ? "warning" : "idle"}
           label="Radio"
           value={radio?.state === "connected" ? radio.hardware_id ?? "Connected" : radio?.message ?? "Not connected"}
         />
@@ -112,9 +125,24 @@ export function WifiPage({ wifi, session, onSaved }: {
           onCancel={saved ? () => setEditing(false) : undefined}
         />
       ) : (
-        <div className="grid gap-2 text-sm">
+        <div className="grid gap-3 text-sm">
           <p className="wrap-anywhere text-base font-semibold">{saved}</p>
           <StatusDot tone={PHASE_TONE[phase]}>{wifi?.message ?? PHASE_LABEL[phase]}</StatusDot>
+          {radio?.state === "connected" && !camera?.live && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                onClick={() => void reconnect()}
+                disabled={busy || session?.state !== "idle"}
+                title={session?.state !== "idle" ? "Between sessions only" : undefined}
+              >
+                Reconnect camera
+              </Button>
+              <span className="text-xs text-[var(--muted)]">
+                Restarts the drone so it rejoins · about 15 s
+              </span>
+            </div>
+          )}
+          {note && <p className="text-xs text-[var(--muted)]">{note}</p>}
         </div>
       )}
       {editing && phase === "joined" && (

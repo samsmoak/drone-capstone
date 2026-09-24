@@ -91,7 +91,7 @@ function RadioRow({ session, run }: { session: Session; run: Run }) {
   const connected = radio.state === "connected";
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm">
-      <StatusDot tone={connected ? "good" : radio.state === "searching" ? "warning" : "idle"}>
+      <StatusDot tone={connected ? "good" : radio.state === "searching" || radio.state === "restarting" ? "warning" : "idle"}>
         {connected
           ? `Drone on standby${radio.hardware_id ? ` (${radio.hardware_id})` : ""} — vitals and camera live, motors off.`
           : radio.message ?? "No drone connected."}

@@ -186,6 +186,8 @@ class DeckStream:
         self._clock = clock
         self._lock = threading.Lock()
         self._latest: tuple[bytes, str, float, int, int] | None = None
+        #: When the current address first failed to answer, if it has not since.
+        self._failing_since: float | None = None
         self._problem: str | None = "Connecting to the AI deck…"
         self._stop = threading.Event()
         #: Cuts a reconnect backoff short — the deck just reported an address.
@@ -246,6 +248,13 @@ class DeckStream:
         with self._lock:
             return self._addr
 
+    def unreachable_for(self) -> float:
+        """Seconds the current address has been failing to connect; 0 when it
+        answered last, or has not been tried."""
+        with self._lock:
+            since = self._failing_since
+        return 0.0 if since is None else self._clock() - since
+
     def set_host(self, host: str) -> None:
         """Stream from the deck at `host` from now on — the address it reported
         after joining the operator's network. The open connection, if any, is
@@ -255,6 +264,7 @@ class DeckStream:
                 return
             self._addr = (host, self._addr[1])
             self._latest = None
+            self._failing_since = None
             self._problem = f"Connecting to the AI deck at {host}…"
         log.info("deck camera moving to %s", host)
         self._drop_socket()
@@ -292,12 +302,16 @@ class DeckStream:
             try:
                 sock = self._connect(addr)
             except OSError as e:
+                with self._lock:
+                    if self._failing_since is None:
+                        self._failing_since = self._clock()
                 self._set_problem(_unreachable(host, port, e))
             else:
                 log.info("deck camera connected at %s:%s", host, port)
                 backoff = RECONNECT_FIRST_S
                 with self._lock:
                     self._sock = sock
+                    self._failing_since = None
                 try:
                     read = _socket_reader(sock)
                     while not self._stop.is_set():

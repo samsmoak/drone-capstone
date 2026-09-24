@@ -227,11 +227,14 @@ class TestApply:
         assert (state.phase, state.ip) == (Phase.JOINED, "10.0.0.42")
 
     def test_already_applied_with_no_address_asks_for_a_restart(self):
+        """The ESP32 cannot re-apply without a reboot, and resetting only the
+        deck breaks its UART link (cpx_uart_transport.c) — so the state says a
+        restart is needed, and on standby the agent does it."""
         deck, _, _ = make()
         deck.configure("Lab", "password1")
         state = deck.apply(FakeDrone(applied=True))
-        assert state.phase is Phase.FAILED
-        assert "Restart the drone" in (state.message or "")
+        assert (state.phase, state.needs_restart) == (Phase.FAILED, True)
+        assert "restart" in (state.message or "")
 
     def test_listeners_are_removed_afterwards(self):
         deck, _, _ = make()
@@ -278,6 +281,7 @@ class TestRememberedAddress:
         joined.write_text('{"ssid": "Other", "ip": "10.9.9.9"}')
         deck = DeckWifi(sleep=lambda _s: None, joined_file=joined)
         deck.configure("Lab", "password1")
+        # Another network's address is never used for this one.
         assert deck.apply(FakeDrone(applied=True)).phase is Phase.FAILED
 
     def test_forget_removes_it(self, tmp_path):
@@ -382,3 +386,19 @@ class TestWatch:
         say("CPX: ESP32: I (9) WIFI: Disconnected from access point\n")
         assert deck.state().phase is Phase.JOINED
         assert drone.console.receivedChar.callbacks == []
+
+
+class TestRememberedIsUnverified:
+    def test_an_address_from_memory_says_so(self, tmp_path):
+        joined = tmp_path / "deck-wifi.json"
+        joined.write_text('{"ssid": "Lab", "ip": "10.0.0.42"}')
+        deck = DeckWifi(sleep=lambda _s: None, joined_file=joined)
+        deck.configure("Lab", "password1")
+        state = deck.apply(FakeDrone(applied=True))
+        assert (state.phase, state.remembered) == (Phase.JOINED, True)
+        assert "checking" in (state.message or "")
+
+    def test_an_address_heard_this_link_is_not_remembered(self):
+        deck, _, _ = make()
+        deck.configure("Lab", "password1")
+        assert deck.apply(FakeDrone()).remembered is False
