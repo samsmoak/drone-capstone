@@ -105,11 +105,7 @@ export function ControlPage({
           label="Console and controls"
           className="h-[calc(100vh-9.5rem)] gap-0"
           first={
-            // A flex COLUMN, like the second: ConsolePane's `fill` is flex-1,
-            // which only takes height from a flex parent. As a plain block the
-            // console was content-tall — Vitals and Camera have content and
-            // hid it, but the Scene is only a canvas and collapsed to 0 px.
-            <div className="flex min-w-0 flex-1 flex-col">
+            <div className="min-w-0 flex-1">
               <ConsolePane
                 telemetry={telemetry}
                 history={history}
