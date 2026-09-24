@@ -80,7 +80,9 @@ export function WifiPage({ wifi, session, onSaved }: {
         <Line
           tone={PHASE_TONE[phase]}
           label="Network"
-          value={phase === "joined" && wifi?.ip ? `${wifi.ssid} · ${wifi.ip}` : PHASE_LABEL[phase]}
+          value={phase === "joined" && wifi?.ip
+            ? [wifi.ssid, wifi.ip, wifi.rssi != null ? `${wifi.rssi} dBm` : null].filter(Boolean).join(" · ")
+            : wifi?.message && (phase === "reconnecting" || phase === "failed") ? wifi.message : PHASE_LABEL[phase]}
         />
         <Line
           tone={camera?.live ? "good" : "idle"}

@@ -25,6 +25,7 @@ link is not encrypted: this is a network for the drone, not a home network.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import re
@@ -70,7 +71,15 @@ JOIN_TIMEOUT_S = 30.0
 MAX_DISCONNECTS = 4
 
 _IP = re.compile(r"WiFi connected to ip: (\d{1,3}(?:\.\d{1,3}){3})")
+#: The ESP32's own line for the same event (aideck-esp-firmware main/wifi.c).
+_GOT_IP = re.compile(r"WIFI: got ip: (\d{1,3}(?:\.\d{1,3}){3})")
+_RSSI = re.compile(r"WIFI: rssi: (-?\d+)")
 _DISCONNECT = "Disconnected from access point"
+
+#: Below this, a 2.4 GHz link from the deck's chip antenna drops out when the
+#: drone turns. Measured: joined at -84 dBm and fell off the network minutes
+#: later with the laptop, on the same network, still fine (2026-09-24).
+WEAK_RSSI_DBM = -75
 
 
 class WifiError(ValueError):
@@ -83,6 +92,7 @@ class Phase(StrEnum):
     SENDING = "sending"          # talking to the drone_wifi app
     JOINING = "joining"          # the deck is associating
     JOINED = "joined"            # the deck has an address
+    RECONNECTING = "reconnecting"  # it had one, dropped off, and is rejoining
     FAILED = "failed"            # this attempt did not work; `message` says why
 
 
@@ -92,10 +102,14 @@ class WifiState:
     phase: Phase = Phase.NOT_SET
     ip: str | None = None
     message: str | None = None
+    #: The signal the deck last reported when it joined, in dBm.
+    rssi: int | None = None
+    #: How many times it has dropped off since it last joined.
+    drops: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {"ssid": self.ssid, "phase": str(self.phase), "ip": self.ip,
-                "message": self.message}
+                "message": self.message, "rssi": self.rssi, "drops": self.drops}
 
 
 def validate(ssid: str, password: str) -> tuple[bytes, bytes]:
@@ -182,6 +196,9 @@ class DeckWifi:
         #: address — and valid exactly as long as the drone stays on, which is
         #: exactly when the drone answers ALREADY_APPLIED.
         self._joined_file = joined_file
+        #: The deck's last reported signal. Kept apart from the state, which
+        #: every step rewrites; the signal belongs to the association.
+        self._rssi: int | None = None
         self._joined: tuple[str, str] | None = self._load_joined()
         self._on_change = on_change
         self._on_ip = on_ip
@@ -209,6 +226,78 @@ class DeckWifi:
         self._changed()
         return self.state()
 
+    # ── watching the deck for as long as the drone is connected ──────────
+
+    def watch(self, cf: Any) -> Callable[[], None]:
+        """Follow the deck's own Wi-Fi reports on the drone's console until the
+        returned function is called (at link-down).
+
+        WHY. Reading the console only while joining left "joined" standing for
+        ever: the deck dropped off the network (weak signal) and the page kept
+        saying "joined at 100.96.93.94" beside a camera that could not reach it
+        (2026-09-24). The ESP32 reports every drop, every new address and its
+        signal; now each one updates the state as it happens, and a new address
+        moves the camera at once.
+        """
+        buffer = [""]
+
+        def feed(text: str) -> None:
+            buffer[0] += text
+            *lines, buffer[0] = buffer[0].split("\n")
+            for line in lines:
+                self._console_line(line)
+
+        cf.console.receivedChar.add_callback(feed)
+
+        def stop() -> None:
+            with contextlib.suppress(Exception):
+                cf.console.receivedChar.remove_callback(feed)
+        return stop
+
+    def _console_line(self, line: str) -> None:
+        signal = _RSSI.search(line)
+        if signal:
+            with self._lock:
+                self._rssi = int(signal.group(1))
+                state = self._state
+            if state.phase is Phase.JOINED:
+                self._set(Phase.JOINED, state.ssid, ip=state.ip, drops=state.drops,
+                          message=self._joined_words(
+                              WifiState(ssid=state.ssid, ip=state.ip, rssi=self._rssi)))
+            return
+        got = _GOT_IP.search(line) or _IP.search(line)
+        if got:
+            ip = got.group(1)
+            with self._lock:
+                state = self._state
+                ssid = state.ssid or (self._creds.ssid if self._creds else None)
+            if state.phase is Phase.JOINED and state.ip == ip:
+                return                       # the same news twice (ESP32 and STM32 lines)
+            if ssid is not None:
+                self._remember((ssid, ip))
+            self._on_ip(ip)
+            self._set(Phase.JOINED, ssid, ip=ip, drops=state.drops,
+                      message=self._joined_words(WifiState(ssid=ssid, ip=ip, rssi=self._rssi)))
+            return
+        if _DISCONNECT in line:
+            with self._lock:
+                state = self._state
+            if state.phase not in (Phase.JOINED, Phase.RECONNECTING):
+                return                       # joining: apply() counts these itself
+            drops = state.drops + 1
+            rssi = self._rssi
+            weak = rssi is not None and rssi < WEAK_RSSI_DBM
+            why = f" — weak signal ({rssi} dBm)" if weak else ""
+            self._set(Phase.RECONNECTING, state.ssid, ip=None, drops=drops,
+                      message=f"The drone dropped off {state.ssid}{why}. Rejoining…")
+
+    @staticmethod
+    def _joined_words(state: WifiState) -> str:
+        signal = ""
+        if state.rssi is not None:
+            signal = f" · {state.rssi} dBm" + (" (weak)" if state.rssi < WEAK_RSSI_DBM else "")
+        return f"On {state.ssid} at {state.ip}{signal}."
+
     def link_down(self) -> WifiState:
         """The radio link to the drone closed or dropped.
 
@@ -220,7 +309,8 @@ class DeckWifi:
         """
         with self._lock:
             state = self._state
-            if state.phase not in (Phase.JOINED, Phase.JOINING, Phase.SENDING):
+            if state.phase not in (Phase.JOINED, Phase.JOINING, Phase.SENDING,
+                                   Phase.RECONNECTING):
                 return WifiState(**vars(state))
             last = f" Last on {state.ssid} at {state.ip}." if state.ip else ""
             self._state = WifiState(
@@ -325,7 +415,8 @@ class DeckWifi:
                 self._remember((creds.ssid, watch.ip))
                 self._on_ip(watch.ip)
                 return self._set(Phase.JOINED, creds.ssid, ip=watch.ip,
-                                 message=f"On {creds.ssid} at {watch.ip}.")
+                                 message=self._joined_words(
+                                     WifiState(ssid=creds.ssid, ip=watch.ip, rssi=self._rssi)))
             if watch.disconnects >= MAX_DISCONNECTS:
                 break
         return self._set(
@@ -361,9 +452,10 @@ class DeckWifi:
     # ── state ────────────────────────────────────────────────────────────
 
     def _set(self, phase: Phase, ssid: str | None, *, ip: str | None = None,
-             message: str | None = None) -> WifiState:
+             message: str | None = None, drops: int = 0) -> WifiState:
         with self._lock:
-            self._state = WifiState(ssid=ssid, phase=phase, ip=ip, message=message)
+            self._state = WifiState(ssid=ssid, phase=phase, ip=ip, message=message,
+                                    rssi=self._rssi, drops=drops)
         self._changed()
         return self.state()
 

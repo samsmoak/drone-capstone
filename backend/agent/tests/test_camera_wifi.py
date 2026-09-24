@@ -329,3 +329,56 @@ class TestLinkDown:
         deck.link_down()
         state = deck.apply(drone)                # ALREADY_APPLIED, same power-on
         assert (state.phase, state.ip) == (Phase.JOINED, "10.0.0.42")
+
+
+class TestWatch:
+    """The deck's Wi-Fi reports, followed for the life of the link — the fix for
+    a page that said "joined" while the deck had dropped off (2026-09-24)."""
+
+    def joined(self):
+        ips: list = []
+        deck = DeckWifi(on_ip=ips.append, sleep=lambda _s: None)
+        deck.configure("VT Open WiFi", "")
+        drone = FakeDrone(ip="100.96.93.94")
+        stop = deck.watch(drone)
+        say = drone.console.receivedChar.call
+        say("CPX: ESP32: I (1) WIFI: rssi: -84\n")
+        deck.apply(drone)
+        return deck, drone, say, ips, stop
+
+    def test_the_signal_is_kept_and_called_weak(self):
+        deck, *_ = self.joined()
+        state = deck.state()
+        assert (state.phase, state.rssi) == (Phase.JOINED, -84)
+        assert "-84 dBm (weak)" in (state.message or "")
+
+    def test_a_drop_is_shown_as_rejoining_and_says_why(self):
+        deck, _, say, _, _ = self.joined()
+        say("CPX: ESP32: I (9) WIFI: Disconnected from access point\n")
+        state = deck.state()
+        assert state.phase is Phase.RECONNECTING
+        assert state.ip is None
+        assert "weak signal (-84 dBm)" in (state.message or "")
+        say("CPX: ESP32: I (9) WIFI: Disconnected from access point\n")
+        assert deck.state().drops == 2
+
+    def test_rejoining_moves_the_camera_to_the_new_address(self):
+        deck, _, say, ips, _ = self.joined()
+        say("CPX: ESP32: I (9) WIFI: Disconnected from access point\n")
+        say("CPX: ESP32: I (12) WIFI: got ip: 100.96.93.120\n")
+        state = deck.state()
+        assert (state.phase, state.ip) == (Phase.JOINED, "100.96.93.120")
+        assert ips[-1] == "100.96.93.120"
+
+    def test_the_same_address_reported_twice_is_one_event(self):
+        deck, _, say, ips, _ = self.joined()
+        count = len(ips)
+        say("CPX: WiFi connected to ip: 100.96.93.94\n")
+        assert len(ips) == count
+
+    def test_stopping_the_watch_detaches_it(self):
+        deck, drone, say, _, stop = self.joined()
+        stop()
+        say("CPX: ESP32: I (9) WIFI: Disconnected from access point\n")
+        assert deck.state().phase is Phase.JOINED
+        assert drone.console.receivedChar.callbacks == []

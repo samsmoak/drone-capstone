@@ -24,7 +24,9 @@ import asyncio
 import logging
 import os
 import threading
+from collections.abc import Callable
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
@@ -37,7 +39,8 @@ from cropwatcher.api.events import EventHub
 from cropwatcher.api.tokens import HEADER, load_or_create_token
 from cropwatcher.camera import DeckStream, FrameSource, NoCamera, TestPattern
 from cropwatcher.camera.deck import parse_addr
-from cropwatcher.camera.wifi import DeckWifi, WifiError
+from cropwatcher.camera.recording import Recorder
+from cropwatcher.camera.wifi import DeckWifi, Phase, WifiError
 from cropwatcher.paths import data_dir
 from cropwatcher.session import Mode, Session, SessionError
 from cropwatcher.sync.cloud import SupabaseCloud
@@ -147,15 +150,37 @@ class Agent:
             on_ip=self._deck_joined,
             joined_file=data_dir() / "deck-wifi.json",
         )
+        #: Every camera frame of a session, to disk first (camera/recording.py).
+        #: Standby frames are shown, never recorded.
+        self.recorder = Recorder(self.outbox, position=lambda: self.session.position())
+        if isinstance(self.camera, DeckStream):
+            self.camera.add_listener(self.recorder.on_frame)
         self.session = Session(
             cloud=self.cloud, outbox=self.outbox, syncer=self.syncer,
-            publish=self.hub.publish, on_link_ready=self.deck_wifi.apply,
-            on_link_down=self.deck_wifi.link_down,
+            publish=self.hub.publish, on_link_ready=self._link_ready,
+            on_link_down=self._link_down,
+            on_session_open=self.recorder.start, on_session_close=self.recorder.stop,
         )
+
+    #: Stops following the deck's console, once the link it came from closes.
+    _unwatch: Callable[[], None] | None = None
+
+    def _link_ready(self, cf: Any) -> None:
+        """A link is up (standby's or a session's): follow the deck's Wi-Fi
+        reports for as long as it lasts, then hand it the network."""
+        self._unwatch = self.deck_wifi.watch(cf)
+        self.deck_wifi.apply(cf)
+
+    def _link_down(self) -> None:
+        unwatch, self._unwatch = self._unwatch, None
+        if unwatch is not None:
+            unwatch()
+        self.deck_wifi.link_down()
 
     def _deck_joined(self, ip: str) -> None:
         if isinstance(self.camera, DeckStream):
             self.camera.set_host(ip)
+            self.camera.kick()
 
 
 def _camera_from_env() -> FrameSource:
@@ -325,13 +350,64 @@ def camera_status() -> dict:
     # No frames AND no radio link: the likeliest reason is the drone itself —
     # off, or its battery flat — not the network. Say that first, rather than
     # a network theory about an address the drone may no longer have.
-    if not status.live and snapshot.radio.get("state") != "connected" \
-            and isinstance(agent.camera, DeckStream):
-        payload["reason"] = (
-            "The drone is not connected — it may be switched off or its battery "
-            "flat. Its camera streams once the drone is on and connected."
-        )
+    radio_up = snapshot.radio.get("state") == "connected"
+    wifi = agent.deck_wifi.state()
+    #: The agent is actively working towards a picture — the window shows a
+    #: spinner and the reason, not "no signal".
+    payload["connecting"] = False
+    if not status.live and isinstance(agent.camera, DeckStream):
+        if not radio_up:
+            payload["reason"] = (
+                "The drone is not connected — it may be switched off or its battery "
+                "flat. Its camera streams once the drone is on and connected."
+            )
+        elif wifi.phase in (Phase.SENDING, Phase.JOINING, Phase.RECONNECTING):
+            payload["connecting"] = True
+            payload["reason"] = wifi.message
+        elif wifi.phase is Phase.JOINED:
+            payload["connecting"] = True
     return payload
+
+
+@app.get("/camera/recording", dependencies=[Command])
+def camera_recording() -> dict:
+    """The session's recording, if one is running: how many frames, the latest."""
+    recording = agent.recorder.current
+    return recording.summary() if recording is not None else {"recording": False}
+
+
+@app.get("/camera/recording/frames", dependencies=[Command])
+def camera_recording_frames(
+    after: int = Query(0, ge=0), limit: int = Query(500, ge=1, le=2000),
+) -> dict:
+    """Recorded frames after `after`, for the backlog strip."""
+    recording = agent.recorder.current
+    frames = recording.after(after, limit) if recording is not None else []
+    return {"frames": [f.to_dict() for f in frames]}
+
+
+@app.get("/camera/recording/frame/{which}", dependencies=[Command])
+def camera_recording_frame(which: str) -> Response:
+    """One recorded frame — a number, or "latest" — read back FROM DISK, so
+    what the window shows is what was saved. 204 when there is none."""
+    recording = agent.recorder.current
+    if recording is None:
+        return Response(status_code=204)
+    if which == "latest":
+        frame = recording.latest()
+    else:
+        try:
+            frame = recording.get(int(which))
+        except ValueError:
+            raise HTTPException(status_code=404, detail="No such frame.") from None
+    if frame is None:
+        return Response(status_code=204)
+    try:
+        data = recording.path(frame).read_bytes()
+    except OSError:
+        raise HTTPException(status_code=404, detail="That frame is gone from disk.") from None
+    return Response(content=data, media_type=frame.content_type,
+                    headers={"Cache-Control": "no-store"})
 
 
 @app.get("/camera/wifi", dependencies=[Command])

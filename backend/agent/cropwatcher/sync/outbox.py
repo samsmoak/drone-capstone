@@ -38,6 +38,9 @@ class Kind(StrEnum):
     SESSION = "session"
     FLIGHT = "flight"
     AUDIT = "audit"
+    #: One per session: its camera frames, uploaded from a cursor
+    #: (camera/recording.py) — never one record per frame.
+    FRAMES = "frames"
 
 
 def new_id() -> str:
