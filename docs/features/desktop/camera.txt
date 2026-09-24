@@ -146,6 +146,25 @@ DECISIONS
   image nobody is looking at is waste on a laptop that is also flying a drone.
 - One dropped frame is a hiccup; five in a row is a stopped feed. Reporting the
   first would make a normal feed look broken.
+- A stopped feed is retried, not reported and abandoned. The agent reconnects
+  to the deck on its own; the tab re-asks it every 2 s while there is no feed,
+  so rejoining the deck's Wi-Fi or a deck that recovers needs no click. Before
+  this, the first real image vanished for good after one stall.
+
+HOW THE LINKS FIT (the question an operator asks first)
+
+  Crazyradio dongle  2.4 GHz, NOT Wi-Fi — flight control and telemetry only
+  deck's Wi-Fi       raised by the AI deck's ESP32 whenever the drone is on;
+                     carries the camera and nothing else
+  this laptop        must JOIN the deck's Wi-Fi to see frames — and while
+                     joined it has no internet (no Supabase sync)
+
+Switching the laptop's Wi-Fi from a button was considered and not built:
+joining the deck with `networksetup` works, but rejoining a campus network the
+same way failed (-3900) and only toggling Wi-Fi power recovered it; and the
+switch takes the laptop offline. The lasting fix is the deck JOINING an
+existing network ("Connect to an access point" in the firmware's Kconfig) or
+wired internet on the laptop, so both links are up at once.
 
 
 INVARIANTS

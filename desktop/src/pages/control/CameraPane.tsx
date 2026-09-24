@@ -27,6 +27,12 @@ const FRAME_MS = 200;
 /** How long a frame can be stale before the overlay stops claiming "live". */
 const STALE_MS = 2000;
 
+/** How often the agent is asked again while there is no feed. The agent
+ *  reconnects to the deck on its own; without this the tab would not notice
+ *  until someone pressed Try again — which is how a feed that recovered in
+ *  seconds looked dead for good. */
+const RETRY_MS = 2000;
+
 type Load =
   | { kind: "probing" }
   | { kind: "error"; message: string }
@@ -43,8 +49,10 @@ export function CameraPane({ active }: {
   const [now, setNow] = useState(() => Date.now());
   const failures = useRef(0);
 
-  const probe = useCallback(async () => {
-    setLoad({ kind: "probing" });
+  /** `quiet` re-asks without the spinner, so a background retry does not
+   *  flash the pane every two seconds. */
+  const probe = useCallback(async (quiet = false) => {
+    if (!quiet) setLoad({ kind: "probing" });
     setFrameAt(null);
     failures.current = 0;
     try {
@@ -62,6 +70,14 @@ export function CameraPane({ active }: {
   }, [active, probe]);
 
   const live = load.kind === "ready" && load.status.live;
+
+  // No feed — not yet, or it dropped: keep asking while the tab is showing.
+  // Joining the deck's Wi-Fi or the deck coming back then needs no click.
+  useEffect(() => {
+    if (!active || live || load.kind === "probing") return;
+    const timer = window.setTimeout(() => void probe(true), RETRY_MS);
+    return () => window.clearTimeout(timer);
+  }, [active, live, load, probe]);
 
   // Pull frames only while the tab is showing AND something is producing them.
   useEffect(() => {
@@ -125,10 +141,14 @@ export function CameraPane({ active }: {
                   failures.current += 1;
                   if (failures.current >= 5) {
                     setLoad({
-                      kind: "error",
-                      message:
-                        "The camera stream stopped. The drone may have moved out of range " +
-                        "of its datalink, or the relay on the flight agent may have ended.",
+                      kind: "ready",
+                      status: {
+                        ...load.status,
+                        live: false,
+                        reason:
+                          "The camera stream stopped — reconnecting. If this laptop left " +
+                          "the deck's Wi-Fi, rejoin \"WiFi streaming example\".",
+                      },
                     });
                   }
                 }}
