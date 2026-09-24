@@ -3,18 +3,14 @@
  *
  * THE WHOLE PATH IS REAL NOW; only the camera is not. Frames come from the
  * agent's own `/camera/frame`, through the window's content policy, into this
- * tab. What the agent puts behind that route is a `FrameSource`: today either
- * "there is no camera" or a generated test pattern
- * (`CROPWATCHER_CAMERA=test`), and one day the AI deck. Nothing here changes
- * when the real one arrives.
+ * tab. What the agent puts behind that route is a `FrameSource`: "there is no
+ * camera", a generated test pattern (`CROPWATCHER_CAMERA=test`), or the AI
+ * deck's Wi-Fi streamer (`CROPWATCHER_CAMERA=deck`, with this laptop joined to
+ * the deck's access point). This pane does not know which.
  *
- * WHY THERE IS NO REAL SOURCE YET. The AI deck IS fitted — `deck.bcAI` reads 1,
- * and the agent now asks the drone directly during the checks rather than
- * trusting a note in the flight log. But its Wi-Fi datalink has never worked,
- * and the frames cannot come over the radio instead: usable CRTP throughput is
- * a few KB/s and the same link carries the 50 Hz setpoint stream, which the
- * drone falls out of the air without. That is why the deck has its own Wi-Fi
- * chip, and why this is a lab problem rather than a coding one.
+ * The frames cannot come over the radio: usable CRTP throughput is a few KB/s
+ * and the same link carries the 50 Hz setpoint stream, which the drone falls
+ * out of the air without. That is why the deck has its own Wi-Fi chip.
  *
  * `deck_fitted` is the drone's answer, not a sentence someone typed: the pane
  * distinguishes "the deck is fitted and the link is down" from "nothing has
@@ -83,8 +79,9 @@ export function CameraPane({ active }: {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="relative flex min-h-0 flex-1 items-center justify-center bg-[var(--console)] p-4">
-        {/* The frame keeps 1:1 — the deck's sensor is 320x320 — so the empty
-            state and a real stream occupy exactly the same box. */}
+        {/* A fixed box, so the empty state and a live feed occupy the same
+            space. The deck's frames are 324x244 (measured), so the image is
+            contained — letterboxed — never cropped to fit. */}
         <div className="relative aspect-square w-full max-w-[420px] border border-[var(--console-line)]">
           {load.kind === "probing" && (
             <div className="absolute inset-0 flex items-center justify-center px-6">
@@ -120,7 +117,7 @@ export function CameraPane({ active }: {
                 // cached image; the agent also sends no-store.
                 src={cameraFrameUrl(stamp)}
                 alt="The drone's camera view"
-                className="h-full w-full object-cover"
+                className="h-full w-full object-contain"
                 onLoad={() => { failures.current = 0; setFrameAt(Date.now()); }}
                 onError={() => {
                   // One dropped frame is a hiccup; several in a row is a feed
@@ -147,7 +144,9 @@ export function CameraPane({ active }: {
       <div className="mono flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-[var(--console-line)] bg-[var(--console)] px-3 py-1.5 text-[10px] uppercase tracking-[0.08em]">
         <span className="text-[var(--console-dim)]">
           {load.kind === "ready" && load.status.live
-            ? `${load.status.kind} · 320×320`
+            ? [load.status.kind, load.status.width && load.status.height
+                ? `${load.status.width}×${load.status.height}` : null]
+                .filter(Boolean).join(" · ")
             : "AI deck · not connected"}
         </span>
         <span>

@@ -1,25 +1,29 @@
-CAMERA — the path is built; the camera is not
-=============================================
+CAMERA — built end to end; the deck has not yet sent a whole frame
+===================================================================
 
 WHAT IT IS
 
 The Control page's Camera tab, and everything behind it: a frame source in the
 agent, a route that serves frames, the window's content policy, and the tab that
-renders them. All of it runs today against a generated test pattern.
+renders them. Three sources: none, a generated test pattern, and the AI deck's
+own Wi-Fi image streamer.
 
-WHAT IS MISSING IS ONE LINK. The AI deck is fitted — the agent now asks the
-drone directly — but its Wi-Fi datalink has never worked, so nothing is
-producing real frames. Everything downstream of that link is ordinary work, so
-it was built and proven rather than left as a drawing. When a lab session works
-out how to reach the deck, ONE class is written and nothing else moves.
+WHAT IS STILL UNPROVEN IS THE DECK ITSELF. The GAP8 runs Bitcraze's streamer
+(flash_gap8.py), the deck raises its access point, and the laptop has read the
+stream's header from it. But the only real capture stalled a third of the way
+into the first frame, so no whole real frame has arrived yet.
+
+THIS IS NOT VIDEO. The tab pulls one still every 200 ms — about 5 fps at best.
 
 
 WHERE IT LIVES
 
   backend/agent/cropwatcher/camera/source.py   FrameSource, NoCamera, TestPattern
+  backend/agent/cropwatcher/camera/deck.py     DeckStream — the deck's stream
+  backend/agent/cropwatcher/camera/flash_gap8.py  puts the streamer on the GAP8
   backend/agent/cropwatcher/api/rest.py        GET /camera, GET /camera/frame
   backend/agent/cropwatcher/flight/checks.py   _ai_deck_fitted — deck.bcAI
-  backend/agent/tests/test_camera.py
+  backend/agent/tests/test_camera.py, test_camera_deck.py
   desktop/src/pages/control/CameraPane.tsx     the tab and its four states
   desktop/src/lib/agent.ts                     cameraFrameUrl, api.cameraStatus
   desktop/src-tauri/tauri.conf.json            the img-src the frames need
@@ -70,13 +74,33 @@ is possible in principle. It still shares the link with control, it needs the
 deck flashed for it, and it is not video.
 
 
-THE SOURCES
+THE SOURCES — chosen by CROPWATCHER_CAMERA
 
-  NoCamera      the truth on this drone. Frames are None; the route answers 204
-  TestPattern   a generated 320x320 PNG, the deck's own sensor size
-  (the deck)    not written — this is the one unknown
+  (unset)  NoCamera     the default. Frames are None; the route answers 204
+  test     TestPattern  a generated 320x320 PNG
+  deck     DeckStream   the deck at CROPWATCHER_DECK_ADDR (192.168.4.1:5000)
 
-`CROPWATCHER_CAMERA=test` selects the pattern. It MOVES: a band sweeps down and a
+`deck` is opt-in because it needs the laptop JOINED to the deck's access point
+("WiFi streaming example"), and while it is, the laptop has no internet — the
+agent cannot sync, and a remote assistant driving the laptop loses its link.
+A second network adapter (USB Wi-Fi or ethernet for the internet) removes that.
+
+
+THE DECK'S WIRE FORMAT, MEASURED 2026-09-23 FROM THE REAL DECK
+
+  every packet   <HBB     length (counts the 2 routing bytes), routing 0x63 0x05
+  image header   <BHHBBI  magic 0xBC, width, height, depth, format, size
+  data           packets of 1020 payload bytes until `size` bytes arrive
+
+  measured       324 x 244, depth 1, format 0 (raw), size 79056 = 324*244
+  first capture  24,495 bytes in 8 s, then nothing — stalled mid-frame
+
+Raw frames are re-encoded to greyscale PNG; JPEG (format 1) passes through. A
+colour sensor would show its Bayer pattern as fine texture — demosaicing is not
+done. One background thread owns the socket and keeps only the latest frame;
+it reconnects forever with backoff, and a frame older than 2 s is not served.
+
+The test pattern MOVES: a band sweeps down and a
 counter bar advances, because a still image cannot tell a live feed from a frozen
 one — which is the exact failure a real feed has.
 
@@ -102,6 +126,9 @@ from a broken route.
 
 DECISIONS
 
+- The deck source was built against the captured header and a stand-in deck
+  (same format, on localhost) rather than waiting for a whole real frame: the
+  parser, the reconnect and the staleness rule are knowns; the deck is not.
 - Built against a test pattern rather than waiting for the deck. The deck is one
   unknown; the route, the content policy, the four states and the cache
   behaviour are four knowns, and proving them now means the lab session is
@@ -117,6 +144,11 @@ DECISIONS
 
 INVARIANTS
 
+- Frame size comes from each frame's header, never a constant. The only
+  constant this code had — 320x320 — was a guess; the deck measured 324x244.
+  The tab letterboxes (object-contain) rather than cropping to its square box.
+- A stale frame is not live. A frozen last frame looks exactly like a working
+  feed, so DeckStream stops serving it after 2 s and says why.
 - The frame URL carries a changing stamp and the route sends `no-store`. Without
   both, the <img> shows the first frame forever and the feed looks frozen when
   it is fine.
@@ -127,6 +159,9 @@ INVARIANTS
   telemetry stream, and asking for it there would be looking in the wrong place.
 
 
-LAST VERIFIED  2026-09-23. Routes exercised against a running agent with
-CROPWATCHER_CAMERA=test; the pattern rendered in the tab through the real CSP
-and the real <img>. No real camera has ever been reached.
+LAST VERIFIED  2026-09-23.
+  test pattern   rendered in the tab through the real CSP and the real <img>
+  deck source    a real agent with CROPWATCHER_CAMERA=deck against a stand-in
+                 deck on localhost: live, 324x244, frames change; stand-in
+                 killed -> "Cannot reach the AI deck..." within seconds
+  real deck      header read over its Wi-Fi; NO whole frame yet (stalled)

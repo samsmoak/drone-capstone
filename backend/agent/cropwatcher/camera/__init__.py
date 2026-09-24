@@ -1,15 +1,9 @@
 """The camera path: where frames come from, and what is done with them.
 
-WHY THIS EXISTS BEFORE A CAMERA DOES. The AI deck is fitted on this drone
-(`deck.bcAI` reads 1) but its Wi-Fi datalink has never worked, so there is no
-source of real frames. Everything downstream of that one link — serving frames
-to the window, the window's content policy, writing them beside the flight CSV,
-uploading them through the outbox — is ordinary work that can be built and
-proven now, against a generated frame.
-
-So the deck is the ONLY unknown. When a lab session establishes how to reach it,
-one `FrameSource` implementation replaces `TestPattern` and the rest is already
-running.
+THREE SOURCES, one shape. `NoCamera` (the default), `TestPattern`
+(CROPWATCHER_CAMERA=test) and `DeckStream` (CROPWATCHER_CAMERA=deck), which
+reads the AI deck's own Wi-Fi image streamer — see deck.py for the wire format
+as measured from the real deck.
 
 NOT OVER THE RADIO. The frames cannot come over CRTP. Usable throughput there is
 a few KB/s and the same link carries the 50 Hz setpoint stream — the Crazyflie
@@ -19,6 +13,7 @@ IS enough to ask whether the deck is fitted, which is a param read and is done
 in flight/checks.py.
 """
 
+from cropwatcher.camera.deck import DeckStream
 from cropwatcher.camera.source import (
     CameraStatus,
     FrameSource,
@@ -26,4 +21,4 @@ from cropwatcher.camera.source import (
     TestPattern,
 )
 
-__all__ = ["CameraStatus", "FrameSource", "NoCamera", "TestPattern"]
+__all__ = ["CameraStatus", "DeckStream", "FrameSource", "NoCamera", "TestPattern"]

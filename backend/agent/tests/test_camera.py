@@ -75,4 +75,5 @@ class TestCameraStatus:
         ).to_dict()
         assert payload == {
             "live": False, "kind": "none", "reason": "no link", "deck_fitted": True,
+            "width": None, "height": None,
         }

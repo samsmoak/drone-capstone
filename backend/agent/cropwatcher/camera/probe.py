@@ -1,9 +1,9 @@
 """Ask the drone what it knows about the AI deck — and whether the GAP8 answers.
 
-THIS IS THE GO / NO-GO for a camera. The transport question is settled: cflib
-ships a CPX CRTPTransport, so frames can come over the radio we already have
-and the deck's Wi-Fi is not required. What is NOT settled is whether anything
-on the deck is listening, and that cannot be reasoned about — only asked.
+Frames do NOT come this way: cflib's CPX CRTPTransport is a stub (every
+method is `pass`), so the deck's Wi-Fi carries the camera — see deck.py. This
+probe answers the questions the radio CAN: which decks are fitted, and whether
+the GAP8 answers at all.
 
 Three questions, in the order that makes the next one worth asking:
 

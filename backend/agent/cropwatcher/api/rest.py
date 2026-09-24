@@ -35,7 +35,8 @@ from starlette.responses import Response
 from cropwatcher import history
 from cropwatcher.api.events import EventHub
 from cropwatcher.api.tokens import HEADER, load_or_create_token
-from cropwatcher.camera import FrameSource, NoCamera, TestPattern
+from cropwatcher.camera import DeckStream, FrameSource, NoCamera, TestPattern
+from cropwatcher.camera.deck import parse_addr
 from cropwatcher.session import Mode, Session, SessionError
 from cropwatcher.sync.cloud import SupabaseCloud
 from cropwatcher.sync.outbox import Outbox
@@ -133,16 +134,25 @@ class Agent:
             cloud=self.cloud, outbox=self.outbox, syncer=self.syncer,
             publish=self.hub.publish,
         )
-        #: Where camera frames come from. NoCamera is the truth on this drone:
-        #: the AI deck is fitted but its Wi-Fi link has never worked, so there
-        #: is nothing producing frames. CROPWATCHER_CAMERA=test serves a
-        #: generated pattern instead, which is how the whole path — the route,
-        #: the window's content policy, the recorder and the upload — is proven
-        #: without one. A real deck source replaces this and nothing else moves.
-        self.camera: FrameSource = (
-            TestPattern() if os.environ.get("CROPWATCHER_CAMERA") == "test"
-            else NoCamera()
-        )
+        self.camera: FrameSource = _camera_from_env()
+
+
+def _camera_from_env() -> FrameSource:
+    """Where camera frames come from, chosen by CROPWATCHER_CAMERA.
+
+    unset   NoCamera — the default, because joining the deck's access point
+            takes this laptop off its normal network, so it is opt-in.
+    deck    the AI deck's Wi-Fi streamer, at CROPWATCHER_DECK_ADDR
+            (default 192.168.4.1:5000). The laptop must be on the deck's Wi-Fi.
+    test    a generated pattern, which proves the route, the content policy
+            and the window without a camera.
+    """
+    choice = os.environ.get("CROPWATCHER_CAMERA", "").strip().lower()
+    if choice == "deck":
+        return DeckStream(parse_addr(os.environ.get("CROPWATCHER_DECK_ADDR")))
+    if choice == "test":
+        return TestPattern()
+    return NoCamera()
 
 
 agent = Agent()
