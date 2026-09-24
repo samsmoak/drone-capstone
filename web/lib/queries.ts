@@ -146,6 +146,69 @@ export const getFlightTelemetry = cache(
   },
 );
 
+/** One recorded camera frame of a session, as the flight page shows it. */
+export type SessionFrame = {
+  seq: number;
+  /** A signed link — the bucket is private. Valid for FRAME_LINK_S. */
+  url: string;
+  /** Seconds since the session started, and where the drone thought it was. */
+  t_s: number | null;
+  x_m: number | null;
+  y_m: number | null;
+  z_m: number | null;
+};
+
+/** How long a signed frame link lives — long enough to page through a session. */
+const FRAME_LINK_S = 60 * 60;
+const FRAMES_BUCKET = "flight-frames";
+
+/**
+ * A session's recorded camera frames, from the private flight-frames bucket.
+ *
+ * The desktop agent writes every frame to disk and uploads two a second, with
+ * a frames.csv index (backend/agent/cropwatcher/camera/recording.py). The index
+ * gives each frame its time and position; a frame whose index row has not
+ * arrived yet still shows, without them. Empty when the session recorded none.
+ */
+export const getSessionFrames = cache(async (sessionId: string): Promise<SessionFrame[]> => {
+  const supabase = await createClient();
+  const bucket = supabase.storage.from(FRAMES_BUCKET);
+  const { data: files, error } = await bucket.list(`${sessionId}/frames`, {
+    limit: 2000,
+    sortBy: { column: "name", order: "asc" },
+  });
+  if (error) failed({ message: error.message }, "camera frames");
+  const names = (files ?? []).map((f) => f.name).filter((n) => /^\d+\.(png|jpg)$/.test(n));
+  if (names.length === 0) return [];
+
+  const { data: signed, error: signError } = await bucket.createSignedUrls(
+    names.map((n) => `${sessionId}/frames/${n}`), FRAME_LINK_S);
+  if (signError) failed({ message: signError.message }, "camera frame links");
+
+  // The index is optional: the frames are the record, the index annotates it.
+  const where = new Map<number, Pick<SessionFrame, "t_s" | "x_m" | "y_m" | "z_m">>();
+  const { data: csv } = await bucket.download(`${sessionId}/frames.csv`);
+  if (csv) {
+    const [header, ...rows] = (await csv.text()).trim().split("\n");
+    const col = header.split(",");
+    const num = (v: string | undefined) => (v === undefined || v === "" ? null : Number(v));
+    for (const row of rows) {
+      const cells = row.split(",");
+      const get = (name: string) => cells[col.indexOf(name)];
+      where.set(Number(get("seq")), {
+        t_s: num(get("t_s")), x_m: num(get("x_m")), y_m: num(get("y_m")), z_m: num(get("z_m")),
+      });
+    }
+  }
+
+  return names.flatMap((name, i) => {
+    const url = signed?.[i]?.signedUrl;
+    if (!url) return [];
+    const seq = Number(name.split(".")[0]);
+    return [{ seq, url, ...(where.get(seq) ?? { t_s: null, x_m: null, y_m: null, z_m: null }) }];
+  });
+});
+
 export const getZones = cache(async (): Promise<ZoneRow[]> => {
   const supabase = await createClient();
   const { data, error } = await supabase.from("zones").select("*").order("label");

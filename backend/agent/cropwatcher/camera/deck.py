@@ -188,6 +188,8 @@ class DeckStream:
         self._latest: tuple[bytes, str, float, int, int] | None = None
         #: When the current address first failed to answer, if it has not since.
         self._failing_since: float | None = None
+        #: When a frame last arrived — or the address was set, before any did.
+        self._last_frame_at = self._clock()
         self._problem: str | None = "Connecting to the AI deck…"
         self._stop = threading.Event()
         #: Cuts a reconnect backoff short — the deck just reported an address.
@@ -248,6 +250,15 @@ class DeckStream:
         with self._lock:
             return self._addr
 
+    def no_frames_for(self) -> float:
+        """Seconds since a frame last arrived (or since this address was set).
+
+        Not the same as unreachable_for: the deck can ACCEPT every connection
+        and send nothing — its ESP32 reported each client disconnected the
+        instant it connected (2026-09-24), and the GAP8 never streamed."""
+        with self._lock:
+            return self._clock() - self._last_frame_at
+
     def unreachable_for(self) -> float:
         """Seconds the current address has been failing to connect; 0 when it
         answered last, or has not been tried."""
@@ -265,6 +276,7 @@ class DeckStream:
             self._addr = (host, self._addr[1])
             self._latest = None
             self._failing_since = None
+            self._last_frame_at = self._clock()
             self._problem = f"Connecting to the AI deck at {host}…"
         log.info("deck camera moving to %s", host)
         self._drop_socket()
@@ -287,6 +299,7 @@ class DeckStream:
         data, ctype = encode(frame)
         with self._lock:
             self._latest = (data, ctype, self._clock(), frame.width, frame.height)
+            self._last_frame_at = self._clock()
             self._problem = None
         for listener in self._listeners:
             try:
