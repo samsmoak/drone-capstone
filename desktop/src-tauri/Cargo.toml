@@ -25,6 +25,19 @@ serde_json = "1"
 tauri-plugin-shell = "2.3.6"
 tauri-plugin-http = "2.6.1"
 uuid = { version = "1.26.1", features = ["v4"] }
+# The drone's Wi-Fi password lives in the OS secure store: Keychain on macOS,
+# Credential Manager on Windows. Never in a file, never in Supabase.
+keyring = { version = "3", features = ["apple-native", "windows-native"] }
+
+# Listing nearby networks for the Drone Wi-Fi picker.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSString", "NSSet", "NSError", "NSEnumerator"] }
+objc2-core-wlan = { version = "0.3", features = ["CWWiFiClient", "CWInterface", "CWNetwork", "CWChannel", "CoreWLANTypes"] }
+objc2-core-location = { version = "0.3", features = ["CLLocationManager", "CLError"] }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_NetworkManagement_WiFi"] }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

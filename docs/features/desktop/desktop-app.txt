@@ -60,6 +60,10 @@ DECISIONS
 - A control token is generated per launch (Uuid::new_v4), passed to the agent in
   its environment and to the window through the `agent_token` command. See
   ../backend/agent-api.txt.
+- Native work the webview cannot do lives in Rust commands: the control token,
+  stop_motors, and Drone Wi-Fi's network scan and secure store (src/wifi/,
+  see drone-wifi.txt). The Wi-Fi password is pushed to the agent FROM RUST, so
+  it is never read back into the window.
 - The Supabase project URL and PUBLISHABLE key are compiled into lib.rs, with
   the environment able to override them. An installed .app is launched by Finder
   with no shell profile, so reading them from the environment alone gives an
@@ -118,3 +122,8 @@ NOT YET VERIFIED
 The CI workflow has never run and no Windows build exists. The bundled app has
 talked to the hosted Supabase project (sign-in verified 2026-09-16) but has not
 yet flown a drone from inside the bundle.
+
+
+RELATED
+
+  shares-data-with  drone-wifi.txt   the secure store and the drone_wifi_* commands

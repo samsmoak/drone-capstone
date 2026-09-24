@@ -26,6 +26,8 @@ ENDPOINTS
   open, no token
     GET  /health                    liveness, for the window and /setup
     GET  /status                    state, mode, drone, sync summary
+    GET  /camera                    camera status (see desktop/camera.txt)
+    GET  /camera/frame              latest frame, or 204 — an <img> sends no header
 
   token required (header X-Agent-Token)
     GET  /session                   the full session state
@@ -42,10 +44,13 @@ ENDPOINTS
     POST /session/emergency-stop    cut the motors
     POST /session/end               land if needed, close, flush
     POST /sync/now                  push whatever is waiting
+    GET  /camera/wifi               the deck's network and join progress; no password
+    PUT  /camera/wifi               {ssid, password} — see desktop/drone-wifi.txt
+    DELETE /camera/wifi             forget it
 
   WS /ws/live
     first message {"type":"auth","token":...}; then out: telemetry (10 Hz),
-    session, sync; in: {"type":"intent","keys":{...}} and heartbeats.
+    session, sync, camera_wifi; in: {"type":"intent","keys":{...}} and heartbeats.
 
 
 DECISIONS
@@ -90,3 +95,8 @@ INVARIANTS
 - --exit-with-parent exits when stdin closes. A one-file PyInstaller binary is
   two processes; killing the child reaches only the bootloader, and the real
   Python process keeps the radio. See ../desktop/desktop-app.txt.
+
+
+RELATED
+
+  consumed-by   ../desktop/drone-wifi.txt   /camera/wifi carries the drone's network

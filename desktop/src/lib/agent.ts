@@ -172,6 +172,7 @@ export const api = {
    *  hover test — that one needs base stations; this works on the barometer. */
   holdManual: (height_m: number) => command<Session>("/session/manual/hold", { height_m }),
   cameraStatus: () => command<CameraStatus>("/camera", undefined, "GET"),
+  cameraWifi: () => command<CameraWifi>("/camera/wifi", undefined, "GET"),
   land: () => command<Session>("/session/land"),
   emergencyStop: () => command<Session>("/session/emergency-stop"),
   endSession: () => command<Session>("/session/end"),
@@ -228,6 +229,15 @@ export type SessionRecord = {
 
 export type SampleRow = { recorded_at: string } & Record<string, number | string | null>;
 
+/** Where the AI deck is in joining the operator's Wi-Fi. No password, ever. */
+export type CameraWifi = {
+  ssid: string | null;
+  phase: "not-set" | "waiting" | "sending" | "joining" | "joined" | "failed";
+  /** The deck's address on that network, once it has one. */
+  ip: string | null;
+  message: string | null;
+};
+
 // ── the live socket ───────────────────────────────────────────────────
 
 export type LiveHandlers = {
@@ -237,6 +247,7 @@ export type LiveHandlers = {
   onSync: (status: SyncStatus) => void;
   onTelemetry: (telemetry: Telemetry) => void;
   onConnection: (connected: boolean) => void;
+  onCameraWifi?: (state: CameraWifi) => void;
 };
 
 export class LiveConnection {
@@ -281,6 +292,7 @@ export class LiveConnection {
       if (message.type === "session") this.handlers.onSession(message as Session);
       else if (message.type === "sync") this.handlers.onSync(message as SyncStatus);
       else if (message.type === "telemetry") this.handlers.onTelemetry(message as Telemetry);
+      else if (message.type === "camera_wifi") this.handlers.onCameraWifi?.(message as CameraWifi);
     });
 
     const dropped = () => {

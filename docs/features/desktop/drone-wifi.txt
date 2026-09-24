@@ -1,0 +1,140 @@
+DRONE WI-FI — the camera joins the operator's network, set over the radio
+=========================================================================
+
+WHAT IT IS
+
+The operator picks a Wi-Fi network in the app; the drone's AI deck joins it;
+the camera streams over the network the laptop is ALREADY on, so the laptop
+never leaves its internet (Supabase keeps syncing) and never switches networks.
+
+Out of the box the deck raises its own access point ("WiFi streaming example")
+and a laptop joined to it is offline. That is the problem this removes.
+
+  1. After sign-in, with nothing saved, the app asks once: Drone Wi-Fi.
+  2. The operator picks a network (this laptop's own scan) and types its
+     password. The password goes to the OS secure store.
+  3. Every time the drone connects, the agent sends the network over the
+     Crazyradio to the drone_wifi firmware app, which hands it to the deck.
+  4. The deck joins, the drone prints its address on its console, the agent
+     reads it and the camera follows the deck there.
+
+Changing network: account menu -> Drone Wi-Fi…, or the Camera tab's button.
+
+
+WHERE IT LIVES
+
+  firmware/drone-wifi/src/drone_wifi.c       the drone side: app channel -> CPX
+  firmware/drone-wifi/build.sh               stock 2025.12.1 + the app, pinned
+  backend/agent/cropwatcher/flash_firmware.py  writes it to the STM32 by radio
+  backend/agent/cropwatcher/camera/wifi.py   protocol, validation, console read
+  backend/agent/cropwatcher/camera/deck.py   DeckStream.set_host — follow the IP
+  backend/agent/cropwatcher/session.py       on_link_ready — apply after checks
+  backend/agent/cropwatcher/api/rest.py      GET/PUT/DELETE /camera/wifi
+  backend/agent/tests/test_camera_wifi.py    against a fake drone_wifi app
+  desktop/src-tauri/src/wifi/                scan (macOS, Windows), secure store
+  desktop/src-tauri/src/lib.rs               wifi_* / drone_wifi_* commands
+  desktop/src-tauri/Info.plist               the Location prompt's wording
+  desktop/src/components/DroneWifiDialog.tsx the dialog
+  desktop/src/lib/droneWifi.ts               the dialog's commands; joinability
+
+
+FLASHING THE DRONE (once per drone; again only after a firmware upgrade)
+
+  firmware/drone-wifi/build.sh
+  cd backend/agent && source .venv/bin/activate
+  python -m cropwatcher.flash_firmware ../../firmware/drone-wifi/build/cf2.bin
+
+build.sh fetches the Arm GNU toolchain 13.3 and crazyflie-firmware into
+~/.cache/cropwatcher and builds there — Kbuild cannot build a path containing a
+space, and this repo lives under "current projects". Only the STM32 is written;
+the bootloader is never touched, so an interrupted flash is recovered by holding
+the power button ~3 s and flashing again.
+
+
+THE PROTOCOL (CRTP app channel, port 13, 30-byte packets)
+
+  0x01 off bytes…   SSID chunk        0x03 ssid_len key_len   apply
+  0x02 off bytes…   key chunk         0x04                     status
+  reply  [0x80|cmd, code, applied]    code 0 OK · 1 BAD · 2 ALREADY · 3 TOO_EARLY
+
+The IP is not on the app channel: stock firmware already prints "WiFi connected
+to ip: a.b.c.d" (src/modules/src/cpx/cpx.c) and the agent reads the console.
+
+
+DECISIONS
+
+- CUSTOM FIRMWARE, BECAUSE NOTHING STOCK CAN DO IT. Stock firmware sends Wi-Fi
+  credentials once at boot from values COMPILED IN (Kconfig), exposes no param
+  for them (checked: no aideck/wifi param group on the drone), and cflib's CPX
+  CRTP transport is a stub. Bitcraze's own open request: crazyflie-firmware
+  issue #1416. The addition is one out-of-tree app on the SAME release the
+  drone ran (firmware.revision0 0x252b4134 = 2025.12.1), so nothing else moves.
+- OVER THE RADIO, NOT THE DECK'S ACCESS POINT. Sending credentials through the
+  deck's own AP would take the laptop offline on every power-on.
+- THE AGENT HOLDS THE NETWORK IN MEMORY; THE DESKTOP OWNS IT. Keychain on macOS,
+  Credential Manager on Windows (keyring crate). Rust pushes it to the agent
+  itself at every (re)connection, so the password crosses the webview once —
+  when typed — and is never read back. Only an agent-accepted network is saved.
+- ASKED AT SIGN-IN, APPLIED AT CONNECTION. The operator asked for the prompt at
+  login; the drone is only reachable once a session opens the radio (the agent
+  is its only owner). So the question is asked at sign-in and the answer sent
+  at every link-up. One network per laptop, not per drone: every drone this
+  laptop flies needs to be on the laptop's network anyway.
+- THE LIST IS THE LAPTOP'S OWN SCAN, filtered by what the deck can join: 2.4 GHz
+  (the ESP32 has no 5 GHz radio) and open or personal security (no enterprise
+  sign-in). A dual-band router is one row; a 5 GHz-only or enterprise network is
+  shown disabled, with the reason. Typing a name is always available.
+- APPLIED ON ITS OWN THREAD after the checks pass. Joining takes seconds; a
+  flight must never wait on it.
+
+
+INVARIANTS
+
+- ONE APPLY PER POWER-ON. The ESP32 creates its station interface every time it
+  is told to connect (aideck-esp-firmware main/wifi.c, wifi_init_sta); a second
+  creation fails an assert and reboots the ESP32. The firmware refuses a second
+  apply (ALREADY_APPLIED); changing network means restarting the drone. The
+  agent keeps the address from the first apply, so a reconnect is not a failure.
+- NOT BEFORE 8 S AFTER BOOT. The GAP8 streamer raises its own access point 2 s
+  after boot (aideck-gap8-examples wifi-img-streamer.c, camera_task). An apply
+  before that is overridden. The firmware answers TOO_EARLY; the agent retries.
+- THE DECK FORGETS AT POWER-OFF. Nothing is saved on the ESP32 ("// Save to
+  NVS?" in its source). Hence re-sending on every connection.
+- NO REPLY TO STATUS = STOCK FIRMWARE. The agent says to flash drone_wifi rather
+  than waiting out a join that cannot happen.
+- A NAME IS 1-32 BYTES, A PASSWORD 8-63 CHARACTERS OR EMPTY. Checked in the
+  agent before anything is sent, and again in the firmware.
+- THE PASSWORD IS NEVER LOGGED OR RETURNED. No route returns it; the firmware
+  zeroes it after applying. The radio is NOT encrypted — the dialog says so and
+  says to use a hotspot or a network set up for the drone.
+- macOS HIDES EVERY NETWORK NAME WITHOUT LOCATION PERMISSION. Measured on this
+  laptop: all 25 nearby SSIDs read "<redacted>". Info.plist carries the prompt's
+  wording; without it macOS never shows the prompt at all.
+- build.sh CHECKS .config, IT DOES NOT TRUST IT. The firmware's merge_config.sh
+  needs GNU readlink/sed and fails QUIETLY on macOS, producing a firmware that
+  flashes fine and never runs the app. Measured: the first build shipped with
+  CONFIG_APP_ENABLE unset.
+
+
+RELATED
+
+  depends-on    camera.txt           the stream this feeds an address to
+  depends-on    ../backend/agent-api.txt  /camera/wifi and its token
+  shares-data-with  desktop-app.txt  the secure store and the Tauri commands
+
+
+LAST VERIFIED  2026-09-24.
+  firmware       built from 2025.12.1 + app; flashed by radio; the drone still
+                 reports revision 0x252b4134, modified 0, deck.bcAI 1; console
+                 "DRONEWIFI: ready"; status -> 84 00 00; empty apply refused
+                 -> 83 01 00 (nothing sent to the deck)
+  agent          ruff, mypy, pytest 567 passed (fake drone: join, stock
+                 firmware, too-early retry, wrong password, silent deck,
+                 already-applied, no password in any state)
+  desktop        pnpm build, cargo clippy, cargo test (merge rules); app built
+                 and launched; Location text present in the bundle; the new
+                 route refuses without the token (401)
+  Windows        scanner COMPILE-CHECKED only (x86_64-pc-windows-msvc); never
+                 run on Windows
+  NOT YET        a real join: needs the operator's 2.4 GHz network and
+                 password. The dialog has not been seen on screen from here.

@@ -179,3 +179,14 @@ class TestParseAddr:
     )
     def test_it_defaults_to_the_deck_s_access_point(self, value, expected):
         assert parse_addr(value) == expected
+
+
+class TestSetHost:
+    def test_the_stream_follows_the_address_the_deck_reported(self):
+        source = DeckStream(start=False)
+        source.pump(reader(image(2, 1, b"\x00\x00")))
+        source.set_host("10.0.0.42")
+        assert source.addr == ("10.0.0.42", 5000)
+        # The old address's frame is not presented as the new one's.
+        assert source.frame() is None
+        assert "10.0.0.42" in (source.status().reason or "")

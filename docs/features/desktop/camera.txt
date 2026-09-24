@@ -86,6 +86,11 @@ THE DESKTOP APP SETS `deck` for its bundled agent (lib.rs, spawn_agent), so
 Camera tab. An app opened from Finder never sees a terminal's variables, so
 leaving it to the environment meant the app's agent always had no camera.
 
+THE DECK CAN JOIN THE OPERATOR'S NETWORK INSTEAD — drone-wifi.txt. Then no
+switch is needed: the agent reads the deck's new address off the drone's console
+and DeckStream.set_host moves the stream there. The access point is what the
+deck falls back to when no network has been set.
+
 For a bare `cropwatcher serve`, `deck` stays opt-in because it needs the laptop JOINED to the deck's access point
 ("WiFi streaming example"), and while it is, the laptop has no internet — the
 agent cannot sync, and a remote assistant driving the laptop loses its link.
@@ -100,6 +105,13 @@ THE DECK'S WIRE FORMAT, MEASURED 2026-09-23 FROM THE REAL DECK
 
   measured       324 x 244, depth 1, format 0 (raw), size 79056 = 324*244
   first capture  24,495 bytes in 8 s, then nothing — stalled mid-frame
+
+THE STALL IS ON THE DECK. Read over the radio from the drone's console
+(2026-09-24): "GAP8: capture=76ms ... (79056 bytes), transfer=1150948 ms" and
+"ESP32: Error occurred during sending: errno 113 / Client disconnected". The
+GAP8 sat blocked in one frame's send for 19 minutes and was released only when
+the laptop left the network. A healthy frame measured transfer=32 ms. The
+cause of the block is not yet known; the drone's console is where to look.
 
 Raw frames are re-encoded to greyscale PNG; JPEG (format 1) passes through. A
 colour sensor would show its Bayer pattern as fine texture — demosaicing is not
@@ -190,3 +202,8 @@ LAST VERIFIED  2026-09-23.
                  deck on localhost: live, 324x244, frames change; stand-in
                  killed -> "Cannot reach the AI deck..." within seconds
   real deck      header read over its Wi-Fi; NO whole frame yet (stalled)
+
+
+RELATED
+
+  consumed-by   drone-wifi.txt   sets the address DeckStream streams from
