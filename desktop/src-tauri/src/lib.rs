@@ -148,6 +148,77 @@ fn agent_data_dir() -> Option<std::path::PathBuf> {
     Some(root.join("CropWatcher"))
 }
 
+/// Append a line to the shell's own log, beside the agent's.
+///
+/// The shell had no log at all: launched from Launchpad, whatever it or macOS
+/// said went nowhere, and on an Intel Mac (2026-09-25) the only report was "the
+/// icon is in the Dock and no window appears". This records what the window
+/// actually was at launch and on every Dock click, so the next report carries
+/// the answer. Capped: one launch's worth of lines, not a history.
+fn shell_log(line: &str) {
+    if let Some(dir) = agent_data_dir().map(|d| d.join("logs")) {
+        if std::fs::create_dir_all(&dir).is_ok() {
+            append_capped(&dir.join("shell.log"), line, SHELL_LOG_MAX_BYTES);
+        }
+    }
+}
+
+const SHELL_LOG_MAX_BYTES: u64 = 256 * 1024;
+
+/// Append one timestamped line; start the file afresh once it passes `max`.
+fn append_capped(path: &std::path::Path, line: &str, max: u64) {
+    use std::io::Write;
+    let too_big = std::fs::metadata(path).map(|m| m.len() > max).unwrap_or(false);
+    let file = if too_big {
+        std::fs::File::create(path)
+    } else {
+        std::fs::OpenOptions::new().create(true).append(true).open(path)
+    };
+    if let Ok(mut file) = file {
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let _ = writeln!(file, "{secs} pid {} {line}", std::process::id());
+    }
+}
+
+/// What the main window is, in numbers: visible, minimised, where, how big,
+/// and on which display. "Where" is the question "no window appears" asks.
+fn describe_window(window: &tauri::WebviewWindow) -> String {
+    let monitor = window.current_monitor().ok().flatten().map_or_else(
+        || "no display".to_string(),
+        |m| format!("display {:?} at {:?} size {:?}", m.name(), m.position(), m.size()),
+    );
+    format!(
+        "visible={:?} minimized={:?} position={:?} size={:?} {monitor}",
+        window.is_visible().ok(),
+        window.is_minimized().ok(),
+        window.outer_position().ok().map(|p| (p.x, p.y)),
+        window.outer_size().ok().map(|s| (s.width, s.height)),
+    )
+}
+
+/// Show the main window, un-minimised and in front.
+///
+/// macOS convention (applicationShouldHandleReopen): clicking a running app's
+/// Dock or Launchpad icon when it has no visible window brings one back.
+/// Tauri reports the click as RunEvent::Reopen and does nothing by default, so
+/// a window that was hidden, minimised or never ordered front stayed that way
+/// however often the icon was clicked. Also called once the app is Ready.
+fn bring_window_forward(app: &tauri::AppHandle, why: &str) {
+    match app.get_webview_window("main") {
+        Some(window) => {
+            shell_log(&format!("{why}: before {}", describe_window(&window)));
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_focus();
+            shell_log(&format!("{why}: after {}", describe_window(&window)));
+        }
+        None => shell_log(&format!("{why}: there is no main window")),
+    }
+}
+
 /// Record why the agent is not running, and tell the window.
 fn agent_stopped(app: &tauri::AppHandle, reason: String) {
     app.state::<AgentExit>().0.lock().unwrap().replace(reason.clone());
@@ -414,11 +485,18 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
-        .run(|app, event| {
+        .run(|app, event| match event {
+            RunEvent::Ready => bring_window_forward(app, "ready"),
+            // The Dock or Launchpad icon clicked while running (macOS only).
+            #[cfg(target_os = "macos")]
+            RunEvent::Reopen { has_visible_windows, .. } => {
+                bring_window_forward(app, &format!("reopen (visible windows: {has_visible_windows})"));
+            }
             // Covers the window close, the Quit menu item and a signal alike.
-            if let RunEvent::ExitRequested { .. } | RunEvent::Exit = event {
+            RunEvent::ExitRequested { .. } | RunEvent::Exit => {
                 stop_agent(&app.state::<AgentProcess>());
             }
+            _ => {}
         });
 }
 
@@ -491,6 +569,24 @@ mod tests {
         let reason = describe_exit(Some(1), Some(&line));
         let quoted = reason.split(" — ").nth(1).unwrap().split(". Quit").next().unwrap();
         assert_eq!(quoted.chars().count(), QUOTE_MAX_CHARS);
+    }
+
+    #[test]
+    fn the_shell_log_appends_and_starts_afresh_past_its_cap() {
+        let dir = std::env::temp_dir().join(format!("cw-shell-log-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("shell.log");
+        let _ = std::fs::remove_file(&path);
+        append_capped(&path, "ready: before visible=Some(false)", 1024);
+        append_capped(&path, "ready: after visible=Some(true)", 1024);
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(text.lines().count(), 2, "{text}");
+        assert!(text.contains("after visible=Some(true)"));
+        std::fs::write(&path, "x".repeat(2048)).unwrap();
+        append_capped(&path, "reopen", 1024);
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(text.lines().count(), 1, "the oversized file was not started afresh");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

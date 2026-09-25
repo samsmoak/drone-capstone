@@ -51,7 +51,7 @@ from cropwatcher.paths import flights_dir
 from cropwatcher.safety.flight_guard import Action as GuardAction
 from cropwatcher.safety.flight_guard import Reason as GuardReason
 from cropwatcher.sync import auth_store
-from cropwatcher.sync.cloud import AuthError, Cloud, Operator
+from cropwatcher.sync.cloud import AuthError, Cloud, CloudTimeout, Operator
 from cropwatcher.sync.outbox import Kind, Outbox, new_id
 from cropwatcher.sync.syncer import Syncer
 from cropwatcher.telemetry import trace as flight_trace
@@ -314,6 +314,12 @@ class Session:
         token, _email = stored
         try:
             operator: Operator = restore(token)
+        except CloudTimeout as e:
+            # Supabase did not answer: the saved sign-in may be perfectly good,
+            # so it is kept for the next launch. Deleting it here would sign
+            # the operator out because of a slow network.
+            self._set(message=str(e), restoring=False)
+            return None
         except AuthError as e:
             auth_store.clear()
             self._set(message=str(e), restoring=False)
