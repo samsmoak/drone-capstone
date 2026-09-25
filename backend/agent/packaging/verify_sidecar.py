@@ -7,6 +7,9 @@ cannot act on. Every check here exists because its absence is invisible until
 hardware or a user is in the room:
 
   runs            the bootloader and the Python runtime are intact
+  imports         every library the agent loads only on demand loads here
+                  (`selftest`) — an Intel build once started and served while
+                  the Supabase client could not be imported at all
   usb             libusb loaded and enumerated the bus; cflib's native
                   dependency is the one PyInstaller cannot see by itself
   health          uvicorn serves HTTP
@@ -113,6 +116,25 @@ def _check_runs(binary: Path, env: dict[str, str]) -> str:
     if result.returncode != 0:
         raise VerificationError(f"`--help` exited {result.returncode}:\n{result.stderr}")
     return f"the frozen runtime starts ({time.monotonic() - started:.1f}s)"
+
+
+def _check_imports(binary: Path, env: dict[str, str]) -> str:
+    """`selftest` imports what the agent only loads when a feature is used."""
+    try:
+        result = subprocess.run(
+            [str(binary), "selftest"], capture_output=True, text=True,
+            timeout=STARTUP_TIMEOUT_S, env=env,
+        )
+    except subprocess.TimeoutExpired:
+        raise VerificationError(
+            f"`selftest` did not finish within {STARTUP_TIMEOUT_S:.0f}s"
+        ) from None
+    if result.returncode != 0:
+        raise VerificationError(
+            "a library the agent needs will not load inside the frozen binary:\n"
+            f"{result.stdout}{result.stderr}"
+        )
+    return (result.stdout.strip().splitlines() or ["imports ok"])[-1].strip()
 
 
 def _check_usb(binary: Path, env: dict[str, str]) -> str:
@@ -314,6 +336,7 @@ def verify(binary: Path) -> None:
         env = _probe_env(str(Path(work) / "data"))
         checks = [
             _check_runs(binary, env),
+            _check_imports(binary, env),
             _check_usb(binary, env),
             *_check_server(binary, env, Path(work)),
         ]

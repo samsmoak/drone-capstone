@@ -116,6 +116,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="land, cut motors and exit when stdin closes. The desktop app passes "
              "this so quitting it cannot strand an agent holding the radio.",
     )
+
+    sub.add_parser("selftest", help="load every library the agent only loads on demand")
     return parser
 
 
@@ -418,6 +420,61 @@ def cmd_lawnmower(args: argparse.Namespace) -> int:
     return 0
 
 
+#: Everything the agent imports only when a feature is first used — inside a
+#: function, so starting the agent proves nothing about them. A frozen Intel
+#: agent (2026-09-25) started and served, while `supabase` could not be
+#: imported at all: cryptography, which it needs, had been compiled against
+#: Homebrew's OpenSSL, and the frozen bundle kept Python's older libssl under
+#: the same file name. Sign-in was the first thing to import it.
+SELFTEST_MODULES = (
+    "supabase",                                         # sign-in, sync
+    "cryptography.hazmat.bindings._rust",               # its native half, via PyJWT
+    "numpy",                                            # geometry
+    "cflib.localization.lighthouse_geo_estimation_manager",   # geometry (scipy)
+    "cflib.localization",                               # geometry, config writer
+    "cflib.crazyflie.mem.lighthouse_memory",            # geometry
+    "cflib.bootloader",                                 # firmware flashing
+    "cflib.cpx",                                        # the AI deck's camera
+    "libusb_package",                                   # the radio, and radio.py
+    "usb.backend.libusb1",
+    "uvicorn",                                          # serve
+)
+
+
+def cmd_selftest(_args: argparse.Namespace) -> int:
+    """Import every lazily loaded library; report each one that will not load.
+
+    packaging/verify_sidecar.py runs this against the frozen binary on every
+    build, so a library that is broken inside the bundle fails the build on
+    that machine instead of failing a feature on an operator's desk.
+    """
+    import importlib
+
+    failed = []
+    for name in SELFTEST_MODULES:
+        try:
+            importlib.import_module(name)
+        except Exception as e:                 # ImportError, OSError from dlopen, …
+            failed.append(name)
+            print(f"  FAILED  {name}: {type(e).__name__}: {e}")
+    # PyJWT treats a missing cryptography as "no asymmetric algorithms" rather
+    # than an error, so an excluded or unimportable one would pass the loop.
+    try:
+        from jwt.algorithms import has_crypto
+    except Exception as e:
+        failed.append("jwt.algorithms")
+        print(f"  FAILED  jwt.algorithms: {type(e).__name__}: {e}")
+    else:
+        if not has_crypto:
+            failed.append("jwt crypto")
+            print("  FAILED  PyJWT loaded without cryptography")
+    if failed:
+        print(f"\n  {len(failed)} of {len(SELFTEST_MODULES) + 1} did not load")
+        return 1
+    print(f"  imports ok ({len(SELFTEST_MODULES) + 1} checked)")
+    return 0
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     from cropwatcher.api.rest import serve as run_server
 
@@ -472,6 +529,7 @@ def main(argv: list[str] | None = None) -> int:
         "mission": cmd_mission,
         "lawnmower": cmd_lawnmower,
         "serve": cmd_serve,
+        "selftest": cmd_selftest,
     }
     try:
         return handlers[args.command](args)
