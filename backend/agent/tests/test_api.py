@@ -212,6 +212,42 @@ class TestCors:
         assert response.headers.get("access-control-allow-private-network") == "true"
 
 
+class TestUnexpectedErrors:
+    """An agent bug must reach the window as words, not as silence.
+
+    Starlette's own 500 carries no CORS headers, so the window's browser threw
+    the reply away and showed "The flight agent is running but did not answer
+    /auth/sign-in" — for an Intel Mac whose sign-in was failing inside the
+    agent the whole time (2026-09-25)."""
+
+    def _sign_in(self, client, monkeypatch, error):
+        def fail(email, password):
+            raise error
+        monkeypatch.setattr(rest.agent.session._cloud, "sign_in", fail)
+        return client.post(
+            "/auth/sign-in", json={"email": "ada@example.com", "password": "pw"},
+            headers={"origin": rest.DESKTOP_ORIGINS[0], HEADER: rest.agent.token},
+        )
+
+    def test_the_window_can_read_it(self, client, monkeypatch):
+        response = self._sign_in(client, monkeypatch, ImportError("no h2"))
+        assert response.status_code == 500
+        assert response.headers["access-control-allow-origin"] == rest.DESKTOP_ORIGINS[0]
+        detail = response.json()["detail"]
+        assert "unexpected error (ImportError)" in detail and "log" in detail
+
+    def test_it_is_written_to_the_log_in_full(self, client, monkeypatch, caplog):
+        with caplog.at_level("ERROR", logger=rest.log.name):
+            self._sign_in(client, monkeypatch, RuntimeError("boom"))
+        [record] = [r for r in caplog.records if "unexpected error" in r.getMessage()]
+        assert "POST /auth/sign-in" in record.getMessage()
+        assert record.exc_info is not None                  # the traceback, not just a line
+
+    def test_the_message_never_carries_the_raw_error_text(self, client, monkeypatch):
+        response = self._sign_in(client, monkeypatch, RuntimeError("password=hunter2"))
+        assert "hunter2" not in response.text
+
+
 class TestCorsRefusalLog:
     """A refused preflight reaches the page as "could not reach the agent" —
     the same words as an agent that is not running. The log tells them apart."""

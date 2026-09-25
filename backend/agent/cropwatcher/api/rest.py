@@ -34,7 +34,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query, WebSocket, W
 from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 from cropwatcher import history
 from cropwatcher.api.events import EventHub
@@ -364,7 +364,19 @@ class LocalCORS(BaseHTTPMiddleware):
                 return Response(status_code=400, content="Disallowed CORS method")
             return Response(status_code=200, headers=self._headers(origin, methods, preflight=True))
 
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception as e:
+            # An unexpected error used to escape past this middleware to
+            # Starlette's own 500 — which carries no CORS headers, so the
+            # window's browser discarded it and the operator read only "The
+            # flight agent is running but did not answer" (Intel Mac, sign-in,
+            # 2026-09-25). Answer here instead: readable, and in the log.
+            log.exception("unexpected error in %s %s", request.method, request.url.path)
+            response = JSONResponse(status_code=500, content={"detail": (
+                f"The flight agent hit an unexpected error ({type(e).__name__}). "
+                "Its log has the details."
+            )})
         if known:
             response.headers.update(self._headers(origin, methods, preflight=False))
         return response

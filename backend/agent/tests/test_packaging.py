@@ -78,6 +78,7 @@ def _fake_agent(tmp_path: Path, serve: str) -> Path:
         #!/bin/sh
         case "$1" in
           --help) exit 0;;
+          selftest) echo "  imports ok (12 checked)"; exit 0;;
           check) echo "Looking for devices"; echo "no drone found"; exit 1;;
           serve) {serve};;
         esac
@@ -135,3 +136,38 @@ class TestVerifyFailures:
         while verify_sidecar._port_open(self.port) and time.monotonic() < deadline:
             time.sleep(0.1)
         assert not verify_sidecar._port_open(self.port)
+
+
+@posix_only
+class TestImportsCheck:
+    def test_a_library_that_will_not_load_fails_the_build(self, tmp_path, monkeypatch):
+        """What an Intel build hid: it started and served, and could not import
+        the Supabase client. Now the build says so."""
+        monkeypatch.setattr(verify_sidecar, "PROBE_PORT", _free_port())
+        agent = tmp_path / "fake-agent"
+        agent.write_text(textwrap.dedent("""\
+            #!/bin/sh
+            case "$1" in
+              --help) exit 0;;
+              selftest) echo "  FAILED  supabase: Symbol not found: _SSL_get0_group_name"
+                        exit 1;;
+            esac
+            """))
+        agent.chmod(agent.stat().st_mode | stat.S_IXUSR)
+        with pytest.raises(verify_sidecar.VerificationError, match="_SSL_get0_group_name"):
+            verify_sidecar.verify(agent)
+
+
+class TestSelftest:
+    def test_every_lazily_loaded_library_loads_here(self, capsys):
+        from cropwatcher.cli import cmd_selftest
+
+        assert cmd_selftest(None) == 0                     # type: ignore[arg-type]
+        assert "imports ok" in capsys.readouterr().out
+
+    def test_a_broken_one_is_named(self, monkeypatch, capsys):
+        from cropwatcher import cli
+
+        monkeypatch.setattr(cli, "SELFTEST_MODULES", ("no_such_module_anywhere",))
+        assert cli.cmd_selftest(None) == 1                 # type: ignore[arg-type]
+        assert "no_such_module_anywhere" in capsys.readouterr().out

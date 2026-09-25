@@ -11,6 +11,15 @@ dependencies = [
     "pydantic>=2.9",
     "supabase>=2.9",
     "python-dotenv>=1.0",
+    # Intel Macs only. cryptography 49+ publishes macOS wheels for Apple silicon
+    # alone, so on Intel pip COMPILES it, against Homebrew's OpenSSL — and the
+    # frozen agent then carries two libssl.3.dylib under one name, keeps
+    # Python's older one, and cannot import cryptography, so it cannot sign in
+    # ("Symbol not found: _SSL_get0_group_name", 2026-09-25). 48.x is the last
+    # line with a prebuilt Intel wheel, which carries its own OpenSSL. Arrives
+    # through supabase-auth → pyjwt[crypto]. Lift when upstream ships Intel
+    # wheels again or Intel Macs stop mattering.
+    "cryptography>=46,<49; sys_platform == 'darwin' and platform_machine == 'x86_64'",
 ]
 
 [project.optional-dependencies]

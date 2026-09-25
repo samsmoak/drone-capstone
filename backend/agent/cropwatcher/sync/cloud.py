@@ -205,8 +205,24 @@ class SupabaseCloud:
     def sign_in(self, email: str, password: str) -> Operator:
         return self._within_deadline(lambda: self._sign_in(email, password))
 
+    def _client_for_sign_in(self) -> Any:
+        """The Supabase client, or a plain AuthError saying why there is none.
+
+        Building it loads the library and constructs its HTTP clients. That ran
+        outside every handler, so a failure here escaped as an unexpected error
+        instead of words the operator could act on.
+        """
+        try:
+            return self._connect()
+        except Exception as e:
+            log.exception("the Supabase client could not be created")
+            raise AuthError(
+                f"Sign-in could not start on this computer: the Supabase client failed to "
+                f"load ({type(e).__name__}). The agent's log has the details."
+            ) from None
+
     def _sign_in(self, email: str, password: str) -> Operator:
-        client = self._connect()
+        client = self._client_for_sign_in()
         try:
             response = client.auth.sign_in_with_password({"email": email, "password": password})
         except Exception as e:
@@ -232,7 +248,7 @@ class SupabaseCloud:
         return self._within_deadline(lambda: self._restore(refresh_token))
 
     def _restore(self, refresh_token: str) -> Operator:
-        client = self._connect()
+        client = self._client_for_sign_in()
         try:
             response = client.auth.refresh_session(refresh_token)
         except Exception as e:

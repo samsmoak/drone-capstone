@@ -290,7 +290,12 @@ if (!venv.usable) {
 step("upgrade pip", VENV_PYTHON,
   ["-m", "pip", "install", "--quiet", "--disable-pip-version-check", "--upgrade", "pip"]);
 step(`install the flight agent${DEV ? " with its dev tools" : ""}`, VENV_PYTHON,
+  // --only-binary: cryptography must come as a prebuilt wheel, which carries
+  // its own OpenSSL. Compiled here, it links to Homebrew's and the frozen
+  // agent cannot import it — an Intel Mac could not sign in (2026-09-25).
+  // With this, a missing wheel fails the install instead of the sign-in.
   ["-m", "pip", "install", "--quiet", "--disable-pip-version-check",
+   "--only-binary=cryptography",
    "-e", `.[${DEV ? "packaging,dev" : "packaging"}]`],
   { cwd: AGENT });
 step("install the desktop app's packages", "pnpm", ["install", "--frozen-lockfile"],

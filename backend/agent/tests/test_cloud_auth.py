@@ -145,6 +145,28 @@ class TestProfileRead:
         assert auth.signed_out == [{"scope": "local"}] and cloud.operator is None
 
 
+class TestClientCreation:
+    def test_a_client_that_will_not_build_is_a_plain_auth_error(self, monkeypatch, caplog):
+        """It used to escape as an unexpected error, which the window could not
+        read. Now it says what failed, and the log keeps the traceback."""
+        cloud = SupabaseCloud("https://x.supabase.co", "key", deadline_s=DEADLINE)
+
+        def boom():
+            raise ImportError("Using http2=True, but the 'h2' package is not installed")
+        monkeypatch.setattr(cloud, "_connect", boom)
+        with pytest.raises(AuthError, match="could not start on this computer") as error:
+            cloud.sign_in("ada@example.com", "pw")
+        assert "ImportError" in str(error.value) and not isinstance(error.value, CloudTimeout)
+        assert any("could not be created" in r.getMessage() and r.exc_info
+                   for r in caplog.records)
+
+    def test_restore_says_the_same(self, monkeypatch):
+        cloud = SupabaseCloud("https://x.supabase.co", "key", deadline_s=DEADLINE)
+        monkeypatch.setattr(cloud, "_connect", lambda: (_ for _ in ()).throw(OSError("x")))
+        with pytest.raises(AuthError, match="could not start"):
+            cloud.restore("refresh-abc")
+
+
 class TestWarm:
     def test_not_configured_loads_nothing(self, monkeypatch):
         called = []
