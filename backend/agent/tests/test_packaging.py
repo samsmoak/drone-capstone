@@ -43,6 +43,19 @@ class TestCpuMatch:
             build_sidecar.check_cpu("aarch64-apple-darwin")
 
 
+class TestNoDroneWording:
+    def test_every_reason_the_agent_gives_is_recognised(self):
+        """`check` reports these when no drone is reachable. If the verifier
+        missed one, a radio-less build would claim "a drone answered" — which
+        every CI run did until 2026-09-25."""
+        from cropwatcher.flight import radio
+
+        reasons = [radio.NOT_FOUND, radio.NOT_ANSWERING, radio.NO_DRIVER,
+                   radio.WRONG_DRIVER, "The Crazyradio could not be opened."]
+        for reason in reasons:
+            assert any(marker in reason for marker in verify_sidecar.NO_DRONE), reason
+
+
 class TestProbeIsolation:
     def test_the_probe_never_touches_the_operators_data_radio_or_camera(self, monkeypatch):
         monkeypatch.setenv("CROPWATCHER_CAMERA", "deck")

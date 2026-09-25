@@ -5,15 +5,17 @@
 //   node scripts/setup.mjs --check    check only; change nothing
 //   node scripts/setup.mjs --dev      also the agent's test and lint tools
 //
+// To go all the way to an installed app, run scripts/install.mjs instead — it
+// runs this first.
+//
 // One script for every OS, in Node, because Node is the one thing every
 // machine building the desktop app already runs (pnpm needs it). A bash
 // script and a PowerShell twin would drift; this cannot.
 //
 // Every check runs before anything is installed, and every problem is listed
 // at once with its fix, so a new machine is fixed in one pass rather than one
-// error per run. CI runs this same file on every OS it builds for
-// (.github/workflows/desktop-release.yml), so it is proven wherever an
-// installer is.
+// error per run. CI runs it, through scripts/install.mjs, on an Apple-silicon
+// Mac, an Intel Mac and Windows (.github/workflows/desktop-install.yml).
 //
 // It checks, rather than assumes, three things that have each broken a build:
 //   - which Python actually runs. Windows' `python` can be a Microsoft Store
@@ -294,14 +296,18 @@ step(`install the flight agent${DEV ? " with its dev tools" : ""}`, VENV_PYTHON,
 step("install the desktop app's packages", "pnpm", ["install", "--frozen-lockfile"],
   { cwd: DESKTOP, shell: WINDOWS });
 
+// scripts/install.mjs runs this first and says what comes next itself.
+if (process.env.CROPWATCHER_SETUP_QUIET_NEXT) process.exit(0);
+
 console.log(`
-Ready. To build the app and open it:
+Ready. To build the app and install it (into Applications, or for this user
+on Windows):
 
-  cd desktop
-  pnpm app
+  node scripts/install.mjs
 
+To build and open it without installing: cd desktop, then pnpm app.
+To work on the window with live reload: cd desktop, then pnpm tauri dev.
 The first build takes several minutes (Rust compiles everything once).
-To work on the window with live reload instead: pnpm tauri dev
 `);
 
 if (WINDOWS) {

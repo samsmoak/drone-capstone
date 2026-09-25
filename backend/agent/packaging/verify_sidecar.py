@@ -64,8 +64,17 @@ EXIT_TIMEOUT_S = 30.0
 
 # What cflib prints once libusb is loaded and it has walked the bus.
 USB_REACHED = "Looking for devices"
-# The correct answer when no radio is plugged in.
-NO_DRONE = "no drone found"
+# The correct answers when no drone can be reached. `check` goes through
+# DroneLink, whose reasons come from cropwatcher/flight/radio.py; "no drone
+# found" is the older core.connect wording. Matching only that one made every
+# radio-less build — every CI run — report "a radio answered".
+NO_DRONE = (
+    "no drone found",
+    "No Crazyradio found",           # radio.NOT_FOUND
+    "No drone answering",            # radio.NOT_ANSWERING
+    "Crazyradio found, but",         # radio.NO_DRIVER / WRONG_DRIVER (Windows)
+    "could not be opened",           # radio.unopenable_reason()
+)
 # What a missing native dependency looks like instead.
 BUNDLING_FAILURE = ("No backend available", "ModuleNotFoundError", "ImportError")
 # How much of the agent's output to show when it fails.
@@ -130,9 +139,10 @@ def _check_usb(binary: Path, env: dict[str, str]) -> str:
             f"Expected {USB_REACHED!r} in:\n{output}"
         )
 
-    if NO_DRONE in output:
-        return "libusb enumerated the bus; no radio attached (expected)"
-    return "libusb enumerated the bus; a radio answered"
+    for marker in NO_DRONE:
+        if marker in output:
+            return f"libusb enumerated the bus; no drone reachable (expected: {marker!r})"
+    return "libusb enumerated the bus; a drone answered"
 
 
 def _port_open(port: int) -> bool:

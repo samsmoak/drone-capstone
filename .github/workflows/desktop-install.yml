@@ -1,0 +1,90 @@
+# Prove the terminal install works on every kind of machine it is meant for.
+#
+# CropWatcher is installed from a terminal, not downloaded (decided
+# 2026-09-25):
+#
+#   git clone https://github.com/samsmoak/drone-capstone.git
+#   cd drone-capstone
+#   node scripts/install.mjs
+#
+# So that exact command is what runs here, on the three kinds of machine
+# people have: an Apple-silicon Mac, an Intel Mac and a Windows PC. It checks
+# the toolchain, installs the agent and the app's packages, freezes and
+# verifies the agent (verify_sidecar.py: USB, HTTP, WebSocket, and that
+# closing stdin stops it), builds the app and installs it. A green run means a
+# person on that machine gets an installed app from those three lines.
+#
+# Nothing is uploaded, so this needs no secrets. (It used to publish
+# installers to a Supabase bucket; the Windows one had outgrown the 50 MB
+# upload limit since numpy and scipy joined the agent on 2026-09-22.)
+#
+# Each OS and CPU runs on its own runner because nothing here cross-compiles:
+# PyInstaller freezes for the CPU of the Python running it. macos-15-intel is
+# GitHub's Intel image for public repositories (checked 2026-09-25).
+#
+# The path filter keeps a docs-only or web-only change from spending three
+# runners on an install it cannot affect. Add to it, never remove it.
+
+name: desktop-install
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "desktop/**"
+      - "backend/agent/**"
+      - "scripts/**"
+      - ".github/workflows/desktop-install.yml"
+  pull_request:
+    paths:
+      - "desktop/**"
+      - "backend/agent/**"
+      - "scripts/**"
+      - ".github/workflows/desktop-install.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch or PR makes the older run moot.
+concurrency:
+  group: desktop-install-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  install:
+    name: install (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, macos-15-intel, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        id: python
+        with:
+          python-version: "3.11"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: desktop/pnpm-lock.yaml
+
+      - name: node scripts/install.mjs
+        env:
+          # The Python setup-python installed, not whichever one PATH finds first.
+          CROPWATCHER_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: node scripts/install.mjs

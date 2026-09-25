@@ -374,11 +374,10 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
         linkHardware: false,
       },
       {
-        title: "No download for your Mac? Build it yourself",
+        title: "Install from a terminal — Mac",
         paragraphs: [
-          "Only needed if the macOS download above is missing or does not suit your Mac. "
-          + "Your own computer builds the app for itself, in about ten minutes, on Apple silicon "
-          + "or Intel alike.",
+          "Your Mac builds the app for itself and installs it into Applications, in about ten "
+          + "minutes — right for Apple silicon and Intel alike. Install these first:",
         ],
         needs: [
           "Xcode Command Line Tools — run xcode-select --install",
@@ -391,22 +390,21 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
         commands: [
           "git clone https://github.com/samsmoak/drone-capstone.git",
           "cd drone-capstone",
-          "node scripts/setup.mjs",
-          "cd desktop",
-          "pnpm app",
+          "node scripts/install.mjs",
         ],
         bullets: [],
-        note: "The setup command checks everything in the list first and says exactly what is "
-              + "missing, then installs the rest. pnpm app builds the app and opens it; the "
-              + "installer (.dmg) lands in desktop/src-tauri/target/release/bundle/dmg.",
+        note: "The install command checks everything in the list first and says exactly what "
+              + "is missing, then builds CropWatcher and puts it in Applications. To update "
+              + "later: git pull, then run it again.",
         showDownloads: false,
         linkHardware: false,
       },
       {
-        title: "No download for your PC? Build it yourself",
+        title: "Install from a terminal — Windows",
         paragraphs: [
-          "Only needed if the Windows download above is missing or does not suit your PC. "
-          + "Any terminal works: PowerShell, Command Prompt or Git Bash.",
+          "Your PC builds the app for itself and installs it for your user, in about ten "
+          + "minutes. Any terminal works: PowerShell, Command Prompt or Git Bash. Install these "
+          + "first:",
         ],
         needs: [
           "Git for Windows",
@@ -420,15 +418,13 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
         commands: [
           "git clone https://github.com/samsmoak/drone-capstone.git",
           "cd drone-capstone",
-          "node scripts/setup.mjs",
-          "cd desktop",
-          "pnpm app",
+          "node scripts/install.mjs",
         ],
         bullets: [],
-        note: "The setup command checks everything in the list first and says exactly what is "
-              + "missing, then installs the rest. pnpm app builds the app and opens it; the "
-              + "installer (.exe) lands in desktop/src-tauri/target/release/bundle/nsis. Then "
-              + "install the radio's driver — see the next step.",
+        note: "The install command checks everything in the list first and says exactly what "
+              + "is missing, then builds CropWatcher and installs it — it appears in the Start "
+              + "menu. To update later: git pull, then run it again. Then install the radio's "
+              + "driver — see the next step.",
         showDownloads: false,
         linkHardware: false,
       },

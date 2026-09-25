@@ -44,7 +44,10 @@ The agent is the only process that touches the radio. Nothing else — ever.
 ## Commands
 
 ```bash
-# first time on any machine, macOS or Windows (checks the toolchain, then installs)
+# install the desktop app from a terminal — how everyone installs it, macOS or Windows
+node scripts/install.mjs                     # setup, build, install; --open, --no-install
+
+# set up a machine for development (the first step of install.mjs, on its own)
 node scripts/setup.mjs --dev                 # --check: only check; drop --dev: no test tools
 
 # agent
@@ -82,8 +85,10 @@ run.
 1. **Rotate the Supabase secret key and the database password.** Both were
    shared outside the dashboard during development, and the secret key bypasses
    every RLS policy. Nothing in this repo reads either, so rotating breaks
-   nothing here — but update the `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
-   GitHub Actions secrets or desktop releases stop publishing.
+   nothing here. CI no longer uses them either (it stopped publishing
+   installers on 2026-09-25), so also **delete the `SUPABASE_URL` and
+   `SUPABASE_SERVICE_ROLE_KEY` GitHub Actions secrets**: a key that bypasses
+   RLS should not sit where nothing needs it.
 2. **Register the Google redirect URL** — see
    `docs/features/supabase/accounts-and-roles.txt`.
 3. **Delete the two junk Vercel projects, `agent` and `agent-kpqe`.** They are

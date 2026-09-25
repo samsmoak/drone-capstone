@@ -21,9 +21,10 @@ WHAT THE DIAGNOSIS FOUND, from the code and CI:
   2. When the agent dies, the Rust shell emits the reason as `agent-log`
      events. Nothing in desktop/src listens for them, so the reason is thrown
      away and the operator is told to restart.
-  3. The Windows installer has never been built. Every release run fails on
-     windows-latest with "'..' is not recognized": `pnpm sidecar` runs a bash
-     script, and pnpm on Windows runs scripts through cmd.exe.
+  3. Every release run since 2026-09-22 fails on windows-latest, lately with
+     "'..' is not recognized": `pnpm sidecar` runs a bash script, and pnpm on
+     Windows runs scripts through cmd.exe. (This first read "has never been
+     built" — wrong; it built until 2026-09-21. See the end of this file.)
   4. On Windows, cflib opens the Crazyradio through libusb0 only
      (cflib/drivers/crazyradio.py, _find_devices), which needs the
      libusb-win32 driver installed once with Zadig. The site says "No driver to
@@ -234,3 +235,32 @@ UNVERIFIABLE FROM THIS MAC, reported as such, never as done:
   - The app talking to a radio on Windows or on the Intel Mac.
   - The actual cause of the Intel sign-in failure. The rebuilt app will now
     say it.
+
+
+WHAT CHANGED DURING IMPLEMENTATION (2026-09-25) — recorded, not rewritten
+─────────────────────────────────────────────────────────────────────────
+PHASE 8 (PR 2: the Intel .dmg and download buttons) WAS DROPPED. While building
+it, the page showed a Windows installer from 2026-09-21, which disproved this
+plan's claim that no Windows installer had ever been built. It had: Windows
+broke on 2026-09-22, first because the installer (65.3 MB, after numpy and
+scipy joined the agent) exceeded Supabase's 50 MB upload limit, then because
+of the bash script. Asked where installers should go, the owner answered that
+nothing is uploaded — people install from a terminal. So instead:
+
+  - scripts/install.mjs: setup, build (only the bundle this OS installs from),
+    install (Applications / per-user on Windows), refusing to replace a
+    running copy. One command after a clone.
+  - The release workflow became desktop-install.yml: install.mjs on
+    macos-latest, macos-15-intel and windows-latest; no uploads, no secrets.
+  - The setup guide's build steps became "Install from a terminal".
+  - verify_sidecar recognised only "no drone found", so every radio-less
+    build had reported "a radio answered". It now recognises every reason
+    radio.py gives, with a test tying the two together.
+
+Stage 48's minimum-macOS measurement found that a locally built app bundles
+the build machine's libraries (macOS 26.0 minimum on this Mac). Harmless now
+that every machine builds for itself; recorded in releases.txt.
+
+LEFT FOR THE OWNER: the website's download step and /apps still offer the
+stale bucket files; the unused SUPABASE_* GitHub secrets should be deleted;
+/admin → Reset to original for the Setup page.
