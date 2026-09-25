@@ -168,6 +168,13 @@ blanking the site — but sign-in will not work until they are set.
 - Commit as **`samsmoaky@gmail.com`**.
 - **No Claude co-author or footer lines.** Author is the user only.
 - Branch: `main`. Web deploys via Vercel on push.
+- **`main` is owner-only** (repository ruleset "main: owner only", id 23996708,
+  set 2026-09-25): nobody can delete it, force-push it, or push or merge into
+  it — except the repository admin, i.e. the owner. Collaborators work on
+  branches and open pull requests; anyone can clone and pull. Even the owner's
+  merges must use the bypass explicitly: `gh pr merge <n> --squash --admin`,
+  or the "bypass rules" checkbox on GitHub. A plain merge being refused is the
+  rule working, not a failure.
 - **After every build that passes its gates: commit, push and merge** — on a
   short-lived branch, merged into `main` through a pull request.
 - Project skills `/preflight` and `/adapt` live in `.claude/commands/` — see
