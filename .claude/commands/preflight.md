@@ -219,6 +219,7 @@ Check this before calling the work shipped:
   the download page what the operating system will warn and what to click, or
   the download is useless to whoever is not expecting it.
 
-In this repository that is `.github/workflows/desktop-release.yml` publishing to
-the `installers` bucket, and `/apps` reading it — see
-`docs/features/development/releases.txt`.
+In this repository there is no published download any more (2026-09-25): the
+app is installed from a terminal with `node scripts/install.mjs`, and
+`.github/workflows/desktop-install.yml` runs that command on an Apple-silicon
+Mac, an Intel Mac and Windows — see `docs/features/development/releases.txt`.

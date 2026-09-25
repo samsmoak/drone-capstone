@@ -3,12 +3,13 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "packageManager": "pnpm@10.30.0",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "sidecar": "../backend/agent/packaging/build_sidecar.sh",
+    "sidecar": "node scripts/sidecar.mjs",
     "build:all": "pnpm sidecar && pnpm build",
-    "app": "pnpm tauri build && open src-tauri/target/release/bundle/macos/CropWatcher.app",
+    "app": "pnpm tauri build && node scripts/open-app.mjs",
     "preview": "vite preview",
     "tauri": "tauri"
   },

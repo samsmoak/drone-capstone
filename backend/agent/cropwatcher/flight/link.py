@@ -40,6 +40,10 @@ from cropwatcher.flight.checks import (
 )
 from cropwatcher.flight.control import GuardedFlight, PhaseEvent
 from cropwatcher.flight.manual import Fix, ManualController
+
+# Kept under link's own names: tests patch `link._nothing_found_reason`.
+from cropwatcher.flight.radio import nothing_found_reason as _nothing_found_reason
+from cropwatcher.flight.radio import unopenable_reason
 from cropwatcher.flight.tuning import BAROMETER_PROFILE, BASE_PROFILE, Applied, FlightTuning
 from cropwatcher.paths import cflib_cache_dir
 from cropwatcher.safety.flight_guard import (
@@ -84,39 +88,6 @@ def _default_scan() -> list[str]:
     cflib.crtp.init_drivers()
     return [found[0] for found in cflib.crtp.scan_interfaces()]
 
-
-
-#: The Crazyradio's USB vendor id (Bitcraze). Used only to tell "the radio is
-#: not here" apart from "the radio is here and someone else has it".
-CRAZYRADIO_VENDOR_ID = 0x1915
-
-
-def _nothing_found_reason() -> str:
-    """Why the scan found nothing, checked rather than assumed.
-
-    An empty scan has three very different causes and they need three
-    different actions. Blaming the battery for all of them sent an operator to
-    re-plug a working dongle four times on 2026-09-22, while the real cause
-    was the desktop app holding the radio — a USB device can only be claimed
-    by one process, and the second one is simply told "no such device".
-    """
-    try:
-        import usb.core  # type: ignore[import-untyped]
-        present = any(usb.core.find(find_all=True, idVendor=CRAZYRADIO_VENDOR_ID))
-    except Exception:
-        present = False                    # cannot tell; fall back to the old advice
-
-    # SHORT, because with standby (sessions-and-modes.txt) this line is on
-    # screen whenever the drone is off. BOTH causes, and NOT the battery first:
-    # blaming the battery sent an operator to re-plug a working dongle four
-    # times while another program held it (2026-09-22). The long form, though,
-    # blamed "another program" for a drone that was simply off (2026-09-24).
-    if present:
-        return (
-            "No drone answering. Switch it on — or quit any other program "
-            "using the Crazyradio."
-        )
-    return "No Crazyradio found. Plug the dongle in, directly rather than through a hub."
 
 
 def _fix(snapshot: Snapshot) -> Fix | None:
@@ -197,10 +168,8 @@ class DroneLink:
         try:
             found = self._scan()
         except Exception as e:
-            raise LinkError(
-                "The Crazyradio could not be opened. Is it plugged in, and is no other "
-                "program using it?"
-            ) from e
+            # On Windows this is also what a dongle with no driver looks like.
+            raise LinkError(unopenable_reason()) from e
         if not found:
             raise LinkError(_nothing_found_reason())
 

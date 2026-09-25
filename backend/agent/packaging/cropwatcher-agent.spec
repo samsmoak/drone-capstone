@@ -15,7 +15,7 @@ listed explicitly instead of being discovered when a drone will not connect.
    is asserted in `packaging/verify_sidecar.py` rather than assumed, because a
    missing dylib is invisible until a radio is plugged in.
 
-Built via `packaging/build_sidecar.sh`, which names the output with the target
+Built via `packaging/build_sidecar.py`, which names the output with the target
 triple Tauri expects of an `externalBin`.
 """
 

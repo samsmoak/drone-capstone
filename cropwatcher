@@ -11,7 +11,7 @@
 # active in the wrong shell, or lost by opening a new tab.
 #
 # Nothing else in this repo needs the venv activated — `pnpm tauri build`
-# reaches into it by path too (backend/agent/packaging/build_sidecar.sh).
+# reaches into it by path too (desktop/scripts/sidecar.mjs).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

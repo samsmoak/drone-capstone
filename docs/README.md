@@ -75,6 +75,8 @@ are the only thing that survives a session.
 
 [plans/2026-09-22-desktop-ui-redesign.txt](plans/2026-09-22-desktop-ui-redesign.txt) — the 100-stage plan for the desktop sidebar shell, the two-column Control page and its three console tabs. What shipped is in [features/desktop/pages-and-windows.txt](features/desktop/pages-and-windows.txt).
 
+[plans/2026-09-25-any-machine-desktop.txt](plans/2026-09-25-any-machine-desktop.txt) — the 50-stage plan that made the desktop app build, run and explain its failures on any Mac or Windows PC: one setup command, one build path, the Windows radio driver, the Intel installer.
+
 ## Platform — not written yet
 
 `platform/architecture.md`, `platform/flight-safety.md` (superseded by the

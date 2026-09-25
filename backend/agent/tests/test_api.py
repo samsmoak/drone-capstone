@@ -212,6 +212,48 @@ class TestCors:
         assert response.headers.get("access-control-allow-private-network") == "true"
 
 
+class TestCorsRefusalLog:
+    """A refused preflight reaches the page as "could not reach the agent" —
+    the same words as an agent that is not running. The log tells them apart."""
+
+    @pytest.fixture(autouse=True)
+    def _fresh(self, monkeypatch):
+        monkeypatch.setattr(rest, "_cors_refusals_logged", set())
+
+    def _preflight(self, client, origin, method="POST", path="/auth/sign-in"):
+        return client.options(path, headers={
+            "origin": origin, "access-control-request-method": method,
+        })
+
+    def test_a_refused_origin_is_logged_with_what_it_asked_for(self, client, caplog):
+        with caplog.at_level("WARNING", logger=rest.log.name):
+            assert self._preflight(client, "null").status_code == 400
+        [line] = [r.getMessage() for r in caplog.records if "cross-origin" in r.getMessage()]
+        assert "'null'" in line and "POST /auth/sign-in" in line and "origin not allowed" in line
+
+    def test_a_refused_method_is_logged(self, client, caplog):
+        with caplog.at_level("WARNING", logger=rest.log.name):
+            self._preflight(client, "https://drone-capstone.vercel.app")
+        assert any("method not allowed" in r.getMessage() for r in caplog.records)
+
+    def test_a_retrying_page_is_logged_once(self, client, caplog):
+        with caplog.at_level("WARNING", logger=rest.log.name):
+            for _ in range(5):
+                self._preflight(client, "https://evil.example")
+        lines = [r for r in caplog.records if "cross-origin" in r.getMessage()]
+        assert len(lines) == 1
+
+    def test_invented_origins_cannot_grow_it_without_bound(self, client):
+        for i in range(rest.CORS_REFUSALS_LOGGED_MAX + 20):
+            self._preflight(client, f"https://{i}.example")
+        assert len(rest._cors_refusals_logged) == rest.CORS_REFUSALS_LOGGED_MAX
+
+    def test_an_allowed_preflight_is_not_logged(self, client, caplog):
+        with caplog.at_level("WARNING", logger=rest.log.name):
+            self._preflight(client, rest.DESKTOP_ORIGINS[0])
+        assert not any("cross-origin" in r.getMessage() for r in caplog.records)
+
+
 class TestQuietHealthLog:
     def test_health_is_logged_a_few_times_then_not(self):
         import logging

@@ -366,50 +366,48 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
         paragraphs: ["One download. It contains everything — you will not need Python, a terminal, or any commands."],
         bullets: [],
         note:
-          "On a Mac, the first launch will say the app is from an unidentified developer. That " +
-          "is expected. Right-click the app and choose Open, then confirm. You only do this once.",
+          "On a Mac, the first launch says macOS cannot check the app for malicious software. That " +
+          "is expected: the app is not signed. Click Done, open System Settings → Privacy & " +
+          "Security, and click Open Anyway next to CropWatcher. (On macOS 14 or earlier, " +
+          "Control-click the app and choose Open instead.) You only do this once.",
         showDownloads: true,
         linkHardware: false,
       },
       {
-        title: "No download for your Mac? Build it yourself",
+        title: "Install from a terminal — Mac",
         paragraphs: [
-          "Only needed if the macOS download above is missing or does not suit your Mac. "
-          + "Your own computer builds the app for itself, in about ten minutes.",
+          "Your Mac builds the app for itself and installs it into Applications, in about ten "
+          + "minutes — right for Apple silicon and Intel alike. Install these first:",
         ],
         needs: [
           "Xcode Command Line Tools — run xcode-select --install",
           "Rust — from rustup.rs",
           "Node.js 24",
           "pnpm 10 — run npm install -g pnpm@10",
-          "Python 3.11 or newer",
+          "Python 3.11 or newer — the python.org installer suits any Mac",
           "Git",
         ],
         commands: [
           "git clone https://github.com/samsmoak/drone-capstone.git",
-          "cd drone-capstone/backend/agent",
-          "python3 -m venv .venv",
-          ".venv/bin/python -m pip install -e . pyinstaller",
-          "bash packaging/build_sidecar.sh",
-          "cd ../../desktop",
-          "pnpm install",
-          "pnpm tauri dev",
+          "cd drone-capstone",
+          "node scripts/install.mjs",
         ],
         bullets: [],
-        note: "The last command opens the app straight away. To make an installer instead, run "
-              + "pnpm tauri build — the .dmg lands in desktop/src-tauri/target/release/bundle/dmg.",
+        note: "The install command checks everything in the list first and says exactly what "
+              + "is missing, then builds CropWatcher and puts it in Applications. To update "
+              + "later: git pull, then run it again.",
         showDownloads: false,
         linkHardware: false,
       },
       {
-        title: "No download for your PC? Build it yourself",
+        title: "Install from a terminal — Windows",
         paragraphs: [
-          "Only needed if the Windows download above is missing or does not suit your PC. "
-          + "Run every command in Git Bash, which comes with Git for Windows — the build script "
-          + "is a bash script, and Git Bash is the shell our own Windows build uses.",
+          "Your PC builds the app for itself and installs it for your user, in about ten "
+          + "minutes. Any terminal works: PowerShell, Command Prompt or Git Bash. Install these "
+          + "first:",
         ],
         needs: [
-          "Git for Windows — includes Git Bash",
+          "Git for Windows",
           "Microsoft C++ Build Tools, with \"Desktop development with C++\" ticked",
           "Microsoft Edge WebView2 — already installed on Windows 10 (1803 or later) and 11",
           "Rust — from rustup.rs",
@@ -419,17 +417,14 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
         ],
         commands: [
           "git clone https://github.com/samsmoak/drone-capstone.git",
-          "cd drone-capstone/backend/agent",
-          "python -m venv .venv",
-          ".venv/Scripts/python.exe -m pip install -e . pyinstaller",
-          "bash packaging/build_sidecar.sh",
-          "cd ../../desktop",
-          "pnpm install",
-          "pnpm tauri dev",
+          "cd drone-capstone",
+          "node scripts/install.mjs",
         ],
         bullets: [],
-        note: "The last command opens the app straight away. To make an installer instead, run "
-              + "pnpm tauri build — the .exe lands in desktop/src-tauri/target/release/bundle/nsis.",
+        note: "The install command checks everything in the list first and says exactly what "
+              + "is missing, then builds CropWatcher and installs it — it appears in the Start "
+              + "menu. To update later: git pull, then run it again. Then install the radio's "
+              + "driver — see the next step.",
         showDownloads: false,
         linkHardware: false,
       },
@@ -437,10 +432,19 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
         title: "Plug in the radio",
         paragraphs: [
           "The Crazyradio goes into your laptop, not the drone. It is a USB-A plug, so most " +
-          "modern Macs need a USB-C adapter or a hub. No driver to install — the app finds it.",
+          "modern Macs need a USB-C adapter or a hub. On a Mac there is no driver to install — " +
+          "the app finds it.",
+          "On Windows the radio needs a driver, installed once. The app tells you when it is " +
+          "missing:",
         ],
-        bullets: [],
-        note: "",
+        bullets: [
+          "Download Zadig from zadig.akeo.ie and run it",
+          "Choose Options → List All Devices, then pick Crazyradio PA USB Dongle",
+          "Pick libusb-win32 as the driver and click Install Driver (Replace Driver if it " +
+            "already has another one)",
+        ],
+        note: "It must be libusb-win32, not WinUSB — the flight library talks to the radio " +
+              "through libusb-win32 on Windows.",
         showDownloads: false,
         linkHardware: false,
       },
@@ -503,6 +507,23 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
           "Confirm the dongle is plugged in — with an adapter if your laptop is USB-C only. Then " +
           "confirm the battery is connected and the drone is switched on. LEDs lighting up does " +
           "not mean the battery is charged.",
+      },
+      {
+        symptom: "Windows: the app says the Crazyradio has no driver, or the wrong one",
+        cause: "Windows does not install the radio's driver by itself.",
+        fix:
+          "Run Zadig, choose Options → List All Devices, pick Crazyradio PA USB Dongle, choose " +
+          "libusb-win32 and click Install Driver — or Replace Driver if it shows WinUSB. Then " +
+          "unplug the dongle and plug it back in.",
+      },
+      {
+        symptom: "The app says it is not connected to the flight agent",
+        cause: "The part of the app that talks to the radio stopped, or another copy holds its port.",
+        fix:
+          "The message says which. Quit every copy of CropWatcher (and any agent started from a " +
+          "terminal), then reopen it. If it stops again, its log is in ~/Library/Application " +
+          "Support/CropWatcher/logs on a Mac and %APPDATA%\\CropWatcher\\logs on Windows — send " +
+          "us agent.log.",
       },
       {
         symptom: "It lifts a few centimetres and will not go higher",

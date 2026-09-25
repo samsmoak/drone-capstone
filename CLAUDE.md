@@ -44,6 +44,12 @@ The agent is the only process that touches the radio. Nothing else — ever.
 ## Commands
 
 ```bash
+# install the desktop app from a terminal — how everyone installs it, macOS or Windows
+node scripts/install.mjs                     # setup, build, install; --open, --no-install
+
+# set up a machine for development (the first step of install.mjs, on its own)
+node scripts/setup.mjs --dev                 # --check: only check; drop --dev: no test tools
+
 # agent
 cd backend/agent && source .venv/bin/activate
 ruff check . && mypy cropwatcher && pytest   # gates
@@ -55,6 +61,8 @@ pnpm typecheck && pnpm lint && pnpm build    # gates
 
 # desktop
 cd desktop && pnpm build                     # gate (tsc, then vite)
+cd desktop/src-tauri && cargo test           # the shell's own tests
+cd desktop && pnpm app                       # freeze + verify the agent, build, open
 ```
 
 `pnpm typecheck` runs `next typegen` first, and must. A bare `tsc` fails on a
@@ -77,8 +85,10 @@ run.
 1. **Rotate the Supabase secret key and the database password.** Both were
    shared outside the dashboard during development, and the secret key bypasses
    every RLS policy. Nothing in this repo reads either, so rotating breaks
-   nothing here — but update the `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
-   GitHub Actions secrets or desktop releases stop publishing.
+   nothing here. CI no longer uses them either (it stopped publishing
+   installers on 2026-09-25), so also **delete the `SUPABASE_URL` and
+   `SUPABASE_SERVICE_ROLE_KEY` GitHub Actions secrets**: a key that bypasses
+   RLS should not sit where nothing needs it.
 2. **Register the Google redirect URL** — see
    `docs/features/supabase/accounts-and-roles.txt`.
 3. **Delete the two junk Vercel projects, `agent` and `agent-kpqe`.** They are
@@ -117,8 +127,9 @@ These cost real debugging time to discover. Each is a rule, with the failure it 
    re-run. Supabase upload is best-effort and retried, never in the critical path.
 
 7. **Docker cannot reach USB on macOS.** Docker Desktop runs a Linux VM with no USB
-   passthrough, so the agent runs bare in a venv. A `Dockerfile` is for CI and Linux
-   teammates only.
+   passthrough, so the agent runs bare in a venv — and so does the build: one
+   `node scripts/setup.mjs` for every OS, never a container. (There is no
+   Dockerfile in the repo; if one is ever added, it is for CI and Linux only.)
 
 ## Conventions
 

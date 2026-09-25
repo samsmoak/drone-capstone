@@ -310,6 +310,24 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="CropWatcher Agent", version="0.2.0", lifespan=lifespan)
 
 
+#: Refusals already logged, as (origin, reason). A browser refused a preflight
+#: shows its page only "could not reach the agent" — the same words as an agent
+#: that is not running — so the agent's log is the one place the difference is
+#: written down. Once per origin and reason: a page retrying in a loop must not
+#: bury the log, and the cap bounds what a page inventing origins can add.
+_cors_refusals_logged: set[tuple[str, str]] = set()
+CORS_REFUSALS_LOGGED_MAX = 50
+
+
+def _log_cors_refusal(origin: str, reason: str, method: str, path: str) -> None:
+    key = (origin, reason)
+    if key in _cors_refusals_logged or len(_cors_refusals_logged) >= CORS_REFUSALS_LOGGED_MAX:
+        return
+    _cors_refusals_logged.add(key)
+    log.warning("refused a cross-origin %s %s from origin %r: %s (logged once per origin)",
+                method, path, origin or "(none)", reason)
+
+
 class LocalCORS(BaseHTTPMiddleware):
     """CORS, with the method list decided per origin.
 
@@ -334,10 +352,12 @@ class LocalCORS(BaseHTTPMiddleware):
         methods = "GET, POST, OPTIONS" if desktop else "GET, OPTIONS"
 
         if request.method == "OPTIONS" and "access-control-request-method" in request.headers:
-            if not known:
-                return Response(status_code=400, content="Disallowed CORS origin")
             requested = request.headers["access-control-request-method"].upper()
+            if not known:
+                _log_cors_refusal(origin, "origin not allowed", requested, request.url.path)
+                return Response(status_code=400, content="Disallowed CORS origin")
             if requested not in methods:
+                _log_cors_refusal(origin, "method not allowed", requested, request.url.path)
                 return Response(status_code=400, content="Disallowed CORS method")
             return Response(status_code=200, headers=self._headers(origin, methods, preflight=True))
 
