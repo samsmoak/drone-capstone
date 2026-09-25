@@ -29,6 +29,8 @@ import cflib.crtp
 from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 
+from cropwatcher.flight.radio import nothing_found_reason
+
 log = logging.getLogger(__name__)
 
 DEFAULT_URI = "radio://0/80/2M"
@@ -63,7 +65,8 @@ def connect(uri: str = DEFAULT_URI) -> Iterator[SyncCrazyflie]:
     """Open a link, guaranteeing motors are stopped on every exit path."""
     cflib.crtp.init_drivers()
     if not cflib.crtp.scan_interfaces():
-        raise FlightError("no drone found — radio plugged in, battery connected, powered on?")
+        # "no drone found" is what packaging/verify_sidecar.py matches on.
+        raise FlightError(f"no drone found — {nothing_found_reason()}")
 
     with SyncCrazyflie(uri, cf=Crazyflie(rw_cache="./.cache")) as scf:
         try:

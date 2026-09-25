@@ -95,21 +95,15 @@ class TestOpen:
             link.open()
         assert not link.is_open
 
-    def test_a_radio_someone_else_holds_says_so(self):
+    def test_a_radio_someone_else_holds_says_so(self, monkeypatch):
         """A USB radio can be claimed by one process. The second one is told
         "no such device", which read as a flat battery and sent an operator to
         re-plug a working dongle four times on 2026-09-22 while the desktop
         app quietly held it."""
-        import sys
-        from types import SimpleNamespace
-        fake = SimpleNamespace(core=SimpleNamespace(find=lambda **kw: [object()]))
-        sys.modules["usb"] = fake
-        sys.modules["usb.core"] = fake.core
-        try:
-            reason = link_module._nothing_found_reason()
-        finally:
-            sys.modules.pop("usb", None)
-            sys.modules.pop("usb.core", None)
+        from cropwatcher.flight import radio
+        monkeypatch.setattr(radio, "radio_seen", lambda: True)
+        monkeypatch.setattr(radio, "windows_driver_problem", lambda: None)
+        reason = link_module._nothing_found_reason()
         assert "other program" in reason and "quit" in reason.lower()
         assert "switch it on" in reason.lower()
         assert "battery" not in reason.lower()[:120]   # not the first thing blamed

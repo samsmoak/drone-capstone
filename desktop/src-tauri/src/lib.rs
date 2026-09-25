@@ -57,6 +57,103 @@ fn configured(name: &str, fallback: &str) -> String {
 #[derive(Default)]
 struct AgentProcess(Mutex<Option<CommandChild>>);
 
+/// Why the agent is not running, once it has stopped or failed to start.
+///
+/// Kept in state as well as emitted, because an agent that dies in its first
+/// second dies before the window has registered a listener — and that is the
+/// case the operator most needs explained. Before this, the reason was emitted
+/// as `agent-log` lines nothing listened to, and the window could only say
+/// "Could not reach the flight agent. Restart CropWatcher."
+#[derive(Default)]
+struct AgentExit(Mutex<Option<String>>);
+
+/// Does this line of agent output report a failure? Python's log levels, a
+/// PyInstaller bootloader error (`[PYI-1234:ERROR]`), or the last line of a
+/// traceback (`ModuleNotFoundError: …`).
+fn looks_like_error(line: &str) -> bool {
+    if line.contains("ERROR") || line.contains("CRITICAL") {
+        return true;
+    }
+    match line.trim_start().split_once(": ") {
+        Some((head, _)) => {
+            !head.is_empty()
+                && !head.contains(char::is_whitespace)
+                && (head.ends_with("Error") || head.ends_with("Exception"))
+        }
+        None => false,
+    }
+}
+
+/// The longest agent line quoted back to the operator.
+const QUOTE_MAX_CHARS: usize = 300;
+
+/// One sentence saying why the agent stopped, for the window to show.
+fn describe_exit(code: Option<i32>, last_error: Option<&str>) -> String {
+    if let Some(line) = last_error {
+        let lower = line.to_lowercase();
+        // uvicorn's bind failure: errno 48/98 on macOS/Linux, WSA 10048 on
+        // Windows. The window would otherwise be talking to whatever holds it.
+        if lower.contains("address already in use")
+            || lower.contains("10048")
+            || lower.contains("only one usage of each socket address")
+        {
+            return format!(
+                "Port {AGENT_PORT} is already in use — another copy of CropWatcher, or an agent \
+                 started from a terminal, is running. Quit it, then reopen CropWatcher."
+            );
+        }
+    }
+    let how = code.map_or_else(|| "on a signal".to_string(), |c| format!("with exit code {c}"));
+    let quoted = last_error.map(|line| {
+        let cut: String = line.trim().chars().take(QUOTE_MAX_CHARS).collect();
+        format!(" — {}", cut.trim_end_matches('.'))
+    });
+    format!(
+        "The flight agent stopped {how}{}. Quit and reopen CropWatcher; if it stops again, \
+         its log has the details.",
+        quoted.unwrap_or_default()
+    )
+}
+
+/// Where the agent writes its log. Mirrors `data_dir()` in the agent's
+/// `paths.py` — the same override, the same folder per OS — so the path the
+/// window shows is the file the agent actually wrote.
+fn agent_data_dir() -> Option<std::path::PathBuf> {
+    use std::path::PathBuf;
+    let home = || {
+        std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(PathBuf::from)
+    };
+    if let Ok(value) = std::env::var("CROPWATCHER_DATA_DIR") {
+        let value = value.trim();
+        if !value.is_empty() {
+            return match value.strip_prefix('~') {
+                Some(rest) => home().map(|h| h.join(rest.trim_start_matches(['/', '\\']))),
+                None => Some(PathBuf::from(value)),
+            };
+        }
+    }
+    let root = if cfg!(target_os = "macos") {
+        home()?.join("Library").join("Application Support")
+    } else if cfg!(windows) {
+        match std::env::var_os("APPDATA") {
+            Some(appdata) => PathBuf::from(appdata),
+            None => home()?.join("AppData").join("Roaming"),
+        }
+    } else {
+        match std::env::var_os("XDG_DATA_HOME") {
+            Some(xdg) => PathBuf::from(xdg),
+            None => home()?.join(".local").join("share"),
+        }
+    };
+    Some(root.join("CropWatcher"))
+}
+
+/// Record why the agent is not running, and tell the window.
+fn agent_stopped(app: &tauri::AppHandle, reason: String) {
+    app.state::<AgentExit>().0.lock().unwrap().replace(reason.clone());
+    let _ = app.emit("agent-exit", reason);
+}
+
 /// The local control token.
 ///
 /// Binding the agent to localhost keeps other machines out but not other
@@ -87,6 +184,18 @@ fn agent_port() -> u16 {
 #[tauri::command]
 fn agent_token(token: State<'_, ControlToken>) -> String {
     token.0.clone()
+}
+
+/// Why the agent is not running; None while it runs.
+#[tauri::command]
+fn agent_exit(exit: State<'_, AgentExit>) -> Option<String> {
+    exit.0.lock().unwrap().clone()
+}
+
+/// The agent's log file, for the window to point at when something failed.
+#[tauri::command]
+fn agent_log_path() -> Option<String> {
+    agent_data_dir().map(|dir| dir.join("logs").join("agent.log").display().to_string())
 }
 
 /// Stop the motors, whatever is happening.
@@ -222,34 +331,31 @@ fn spawn_agent(app: &tauri::AppHandle) -> Result<(), String> {
     // first thing anyone asks for, and a bundled app has no terminal.
     let handle = app.clone();
     tauri::async_runtime::spawn(async move {
+        // The newest line that reads as a failure: when the agent dies, it is
+        // usually the reason (a traceback's last line, uvicorn's bind error).
+        let mut last_error: Option<String> = None;
         while let Some(event) = rx.recv().await {
             let line = match event {
                 CommandEvent::Stdout(bytes) => Some(("stdout", bytes)),
                 CommandEvent::Stderr(bytes) => Some(("stderr", bytes)),
                 CommandEvent::Terminated(status) => {
+                    let reason = describe_exit(status.code, last_error.as_deref());
                     let _ = handle.emit(
                         "agent-log",
-                        LogLine {
-                            stream: "stderr",
-                            line: format!(
-                                "the agent exited ({}). Manual control is unavailable until the app is restarted.",
-                                status.code.map_or_else(|| "signal".into(), |c| c.to_string())
-                            ),
-                        },
+                        LogLine { stream: "stderr", line: reason.clone() },
                     );
+                    agent_stopped(&handle, reason);
                     None
                 }
                 _ => None,
             };
 
             if let Some((stream, bytes)) = line {
-                let _ = handle.emit(
-                    "agent-log",
-                    LogLine {
-                        stream,
-                        line: String::from_utf8_lossy(&bytes).trim_end().to_string(),
-                    },
-                );
+                let text = String::from_utf8_lossy(&bytes).trim_end().to_string();
+                if looks_like_error(&text) {
+                    last_error = Some(text.clone());
+                }
+                let _ = handle.emit("agent-log", LogLine { stream, line: text });
             }
         }
     });
@@ -271,10 +377,13 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_http::init())
         .manage(AgentProcess::default())
+        .manage(AgentExit::default())
         .manage(ControlToken(new_token()))
         .invoke_handler(tauri::generate_handler![
             agent_port,
             agent_token,
+            agent_exit,
+            agent_log_path,
             stop_motors,
             wifi_scan,
             wifi_request_permission,
@@ -287,13 +396,18 @@ pub fn run() {
             if let Err(message) = spawn_agent(app.handle()) {
                 // A window that silently has no agent behind it is worse than
                 // one that says so: the operator would read an empty status
-                // panel as "idle" rather than "not running".
+                // panel as "idle" rather than "not running". This runs before
+                // the window exists, so it is kept in state for it to ask.
                 let _ = app.handle().emit(
                     "agent-log",
                     LogLine {
                         stream: "stderr",
-                        line: message,
+                        line: message.clone(),
                     },
+                );
+                agent_stopped(
+                    app.handle(),
+                    format!("The flight agent could not start ({message}). Reinstall CropWatcher."),
                 );
             }
             Ok(())
@@ -306,4 +420,86 @@ pub fn run() {
                 stop_agent(&app.state::<AgentProcess>());
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn error_lines_are_recognised() {
+        assert!(looks_like_error("2026-09-25 10:00:00 ERROR cropwatcher: boom"));
+        assert!(looks_like_error("ERROR:    [Errno 48] error while attempting to bind"));
+        assert!(looks_like_error("2026-09-25 CRITICAL cropwatcher: unhandled exception"));
+        assert!(looks_like_error("[PYI-4242:ERROR] Failed to execute script 'sidecar'"));
+        assert!(looks_like_error("ModuleNotFoundError: No module named 'usb'"));
+        assert!(looks_like_error("  OSError: [Errno 30] Read-only file system"));
+    }
+
+    #[test]
+    fn ordinary_lines_are_not_errors() {
+        assert!(!looks_like_error("2026-09-25 INFO cropwatcher: agent API on 127.0.0.1:8765"));
+        assert!(!looks_like_error("INFO:     Uvicorn running on http://127.0.0.1:8765"));
+        assert!(!looks_like_error("Looking for devices...."));
+        assert!(!looks_like_error("the camera: no picture yet"));
+        assert!(!looks_like_error(""));
+    }
+
+    #[test]
+    fn a_port_taken_on_macos_or_linux_names_the_port() {
+        let line = "ERROR:    [Errno 48] error while attempting to bind on address \
+                    ('127.0.0.1', 8765): address already in use";
+        let reason = describe_exit(Some(1), Some(line));
+        assert!(reason.contains("Port 8765 is already in use"), "{reason}");
+        assert!(reason.contains("another copy of CropWatcher"));
+    }
+
+    #[test]
+    fn a_port_taken_on_windows_names_the_port() {
+        let line = "ERROR:    [Errno 10048] error while attempting to bind on address \
+                    ('127.0.0.1', 8765): only one usage of each socket address \
+                    (protocol/network address/port) is normally permitted";
+        assert!(describe_exit(Some(1), Some(line)).contains("Port 8765 is already in use"));
+    }
+
+    #[test]
+    fn a_crash_quotes_its_last_error_and_code() {
+        let reason = describe_exit(Some(1), Some("ModuleNotFoundError: No module named 'usb'"));
+        assert_eq!(
+            reason,
+            "The flight agent stopped with exit code 1 — ModuleNotFoundError: No module \
+             named 'usb'. Quit and reopen CropWatcher; if it stops again, its log has the details."
+        );
+    }
+
+    #[test]
+    fn a_quoted_line_ending_in_a_full_stop_does_not_get_two() {
+        let reason = describe_exit(Some(1), Some("OSError: disk full."));
+        assert!(reason.contains("disk full. Quit"), "{reason}");
+    }
+
+    #[test]
+    fn an_exit_with_no_error_line_still_says_how() {
+        assert!(describe_exit(Some(0), None)
+            .starts_with("The flight agent stopped with exit code 0. Quit and reopen"));
+        assert!(describe_exit(None, None).starts_with("The flight agent stopped on a signal. "));
+    }
+
+    #[test]
+    fn a_long_line_is_cut_on_a_character_boundary() {
+        let line = format!("ValueError: {}", "é".repeat(1000));
+        let reason = describe_exit(Some(1), Some(&line));
+        let quoted = reason.split(" — ").nth(1).unwrap().split(". Quit").next().unwrap();
+        assert_eq!(quoted.chars().count(), QUOTE_MAX_CHARS);
+    }
+
+    #[test]
+    fn the_log_path_honours_the_override_like_the_agent() {
+        // One test owns this variable; nothing else in the suite reads it.
+        std::env::set_var("CROPWATCHER_DATA_DIR", "/tmp/cw-data");
+        assert_eq!(agent_data_dir(), Some(std::path::PathBuf::from("/tmp/cw-data")));
+        std::env::remove_var("CROPWATCHER_DATA_DIR");
+        let default = agent_data_dir().expect("a home directory");
+        assert!(default.ends_with("CropWatcher"), "{}", default.display());
+    }
 }

@@ -28,8 +28,10 @@ import {
   AgentError,
   EMPTY_INTENT,
   LiveConnection,
+  agentLogPath,
   api,
   connectToShell,
+  watchAgentExit,
   type Intent,
   type Mode,
   type CameraWifi,
@@ -108,6 +110,10 @@ export default function App() {
 
   const live = useRef<LiveConnection | null>(null);
   const startedAt = useRef<number | null>(null);
+  // Why the agent is not running, from the shell (lib.rs), and where its log
+  // is. Before these, a dead agent was only ever "Restart CropWatcher".
+  const [agentExit, setAgentExit] = useState<string | null>(null);
+  const [logPath, setLogPath] = useState<string | null>(null);
 
   // What the window did and what the agent said back. Observation only — see
   // lib/commandLog.ts. It is not the agent's audit trail.
@@ -143,6 +149,16 @@ export default function App() {
       live.current = connection;
     })();
     return () => connection?.close();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    watchAgentExit(setAgentExit)
+      .then((stop) => { if (cancelled) stop(); else unlisten = stop; })
+      .catch(() => undefined);
+    agentLogPath().then((path) => { if (!cancelled) setLogPath(path); }).catch(() => undefined);
+    return () => { cancelled = true; unlisten?.(); };
   }, []);
 
   // The agent holds the drone's network in memory only, so it is re-sent every
@@ -340,7 +356,13 @@ export default function App() {
         {(!connected || error) && (
           <div className="grid gap-2 border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2">
             {!connected && (
-              <Message tone="critical" text="Not connected to the flight agent on this computer." />
+              <Message
+                tone="critical"
+                text={agentExit
+                  ? `Not connected to the flight agent on this computer. ${agentExit}` +
+                    (logPath ? ` Log: ${logPath}` : "")
+                  : "Not connected to the flight agent on this computer."}
+              />
             )}
             {error && <Message tone="critical" text={error} />}
           </div>

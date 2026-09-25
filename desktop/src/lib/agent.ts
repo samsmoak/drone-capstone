@@ -12,6 +12,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 export type Mode = "auto" | "manual";
 
@@ -125,15 +126,74 @@ export const HEARTBEAT_MS = 100;
 
 let port = 8765;
 let token = "";
+/** Why the agent is not running, from the shell; null while it runs. */
+let agentExit: string | null = null;
 
 export async function connectToShell(): Promise<void> {
   port = await invoke<number>("agent_port");
   token = await invoke<string>("agent_token");
 }
 
+/**
+ * Follow the shell's account of the agent stopping (lib.rs, `agent-exit`).
+ *
+ * Listens first, then asks once: an agent that died before this window
+ * existed — the failure most in need of explaining — is only in the shell's
+ * state, and asking before listening could miss one that dies in between.
+ */
+export async function watchAgentExit(onExit: (reason: string | null) => void): Promise<UnlistenFn> {
+  const unlisten = await listen<string>("agent-exit", (event) => {
+    agentExit = event.payload;
+    onExit(agentExit);
+  });
+  agentExit = (await invoke<string | null>("agent_exit")) ?? agentExit;
+  onExit(agentExit);
+  return unlisten;
+}
+
+/** Where the agent writes its log on this computer. */
+export const agentLogPath = () => invoke<string | null>("agent_log_path");
+
 const base = () => `http://127.0.0.1:${port}`;
 
 export class AgentError extends Error {}
+
+const HEALTH_PROBE_MS = 2000;
+
+/**
+ * Is anything answering on the agent's port at all?
+ *
+ * `no-cors`, so the answer does not depend on CORS: any reply resolves (as an
+ * opaque response) and only a refused connection rejects. That is the one
+ * distinction a failed command needs — "the agent is not running" and "the
+ * agent is running but this request did not get through" were both reported
+ * as "Could not reach the flight agent. Restart CropWatcher."
+ */
+async function agentAnswers(): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), HEALTH_PROBE_MS);
+  try {
+    await fetch(`${base()}/health`, { mode: "no-cors", cache: "no-store", signal: controller.signal });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+/** What to tell the operator when a command's request never got an answer. */
+async function unreachable(path: string): Promise<string> {
+  if (await agentAnswers()) {
+    return `The flight agent is running but did not answer ${path.split("?")[0]}. ` +
+      "Try again — if it keeps failing, the agent's log says why.";
+  }
+  // When the shell knows why, the "Not connected" banner shows it; repeating
+  // it here would put the same paragraph on screen twice.
+  return agentExit
+    ? "The flight agent on this computer is not running."
+    : "The flight agent on this computer is not running. Quit and reopen CropWatcher.";
+}
 
 /**
  * The URL an <img> loads camera frames from.
@@ -154,9 +214,7 @@ async function command<T>(path: string, body?: unknown, method: "GET" | "POST" =
       body: method === "POST" ? JSON.stringify(body ?? {}) : undefined,
     });
   } catch {
-    throw new AgentError(
-      "Could not reach the flight agent on this computer. Restart CropWatcher.",
-    );
+    throw new AgentError(await unreachable(path));
   }
   const payload = await response.json().catch(() => null);
   if (!response.ok) {

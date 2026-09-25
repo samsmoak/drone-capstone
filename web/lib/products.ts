@@ -51,9 +51,12 @@ export type Product = {
   source: string;
 };
 
+// macOS 15 removed Control-click → Open as a way past Gatekeeper for an
+// unsigned app; on 15 and later the only way is Privacy & Security.
 const GATEKEEPER =
-  "macOS will say the app is from an unidentified developer. Open it once from Finder with " +
-  "Control-click → Open, and it will launch normally afterwards.";
+  "macOS will say it cannot check the app for malicious software. Click Done, then open " +
+  "System Settings → Privacy & Security and click Open Anyway next to CropWatcher. On macOS " +
+  "14 or earlier, Control-click the app and choose Open instead. Only the first launch asks.";
 
 const SMARTSCREEN =
   "Windows SmartScreen will warn about an unrecognised app. Choose More info → Run anyway.";

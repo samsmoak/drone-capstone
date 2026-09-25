@@ -44,6 +44,9 @@ The agent is the only process that touches the radio. Nothing else — ever.
 ## Commands
 
 ```bash
+# first time on any machine, macOS or Windows (checks the toolchain, then installs)
+node scripts/setup.mjs --dev                 # --check: only check; drop --dev: no test tools
+
 # agent
 cd backend/agent && source .venv/bin/activate
 ruff check . && mypy cropwatcher && pytest   # gates
@@ -55,6 +58,8 @@ pnpm typecheck && pnpm lint && pnpm build    # gates
 
 # desktop
 cd desktop && pnpm build                     # gate (tsc, then vite)
+cd desktop/src-tauri && cargo test           # the shell's own tests
+cd desktop && pnpm app                       # freeze + verify the agent, build, open
 ```
 
 `pnpm typecheck` runs `next typegen` first, and must. A bare `tsc` fails on a
@@ -117,8 +122,9 @@ These cost real debugging time to discover. Each is a rule, with the failure it 
    re-run. Supabase upload is best-effort and retried, never in the critical path.
 
 7. **Docker cannot reach USB on macOS.** Docker Desktop runs a Linux VM with no USB
-   passthrough, so the agent runs bare in a venv. A `Dockerfile` is for CI and Linux
-   teammates only.
+   passthrough, so the agent runs bare in a venv — and so does the build: one
+   `node scripts/setup.mjs` for every OS, never a container. (There is no
+   Dockerfile in the repo; if one is ever added, it is for CI and Linux only.)
 
 ## Conventions
 

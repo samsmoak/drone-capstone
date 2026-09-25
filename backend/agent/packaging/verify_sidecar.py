@@ -12,13 +12,26 @@ hardware or a user is in the room:
   health          uvicorn serves HTTP
   websocket       uvicorn's websockets implementation is bundled; it is
                   selected by string name, so nothing imports it statically
+  exits           closing stdin stops the agent and frees its port — the only
+                  signal that reaches the real Python process (see below)
 
 The `usb` check is the subtle one. With no dongle plugged in, a *correct*
 binary reports "no drone found" and a *broken* one reports a missing libusb
 backend. Both are failures of the command and both exit non-zero, so the exit
 code proves nothing — this asserts on which message came back.
 
-Run directly, or through `build_sidecar.sh`, which runs it on every build:
+The `exits` check is the one that strands a drone. A one-file binary is two
+processes, and killing the first leaves the second holding the radio
+(rest.py, exit_when_parent_closes). It is proven here on every OS CI builds,
+not only on the Mac it was first measured on.
+
+Slow machines are expected, not failures: a one-file binary unpacks ~40 MB
+before Python starts, and an older Intel Mac took longer than the 20 s this
+used to allow. The limits are generous, and the wait ends early — with the
+agent's own output — the moment the process dies, so a crash is never
+reported as a timeout.
+
+Run through `build_sidecar.py`, which runs it on every build, or directly:
 
     python verify_sidecar.py ../../desktop/src-tauri/bin/cropwatcher-agent-<triple>
 """
@@ -26,10 +39,14 @@ Run directly, or through `build_sidecar.sh`, which runs it on every build:
 from __future__ import annotations
 
 import base64
+import contextlib
 import http.client
+import os
+import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -37,7 +54,13 @@ from pathlib import Path
 # verifying against a *different* process would pass while the frozen binary
 # is broken.
 PROBE_PORT = 8791
-STARTUP_TIMEOUT_S = 20.0
+# Measured: ~3 s on an M-series Mac. An older Intel Mac overran 20 s. The limit
+# is a ceiling for a hang, not an estimate, so it is far above both.
+STARTUP_TIMEOUT_S = 180.0
+# `check` starts the runtime AND scans USB.
+CHECK_TIMEOUT_S = 240.0
+# From closing stdin to the port being free. The agent ends its session first.
+EXIT_TIMEOUT_S = 30.0
 
 # What cflib prints once libusb is loaded and it has walked the bus.
 USB_REACHED = "Looking for devices"
@@ -45,26 +68,53 @@ USB_REACHED = "Looking for devices"
 NO_DRONE = "no drone found"
 # What a missing native dependency looks like instead.
 BUNDLING_FAILURE = ("No backend available", "ModuleNotFoundError", "ImportError")
+# How much of the agent's output to show when it fails.
+OUTPUT_TAIL = 4000
 
 
 class VerificationError(RuntimeError):
     """The binary built, but does not work. Never ship past this."""
 
 
-def _check_runs(binary: Path) -> str:
-    result = subprocess.run(
-        [str(binary), "--help"], capture_output=True, text=True, timeout=60
-    )
+def _probe_env(data_dir: str) -> dict[str, str]:
+    """The environment the probe agent runs in: isolated from this machine.
+
+    Without this, verifying on a developer's laptop would restore THEIR saved
+    sign-in from the real data folder, hold the drone on standby and reach for
+    the camera — a build step touching the radio.
+    """
+    env = dict(os.environ)
+    env["CROPWATCHER_DATA_DIR"] = data_dir
+    env["CROPWATCHER_STANDBY"] = "0"
+    env.pop("CROPWATCHER_CAMERA", None)
+    return env
+
+
+def _check_runs(binary: Path, env: dict[str, str]) -> str:
+    started = time.monotonic()
+    try:
+        result = subprocess.run(
+            [str(binary), "--help"], capture_output=True, text=True,
+            timeout=STARTUP_TIMEOUT_S, env=env,
+        )
+    except subprocess.TimeoutExpired:
+        raise VerificationError(
+            f"`--help` did not finish within {STARTUP_TIMEOUT_S:.0f}s"
+        ) from None
     if result.returncode != 0:
         raise VerificationError(f"`--help` exited {result.returncode}:\n{result.stderr}")
-    return "the frozen runtime starts"
+    return f"the frozen runtime starts ({time.monotonic() - started:.1f}s)"
 
 
-def _check_usb(binary: Path) -> str:
+def _check_usb(binary: Path, env: dict[str, str]) -> str:
     """`check` is expected to fail here — this asserts on *how* it fails."""
-    result = subprocess.run(
-        [str(binary), "check"], capture_output=True, text=True, timeout=120
-    )
+    try:
+        result = subprocess.run(
+            [str(binary), "check"], capture_output=True, text=True,
+            timeout=CHECK_TIMEOUT_S, env=env,
+        )
+    except subprocess.TimeoutExpired:
+        raise VerificationError(f"`check` did not finish within {CHECK_TIMEOUT_S:.0f}s") from None
     output = result.stdout + result.stderr
 
     for marker in BUNDLING_FAILURE:
@@ -85,28 +135,112 @@ def _check_usb(binary: Path) -> str:
     return "libusb enumerated the bus; a radio answered"
 
 
-def _wait_for_port(port: int, timeout_s: float) -> None:
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
-        with socket.socket() as s:
-            s.settimeout(0.5)
-            if s.connect_ex(("127.0.0.1", port)) == 0:
-                return
-        time.sleep(0.25)
-    raise VerificationError(f"the agent never opened port {port} within {timeout_s:.0f}s")
+def _port_open(port: int) -> bool:
+    with socket.socket() as s:
+        s.settimeout(0.5)
+        return s.connect_ex(("127.0.0.1", port)) == 0
 
 
-def _check_server(binary: Path) -> list[str]:
-    """Start the frozen agent and exercise both surfaces it exposes."""
-    process = subprocess.Popen(
-        [str(binary), "serve", "--port", str(PROBE_PORT)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
+def _tail(log_path: Path) -> str:
     try:
-        _wait_for_port(PROBE_PORT, STARTUP_TIMEOUT_S)
-        results = []
+        text = log_path.read_text(errors="replace")
+    except OSError:
+        return "(no output captured)"
+    return text[-OUTPUT_TAIL:] if text.strip() else "(no output)"
+
+
+def _wait_for_port(process: subprocess.Popen, port: int, log_path: Path) -> float:
+    """Seconds until the agent answered. Ends early if the agent dies."""
+    started = time.monotonic()
+    deadline = started + STARTUP_TIMEOUT_S
+    while time.monotonic() < deadline:
+        code = process.poll()
+        if code is not None:
+            raise VerificationError(
+                f"the agent exited with code {code} before opening port {port}. "
+                f"Its output:\n{_tail(log_path)}"
+            )
+        if _port_open(port):
+            return time.monotonic() - started
+        time.sleep(0.25)
+    raise VerificationError(
+        f"the agent never opened port {port} within {STARTUP_TIMEOUT_S:.0f}s and is "
+        f"still running. Its output:\n{_tail(log_path)}"
+    )
+
+
+def _kill_tree(process: subprocess.Popen) -> None:
+    """Stop the bootloader AND the Python process it started.
+
+    Terminating the bootloader alone is exactly the orphan this file warns
+    about, so this is only a clean-up after a failure — never the pass path.
+    """
+    if process.poll() is not None:
+        return
+    if sys.platform == "win32":
+        subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                       capture_output=True, check=False)
+    else:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            process.kill()
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        process.wait(timeout=10)
+
+
+def _stop_like_the_app(process: subprocess.Popen, port: int) -> str:
+    """Close stdin, as the desktop app's exit does, and require a clean stop."""
+    assert process.stdin is not None
+    started = time.monotonic()
+    process.stdin.close()
+    try:
+        process.wait(timeout=EXIT_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        raise VerificationError(
+            f"closing stdin did not stop the agent within {EXIT_TIMEOUT_S:.0f}s. The "
+            f"desktop app would leave it running, holding the radio and the port."
+        ) from None
+    # The bootloader exits when its child does, so its exit is the child's.
+    # The port is the proof: nothing may still be listening.
+    while time.monotonic() - started < EXIT_TIMEOUT_S:
+        if not _port_open(port):
+            return f"closing stdin stops it and frees the port ({time.monotonic() - started:.1f}s)"
+        time.sleep(0.25)
+    raise VerificationError(
+        f"the agent's launcher exited but port {port} is still held — its Python "
+        f"process survived. The desktop app would strand it holding the radio."
+    )
+
+
+def _check_server(binary: Path, env: dict[str, str], work: Path) -> list[str]:
+    """Start the frozen agent, exercise both surfaces, then stop it as the app does."""
+    if _port_open(PROBE_PORT):
+        raise VerificationError(
+            f"port {PROBE_PORT} is already in use, so this check would talk to "
+            f"whatever holds it rather than the new binary. Usually an agent left "
+            f"over from an earlier run: find it with "
+            + (f"`netstat -ano | findstr :{PROBE_PORT}`" if sys.platform == "win32"
+               else f"`lsof -nP -iTCP:{PROBE_PORT} -sTCP:LISTEN`")
+            + " and stop it."
+        )
+
+    log_path = work / "serve.log"
+    with open(log_path, "w") as log:
+        process = subprocess.Popen(
+            [str(binary), "serve", "--port", str(PROBE_PORT), "--exit-with-parent"],
+            stdin=subprocess.PIPE,
+            # A file, not a pipe: a pipe nobody reads fills at 64 KB and stalls
+            # the very process being timed.
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            env=env,
+            # Its own process group, so a failure can kill the whole tree.
+            start_new_session=sys.platform != "win32",
+        )
+    try:
+        answered_after = _wait_for_port(process, PROBE_PORT, log_path)
+        results = [f"the agent answered after {answered_after:.1f}s"]
 
         connection = http.client.HTTPConnection("127.0.0.1", PROBE_PORT, timeout=10)
         try:
@@ -152,20 +286,27 @@ def _check_server(binary: Path) -> list[str]:
         finally:
             connection.close()
 
+        results.append(_stop_like_the_app(process, PROBE_PORT))
         return results
     finally:
-        process.terminate()
-        try:
-            process.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            process.kill()
+        _kill_tree(process)
 
 
 def verify(binary: Path) -> None:
+    # Absolute: `Path("./agent")` prints as "agent", which the OS then looks
+    # for on PATH instead of here.
+    binary = binary.resolve()
     if not binary.exists():
         raise VerificationError(f"no such binary: {binary}")
 
-    checks = [_check_runs(binary), _check_usb(binary), *_check_server(binary)]
+    with tempfile.TemporaryDirectory(prefix="cropwatcher-verify-",
+                                     ignore_cleanup_errors=True) as work:
+        env = _probe_env(str(Path(work) / "data"))
+        checks = [
+            _check_runs(binary, env),
+            _check_usb(binary, env),
+            *_check_server(binary, env, Path(work)),
+        ]
     size_mb = binary.stat().st_size / 1_048_576
     for line in checks:
         print(f"  ok   {line}")
