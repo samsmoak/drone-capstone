@@ -808,6 +808,24 @@ class TestStaySignedIn:
         assert rig.session.snapshot().state is State.SIGNED_OUT
         assert auth_store.load() is None
 
+    def test_a_slow_network_keeps_the_saved_sign_in(self, rig):
+        """A timeout says nothing about the token. Treating it as "expired"
+        deleted the saved sign-in because Supabase was slow to answer."""
+        from cropwatcher.sync import auth_store
+        from cropwatcher.sync.cloud import CloudTimeout
+
+        auth_store.save("refresh-abc", "ada@example.com")
+
+        def slow(token):
+            raise CloudTimeout("Supabase did not answer within 25 seconds.")
+
+        rig.cloud.restore = slow
+        assert rig.session.restore_sign_in() is None
+        snapshot = rig.session.snapshot()
+        assert snapshot.state is State.SIGNED_OUT and not snapshot.restoring
+        assert "did not answer" in (snapshot.message or "")
+        assert auth_store.load() == ("refresh-abc", "ada@example.com")
+
 
 class TestHistoryByMode:
     """Auto and Manual history are kept apart — per reading, not per session."""

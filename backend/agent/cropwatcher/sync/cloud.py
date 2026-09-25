@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import gzip
 import logging
+import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -36,6 +38,43 @@ class CloudError(RuntimeError):
 
 class AuthError(RuntimeError):
     """Sign-in failed. Never carries the password or the raw provider error."""
+
+
+class CloudTimeout(AuthError):
+    """Supabase did not answer in time — no verdict on the account.
+
+    A subclass so every caller that already turns AuthError into words for the
+    operator keeps working, while the one that must tell the two apart can:
+    restoring a saved sign-in deletes it on AuthError, and a slow network must
+    not sign anyone out.
+    """
+
+
+#: The longest a sign-in may take, end to end: loading the Supabase library,
+#: the auth call, and reading the profile. The window's fetch gives up after
+#: about 60 s of silence, and it then says only "did not answer" — so the
+#: agent must answer first, with the reason. Measured on an M-series Mac: 1.3 s
+#: for a first sign-in, 0.1 s after. The profile read alone could previously
+#: wait 120 s (PostgREST's default timeout).
+SIGN_IN_DEADLINE_S = 25.0
+
+TIMED_OUT = (
+    "Supabase did not answer within {seconds:.0f} seconds. Check this computer's internet "
+    "connection, and that no firewall or security software is blocking CropWatcher — "
+    "then try again."
+)
+STILL_WAITING = "The last sign-in is still waiting for Supabase. Try again in a moment."
+
+
+@dataclass
+class _Attempt:
+    """One sign-in running on its own thread, and whether anyone still wants it."""
+
+    lock: threading.Lock
+    done: bool = False
+    abandoned: bool = False
+    result: Operator | None = None
+    error: BaseException | None = None
 
 
 @dataclass(frozen=True)
@@ -70,24 +109,103 @@ class Cloud(Protocol):
 class SupabaseCloud:
     """The real implementation."""
 
-    def __init__(self, url: str, anon_key: str, client: Any | None = None) -> None:
+    def __init__(
+        self, url: str, anon_key: str, client: Any | None = None,
+        *, deadline_s: float = SIGN_IN_DEADLINE_S,
+    ) -> None:
         self._url = url
         self._anon_key = anon_key
         self._client = client
+        self._deadline_s = deadline_s
+        # The warm-up thread and a sign-in can both reach _connect at once.
+        self._connect_lock = threading.Lock()
+        # A sign-in past its deadline keeps running (a thread cannot be
+        # stopped); until it ends, no second one starts, so its late result can
+        # be discarded without touching a newer sign-in.
+        self._pending: threading.Thread | None = None
         self.operator: Operator | None = None
 
     # ── auth ─────────────────────────────────────────────────────────────
 
     def _connect(self) -> Any:
-        if self._client is None:
+        with self._connect_lock:
+            if self._client is None:
+                try:
+                    from supabase import create_client
+                except ImportError as e:  # pragma: no cover
+                    raise CloudError("the supabase package is not installed") from e
+                self._client = create_client(self._url, self._anon_key)
+            return self._client
+
+    def warm(self) -> None:
+        """Load the Supabase library now, so the first sign-in does not.
+
+        Called on a background thread at startup. On a slow machine the import
+        is a large part of the first sign-in (the agent took 14 s to 2 min 25 s
+        to start on an Intel Mac, 2026-09-25). No network: create_client only
+        builds the clients.
+        """
+        if not self._url or not self._anon_key:
+            return                          # sign-in is not configured; nothing to load
+        try:
+            self._connect()
+        except Exception:
+            log.exception("could not prepare the Supabase client; sign-in will try again")
+
+    def _within_deadline(self, work: Callable[[], Operator]) -> Operator:
+        """Run a sign-in, answering within the deadline whatever Supabase does."""
+        if self._pending is not None and self._pending.is_alive():
+            raise CloudTimeout(STILL_WAITING)
+        attempt = _Attempt(lock=threading.Lock())
+
+        def run() -> None:
+            result: Operator | None = None
+            error: BaseException | None = None
             try:
-                from supabase import create_client
-            except ImportError as e:  # pragma: no cover
-                raise CloudError("the supabase package is not installed") from e
-            self._client = create_client(self._url, self._anon_key)
-        return self._client
+                result = work()
+            except BaseException as e:  # handed to the caller, or logged below
+                error = e
+            with attempt.lock:
+                attempt.done, attempt.result, attempt.error = True, result, error
+                abandoned = attempt.abandoned
+            if abandoned:
+                log.warning("a sign-in finished after its deadline (%s); discarding it",
+                            "succeeded" if result else type(error).__name__)
+                if result is not None:
+                    self._discard_session()
+
+        thread = threading.Thread(target=run, daemon=True, name="cloud-sign-in")
+        thread.start()
+        thread.join(self._deadline_s)
+        with attempt.lock:
+            if not attempt.done:
+                attempt.abandoned = True
+                self._pending = thread
+                log.warning("sign-in exceeded %.0f s; answering the window without it",
+                            self._deadline_s)
+                raise CloudTimeout(TIMED_OUT.format(seconds=self._deadline_s))
+        if attempt.error is not None:
+            raise attempt.error
+        assert attempt.result is not None
+        return attempt.result
+
+    def _discard_session(self) -> None:
+        """Forget a session nobody is waiting for — on this computer only.
+
+        "local" scope: the default revokes the account's sessions everywhere,
+        which would sign the operator out of the website too.
+        """
+        self.operator = None
+        if self._client is not None:
+            try:
+                self._client.auth.sign_out({"scope": "local"})
+            except Exception:
+                log.debug("discarding a late session failed; it expires by itself")
 
     def sign_in(self, email: str, password: str) -> Operator:
+        return self._within_deadline(lambda: self._sign_in(email, password))
+
+    def _sign_in(self, email: str, password: str) -> Operator:
         client = self._connect()
         try:
             response = client.auth.sign_in_with_password({"email": email, "password": password})
@@ -108,8 +226,12 @@ class SupabaseCloud:
         """Sign back in from a stored refresh token — no password.
 
         Fails with AuthError when the token was revoked (signed out elsewhere)
-        or expired; the caller then shows the sign-in form.
+        or expired; the caller then shows the sign-in form. Fails with
+        CloudTimeout when Supabase did not answer — the token may be fine.
         """
+        return self._within_deadline(lambda: self._restore(refresh_token))
+
+    def _restore(self, refresh_token: str) -> Operator:
         client = self._connect()
         try:
             response = client.auth.refresh_session(refresh_token)
@@ -130,9 +252,18 @@ class SupabaseCloud:
         return getattr(session, "refresh_token", None) if session else None
 
     def _load_operator(self, client: Any, user: Any, email: str) -> Operator:
-        profile = (
-            client.table("profiles").select("*").eq("id", user.id).maybe_single().execute()
-        )
+        try:
+            profile = (
+                client.table("profiles").select("*").eq("id", user.id).maybe_single().execute()
+            )
+        except Exception as e:
+            # Signed in, but who they are is unknown: do not keep half a
+            # session. Before, this escaped as a bare 500 — "That did not work".
+            self._discard_session()
+            raise AuthError(
+                f"Signed in, but your profile could not be read. Check this computer's "
+                f"internet connection and try again. ({type(e).__name__})"
+            ) from None
         row = getattr(profile, "data", None) or {}
         operator = Operator(
             id=user.id,

@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "sidecar": "node scripts/sidecar.mjs",
-    "build:all": "pnpm sidecar && pnpm build",
+    "build:all": "node scripts/refuse-if-running.mjs && pnpm sidecar && pnpm build",
     "app": "pnpm tauri build && node scripts/open-app.mjs",
     "preview": "vite preview",
     "tauri": "tauri"

@@ -278,6 +278,9 @@ agent = Agent()
 
 
 def _restore_sign_in() -> None:
+    # Load the Supabase library first, off the request path: on a slow machine
+    # the import is much of a first sign-in, and restoring needs it anyway.
+    agent.cloud.warm()
     try:
         agent.session.restore_sign_in()
     except Exception:
