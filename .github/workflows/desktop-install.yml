@@ -88,3 +88,14 @@ jobs:
           # The Python setup-python installed, not whichever one PATH finds first.
           CROPWATCHER_PYTHON: ${{ steps.python.outputs.python-path }}
         run: node scripts/install.mjs
+
+      # The frozen agent must SIGN IN on this machine, not only start: an Intel
+      # Mac's agent started, answered, and failed every sign-in (2026-09-25)
+      # while verify_sidecar.py — offline by design — passed. This reaches the
+      # real Supabase with an account that cannot exist and expects the
+      # agent's own refusal.
+      - name: The frozen agent can sign in
+        run: |
+          PY=backend/agent/.venv/bin/python
+          [ -x "$PY" ] || PY=backend/agent/.venv/Scripts/python.exe
+          "$PY" backend/agent/packaging/check_sign_in.py desktop/src-tauri/bin/cropwatcher-agent-*
