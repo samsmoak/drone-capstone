@@ -51,7 +51,8 @@ class TestNoDroneWording:
         from cropwatcher.flight import radio
 
         reasons = [radio.NOT_FOUND, radio.NOT_ANSWERING, radio.NO_DRIVER,
-                   radio.WRONG_DRIVER, "The Crazyradio could not be opened."]
+                   radio.WRONG_DRIVER, radio.NO_PERMISSION,
+                   "The Crazyradio could not be opened."]
         for reason in reasons:
             assert any(marker in reason for marker in verify_sidecar.NO_DRONE), reason
 

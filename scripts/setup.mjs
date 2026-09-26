@@ -27,10 +27,11 @@
 //     (another CPU, a Python that is not installed here) is recreated.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { radioAccessAdvice } from "./lib/radio-access.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const AGENT = join(ROOT, "backend", "agent");
@@ -38,6 +39,7 @@ const DESKTOP = join(ROOT, "desktop");
 const VENV = join(AGENT, ".venv");
 const WINDOWS = process.platform === "win32";
 const MAC = process.platform === "darwin";
+const LINUX = process.platform === "linux";
 const EXE = WINDOWS ? ".exe" : "";
 const VENV_PYTHON = WINDOWS ? join(VENV, "Scripts", "python.exe") : join(VENV, "bin", "python");
 
@@ -161,8 +163,82 @@ function checkNativeToolchain() {
       "https://developer.microsoft.com/microsoft-edge/webview2/");
     return;
   }
-  note(`${process.platform}: not a platform CropWatcher publishes. Tauri's Linux prerequisites ` +
-    "are at https://v2.tauri.app/start/prerequisites/");
+  if (LINUX) {
+    checkLinuxToolchain();
+    return;
+  }
+  note(`${process.platform}: not a system this setup knows. Tauri's prerequisites are at ` +
+    "https://v2.tauri.app/start/prerequisites/");
+}
+
+// ── Linux ────────────────────────────────────────────────────────────────
+
+/**
+ * The packages that provide everything below, per distribution family:
+ * Tauri's own lists (https://v2.tauri.app/start/prerequisites/), plus the
+ * D-Bus headers the Wi-Fi password store needs (keyring's Secret Service
+ * backend, desktop/src-tauri/Cargo.toml) and pkg-config.
+ */
+const LINUX_PACKAGES = {
+  debian: "sudo apt update && sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget " +
+    "file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev pkg-config",
+  fedora: "sudo dnf install webkit2gtk4.1-devel openssl-devel curl wget file " +
+    "libappindicator-gtk3-devel librsvg2-devel libxdo-devel dbus-devel pkgconf-pkg-config && " +
+    "sudo dnf group install \"c-development\"",
+  arch: "sudo pacman -S --needed webkit2gtk-4.1 base-devel curl wget file openssl " +
+    "appmenu-gtk-module libappindicator-gtk3 librsvg xdotool dbus",
+  suse: "sudo zypper in webkit2gtk3-devel libopenssl-devel curl wget file libappindicator3-1 " +
+    "librsvg-devel dbus-1-devel pkg-config && sudo zypper in -t pattern devel_basis",
+};
+
+/** "debian" | "fedora" | "arch" | "suse" | null, from /etc/os-release. */
+function linuxFamily() {
+  let release = "";
+  try {
+    release = readFileSync("/etc/os-release", "utf8");
+  } catch {
+    return null;
+  }
+  const field = (name) => (new RegExp(`^${name}=(.*)$`, "m").exec(release)?.[1] ?? "")
+    .replace(/"/g, "").toLowerCase();
+  const ids = `${field("ID")} ${field("ID_LIKE")}`.split(/\s+/);
+  if (ids.some((id) => ["debian", "ubuntu"].includes(id))) return "debian";
+  if (ids.some((id) => ["fedora", "rhel", "centos"].includes(id))) return "fedora";
+  if (ids.some((id) => ["arch", "manjaro"].includes(id))) return "arch";
+  if (ids.some((id) => id.startsWith("opensuse") || id === "suse" || id === "sles")) return "suse";
+  return null;
+}
+
+function linuxPackagesFix() {
+  const family = linuxFamily();
+  return family ? `Run: ${LINUX_PACKAGES[family]}`
+    : "Install Tauri's Linux prerequisites (https://v2.tauri.app/start/prerequisites/) " +
+      "and the D-Bus development headers.";
+}
+
+/**
+ * What the Rust half links against, and the tools the build calls. Checked
+ * through pkg-config, as the build itself finds them: a missing one fails a
+ * Rust build minutes in with a long cargo trace; here it is one line.
+ */
+function checkLinuxToolchain() {
+  const missing = [];
+  if (!run("cc", ["--version"]).ok) missing.push("a C compiler (cc)");
+  // PyInstaller reads and rewrites binaries with binutils on Linux.
+  if (!run("objdump", ["--version"]).ok) missing.push("objdump (binutils)");
+  const pkgConfig = run("pkg-config", ["--version"]).ok;
+  if (!pkgConfig) missing.push("pkg-config");
+  const libraries = ["webkit2gtk-4.1", "javascriptcoregtk-4.1", "libsoup-3.0", "openssl", "dbus-1"];
+  if (pkgConfig) {
+    for (const library of libraries) {
+      if (!run("pkg-config", ["--exists", library]).ok) missing.push(library);
+    }
+  }
+  if (missing.length) {
+    problem(`Linux build libraries or tools are missing: ${missing.join(", ")}`, linuxPackagesFix());
+  } else {
+    ok(`Linux build libraries (${libraries.join(", ")})`);
+  }
 }
 
 function checkPnpm() {
@@ -175,16 +251,31 @@ function checkPnpm() {
   else ok(`pnpm ${pnpm.out}`);
 }
 
-const PROBE = "import json,platform,sys;" +
-  "print(json.dumps([list(sys.version_info[:3]),platform.machine(),sys.executable]))";
+// Two things Debian and Ubuntu ship apart from Python itself, each probed
+// rather than discovered minutes into the build:
+//   ensurepip        how `python -m venv` puts pip in the new environment
+//                    (python3.X-venv); without it venv half-creates a folder
+//   libpython3.X.so  what PyInstaller freezes the agent with (libpython3.X);
+//                    without it the build stops with "Python shared library
+//                    was not found" (found in a Linux container, 2026-09-25).
+//                    Asked of the FILE: Ubuntu's Python reports
+//                    Py_ENABLE_SHARED=1 whether or not the library is installed.
+const PROBE = "import json,os,platform,sys,sysconfig,ctypes.util,importlib.util as u;" +
+  "g=sysconfig.get_config_var;v='%d.%d'%sys.version_info[:2];" +
+  "print(json.dumps([list(sys.version_info[:3]),platform.machine(),sys.executable," +
+  "u.find_spec('ensurepip') is not None,os.path.realpath(sys.executable)," +
+  "os.path.exists(os.path.join(g('LIBDIR') or '',g('INSTSONAME') or '-')) or " +
+  "ctypes.util.find_library('python'+v) is not None]))";
 
 /** What a Python actually is, by running it. null when it does not run. */
 function probePython(command, prefix = []) {
   const result = run(command, [...prefix, "-c", PROBE], { timeout: 30_000 });
   if (!result.ok) return null;
   try {
-    const [version, machine, executable] = JSON.parse(result.out.split(/\r?\n/).pop());
-    return { command, prefix, version, cpu: CPU[machine.toLowerCase()] ?? machine.toLowerCase(), executable };
+    const [version, machine, executable, canVenv, real, sharedLib] =
+      JSON.parse(result.out.split(/\r?\n/).pop());
+    const cpu = CPU[machine.toLowerCase()] ?? machine.toLowerCase();
+    return { command, prefix, version, cpu, executable, canVenv, real, sharedLib };
   } catch {
     return null;
   }
@@ -204,15 +295,32 @@ function findPython(targetCpu) {
   }
 
   const rejected = [];
+  const seen = new Set();
   for (const [command, ...prefix] of candidates) {
     const py = probePython(command, prefix);
     if (!py) continue;
+    // python3 and python3.12 are often the same interpreter: judge it once.
+    if (seen.has(py.real)) continue;
+    seen.add(py.real);
     if (!versionAtLeast(py.version, PYTHON_MIN)) {
       rejected.push(`${py.executable} is Python ${pyVersion(py)}`);
       continue;
     }
     if (targetCpu && py.cpu !== targetCpu) {
       rejected.push(`${py.executable} is for ${py.cpu}, but Rust builds for ${targetCpu}`);
+      continue;
+    }
+    const [major, minor] = py.version;
+    if (!py.canVenv) {
+      rejected.push(`${py.executable} cannot make a virtual environment (no ensurepip — on ` +
+        `Debian/Ubuntu: sudo apt install python${major}.${minor}-venv)`);
+      continue;
+    }
+    // macOS and Windows builds are framework / DLL builds PyInstaller always
+    // finds; only Linux distribution Pythons leave the shared library out.
+    if (LINUX && !py.sharedLib) {
+      rejected.push(`${py.executable} has no shared library for PyInstaller (libpython` +
+        `${major}.${minor}.so — on Debian/Ubuntu: sudo apt install libpython${major}.${minor})`);
       continue;
     }
     ok(`Python ${pyVersion(py)} (${py.cpu}) — ${py.executable}`);
@@ -227,7 +335,8 @@ function findPython(targetCpu) {
       : MAC
         ? "Install Python 3.11 from https://www.python.org/downloads/macos/ (a universal " +
           "installer, right for any Mac), or: brew install python@3.11"
-        : "Install Python 3.11 with your package manager.");
+        : "Install Python 3.11 or newer with your package manager — on Debian/Ubuntu: " +
+          "sudo apt install python3 python3-venv python3-dev");
   return null;
 }
 
@@ -251,7 +360,7 @@ function venvState(targetCpu) {
 
 // ── main ──────────────────────────────────────────────────────────────────
 
-const os = { darwin: "macOS", win32: "Windows" }[process.platform] ?? process.platform;
+const os = { darwin: "macOS", win32: "Windows", linux: "Linux" }[process.platform] ?? process.platform;
 console.log(`\nCropWatcher setup — ${os} ${process.arch}${CHECK_ONLY ? " (checking only)" : ""}\n`);
 
 checkNode();
@@ -305,8 +414,8 @@ step("install the desktop app's packages", "pnpm", ["install", "--frozen-lockfil
 if (process.env.CROPWATCHER_SETUP_QUIET_NEXT) process.exit(0);
 
 console.log(`
-Ready. To build the app and install it (into Applications, or for this user
-on Windows):
+Ready. To build the app and install it (into Applications on a Mac, for this
+user on Windows and Linux):
 
   node scripts/install.mjs
 
@@ -315,11 +424,5 @@ To work on the window with live reload: cd desktop, then pnpm tauri dev.
 The first build takes several minutes (Rust compiles everything once).
 `);
 
-if (WINDOWS) {
-  console.log(`On Windows the Crazyradio needs a driver, installed once:
-  1. Download Zadig from https://zadig.akeo.ie and run it.
-  2. Options → List All Devices, then choose "Crazyradio PA USB Dongle".
-  3. Pick libusb-win32 as the driver and click Install (or Replace) Driver.
-The app says so, too, if it finds the radio without its driver.
-`);
-}
+const radio = radioAccessAdvice();
+if (radio.length) console.log(`${radio.join("\n")}\n`);
