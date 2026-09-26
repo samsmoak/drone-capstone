@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Install CropWatcher from a terminal, on macOS or Windows, in one command:
+// Install CropWatcher from a terminal, on macOS, Windows or Linux, in one command:
 //
 //   git clone https://github.com/samsmoak/drone-capstone.git
 //   cd drone-capstone
@@ -13,7 +13,9 @@
 //      Windows; the .dmg is skipped: it needs Finder, and nothing here uses it);
 //   3. the install — macOS copies the app into /Applications (~/Applications
 //      if that is not writable); Windows runs the installer silently, for
-//      this user only, so no administrator prompt.
+//      this user only, so no administrator prompt; Linux installs for this
+//      user only too — the program in ~/.local/lib/cropwatcher, a menu entry,
+//      an icon, and a `cropwatcher` command in ~/.local/bin. No sudo anywhere.
 //
 // Running it again updates the installed app in place.
 //
@@ -25,19 +27,29 @@
 // which is also what makes an Intel Mac and an Apple-silicon Mac each get the
 // right one (PyInstaller freezes for the CPU of the machine it runs on).
 //
-// CROPWATCHER_INSTALL_DIR (macOS) installs somewhere else — for testing.
+// CROPWATCHER_INSTALL_DIR (macOS: the folder for CropWatcher.app; Linux: the
+// program folder) installs somewhere else — for testing.
+//
+// The Crazyradio needs a one-time administrator step on Windows (a driver)
+// and Linux (a udev rule). This checks and prints the exact commands; it never
+// runs them (scripts/lib/radio-access.mjs).
 
-import { spawnSync } from "node:child_process";
-import { accessSync, constants, existsSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import {
+  accessSync, chmodSync, constants, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync,
+  readdirSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { hasProgram, radioAccessAdvice } from "./lib/radio-access.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DESKTOP = join(ROOT, "desktop");
 const RELEASE = join(DESKTOP, "src-tauri", "target", "release");
 const WINDOWS = process.platform === "win32";
 const MAC = process.platform === "darwin";
+const LINUX = process.platform === "linux";
 const APP = "CropWatcher";
 
 const USAGE = "usage: node scripts/install.mjs [--open] [--no-install] [--dev]";
@@ -49,7 +61,7 @@ for (const flag of flags) {
   }
 }
 const OPEN = flags.includes("--open");
-const INSTALL = !flags.includes("--no-install") && (MAC || WINDOWS);
+const INSTALL = !flags.includes("--no-install") && (MAC || WINDOWS || LINUX);
 const version = JSON.parse(readFileSync(join(DESKTOP, "src-tauri", "tauri.conf.json"), "utf8")).version;
 
 function fail(message) {
@@ -80,6 +92,21 @@ function macInstallDir() {
   }
 }
 
+// Linux, per the XDG Base Directory spec: programs under ~/.local/lib, the
+// menu entry and icon under $XDG_DATA_HOME, commands in ~/.local/bin.
+const DATA_HOME = process.env.XDG_DATA_HOME || join(homedir(), ".local", "share");
+const linuxPaths = () => ({
+  dir: process.env.CROPWATCHER_INSTALL_DIR
+    ? resolve(process.env.CROPWATCHER_INSTALL_DIR)
+    : join(homedir(), ".local", "lib", "cropwatcher"),
+  menu: join(DATA_HOME, "applications", "cropwatcher.desktop"),
+  icon: join(DATA_HOME, "icons", "hicolor", "128x128", "apps", "cropwatcher.png"),
+  link: join(homedir(), ".local", "bin", "cropwatcher"),
+});
+
+/** A pgrep pattern matching exactly this program, whatever its path holds. */
+const exactProgram = (path) => `^${path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}( |$)`;
+
 /**
  * Is the copy about to be replaced running? It could be flying a drone, so
  * this refuses rather than killing it — the operator quits it, which lands
@@ -88,6 +115,11 @@ function macInstallDir() {
 function runningCopy(target) {
   if (MAC) {
     const found = spawnSync("pgrep", ["-f", `${target}/Contents/MacOS/`], { encoding: "utf8" });
+    return found.status === 0 && found.stdout.trim() !== "";
+  }
+  if (LINUX) {
+    const found = spawnSync("pgrep", ["-f", exactProgram(join(target, "desktop"))],
+      { encoding: "utf8" });
     return found.status === 0 && found.stdout.trim() !== "";
   }
   if (WINDOWS) {
@@ -102,14 +134,14 @@ function runningCopy(target) {
 
 function refuseIfRunning(target) {
   if (INSTALL && runningCopy(target)) {
-    fail(`${APP} is running${MAC ? ` from ${target}` : ""}. Quit it first — closing it lands the ` +
+    fail(`${APP} is running${target ? ` from ${target}` : ""}. Quit it first — closing it lands the ` +
       "drone and ends the session — then run this again.");
   }
 }
 
-const macTarget = MAC ? join(macInstallDir(), `${APP}.app`) : null;
+const target = MAC ? join(macInstallDir(), `${APP}.app`) : LINUX ? linuxPaths().dir : null;
 // Before minutes of building, not after.
-refuseIfRunning(macTarget);
+refuseIfRunning(target);
 
 // ── 1. setup ──────────────────────────────────────────────────────────────
 
@@ -133,24 +165,26 @@ if (!INSTALL) {
 
 // ── 3. install ────────────────────────────────────────────────────────────
 
-refuseIfRunning(macTarget);   // it may have been opened during the build
+refuseIfRunning(target);   // it may have been opened during the build
 let installed;
 
 if (MAC) {
   const source = join(RELEASE, "bundle", "macos", `${APP}.app`);
   if (!existsSync(source)) fail(`The build finished but ${source} is missing.`);
-  console.log(`\n==> install to ${macTarget}`);
+  console.log(`\n==> install to ${target}`);
   // Replace, never merge: a file the new build no longer ships must not linger.
-  rmSync(macTarget, { recursive: true, force: true });
+  rmSync(target, { recursive: true, force: true });
   // ditto keeps what cp -R can lose: symlinks, extended attributes and the
   // code signature inside the bundle.
-  step(`copy ${APP}.app`, "ditto", [source, macTarget]);
+  step(`copy ${APP}.app`, "ditto", [source, target]);
   for (const part of ["desktop", "cropwatcher-agent"]) {
-    if (!existsSync(join(macTarget, "Contents", "MacOS", part))) {
-      fail(`Installed, but ${part} is missing from ${macTarget}. Run this again.`);
+    if (!existsSync(join(target, "Contents", "MacOS", part))) {
+      fail(`Installed, but ${part} is missing from ${target}. Run this again.`);
     }
   }
-  installed = macTarget;
+  installed = target;
+} else if (LINUX) {
+  installed = installOnLinux();
 } else {
   const folder = join(RELEASE, "bundle", "nsis");
   const setups = existsSync(folder)
@@ -170,24 +204,103 @@ if (MAC) {
   installed = join(home, exe);
 }
 
+const openFrom = MAC ? "Applications or Launchpad"
+  : WINDOWS ? "the Start menu"
+  : "your applications menu (CropWatcher), or run: cropwatcher";
 console.log(`
 Installed ${APP} ${version}:
   ${installed}
 
-Open it from ${MAC ? "Applications or Launchpad" : "the Start menu"}. To update later: git pull, then
-run this again.
+Open it from ${openFrom}. To update later: git pull, then run this again.
 `);
 
-if (WINDOWS) {
-  console.log(`Before the first flight, the Crazyradio needs its Windows driver, once:
-  1. Download Zadig from https://zadig.akeo.ie and run it.
-  2. Options → List All Devices, then choose "Crazyradio PA USB Dongle".
-  3. Pick libusb-win32 as the driver and click Install (or Replace) Driver.
-The app says so, too, if it finds the radio without its driver.
-`);
+if (LINUX) {
+  const { dir, menu, icon, link } = linuxPaths();
+  console.log(`To remove it: rm -r "${dir}" "${menu}" "${icon}" "${link}"\n`);
 }
+
+const radio = radioAccessAdvice();
+if (radio.length) console.log(`${radio.join("\n")}\n`);
 
 if (OPEN) {
   if (MAC) spawnSync("open", [installed]);
-  else spawnSync("cmd", ["/c", "start", "", installed], { windowsHide: true });
+  else if (WINDOWS) spawnSync("cmd", ["/c", "start", "", installed], { windowsHide: true });
+  else spawn(installed, [], { detached: true, stdio: "ignore" }).unref();
+}
+
+// ── Linux ─────────────────────────────────────────────────────────────────
+
+/**
+ * Quote a path for a desktop entry's Exec key (Desktop Entry Spec 1.5, "The
+ * Exec key"): inside double quotes, `"`, `` ` ``, `$` and `\` are escaped.
+ */
+function execQuote(path) {
+  return `"${path.replace(/(["`$\\])/g, "\\$1")}"`;
+}
+
+function installOnLinux() {
+  const { dir, menu, icon, link } = linuxPaths();
+  // tauri-build copies the sidecar beside the binary, without its triple;
+  // the running app looks for it there.
+  const parts = ["desktop", "cropwatcher-agent"];
+  for (const part of parts) {
+    if (!existsSync(join(RELEASE, part))) fail(`The build finished but ${join(RELEASE, part)} is missing.`);
+  }
+
+  console.log(`\n==> install to ${dir}`);
+  // Replace, never merge: a file the new build no longer ships must not linger.
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+  for (const part of parts) {
+    copyFileSync(join(RELEASE, part), join(dir, part));
+    chmodSync(join(dir, part), 0o755);
+  }
+  for (const part of parts) {
+    if (!existsSync(join(dir, part))) fail(`Installed, but ${part} is missing from ${dir}. Run this again.`);
+  }
+
+  console.log("==> add it to the applications menu");
+  mkdirSync(dirname(icon), { recursive: true });
+  copyFileSync(join(DESKTOP, "src-tauri", "icons", "128x128.png"), icon);
+  mkdirSync(dirname(menu), { recursive: true });
+  writeFileSync(menu, [
+    "[Desktop Entry]",
+    "Type=Application",
+    "Version=1.5",
+    `Name=${APP}`,
+    "GenericName=Greenhouse drone",
+    "Comment=Fly the Crazyflie and record crop-health readings",
+    `Exec=${execQuote(join(dir, "desktop"))}`,
+    `Icon=${icon}`,
+    "Terminal=false",
+    "Categories=Science;",
+    "",
+  ].join("\n"));
+  // Both optional: menus pick the entry up without them, only later.
+  if (hasProgram("desktop-file-validate")) {
+    const check = spawnSync("desktop-file-validate", [menu], { encoding: "utf8" });
+    if (check.status !== 0) console.log(`  note: desktop-file-validate: ${check.stdout}${check.stderr}`.trim());
+  }
+  if (hasProgram("update-desktop-database")) {
+    spawnSync("update-desktop-database", [dirname(menu)], { stdio: "ignore" });
+  }
+
+  // A `cropwatcher` command — but never over a file that is not ours.
+  mkdirSync(dirname(link), { recursive: true });
+  let ours = true;
+  try {
+    const stat = lstatSync(link);
+    ours = stat.isSymbolicLink() && readlinkSync(link) === join(dir, "desktop");
+    if (ours) rmSync(link);
+  } catch {
+    // Nothing there yet.
+  }
+  if (ours) {
+    symlinkSync(join(dir, "desktop"), link);
+    const onPath = (process.env.PATH ?? "").split(":").includes(dirname(link));
+    if (!onPath) console.log(`  note: ${dirname(link)} is not on PATH; the menu entry still works.`);
+  } else {
+    console.log(`  note: ${link} already exists and is not CropWatcher's; left alone.`);
+  }
+  return join(dir, "desktop");
 }

@@ -31,6 +31,14 @@ function runningFromBuildFolder() {
       { encoding: "utf8", windowsHide: true });
     return (found.stdout ?? "").toLowerCase().split(/\r?\n/).some((p) => p.trim() === exe);
   }
+  if (process.platform === "linux") {
+    // Anchored, with the path's regex characters escaped: the build folder's
+    // own `desktop`, not any program whose name merely contains it.
+    const exe = join(release, "desktop");
+    const pattern = `^${exe.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}( |$)`;
+    const found = spawnSync("pgrep", ["-f", pattern], { encoding: "utf8" });
+    return found.status === 0 && found.stdout.trim() !== "";
+  }
   return false;
 }
 

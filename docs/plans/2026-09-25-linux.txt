@@ -1,0 +1,151 @@
+CROPWATCHER ON LINUX — the 40 stages
+====================================
+
+The terminal install (`node scripts/install.mjs`) works on macOS (Apple silicon
+and Intel) and Windows, and CI proves it — including a real sign-in — on all
+three. Linux was never tried. What the code does today on Linux, read from it
+(main at 476cfc8):
+
+  - setup.mjs prints a link to Tauri's prerequisites and checks nothing.
+  - install.mjs builds with --no-bundle and installs nothing (INSTALL is macOS
+    or Windows only).
+  - refuse-if-running.mjs returns "not running" on Linux without looking.
+  - The Wi-Fi password store: keyring is built with the apple-native and
+    windows-native features only. On Linux keyring 3.6.3 then uses its MOCK
+    store (keyring/src/lib.rs:255-288) — the password "saves" and is gone at
+    the next launch, silently.
+  - The Crazyradio needs a udev rule on Linux or only root can open it; the
+    agent would report "No drone answering".
+  - CI has no Linux machine, so none of this has ever run.
+
+Already right on Linux, read from the code: the agent's data folder
+(paths.py, XDG), the shell's log path (lib.rs agent_data_dir), the Wi-Fi
+network scan (a typed-name fallback), open-app.mjs, the CORS origin
+(tauri://localhost), and cryptography (manylinux wheels carry their own
+OpenSSL — the Intel-Mac failure cannot happen here).
+
+PRIMARY SOURCES
+  Tauri v2 prerequisites, Linux: https://v2.tauri.app/start/prerequisites/
+  Bitcraze USB permissions:
+    https://www.bitcraze.io/documentation/repository/crazyflie-lib-python/master/installation/usb_permissions/
+  keyring 3.6.3 features: Cargo.toml [features], src/lib.rs (mock fallback)
+  freedesktop Desktop Entry Specification 1.5; XDG Base Directory Specification
+
+DECISIONS
+  - Per-user install, no sudo: the program in ~/.local/lib/cropwatcher, a menu
+    entry in ~/.local/share/applications, the icon in hicolor, a `cropwatcher`
+    link in ~/.local/bin. Not an AppImage (needs FUSE 2, missing on current
+    Ubuntu by default) and not a .deb (needs sudo). Same shape as the Windows
+    per-user install.
+  - Never run sudo from a script. The udev rule and the plugdev group need
+    root; the installer detects whether they are in place and prints the exact
+    commands. The agent names the problem when it meets it.
+  - Keyring on Linux: Secret Service (sync-secret-service + crypto-rust). No
+    OpenSSL link, persistent in GNOME Keyring / KWallet. Without a keyring
+    daemon the save fails with a message — never a silent mock.
+  - CI proves Linux with the same two steps as everywhere else: install.mjs,
+    then check_sign_in.py. Nothing uploads.
+
+NOT IN THIS PLAN
+  - Linux installers to download (no downloads anywhere, by decision).
+  - Linux ARM in CI (the containers used for iteration are arm64; CI is x86_64).
+  - Real radio access on Linux — needs a dongle on a Linux machine.
+
+
+PHASE 0 — BASELINE                                              stages 1–3
+─────────────────────────────────────────────────────────────────────────
+  1  Branch feat/linux-install off main (476cfc8).
+  2  This plan.
+  3  Record the gates before any change: ruff, mypy, pytest; desktop build;
+     cargo test and clippy; web typecheck, lint, build.
+
+PHASE 1 — THE DESKTOP SHELL BUILDS AND WORKS ON LINUX           stages 4–8
+─────────────────────────────────────────────────────────────────────────
+  4  Cargo.toml: a Linux-only keyring declaration with sync-secret-service +
+     crypto-rust (features unify with the macOS/Windows ones).
+  5  Linux build needs libdbus-1 headers for that — added to every prereq list.
+  6  refuse-if-running.mjs: on Linux, look for the build folder's `desktop`
+     by its exact path (pgrep -f with an escaped, anchored pattern).
+  7  Confirm the sidecar sits beside the built binary (tauri-build copies
+     externalBin to target/release/cropwatcher-agent) — the per-user install
+     depends on it.
+  8  Confirm nothing else in lib.rs is macOS/Windows-only without a fallback
+     (Reopen is cfg(macos); wifi has a fallback).
+
+PHASE 2 — setup.mjs CHECKS A LINUX MACHINE                     stages 9–15
+─────────────────────────────────────────────────────────────────────────
+  9  Detect the distribution from /etc/os-release (ID, ID_LIKE).
+ 10  Check a C compiler (cc), pkg-config and objdump (PyInstaller needs
+     binutils on Linux).
+ 11  Check the libraries the build links, through pkg-config:
+     webkit2gtk-4.1, javascriptcoregtk-4.1, libsoup-3.0, openssl, dbus-1.
+ 12  One fix line per distribution family: apt, dnf, pacman, zypper — Tauri's
+     lists plus dbus — or Tauri's page for anything else.
+ 13  Python on Debian/Ubuntu: a Python without ensurepip cannot make a venv.
+     Probe it, and name python3.X-venv.
+ 14  Linux in the header and the summary; no "not a platform CropWatcher
+     publishes" note any more.
+ 15  Next steps on Linux: install.mjs, then the radio permission.
+
+PHASE 3 — install.mjs INSTALLS ON LINUX                        stages 16–24
+─────────────────────────────────────────────────────────────────────────
+ 16  INSTALL covers Linux; the build stays --no-bundle.
+ 17  Install folder ~/.local/lib/cropwatcher (CROPWATCHER_INSTALL_DIR
+     overrides, as on macOS); replaced, never merged.
+ 18  Copy `desktop` and `cropwatcher-agent` side by side, executable; fail if
+     either is missing after the copy.
+ 19  Refuse while the installed copy runs (pgrep on its exact path) — before
+     building and again before copying.
+ 20  Icon: src-tauri/icons/128x128.png → ~/.local/share/icons/hicolor/128x128/
+     apps/cropwatcher.png.
+ 21  Menu entry ~/.local/share/applications/cropwatcher.desktop (Desktop Entry
+     Spec 1.5; Exec quoted; StartupWMClass so the window groups under it);
+     update-desktop-database when present.
+ 22  `cropwatcher` link in ~/.local/bin; say so when that is not on PATH.
+ 23  Radio permission: find a udev rule naming 1915:7777 and check membership
+     of its group; if either is missing, print Bitcraze's exact rule and
+     commands. Never sudo.
+ 24  The finish: where it is, how to open it, how to update, how to remove.
+
+PHASE 4 — THE AGENT NAMES A PERMISSION PROBLEM                 stages 25–28
+─────────────────────────────────────────────────────────────────────────
+ 25  radio.py: linux_permission_problem() — for each Crazyradio on the bus,
+     can this user read and write /dev/bus/usb/BBB/DDD? No → the udev message.
+ 26  nothing_found_reason() and unopenable_reason() consult it after the
+     Windows driver check.
+ 27  verify_sidecar's NO_DRONE markers already match "Crazyradio found, but" —
+     keep the test that ties them to radio.py passing.
+ 28  Tests: permission missing, present, no dongle, not Linux, unreadable bus.
+
+PHASE 5 — CI PROVES LINUX                                      stages 29–32
+─────────────────────────────────────────────────────────────────────────
+ 29  desktop-install.yml: ubuntu-latest in the matrix.
+ 30  A Linux-only step installs Tauri's packages + libdbus-1-dev — the same
+     list setup.mjs prints.
+ 31  install.mjs then check_sign_in.py run unchanged; the sign-in check is the
+     proof asked for.
+ 32  Iterate in a local Linux container first (arm64, from a clean copy of
+     the tree — never the Mac's own .venv or node_modules), so CI is the
+     confirmation, not the debugger.
+
+PHASE 6 — WORDS                                                stages 33–35
+─────────────────────────────────────────────────────────────────────────
+ 33  Site setup guide: "Install from a terminal — Linux", with its
+     prerequisites.
+ 34  "Plug in the radio": the Linux udev step.
+ 35  CLAUDE.md and desktop/README.md: Linux beside macOS and Windows.
+
+PHASE 7 — PROVE, DOCUMENT, SHIP                                stages 36–40
+─────────────────────────────────────────────────────────────────────────
+ 36  Gates, all surfaces, plus install.mjs on this Mac (nothing Mac-side may
+     regress).
+ 37  The container run: setup, build, verify, sign-in, per-user install.
+ 38  CI green on all four machines — Apple-silicon Mac, Intel Mac, Windows,
+     Linux — with a real sign-in on each.
+ 39  Docs: desktop-app.txt, releases.txt, running-from-source.txt,
+     site-pages-and-views.txt; what was verified, and what was not.
+ 40  Commit, PR, merge with the owner bypass (--admin).
+
+UNVERIFIABLE HERE, reported as such: the menu entry in a real desktop
+session; the Crazyradio on Linux; the keyring against a running Secret
+Service daemon.

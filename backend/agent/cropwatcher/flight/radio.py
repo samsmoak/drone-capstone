@@ -14,6 +14,11 @@ libusb-win32 by itself; it is a one-time step with Zadig (Bitcraze's guide:
 DRIVER_GUIDE). Without it the dongle is plugged in, visible, and unusable, and
 without this module the operator was told to plug it in.
 
+LINUX needs a udev rule, or only root may open the dongle: it is on the bus,
+and the second step of opening it is refused. Bitcraze's rule and the plugdev
+group fix it (scripts/lib/radio-access.mjs prints them). The device node says
+whether this user may: /dev/bus/usb/BBB/DDD, readable and writable or not.
+
 The question "is the dongle on the bus at all" is asked through the bundled
 libusb-1.0 on every OS. On Windows that library lists a device whatever
 driver it has, which is what lets "no driver" be told apart from "no dongle".
@@ -21,6 +26,7 @@ driver it has, which is what lets "no driver" be told apart from "no dongle".
 
 from __future__ import annotations
 
+import os
 import sys
 
 #: The Crazyradio's USB ids — the same pair cflib looks for.
@@ -41,6 +47,10 @@ NO_DRIVER = (
 WRONG_DRIVER = (
     "Crazyradio found, but it has the wrong Windows driver. In Zadig, choose "
     "libusb-win32 and click Replace Driver."
+)
+NO_PERMISSION = (
+    "Crazyradio found, but this user may not open it. Add Bitcraze's udev rule and the "
+    "plugdev group — see the setup guide."
 )
 # BOTH causes, and NOT the battery first: blaming the battery sent an operator
 # to re-plug a working dongle four times while another program held it
@@ -95,10 +105,47 @@ def windows_driver_problem(*, windows: bool | None = None) -> str | None:
     return None if bound else WRONG_DRIVER
 
 
+def _usb_node(device: object) -> str:
+    """Where Linux exposes a USB device: /dev/bus/usb/<bus>/<address>."""
+    return f"/dev/bus/usb/{int(device.bus):03d}/{int(device.address):03d}"  # type: ignore[attr-defined]
+
+
+def linux_permission_problem(*, linux: bool | None = None) -> str | None:
+    """Why this user cannot open a Crazyradio that is plugged in — Linux only.
+
+    Asks the device node, not the device: opening the radio to find out would
+    claim it, and it may be in use. None when every dongle found is readable
+    and writable here, or when none is found (NOT_FOUND covers that).
+    """
+    if not (sys.platform.startswith("linux") if linux is None else linux):
+        return None
+    try:
+        import libusb_package
+        import usb.core
+
+        backend = libusb_package.get_libusb1_backend()
+        if backend is None:
+            return None
+        devices = list(usb.core.find(find_all=True, idVendor=CRAZYRADIO_VENDOR_ID,
+                                     idProduct=CRAZYRADIO_PRODUCT_ID, backend=backend))
+    except Exception:
+        return None
+    for device in devices:
+        node = _usb_node(device)
+        if os.path.exists(node) and not os.access(node, os.R_OK | os.W_OK):
+            return NO_PERMISSION
+    return None
+
+
+def _access_problem() -> str | None:
+    """The OS-level reason a dongle on the bus cannot be used, if there is one."""
+    return windows_driver_problem() or linux_permission_problem()
+
+
 def nothing_found_reason() -> str:
     """Why a scan found no drone, checked rather than assumed."""
     if radio_seen():
-        return windows_driver_problem() or NOT_ANSWERING
+        return _access_problem() or NOT_ANSWERING
     # Unreadable USB (None) keeps the advice it always had.
     return NOT_FOUND
 
@@ -106,7 +153,7 @@ def nothing_found_reason() -> str:
 def unopenable_reason() -> str:
     """Why the radio could not even be opened for a scan."""
     if radio_seen():
-        problem = windows_driver_problem()
+        problem = _access_problem()
         if problem:
             return problem
     return (

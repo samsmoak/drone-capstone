@@ -116,3 +116,65 @@ class TestRadioSeen:
             raise OSError("access denied")
         monkeypatch.setattr(usb.core, "find", boom)
         assert radio.radio_seen() is None
+
+
+class TestLinuxPermission:
+    """Linux: the dongle is on the bus, but without Bitcraze's udev rule only
+    root may open it. Asked of the device node, never by opening the radio."""
+
+    @pytest.fixture
+    def dongle(self, monkeypatch, tmp_path):
+        import usb.core
+
+        node = tmp_path / "001-004"
+        node.write_bytes(b"")
+        device = SimpleNamespace(bus=1, address=4)
+        state = SimpleNamespace(devices=[device])
+        monkeypatch.setattr(usb.core, "find", lambda **kw: iter(state.devices))
+        monkeypatch.setattr(radio, "_usb_node", lambda d: str(node))
+        return node, state
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes")
+    def test_a_node_this_user_cannot_open_is_named(self, dongle):
+        import os
+
+        node, _ = dongle
+        node.chmod(0o444)                                  # read-only: no write, no radio
+        if os.access(node, os.W_OK):                        # root ignores modes
+            pytest.skip("running as root")
+        assert radio.linux_permission_problem(linux=True) == radio.NO_PERMISSION
+
+    def test_a_node_this_user_can_open_is_fine(self, dongle):
+        node, _ = dongle
+        node.chmod(0o666)
+        assert radio.linux_permission_problem(linux=True) is None
+
+    def test_no_dongle_is_not_a_permission_problem(self, dongle):
+        _, state = dongle
+        state.devices = []
+        assert radio.linux_permission_problem(linux=True) is None
+
+    def test_not_linux_has_no_permission_problem(self):
+        assert radio.linux_permission_problem(linux=False) is None
+
+    def test_an_unreadable_bus_is_unknown_not_a_problem(self, monkeypatch):
+        import usb.core
+
+        def boom(**kw):
+            raise OSError("no usbfs")
+        monkeypatch.setattr(usb.core, "find", boom)
+        assert radio.linux_permission_problem(linux=True) is None
+
+    def test_the_node_path_is_the_kernels(self):
+        assert radio._usb_node(SimpleNamespace(bus=3, address=17)) == "/dev/bus/usb/003/017"
+
+    def test_it_comes_before_asking_for_the_drone(self, monkeypatch):
+        monkeypatch.setattr(radio, "radio_seen", lambda: True)
+        monkeypatch.setattr(radio, "windows_driver_problem", lambda: None)
+        monkeypatch.setattr(radio, "linux_permission_problem", lambda: radio.NO_PERMISSION)
+        assert radio.nothing_found_reason() == radio.NO_PERMISSION
+        assert radio.unopenable_reason() == radio.NO_PERMISSION
+
+    def test_the_message_names_the_fix_and_stays_short(self):
+        assert "udev" in radio.NO_PERMISSION and "plugdev" in radio.NO_PERMISSION
+        assert len(radio.NO_PERMISSION) < 130

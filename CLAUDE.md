@@ -44,7 +44,7 @@ The agent is the only process that touches the radio. Nothing else — ever.
 ## Commands
 
 ```bash
-# install the desktop app from a terminal — how everyone installs it, macOS or Windows
+# install the desktop app from a terminal — how everyone installs it: macOS, Windows or Linux
 node scripts/install.mjs                     # setup, build, install; --open, --no-install
 
 # set up a machine for development (the first step of install.mjs, on its own)

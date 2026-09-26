@@ -7,8 +7,8 @@
 #   cd drone-capstone
 #   node scripts/install.mjs
 #
-# So that exact command is what runs here, on the three kinds of machine
-# people have: an Apple-silicon Mac, an Intel Mac and a Windows PC. It checks
+# So that exact command is what runs here, on the four kinds of machine
+# people have: an Apple-silicon Mac, an Intel Mac, a Windows PC and a Linux PC. It checks
 # the toolchain, installs the agent and the app's packages, freezes and
 # verifies the agent (verify_sidecar.py: USB, HTTP, WebSocket, and that
 # closing stdin stops it), builds the app and installs it. A green run means a
@@ -57,7 +57,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, macos-15-intel, windows-latest]
+        os: [macos-latest, macos-15-intel, windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -65,6 +65,18 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # Linux only: what a person installs first, exactly as setup.mjs prints
+      # it for Debian/Ubuntu — Tauri's prerequisites
+      # (https://v2.tauri.app/start/prerequisites/) plus the D-Bus headers the
+      # Wi-Fi password store needs. desktop-file-utils validates the menu entry.
+      - name: Linux prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev \
+            pkg-config desktop-file-utils
 
       - uses: actions/setup-python@v5
         id: python
@@ -99,3 +111,15 @@ jobs:
           PY=backend/agent/.venv/bin/python
           [ -x "$PY" ] || PY=backend/agent/.venv/Scripts/python.exe
           "$PY" backend/agent/packaging/check_sign_in.py desktop/src-tauri/bin/cropwatcher-agent-*
+
+      # Linux only: the per-user install landed, and its menu entry is valid
+      # under the Desktop Entry Specification.
+      - name: The Linux install is in place
+        if: runner.os == 'Linux'
+        run: |
+          test -x ~/.local/lib/cropwatcher/desktop
+          test -x ~/.local/lib/cropwatcher/cropwatcher-agent
+          test -L ~/.local/bin/cropwatcher
+          test -f ~/.local/share/icons/hicolor/128x128/apps/cropwatcher.png
+          desktop-file-validate ~/.local/share/applications/cropwatcher.desktop
+          cat ~/.local/share/applications/cropwatcher.desktop

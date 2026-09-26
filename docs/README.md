@@ -77,6 +77,8 @@ are the only thing that survives a session.
 
 [plans/2026-09-25-any-machine-desktop.txt](plans/2026-09-25-any-machine-desktop.txt) — the 50-stage plan that made the desktop app build, run and explain its failures on any Mac or Windows PC: one setup command, one build path, the Windows radio driver, the Intel installer.
 
+[plans/2026-09-25-linux.txt](plans/2026-09-25-linux.txt) — the 40-stage plan that brought the terminal install, a real sign-in check and the radio's USB permission to Linux.
+
 ## Platform — not written yet
 
 `platform/architecture.md`, `platform/flight-safety.md` (superseded by the

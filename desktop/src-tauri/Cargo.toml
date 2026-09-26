@@ -39,6 +39,15 @@ objc2-core-location = { version = "0.3", features = ["CLLocationManager", "CLErr
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61", features = ["Win32_Foundation", "Win32_NetworkManagement_WiFi"] }
 
+# The secure store on Linux: Secret Service over D-Bus (GNOME Keyring,
+# KWallet). Without a Linux feature keyring 3 falls back to its MOCK store
+# (keyring/src/lib.rs) — the drone's Wi-Fi password would "save" and be gone at
+# the next launch, silently. crypto-rust avoids linking OpenSSL. Needs the
+# libdbus-1 headers to build (scripts/setup.mjs checks for them). Cargo unifies
+# these features with the macOS/Windows ones above.
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
+
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

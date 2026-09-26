@@ -429,6 +429,37 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
         linkHardware: false,
       },
       {
+        title: "Install from a terminal — Linux",
+        paragraphs: [
+          "Your computer builds the app for itself and installs it for your user — no sudo "
+          + "for the install itself — in about ten minutes. Install these first:",
+        ],
+        needs: [
+          "Tauri's Linux packages and the D-Bus headers — on Debian or Ubuntu: sudo apt install "
+            + "libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev "
+            + "libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev pkg-config",
+          "Rust — from rustup.rs",
+          "Node.js 24",
+          "pnpm 10 — run npm install -g pnpm@10",
+          "Python 3.11 or newer, with venv and its shared library — on Debian or Ubuntu: "
+            + "sudo apt install python3 python3-venv python3-dev",
+          "Git",
+        ],
+        commands: [
+          "git clone https://github.com/samsmoak/drone-capstone.git",
+          "cd drone-capstone",
+          "node scripts/install.mjs",
+        ],
+        bullets: [],
+        note: "The install command checks everything in the list first and prints the exact "
+              + "command for your distribution if something is missing. CropWatcher then appears "
+              + "in your applications menu, and as the command cropwatcher. To update later: "
+              + "git pull, then run it again. Then give yourself access to the radio — see the "
+              + "next step.",
+        showDownloads: false,
+        linkHardware: false,
+      },
+      {
         title: "Plug in the radio",
         paragraphs: [
           "The Crazyradio goes into your laptop, not the drone. It is a USB-A plug, so most " +
@@ -444,7 +475,10 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
             "already has another one)",
         ],
         note: "It must be libusb-win32, not WinUSB — the flight library talks to the radio " +
-              "through libusb-win32 on Windows.",
+              "through libusb-win32 on Windows. On Linux, only root may open the radio until " +
+              "you add Bitcraze's udev rule and join the plugdev group, once, then log out and " +
+              "back in. The install command prints the exact commands, and the app says so " +
+              "if it finds the radio but may not open it.",
         showDownloads: false,
         linkHardware: false,
       },
@@ -517,13 +551,21 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
           "unplug the dongle and plug it back in.",
       },
       {
+        symptom: "Linux: the app says this user may not open the Crazyradio",
+        cause: "Without a udev rule, Linux lets only root use the dongle.",
+        fix:
+          "Run node scripts/install.mjs again: it checks for the rule and prints Bitcraze's exact " +
+          "commands (a rule in /etc/udev/rules.d and the plugdev group). Log out and back in " +
+          "afterwards, then unplug the dongle and plug it back in.",
+      },
+      {
         symptom: "The app says it is not connected to the flight agent",
         cause: "The part of the app that talks to the radio stopped, or another copy holds its port.",
         fix:
           "The message says which. Quit every copy of CropWatcher (and any agent started from a " +
           "terminal), then reopen it. If it stops again, its log is in ~/Library/Application " +
-          "Support/CropWatcher/logs on a Mac and %APPDATA%\\CropWatcher\\logs on Windows — send " +
-          "us agent.log.",
+          "Support/CropWatcher/logs on a Mac, %APPDATA%\\CropWatcher\\logs on Windows and " +
+          "~/.local/share/CropWatcher/logs on Linux — send us agent.log.",
       },
       {
         symptom: "It lifts a few centimetres and will not go higher",
