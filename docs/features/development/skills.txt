@@ -1,17 +1,33 @@
-DEVELOPMENT SKILLS — /preflight and /adapt
-==========================================
+DEVELOPMENT SKILLS — /feature, /copy-adapt, /preflight and /adapt
+==================================================================
+Last verified: 2026-09-27 against chore/project-skills-and-feature-docs — the
+kit's 11 tests pass from .claude/feature-kit/; the SessionStart hook installs
+it into an empty $HOME and leaves an existing one alone.
 
 WHAT IT IS
 
-Two Claude Code slash commands that shape how work on this repository is
-planned and built. They are committed with the project, so anyone who opens the
-repo in Claude Code can run them — they no longer depend on one person's machine.
+Claude Code slash commands that shape how work on this repository is planned
+and built. They are committed with the project, so anyone who opens the repo in
+Claude Code — including a Claude Code cloud session — can run them; they no
+longer depend on one person's machine.
+
+/feature and /copy-adapt are the current versions: byte-for-byte copies of the
+owner's global ~/.claude/commands/ files, added 2026-09-27. /preflight and
+/adapt are their older, shorter predecessors and are kept as they were.
 
 
 WHERE IT LIVES
 
-  .claude/commands/preflight.md   /preflight <task>
-  .claude/commands/adapt.md       /adapt <task>
+  .claude/commands/feature.md      /feature <task>      (current)
+  .claude/commands/copy-adapt.md   /copy-adapt <task>   (current)
+  .claude/commands/preflight.md    /preflight <task>    (older)
+  .claude/commands/adapt.md        /adapt <task>        (older)
+  .claude/feature-kit/             kit.py + graph_check.py + templates + tests,
+                                   the tool /feature and /copy-adapt run first
+  .claude/settings.json            SessionStart hook: copies the kit to
+                                   ~/.claude/feature-kit/ when that is absent
+  docs/PROJECT_PROFILE.txt         what the kit generated, then settled by hand
+  docs/graph.config.json, docs/graph_check.py, docs/GRAPH_STATE.txt
 
 Claude Code loads commands from `.claude/commands/` in the project automatically.
 A copy in ~/.claude/commands with the same name is the personal version; the
@@ -31,9 +47,9 @@ project copy is the shared one. Edit the project copy and commit it.
   4. On go: implement, run every gate, report pass/fail honestly.
   5. Update docs/features/* with what actually shipped.
   6. Ship only on explicit approval (standing approval for this repo: commit,
-     push and merge after every build — see CLAUDE.md "Git"). Shipping includes
-     what people download: a merge to main that changes the desktop app
-     publishes a new build to the website (releases.txt).
+     push and merge after every build — see CLAUDE.md "Git"). Nothing is
+     published on merge: every machine builds the app from main with
+     `node scripts/install.mjs`, and CI only proves it builds (releases.txt).
 
 
 /adapt — copy, then adapt only what the target forces
@@ -60,6 +76,14 @@ HOW THEY WERE USED HERE
 
 INVARIANTS
 
+- The skills call `python3 ~/.claude/feature-kit/kit.py` — a HOME path, which
+  a cloud session does not have. The SessionStart hook fills it from the
+  committed copy; that is why the skill files stay byte-identical to the
+  global ones instead of being edited to a repo path. On the owner's Mac the
+  folder exists, so the hook does nothing.
+- Two copies drift. When the global /feature, /copy-adapt or the kit changes,
+  copy it here again (and `kit.py upgrade` for docs/graph_check.py) — inside
+  this repo the project copy wins over the global one.
 - A skill in ~/.claude/commands is invisible to everyone else. If the project
   depends on it, it belongs in .claude/commands/ and in git.
 - The skills discover project rules from the repo; they never carry another

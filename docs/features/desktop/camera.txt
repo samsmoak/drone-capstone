@@ -106,6 +106,22 @@ THE DECK'S WIRE FORMAT, MEASURED 2026-09-23 FROM THE REAL DECK
   measured       324 x 244, depth 1, format 0 (raw), size 79056 = 324*244
   first capture  24,495 bytes in 8 s, then nothing — stalled mid-frame
 
+OVER THE OPERATOR'S WI-FI (2026-09-24, "VT Open WiFi", RSSI -84): 74 distinct
+frames in 20 s — about 3.7 a second — first at 0.3 s. One gap of 7.1 s: the
+stall below, recovered by the reconnect without a click. The weak signal is a
+likely contributor; a stronger one has not been tried.
+
+WHY A MOVING DRONE CUTS OUT, and what is left to do about it. The deck joined
+at RSSI -84 dBm — near the edge — through a chip antenna, so rotating the drone
+swings the signal through dead angles; and each raw frame is 79 KB, so one lost
+stretch holds up a whole frame. The app now rides that out (the invariants
+below), but cannot make the link stronger. What would:
+  - a stronger signal: a phone hotspot or router near the flight area
+  - JPEG frames, ~10x smaller: the streamer supports it (streamerMode =
+    JPEG_ENCODING) but it is fixed AT COMPILE TIME in wifi-img-streamer.c, so it
+    means rebuilding the GAP8 firmware with the GAP SDK. Not done yet. The
+    agent already passes JPEG frames through untouched.
+
 THE STALL IS ON THE DECK. Read over the radio from the drone's console
 (2026-09-24): "GAP8: capture=76ms ... (79056 bytes), transfer=1150948 ms" and
 "ESP32: Error occurred during sending: errno 113 / Client disconnected". The
@@ -179,7 +195,60 @@ existing network ("Connect to an access point" in the firmware's Kconfig) or
 wired internet on the laptop, so both links are up at once.
 
 
+RECORDING (2026-09-24) — a session's frames, to disk first
+
+  <session folder>/frames/000001.png    every frame, as received
+  <session folder>/frames.csv           seq, recorded_at, t_s, file, width,
+                                        height, bytes, x_m, y_m, z_m, upload
+
+Every frame of a session is kept on the laptop; two a second are marked
+upload=1 and go to the private flight-frames bucket through the outbox
+(offline-sync.txt). Position is the drone's estimate as the frame arrived;
+empty — not zero — when there is none. Standby records nothing.
+
+IN A SESSION THE TAB SHOWS THE RECORDING: the newest frame read back FROM
+DISK, and a backlog scrubber (◀, a slider, ▶, "n/N · m:ss", Live) to walk
+back through the session. What is watched is what was saved and what uploads.
+Outside a session the tab shows the live feed as it comes, even when uneven.
+
+Verified: real upload as the operator to flight-frames (2 of 6 frames chosen
+at 10 fps, i.e. two a second, plus frames.csv), outbox emptied, test objects
+deleted. NOT yet: a real session on the drone.
+
+
+THE DECK'S WI-FI CHIP IS PATCHED (firmware/aideck-esp, flashed 2026-09-24).
+Its stock firmware (Bitcraze 2025.02 included) can close one client twice;
+the stale "disconnected" bit then drops EVERY later client in the same
+millisecond and the GAP8 never streams again ("Client connected / Client
+disconnected" at one timestamp, measured on official 2025.02 too). The patch
+closes each client once and clears stale bits before accept.
+  verified on the drone, patched: 0 of 11 clients dropped instantly (before:
+  all); steady 55 frames / 15 s at -59 dBm; 7 of 10 abrupt hang-ups got a
+  frame at once, the other 3 on the next connection (Bitcraze's open send-stall
+  issue, aideck-esp-firmware #12 — a weak or dipping signal).
+FLASHING THE ESP32 LEAVES THE GAP8 NOT STARTING until the battery is unplugged
+~10 s (Bitcraze Discussion #1305); a restart over the radio is not enough.
+The GAP8 BOOTLOADER needs a JTAG programmer to update — do not plan on it.
+
 INVARIANTS
+
+- A RECORDED FRAME IS NEW ONLY WHEN ITS NUMBER RISES. "latest" keeps answering
+  with the last frame after the deck stalls; counting that as fresh would show
+  a frozen picture as live.
+- CONNECTING IS NOT "NO SIGNAL". While the drone joins or rejoins Wi-Fi, or the
+  camera is reconnecting to a joined deck, the tab shows a spinner and the
+  reason. A new address from the deck kicks the camera to retry at once
+  instead of waiting out its backoff.
+
+- THE LAST GOOD FRAME STAYS UP THROUGH A DROP-OUT, for 30 s, with "Reconnecting ·
+  last frame N s ago" over it. Frames are fetched as blobs, one at a time, so a
+  failed request never replaces the picture (an <img> pointed at a URL that
+  204s shows nothing). The tab stops pulling after 10 s of misses and goes back
+  to asking the agent. Reported 2026-09-24: moving the drone quickly "cut" the
+  feed — the tab had been dropping to NO SIGNAL after 5 missed frames (1 s).
+- A READ SILENT FOR 2 S IS A STALL (was 5 s); the agent reconnects at once and
+  doubles from 0.2 s. A healthy raw frame takes ~32 ms (the GAP8's count).
+- img-src includes blob:, for the above.
 
 - Frame size comes from each frame's header, never a constant. The only
   constant this code had — 320x320 — was a guess; the deck measured 324x244.
@@ -206,4 +275,5 @@ LAST VERIFIED  2026-09-23.
 
 RELATED
 
+  consumed-by   setup.txt   installs the patched ESP32 and the GAP8 streamer
   consumed-by   drone-wifi.txt   sets the address DeckStream streams from

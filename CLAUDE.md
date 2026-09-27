@@ -1,7 +1,17 @@
 # CLAUDE.md
 
 > **Picking this up fresh?** Read `docs/README.md` — it routes to a doc per
-> feature. `docs/ROADMAP.md` is what is built and what is not.
+> feature. **What is built and what is left comes from `docs/features/`**,
+> starting with the DESIGNED BUT NOT WIRED list in
+> `features/architecture-at-a-glance.txt` — never from `docs/ROADMAP.md`, a
+> tick-list that understates how far the project has come. Run `/feature`'s
+> Step 0 on every new request, not just the first in a session; before writing
+> up a finding, grep `docs/features/` for it and extend its existing home.
+>
+> The project's working memory is committed, so a Claude Code cloud session
+> continues where a local one left off: `docs/PROJECT_PROFILE.txt` (repos,
+> gates, ship rules), `docs/GRAPH_STATE.txt` (which docs to trust),
+> `docs/design/PREFERENCES.txt` (standing rules). Keep them current.
 >
 > There used to be a `NEXT-STEPS.txt` here. It was deleted on 2026-09-22 after
 > drifting six days out of date — it still claimed 177 tests (501), that the
@@ -177,8 +187,9 @@ blanking the site — but sign-in will not work until they are set.
   rule working, not a failure.
 - **After every build that passes its gates: commit, push and merge** — on a
   short-lived branch, merged into `main` through a pull request.
-- Project skills `/preflight` and `/adapt` live in `.claude/commands/` — see
-  `docs/features/development/skills.txt`.
+- Project skills `/feature`, `/copy-adapt`, `/preflight` and `/adapt` live in
+  `.claude/commands/`, and the feature-kit they run in `.claude/feature-kit/` —
+  see `docs/features/development/skills.txt`.
 
 ## Out of scope
 

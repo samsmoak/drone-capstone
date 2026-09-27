@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -d \"$HOME/.claude/feature-kit\" ] || { mkdir -p \"$HOME/.claude\" && cp -R \"$CLAUDE_PROJECT_DIR/.claude/feature-kit\" \"$HOME/.claude/feature-kit\"; } || true"
+          }
+        ]
+      }
+    ]
+  }
+}

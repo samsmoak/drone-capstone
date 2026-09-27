@@ -1,0 +1,84 @@
+================================================================================
+GRAPH STATE — WHAT IS OUT OF SYNC, AND WHAT THAT STOPS
+Read this BEFORE starting a feature. It is the one file that says whether the
+docs can be trusted for the area you are about to work in.
+Generated from `python3 graph_check.py` plus what passes noticed by hand.
+Last run: 2026-09-27 — first run, 31 docs · 77 findings, 0 in a blocking class
+(DANGLING 0 · ONE-WAY 0 · STALE 0; the UNMERGED BRANCH entries are false
+positives, see WATCH).
+================================================================================
+
+--------------------------------------------------------------------------------
+HOW THIS WORKS
+--------------------------------------------------------------------------------
+Four severities. Only the first one stops work, and it stops work NARROWLY —
+naming the area it blocks, never "everything".
+
+  BLOCK   Building here will produce wrong work: a doc contradicts the code on
+          something a new feature would build on. Fix, or override explicitly.
+  WARN    Trust it less. Read the code rather than the prose for anything
+          load-bearing, and re-verify while you are in there.
+  DEBT    A known gap that is not dangerous yet. Clear it when convenient.
+  WATCH   Will become a problem. No action yet.
+
+The checker's blocking classes are UNMERGED BRANCH, DANGLING, ONE-WAY and STALE.
+
+OVERRIDING A BLOCK is a decision, not an escape hatch: say so in the pre-flight,
+name the block and why it does not apply, then add a dated line under OVERRIDES.
+
+CLEARING AN ENTRY requires the fix, not a judgement that it is fine. Re-run
+graph_check.py; if the finding is gone, move the entry to RESOLVED with a date.
+
+--------------------------------------------------------------------------------
+BLOCK  (0)
+--------------------------------------------------------------------------------
+None recorded.
+
+--------------------------------------------------------------------------------
+WARN  (1)
+--------------------------------------------------------------------------------
+2026-09-27  No doc declares a typed edge (ORPHAN 30). Every doc has a prose
+            RELATED section, but none in the `depends-on <doc>` form the
+            checker reads — so "ONE-WAY 0" means nothing was checkable, NOT
+            that the edges are two-way. Walk neighbours by reading RELATED
+            sections by hand until they are converted.
+
+--------------------------------------------------------------------------------
+DEBT  (4)
+--------------------------------------------------------------------------------
+2026-09-27  NO MARKER (29): the docs predate docs/_templates/feature.txt and
+            have no STATUS block. Add one when a doc is next touched.
+2026-09-27  OVERSIZED (3): architecture.txt 363, backend/flight-status.txt 543,
+            desktop/pages-and-windows.txt 457 lines — past the 350 split line.
+            Split into a folder with an index when next edited.
+2026-09-27  PARITY (2): web/app/admin/error.tsx and web/app/(public)/error.tsx
+            say `PARITY: app/app/error.tsx`. The source EXISTS
+            (web/app/app/error.tsx); the marker is written relative to web/,
+            the checker resolves from the repo root. Rewrite the markers as
+            web/app/app/error.tsx — a comment-only change.
+2026-09-27  design/components.txt is the kit's empty template (UNCITED). Fill
+            in the shared layer: web/components/ui/, desktop/src/ui.tsx,
+            desktop/src/components/.
+
+--------------------------------------------------------------------------------
+WATCH  (2)
+--------------------------------------------------------------------------------
+2026-09-27  UNMERGED BRANCH is fooled by squash merges. docs/main-owner-only,
+            feat/linux-install, fix/any-machine-desktop, fix/readable-agent-
+            errors and fix/sign-in-deadline-and-reopen report "ahead of main",
+            but each was squash-merged (PRs #62, #64, #60, #63, #61). Check
+            `gh pr list --state merged --head <branch>` before believing it;
+            deleting the merged local branches clears the noise.
+2026-09-27  APPROACHING SIZE (3): backend/manual-control.txt 257,
+            desktop/camera.txt 279, desktop/desktop-app.txt 251 lines.
+
+--------------------------------------------------------------------------------
+OVERRIDES
+--------------------------------------------------------------------------------
+(none yet — add a dated line here when proceeding past a BLOCK, naming the block
+and why it did not apply)
+
+--------------------------------------------------------------------------------
+RESOLVED
+--------------------------------------------------------------------------------
+2026-09-27  Docs tree, checker and this file created by the feature-kit.

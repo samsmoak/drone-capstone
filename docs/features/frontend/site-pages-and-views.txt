@@ -80,11 +80,24 @@ and a chain that fails halfway leaves the reader unsure which part ran.
 Commands wrap rather than truncate — a command cut off with an ellipsis cannot
 be checked before it is pasted.
 
-The desktop guide builds from source in two steps, Mac and PC, because the
-commands differ (.venv/bin vs .venv/Scripts, python3 vs python). Windows runs
-them in Git Bash: build_sidecar.sh is a bash script, and Git Bash is the shell
-the Windows CI runner used to build the published .exe. See
-../development/releases.txt — the builds come from CI, not from these pages.
+The desktop guide builds from source in three steps, Mac, Windows and Linux,
+because what must be installed FIRST differs (Xcode tools; the C++ Build
+Tools and WebView2; Tauri's Linux packages, D-Bus headers and python3-dev). The commands themselves are the same on both since 2026-09-25 —
+clone, then `node scripts/install.mjs` — in any shell. The steps are titled
+"Install from a terminal": that is how the app is installed now (see
+../development/releases.txt). The "Install the CropWatcher app" download step
+above them still reads the old bucket, whose files are stale — a known
+divergence awaiting the owner's call. (Before, Windows had
+to use Git Bash for a bash build script, and this doc claimed the Windows CI
+runner built the published .exe that way. It never had: every Windows run
+failed. See ../development/releases.txt.)
+
+THE LIVE /setup PAGE IS A STORED COPY. site_pages has a `setup` row (saved
+2026-09-21) holding the whole page, so changing the defaults in
+lib/site-content.ts does NOT change what visitors see. Checked 2026-09-25: the
+row equals the old defaults except " EDITED" appended to the intro, which
+looks like an editor test. After a deploy that changes the setup wording, use
+"Reset to original" in /admin/pages, or the old wording stays live.
 
 
 WHEN A SAVE GOES WRONG
@@ -223,3 +236,12 @@ INVARIANTS
 - A signed-in user who lands on /login goes to `next` or the visitor home, never
   the dashboard: signing in must not switch views by itself.
 - site_pages: anyone reads, operators write (RLS + grants, migration 0009).
+
+
+RELATED
+
+  shares-data-with  ../development/releases.txt   the setup guide's terminal steps (install.mjs)
+
+
+LAST VERIFIED  2026-09-25, the setup guide section only: lib/site-content.ts against the
+live site_pages row for `setup` (read with the publishable key).

@@ -526,7 +526,7 @@ stateEstimate.x, are the two comparisons that say whether it worked.
 INVARIANTS THIS SESSION ADDED
 
 - The desktop app runs a FROZEN agent. Changing Python does nothing to the
-  installed app until build_sidecar.sh re-freezes it. An agent fix that is
+  installed app until `pnpm sidecar` (or `pnpm app`) re-freezes it. An agent fix that is
   not rebuilt is an agent fix the operator never receives, and the symptom is
   the app behaving like an older version of itself — which reads as a
   hardware fault and is not one.

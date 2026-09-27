@@ -14,12 +14,17 @@ because the website is for the people who fly the drone, and a second card on
 
 SET IT UP
 
-On the laptop the Crazyradio is plugged into. Python 3.11 or newer.
+On the laptop the Crazyradio is plugged into, from the repository root:
+
+  node scripts/setup.mjs --dev
+
+It checks Python 3.11+, Rust, pnpm and the native toolchain, creates
+backend/agent/.venv (recreating one that cannot run here, or is for another
+CPU), and installs the agent editable with its test tools and PyInstaller.
+The same command on macOS and Windows. Then:
 
   cd backend/agent
-  python3 -m venv .venv
-  source .venv/bin/activate        (Windows, Git Bash: source .venv/Scripts/activate)
-  pip install -e .
+  source .venv/bin/activate        (Windows PowerShell: .venv\Scripts\Activate.ps1)
 
 Editable install: changes are live without reinstalling.
 
@@ -35,8 +40,21 @@ WHEN IT WILL NOT RUN
 
 - No Crazyradio found
   Usually: another program holds the dongle, or the process cannot see it.
-  Close cfclient and any script using the radio, re-plug the dongle. On Linux,
-  add the udev rule from Bitcraze's install guide.
+  Close cfclient and any script using the radio, re-plug the dongle.
+
+- Linux: "Crazyradio found, but this user may not open it"
+  Only root may open it until Bitcraze's udev rule is in place and the user
+  is in its group (plugdev), after a fresh login. `node scripts/install.mjs`
+  prints the exact rule and commands (scripts/lib/radio-access.mjs); the agent
+  reads the device node /dev/bus/usb/BBB/DDD to tell (flight/radio.py).
+
+- Windows: "Crazyradio found, but Windows has no driver" / "the wrong driver"
+  cflib opens the radio through libusb0 on Windows, i.e. the libusb-win32
+  driver, which Windows never installs itself. Zadig → Options → List All
+  Devices → Crazyradio PA USB Dongle → libusb-win32 → Install (or Replace)
+  Driver. WinUSB is the wrong one. flight/radio.py tells these apart by asking
+  the bundled libusb-1.0 (which lists the dongle whatever its driver) and
+  then libusb0 (which only sees it with the right one).
 
 - The drone connects but the motors never spin
   Usually: a low-level setpoint earlier in the same power cycle still holds
@@ -52,7 +70,19 @@ WHEN IT WILL NOT RUN
 INVARIANTS
 
 - Docker cannot reach USB on macOS: Docker Desktop runs a Linux VM with no USB
-  passthrough. The agent runs bare in a venv; the Dockerfile is for CI and
-  Linux teammates only.
-- To build the frozen sidecar the desktop app ships, see the desktop setup
-  guide's build steps and backend/agent/packaging/build_sidecar.sh.
+  passthrough. The agent runs bare in a venv. (This used to say "the
+  Dockerfile is for CI and Linux teammates" — there is no Dockerfile in the
+  repo, and there was none when it was written.)
+- To build the frozen sidecar the desktop app ships: `cd desktop && pnpm
+  sidecar` (backend/agent/packaging/build_sidecar.py). See
+  ../desktop/desktop-app.txt.
+
+
+RELATED
+
+  shares-data-with  ../desktop/desktop-app.txt   the same venv, created by scripts/setup.mjs
+
+
+LAST VERIFIED  2026-09-25: `node scripts/setup.mjs --check` and `--dev` on an
+M-series Mac; tests/test_radio.py for the Windows driver messages (mocked —
+no Windows machine was available).

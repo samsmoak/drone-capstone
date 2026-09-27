@@ -1,0 +1,86 @@
+{
+  "kit_version": 3,
+  "project": "drone-capstone",
+  "doc_roots": [
+    "features",
+    "platform",
+    "design"
+  ],
+  "doc_glob": "**/*.txt",
+  "index_names": [
+    "README.txt"
+  ],
+  "features_root": "features",
+  "design_root": "design",
+  "state_file": "GRAPH_STATE.txt",
+  "mainline": "main",
+  "repos": [
+    {
+      "name": "drone-capstone",
+      "path": ".."
+    }
+  ],
+  "source_dirs": [
+    "backend",
+    "web",
+    "desktop",
+    "firmware",
+    "scripts",
+    ".github"
+  ],
+  "prefix_dirs": [
+    "backend",
+    "web",
+    "desktop",
+    "firmware",
+    "scripts",
+    ".github"
+  ],
+  "marker_dirs": [
+    "backend/agent/cropwatcher",
+    "backend/agent/tests",
+    "backend/supabase",
+    "web/app",
+    "web/components",
+    "web/lib",
+    "desktop/src",
+    "desktop/src-tauri/src",
+    "firmware/drone-wifi",
+    "scripts"
+  ],
+  "extensions": [
+    "py",
+    "ts",
+    "tsx",
+    "js",
+    "jsx",
+    "mjs",
+    "rs",
+    "c",
+    "h",
+    "sql",
+    "json",
+    "toml",
+    "yml",
+    "yaml",
+    "sh"
+  ],
+  "generated_markers": [
+    ".g.",
+    ".freezed.",
+    ".generated.",
+    ".pb."
+  ],
+  "endpoint_refs": {},
+  "imports": {},
+  "import_roots": {},
+  "module_hop": "(repository|_api|/api|queries|client)(\\.\\w+)?$",
+  "sizes": {
+    "warn": 250,
+    "split": 350
+  },
+  "co_change_min": 3,
+  "bulk_commit": 8,
+  "ubiquitous": 3,
+  "co_change_exclude": []
+}

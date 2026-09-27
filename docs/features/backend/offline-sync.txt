@@ -63,6 +63,13 @@ DECISIONS
 
 INVARIANTS
 
+- CAMERA FRAMES: ONE OUTBOX RECORD PER SESSION, WITH A CURSOR (Kind.FRAMES,
+  camera/recording.py). The syncer uploads the frames frames.csv marks
+  upload=1, advancing "uploaded_through" after each, so an interrupted pass
+  resumes where it stopped; frames.csv goes last, once the session has ended,
+  and only then is the record sent. Not one record per frame: this outbox never
+  deletes a sent record, and that would be ~1,200 files per ten minutes.
+
 - Write the CSV first, then upload. A local write cannot fail; a flight cannot
   be re-run (CLAUDE.md #6).
 - Write to the APPLICATION DATA DIRECTORY, never a relative path. Inside a

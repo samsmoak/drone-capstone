@@ -17,17 +17,28 @@ THE FOLDER IS `desktop/`.
 
 WHERE IT LIVES
 
-  desktop/src-tauri/src/lib.rs            spawns the agent, holds the token
-  desktop/src/agent.ts                    typed REST + WebSocket client
+  desktop/src-tauri/src/lib.rs            spawns the agent, holds the token,
+                                          explains why the agent stopped
+  desktop/src/lib/agent.ts                typed REST + WebSocket client
   desktop/src/main.tsx                    close = end the session tidily
-  backend/agent/packaging/                PyInstaller spec, build + verify
-  .github/workflows/desktop-release.yml   .dmg + .exe on a v* tag
-  web/components/ui/download-buttons.tsx  /setup buttons, live once a file exists
+  desktop/scripts/sidecar.mjs             `pnpm sidecar`: finds the venv Python
+  desktop/scripts/open-app.mjs            `pnpm app`'s "open it", on any OS
+  backend/agent/packaging/                PyInstaller spec, build_sidecar.py,
+                                          verify_sidecar.py
+  scripts/install.mjs                     THE install: setup, build, install
+  scripts/setup.mjs                       toolchain checks + dependencies
+  scripts/lib/radio-access.mjs            the radio's one-time admin step per OS
+  .github/workflows/desktop-install.yml   runs install.mjs on arm Mac, Intel
+                                          Mac and Windows; uploads nothing
 
+Install (any OS):  node scripts/install.mjs        (--open, --no-install, --dev)
+Set up only:       node scripts/setup.mjs          (--check, --dev)
 Build:  cd desktop && pnpm tauri build      <- builds BOTH halves
 
 `pnpm tauri build` re-freezes the agent first, because tauri.conf.json's
-beforeBuildCommand is `pnpm build:all` (sidecar, then frontend). Before that
+beforeBuildCommand is `pnpm build:all` (sidecar, then frontend). `pnpm sidecar`
+is `node scripts/sidecar.mjs`, which runs backend/agent/packaging/
+build_sidecar.py with the agent venv's own Python. Before that
 it was `pnpm build`, which built only the frontend and bundled WHATEVER
 binary happened to be sitting in src-tauri/bin.
 
@@ -44,8 +55,9 @@ The halves can still be built separately when that is what is wanted:
         pnpm sidecar        freeze the agent only (~25 s)
         pnpm build          frontend only
 
-NO VIRTUALENV ACTIVATION IS NEEDED for any of this. build_sidecar.sh invokes
-`$VENV/bin/pyinstaller` by path and never reads the caller's PATH. The agent's
+NO VIRTUALENV ACTIVATION IS NEEDED for any of this. sidecar.mjs runs the
+venv's Python by path (bin/python or Scripts/python.exe) and never reads the
+caller's PATH. The agent's
 CLI is the same: `./cropwatcher` at the repo root execs the venv's executable
 directly, so `source .venv/bin/activate` is not part of any workflow here.
 Rust lives in ~/.cargo/bin, which a login shell may not have on PATH.
@@ -64,13 +76,56 @@ DECISIONS
   stop_motors, and Drone Wi-Fi's network scan and secure store (src/wifi/,
   see drone-wifi.txt). The Wi-Fi password is pushed to the agent FROM RUST, so
   it is never read back into the window.
+- THE APP IS NOT CODE-SIGNED (ad-hoc locally; no signing step in CI). Every
+  build is a new app to the macOS Keychain, so Drone Wi-Fi's saved password
+  prompts once per build (drone-wifi.txt). A Developer ID would end that.
 - The Supabase project URL and PUBLISHABLE key are compiled into lib.rs, with
   the environment able to override them. An installed .app is launched by Finder
   with no shell profile, so reading them from the environment alone gives an
   operator "sign-in is not configured" and no way to fix it. The SECRET key must
   never appear here — this binary ships inside an installer.
 - One-file PyInstaller binary. A folder of loose libraries beside the app is
-  worse to ship and to sign.
+  worse to ship and to sign. It costs startup time — ~40 MB is unpacked on
+  every launch, ~7 s to first answer on an M-series Mac and longer on an older
+  Intel Mac — which the window and the verifier both wait out. Revisited
+  2026-09-25 and kept: startup speed did not explain the Intel failure.
+- ONE BUILD PATH AND ONE SETUP FOR EVERY OS, in Node and Python — never bash.
+  pnpm runs package scripts through cmd.exe on Windows, so a script naming
+  build_sidecar.sh failed there with "'..' is not recognized" on every release
+  run. Node is already required (pnpm) and Python already required (the
+  agent), so scripts/setup.mjs, desktop/scripts/*.mjs and build_sidecar.py
+  run unchanged on macOS and Windows. Do not add a .sh or .ps1 to this path.
+- NO DOCKER, for the app or the agent (asked 2026-09-25). Docker on macOS
+  cannot reach USB, and an installer that first needs Docker Desktop is not
+  one download.
+- WHEN THE AGENT DIES, THE WINDOW SAYS WHY. lib.rs keeps the agent's newest
+  error-looking line; on exit it composes one sentence (exit code + that
+  line; a bind failure becomes "Port 8765 is already in use — another copy
+  is running"), keeps it in state (`agent_exit`) and emits `agent-exit`. The
+  "Not connected" banner shows it with the log path (`agent_log_path`,
+  mirroring paths.py). Before, the reason went out as `agent-log` events that
+  nothing listened to, and the operator read "Restart CropWatcher".
+- THE WINDOW COMES BACK WHEN THE ICON IS CLICKED (macOS). lib.rs handles
+  RunEvent::Reopen — the Dock or Launchpad icon clicked while running — and
+  RunEvent::Ready by showing, un-minimising and focusing the main window, which
+  also opens centred ("center": true). Tauri ignores Reopen by default, so a
+  window that was hidden or never ordered front stayed invisible however often
+  the icon was clicked: on an Intel Mac (2026-09-25) Launchpad gave a Dock icon
+  and no window, while starting the binary from Terminal gave one.
+- THE SHELL KEEPS ITS OWN LOG: logs/shell.log beside agent.log, capped at
+  256 KB. Each launch and each Dock click records the window's visibility,
+  position, size and display, before and after bringing it forward. A
+  Launchpad launch sends stderr nowhere, so before this there was no evidence
+  at all.
+- A BUILD REFUSES TO RUN WHILE A COPY RUNS FROM THE BUILD FOLDER
+  (desktop/scripts/refuse-if-running.mjs, first step of build:all). `pnpm tauri
+  build` rewrites bundle/macos/CropWatcher.app in place — the copy `pnpm app`
+  opens — and macOS can kill a program whose signed code changes under it. On
+  2026-09-25 a copy running there stopped 24 s after a rebuild replaced it
+  (unproven cause: no crash report; it may have been quit). It may be flying.
+- A COMMAND THAT GETS NO ANSWER ASKS /health WHY (lib/agent.ts, no-cors, 2 s):
+  nothing listening → "not running"; something listening → "running, but did
+  not answer <path>". They used to be the same sentence.
 
   MEASURED FROM A REAL BUILD, 2026-09-22 (the previous figures — 27 MB and a
   30 MB .dmg — were stale and had been quoted in arguments since):
@@ -86,8 +141,10 @@ DECISIONS
   the wrong way.
 - The whole CLI is frozen, not just `serve`, so `cropwatcher-agent check` is
   available on a machine with no Python when a drone will not connect.
-- Installers go to a public bucket at stable paths (latest/CropWatcher-macos.dmg)
-  overwritten by CI, so the download buttons never need a redeploy.
+- Installed from a terminal, never downloaded (2026-09-25): each machine
+  builds its own with scripts/install.mjs. See ../development/releases.txt
+  for why the published installers stopped (the Windows one outgrew
+  Supabase's 50 MB limit) and what the website still shows.
 
 
 INVARIANTS
@@ -98,6 +155,52 @@ INVARIANTS
   the port and the radio. Tauri kills only the bootloader; the Python process
   was re-parented to launchd, kept the radio, and the next launch reported "no
   drone found". Verified fixed on quit and on kill -9.
+- The verifier's probe agent is isolated: verify_sidecar.py runs it
+  with its own temporary data folder and CROPWATCHER_STANDBY=0 — without
+  that, verifying on a developer's laptop restored their saved sign-in and
+  could reach for the radio.
+- The verifier's limits are ceilings for a hang, not estimates: 180 s to
+  start, 240 s for `check`. An Intel Mac overran the old 20 s. The wait ends
+  the moment the agent dies, with its own output, so a crash is never
+  reported as a timeout.
+- Closing stdin must stop the agent AND free its port, proven on every build
+  by the verifier on every OS CI builds (it had only been measured on macOS).
+  An agent that survives fails the build and is killed with its whole tree.
+- LINUX INSTALLS PER USER, NO SUDO (install.mjs): the program in
+  ~/.local/lib/cropwatcher (desktop + cropwatcher-agent side by side, as
+  tauri-build leaves them in target/release — the app finds its sidecar
+  there), a menu entry in $XDG_DATA_HOME/applications (Desktop Entry Spec
+  1.5, validated in CI), the icon in hicolor, a `cropwatcher` link in
+  ~/.local/bin (never over a file that is not ours). Not an AppImage (needs
+  FUSE 2, absent on current Ubuntu) and not a .deb (needs sudo).
+- THE WI-FI PASSWORD STORE ON LINUX IS SECRET SERVICE (keyring
+  sync-secret-service + crypto-rust, Cargo.toml). With no Linux feature
+  keyring 3 uses its MOCK store: the password "saved" and was gone at the next
+  launch, silently. Needs libdbus-1 headers to build; without a keyring
+  daemon a save fails with a message.
+- LINUX PYTHON NEEDS ITS SHARED LIBRARY for PyInstaller. Ubuntu packages it
+  apart (libpython3.X) and reports Py_ENABLE_SHARED=1 without it; setup.mjs
+  checks the file at LIBDIR/INSTSONAME, and ensurepip (python3.X-venv).
+- INTEL MACS NEED A PREBUILT cryptography (pyproject: >=46,<49 on macOS
+  x86_64). cryptography 49+ ships macOS wheels for Apple silicon only, so on
+  Intel pip compiled it against Homebrew's OpenSSL; the frozen agent then held
+  two libssl.3.dylib under one file name, kept Python's older one, and could
+  not import cryptography ("Symbol not found: _SSL_get0_group_name"). Since
+  `supabase` needs it (supabase-auth → pyjwt[crypto]), no sign-in could start —
+  on the Intel Mac, 2026-09-25, while the M4 and Windows signed in. setup.mjs
+  installs with --only-binary=cryptography so a missing wheel fails the
+  install instead.
+- EVERY BUILD PROVES ITS LAZY IMPORTS LOAD: `cropwatcher-agent selftest`
+  imports each library the agent loads only on demand (SELFTEST_MODULES in
+  cli.py), and verify_sidecar.py runs it offline. Add a module there when new
+  code imports a third-party library inside a function.
+- CI SIGNS IN FOR REAL on every machine (packaging/check_sign_in.py): a
+  probe account that cannot exist must get the agent's own 409 refusal —
+  proof the client loaded and Supabase was reached. Run it by hand against an
+  installed app when a machine cannot sign in.
+- The Python that freezes the agent must be the same CPU as Rust's target.
+  build_sidecar.py and setup.mjs both refuse a mismatch: an x86_64 Python
+  under Rosetta on Apple silicon would ship an Intel agent named for arm64.
 - Verify the frozen binary, not the build. A binary missing libusb builds,
   launches and serves /health; it fails only when a radio is plugged in.
   verify_sidecar.py asserts cflib enumerated USB ("Looking for devices") and
@@ -113,17 +216,36 @@ INVARIANTS
 - Closing the window ends the session (land, close the flight, let the upload
   finish) rather than vanishing mid-flight. The agent's own dead-man landing
   stays as the net beneath that.
-- Neither half cross-compiles: macOS builds the .dmg, Windows the .exe, each on
-  its own runner. macos-latest is Apple silicon, so there is no Intel build.
+- Neither half cross-compiles: each OS and CPU builds its own. CI proves the
+  install on macos-latest (Apple silicon), macos-15-intel and windows-latest.
 
 
 NOT YET VERIFIED
 
-The CI workflow has never run and no Windows build exists. The bundled app has
-talked to the hosted Supabase project (sign-in verified 2026-09-16) but has not
-yet flown a drone from inside the bundle.
+- Windows built until 2026-09-21. From 2026-09-22 every run failed: first the
+  upload (the installer outgrew 50 MB), then `pnpm sidecar` under cmd.exe.
+  PR #60 built and verified it again; the app has still not reached a radio
+  on Windows (the libusb-win32 driver path is tested with mocks only).
+- (Resolved 2026-09-25.) The Intel Mac's sign-in failure was cryptography
+  compiled against Homebrew's OpenSSL (see INVARIANTS). After #63 the owner
+  installed with `node scripts/install.mjs` on that Intel Mac (macOS 15.5),
+  opened it from Launchpad and signed in.
+- The bundled app has talked to the hosted Supabase project (sign-in verified
+  2026-09-16) but has not yet flown a drone from inside the bundle.
+
+
+LAST VERIFIED  2026-09-25 (second pass): launched through LaunchServices
+(`open`) on an M-series Mac — shell.log recorded `ready` and, on a second
+`open`, `reopen` in the same process; the window on screen at 1280×821,
+centred. Earlier, on the same Mac: `pnpm tauri build` through the
+new path (sidecar verified, .app + .dmg bundled); verify_sidecar's crash,
+busy-port and orphan paths against fake agents; the frozen agent's real
+bind-failure line captured and matched by lib.rs's tests.
 
 
 RELATED
 
   shares-data-with  drone-wifi.txt   the secure store and the drone_wifi_* commands
+  depends-on        ../backend/agent-api.txt   /health (the no-cors probe), CORS for the window
+  depends-on        ../development/releases.txt   CI runs install.mjs, the same path people use
+  shares-data-with  ../backend/running-from-source.txt   the same venv, set up by setup.mjs

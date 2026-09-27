@@ -44,6 +44,14 @@ ENDPOINTS
     POST /session/emergency-stop    cut the motors
     POST /session/end               land if needed, close, flush
     POST /sync/now                  push whatever is waiting
+    POST /drone/connect             hold the drone on standby now — never arms
+    POST /drone/disconnect          free the radio until Connect (409 mid-session)
+    GET  /camera/recording          the session's recording: count, latest frame
+    GET  /camera/recording/frames   ?after=&limit= — frame list for the backlog
+    GET  /camera/recording/frame/N  one recorded frame, or "latest", FROM DISK;
+                                    204 when none. Token required: session data
+    POST /camera/wifi/rejoin        restart the drone over the radio so the camera
+                                    rejoins (409 in a session)
     GET  /camera/wifi               the deck's network and join progress; no password
     PUT  /camera/wifi               {ssid, password} — see desktop/drone-wifi.txt
     DELETE /camera/wifi             forget it
@@ -60,9 +68,17 @@ DECISIONS
   on the internet cannot know it, so it cannot fly the drone.
 - The token goes in the FIRST WEBSOCKET MESSAGE, not the query string: a query
   string ends up in access logs, and this one grants control of a drone.
-- CORS allows GET only, from a fixed origin list, so the dashboard can see
-  whether the agent is running. Extend with CROPWATCHER_ALLOWED_ORIGINS; never
-  with "*".
+- CORS is decided per origin (LocalCORS, rest.py): the desktop window's
+  origins (tauri://localhost, http://tauri.localhost, the dev server) may GET
+  and POST; website origins may GET only, so the dashboard can see whether the
+  agent is running; anything else gets no CORS headers. Extend the website
+  list with CROPWATCHER_ALLOWED_ORIGINS; never with "*". (Until 2026-09-25
+  this said "GET only" for everyone — it had drifted: GET-only broke every
+  button in the window, and the code had long since split it.)
+- EVERY REFUSED PREFLIGHT IS LOGGED — origin, method, path, reason — once per
+  origin and reason, capped at 50. A page whose preflight is refused sees only
+  "could not reach the agent", the same words as an agent that is not
+  running; the agent's log is the one place the difference is written down.
 - POST /flight/mission and /preflight were REMOVED. They flew a drone with no
   authentication and bypassed the checks entirely.
 - Health log lines are capped at 10 repetitions (QuietHealthFilter) — the window
@@ -71,6 +87,15 @@ DECISIONS
 
 
 INVARIANTS
+
+- GET /camera carries `connecting` — true while the agent is working towards a
+  picture (the deck joining or rejoining, or the camera reconnecting to a
+  joined deck); the window shows a spinner and the reason, not "no signal".
+- GET /camera's reason names the drone first. With no frames AND no radio link
+  it says the drone is not connected (off, flat battery) rather than a network
+  theory about an address the drone may no longer hold.
+- CROPWATCHER_STANDBY=0 stops the agent holding the drone between sessions. The
+  API tests set it: a background radio loop would race every test.
 
 - NOTHING THAT TALKS TO THE RADIO MAY WAIT FOR EVER. cflib's
   SyncCrazyflie.open_link() waits on an Event with no timeout
@@ -94,9 +119,18 @@ INVARIANTS
   locked, and skipped while busy.
 - --exit-with-parent exits when stdin closes. A one-file PyInstaller binary is
   two processes; killing the child reaches only the bootloader, and the real
-  Python process keeps the radio. See ../desktop/desktop-app.txt.
+  Python process keeps the radio. See ../desktop/desktop-app.txt. The
+  verifier now proves it on every build, per OS.
+- /health must stay unauthenticated and cheap. The window's no-cors probe
+  asks it whether ANYTHING is listening after a command got no answer, to
+  tell "not running" from "running but this request failed".
 
 
 RELATED
 
   consumed-by   ../desktop/drone-wifi.txt   /camera/wifi carries the drone's network
+  consumed-by   ../desktop/desktop-app.txt  /health probe after a failed command; CORS for the window
+
+
+LAST VERIFIED  2026-09-25, against rest.py (LocalCORS, /health) and
+tests/test_api.py — TestCors and TestCorsRefusalLog pass.

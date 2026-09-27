@@ -1,0 +1,21 @@
+================================================================================
+PREFERENCES — WHAT THE OWNER ASKED FOR MORE THAN ONCE
+Last verified: {{DATE}} (created by the feature-kit).
+================================================================================
+
+The rule (from /feature): the SECOND time the owner asks for the same thing — a
+design approach, an architectural choice, a way of laying something out — log
+it here with what was asked and where it was applied. On the THIRD, ask once
+whether to make it standing. If yes, move it into the design or platform doc it
+belongs to (so every screen obeys it without being asked) and mark it STANDING
+here with a pointer.
+
+--------------------------------------------------------------------------------
+LOG  (asked twice — watching for a third)
+--------------------------------------------------------------------------------
+(date · what was asked · where it was applied)
+
+--------------------------------------------------------------------------------
+STANDING  (made a rule — lives in the doc named)
+--------------------------------------------------------------------------------
+(date made standing · the rule · -> the doc that now carries it)

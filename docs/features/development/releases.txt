@@ -1,86 +1,121 @@
-RELEASES — how a commit becomes a download
-==========================================
+RELEASES — how a commit becomes an installed app
+================================================
 
 WHAT IT IS
 
-Merging to main publishes the desktop app. A push that touches the app builds
-it on a macOS runner and a Windows runner, uploads both installers to a public
-Supabase bucket at fixed paths, and writes a small manifest beside them. The
-website reads that bucket, so a new build appears on /apps and /setup without
-anyone redeploying the site.
+CropWatcher is installed from a terminal, not downloaded. On any Mac (Apple
+silicon or Intel), Windows PC or Linux PC:
 
-The rule this exists for: **what people download must never be behind the code
-on main.** A build made by hand on someone's laptop is not reproducible and
-stops happening the week that person is busy.
+  git clone https://github.com/samsmoak/drone-capstone.git
+  cd drone-capstone
+  node scripts/install.mjs
+
+That checks the toolchain, installs the agent and the app's packages, freezes
+and verifies the agent, builds the app and installs it — into Applications on
+a Mac, for the current user on Windows and Linux. Running it again after `git pull`
+updates it in place.
+
+CI runs exactly that command on an Apple-silicon Mac, an Intel Mac, a
+Windows PC and a Linux PC (ubuntu-latest), on every pull request and every push to main that can change the
+app. Nothing is uploaded.
+
+The rule this exists for: **what people install must never be behind the code
+on main, and must work on the machine they have.** Every machine builds its
+own, from main, so the first half holds by construction; CI proves the second.
 
 
 WHERE IT LIVES
 
-  .github/workflows/desktop-release.yml   build, upload, manifest
-  backend/agent/packaging/build_sidecar.sh  freezes and verifies the agent
-  backend/supabase/migrations/…_installers_bucket.sql  the public bucket
-  web/lib/products.ts                     what ships, and which files belong to it
-  web/lib/installers.ts                   the bucket reads and the manifest
-  web/app/(public)/apps/page.tsx          the index: a card per piece
-  web/app/(public)/apps/[slug]/page.tsx   one piece's downloads
-  web/components/ui/download-buttons.tsx  the short form, inside a setup guide
-
-Objects in the `installers` bucket:
-
-  latest/CropWatcher-macos.dmg       Apple silicon
-  latest/CropWatcher-windows.exe     64-bit
-  latest/manifest.json               { version, commit, built_at, run }
-
-Two repository secrets turn publishing on: SUPABASE_URL and
-SUPABASE_SERVICE_ROLE_KEY. Without them the workflow still builds and attaches
-the installers to the run page, so the pipeline is useful before they are set.
+  scripts/install.mjs                     the one command: setup, build, install
+  scripts/setup.mjs                       the toolchain checks and dependencies
+  desktop/scripts/sidecar.mjs             `pnpm sidecar` → build_sidecar.py
+  backend/agent/packaging/build_sidecar.py  freezes and verifies the agent
+  .github/workflows/desktop-install.yml   runs install.mjs on the three machines
+  web/lib/site-content.ts                 the setup guide's terminal steps
 
 
-WHEN IT RUNS
+WHEN CI RUNS
 
-  push to main touching desktop/**, backend/agent/** or the workflow itself
-  push of a v* tag
+  push to main or a pull request touching desktop/**, backend/agent/**,
+    scripts/** or the workflow itself
   "Run workflow" by hand
 
-The path filter is deliberate. A commit that changes only docs or web/ cannot
-change the installer, so rebuilding would republish an identical binary after
-twenty minutes of macOS and Windows runners. Add to the list when something new
-can affect the app; do not remove the filter.
+The path filter is deliberate: a docs or web change cannot affect the install,
+and three runners are not free. Add to the list when something new can affect
+the app; do not remove the filter.
 
 
 DECISIONS
 
-- Fixed object paths, overwritten, rather than a path per version. The site then
-  needs no redeploy and no database row when a build is published — the bucket
-  is the list. The version is in the manifest, for saying which.
-- The manifest is written by its own job, after both installers are up. Written
-  per-platform it could name a version only one platform actually has.
-- The bucket is public for reading and has no write policy at all. Only CI's
-  service role can write, which bypasses RLS. A signed-in user who could replace
-  an installer could ship arbitrary code to every operator who downloads it.
-- /apps is a card per piece of the project, opening that piece's own download
-  page — "which app is this" should not have to be read out of a filename, and
-  the pieces with nothing to download still belong on the page, saying so.
-- The page HEADs each object before offering it. A button that downloads a 404
-  page is worse than one that says "coming soon".
+- NO DOWNLOADS (user, 2026-09-25). Until then CI published a .dmg and an .exe
+  to a public Supabase bucket, read by /apps. It stopped working without
+  anyone noticing: on 2026-09-22 flight/geometry.py brought numpy and scipy
+  into the agent, the Windows installer grew from ~32 MB to 65.3 MB, and
+  Supabase refused it (HTTP 400; the upload limit is 50 MB). The macOS .dmg,
+  46 MB, still fit — barely. The same day `pnpm sidecar` started failing under
+  cmd.exe, so Windows never got that far again. The owner chose terminal
+  installs over paying for a bigger limit or moving the files.
+- Every machine builds its own. That is also what gives an Intel Mac an Intel
+  agent: PyInstaller freezes for the CPU of the Python running it, so an
+  Apple-silicon build could never have served one.
+- CI proves the install rather than producing anything. A green run on a
+  machine means "those three lines give a person on this machine an
+  installed app" — including that the agent stops when its window closes.
+- One command for every OS, in Node (which pnpm needs anyway). A bash script
+  and a PowerShell twin would drift; the old bash build script is what broke
+  Windows.
+- install.mjs refuses to replace a copy that is running, and never kills it:
+  that copy may be flying. Closing it lands the drone and ends the session.
+- The .dmg is not built. Tauri makes it through Finder (AppleScript), which
+  is slow and fails without a logged-in desktop, and nothing uses it now.
 
 
 INVARIANTS
 
-- Neither half cross-compiles. PyInstaller freezes for the platform it runs on
-  and Tauri bundles for the platform it runs on: the .exe cannot be produced on
-  a Mac. That is why the matrix has two runners, not one. Tauri alone can be
-  cross-built with cargo-xwin, which does not help — the sidecar it would
-  package cannot be. The way out for anyone on a platform CI does not publish
-  is in the desktop setup guide: clone and build, because their own machine is
-  the right machine. Same commands as the workflow, in the same order.
-- The sidecar is verified before Tauri bundles it (build_sidecar.sh runs
+- Neither half cross-compiles. PyInstaller freezes for the platform and CPU it
+  runs on and Tauri bundles for the platform it runs on. That is why the
+  matrix has four runners, and why macos-15-intel — GitHub's Intel image for
+  public repositories — is in it.
+- EVERY RUNNER SIGNS IN FOR REAL after installing (check_sign_in.py), and
+  Linux also validates its installed files and menu entry. The Linux runner
+  installs Tauri's prerequisites first — the same list setup.mjs prints.
+- The sidecar is verified before Tauri bundles it (build_sidecar.py runs
   verify_sidecar.py). A frozen agent that cannot load libusb still builds and
   still launches — it fails only when a radio is plugged in, on a user's desk.
-- The builds are unsigned: a capstone project has no Apple or Microsoft
-  developer certificate. macOS says "unidentified developer" and Windows shows
-  SmartScreen. /apps carries the instructions for both; a download page without
-  them hands people a file they cannot open.
-- `concurrency: cancel-in-progress` is not an optimisation. Two pushes a minute
-  apart would otherwise race to overwrite the same object, and the slower build
-  could win.
+- A locally built app requires the macOS it was built on or newer, whatever
+  Info.plist says: the agent bundles the build machine's libraries. Measured
+  2026-09-25 on an M-series Mac with Homebrew's Python: several bundled dylibs
+  (openssl, liblzma, libusb) have a minimum of macOS 26.0. Harmless when the
+  machine installs for itself; wrong for handing the .app to another Mac.
+- The builds are unsigned. A Mac that builds the app itself does not
+  quarantine it, so Gatekeeper does not ask; Windows does not warn for a
+  program it built and installed itself either.
+
+
+KNOWN DIVERGENCE (2026-09-25)
+
+- The website still offers downloads. /apps and the setup guide's "Install
+  the CropWatcher app" step read the old bucket, which now holds the last
+  builds published: macOS 2026-09-24, Windows 2026-09-21 — behind main and
+  without this work. The owner has not yet said whether to remove them; until
+  then they are stale, not broken. The setup guide's terminal steps are
+  current.
+- The GitHub Actions secrets SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are
+  no longer used by anything, and the latter bypasses RLS. The owner should
+  delete them (CLAUDE.md, "Three things only the project owner can do").
+
+
+RELATED
+
+  consumed-by   ../desktop/desktop-app.txt   the same build path and install, run by CI
+  shares-data-with  ../frontend/site-pages-and-views.txt   the setup guide's terminal steps
+
+
+LAST VERIFIED  2026-09-25: install.mjs end to end on an M-series Mac (1 min 47
+s from warm caches, into a scratch folder); PR #60's CI: setup, the build and
+verify_sidecar green on windows-latest for the first time since 2026-09-21,
+with closing stdin freeing the port in 0.9 s. Then desktop-install.yml run
+36126865498, all three green: install.mjs installed the app on macos-latest
+and macos-15-intel (/Applications/CropWatcher.app) and on windows-latest
+(%LOCALAPPDATA%\CropWatcher\desktop.exe — the installed executable keeps the
+Cargo name). Stdin freed the port in 0.0 / 0.1 / 0.9 s.
