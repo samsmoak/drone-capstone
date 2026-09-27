@@ -59,8 +59,19 @@ Feature docs are plain `.txt`, grouped by the surface they describe.
 
 | Doc | What it covers |
 |---|---|
-| [features/development/skills.txt](features/development/skills.txt) | The `/preflight` and `/adapt` commands committed in `.claude/commands/` |
+| [features/development/skills.txt](features/development/skills.txt) | The `/feature`, `/copy-adapt`, `/preflight` and `/adapt` commands and the feature-kit, committed in `.claude/` so a cloud session has them |
 | [features/development/releases.txt](features/development/releases.txt) | How a merge to main becomes a download on /apps, on both platforms |
+
+## The project's working memory — read before starting
+
+Committed so a Claude Code cloud session starts where a local one stopped.
+
+| Doc | What it covers |
+|---|---|
+| [PROJECT_PROFILE.txt](PROJECT_PROFILE.txt) | The repo, its surfaces, gates, conventions and ship rules |
+| [GRAPH_STATE.txt](GRAPH_STATE.txt) | Which docs can be trusted right now — `python3 docs/graph_check.py` regenerates the findings |
+| [design/PREFERENCES.txt](design/PREFERENCES.txt) | What the owner asked for more than once, and the rules that became standing |
+| [design/components.txt](design/components.txt) | The shared building blocks to reach for first (not filled in yet) |
 
 ## The lab
 

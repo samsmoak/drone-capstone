@@ -1,0 +1,45 @@
+================================================================================
+<FEATURE NAME IN CAPS> — <one line: what it is, in the user's words>
+Last verified: YYYY-MM-DD against <branch> — <what was checked>.
+SOURCE: <one full repo-relative path the STALE check can anchor on>
+================================================================================
+
+--------------------------------------------------------------------------------
+STATUS  (Last verified: YYYY-MM-DD)
+--------------------------------------------------------------------------------
+  <surface>   BUILT | PARTIAL | NOT BUILT — what exists, verified against code
+  <surface>   ...
+  NOT BUILT   what is deliberately missing, and why
+
+--------------------------------------------------------------------------------
+1. WHAT IT IS
+--------------------------------------------------------------------------------
+A few lines, in the user's language — the question this feature answers.
+
+--------------------------------------------------------------------------------
+2. WHERE IT LIVES
+--------------------------------------------------------------------------------
+<repo>  <full/path/to/entry_point.ext> — its role
+        <full/path/to/other.ext> — its role
+(Full paths: they are how a changed file is traced back to this doc, and how
+the checker decides this doc is STALE or UNCOMMITTED.)
+
+--------------------------------------------------------------------------------
+3. DECISIONS
+--------------------------------------------------------------------------------
+• A call that could reasonably have gone the other way — and why it went this
+  way. A decision that changed says so plainly, with the date.
+
+--------------------------------------------------------------------------------
+4. INVARIANTS
+--------------------------------------------------------------------------------
+• A rule that bites whoever does not know it, phrased as a rule, with the
+  measurement or the failure it prevents so the next reader believes it.
+
+--------------------------------------------------------------------------------
+5. RELATED
+--------------------------------------------------------------------------------
+depends-on        ../<area>/<other-doc>.txt
+                  one clause: what flows across
+(Write the other half — consumed-by / copied-to / shares-data-with — into the
+other doc in the same pass.)

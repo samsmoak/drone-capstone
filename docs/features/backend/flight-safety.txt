@@ -181,6 +181,10 @@ DECISIONS
 
 INVARIANTS
 
+- A LINK OPENED BY STANDBY IS NOT A CHECKED LINK. Standby (sessions-and-modes.txt)
+  holds the drone with no session and never arms; a session that takes the
+  link over runs every check on it, exactly as on a link it opened.
+
 - Advisory is not the same as trusted. A positioning warning must always
   return assisted = False. The 2026-09-16 crash was a blind drone told it could
   hold a position; tests pin that the crash readings come back unassisted.

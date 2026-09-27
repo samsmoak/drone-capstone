@@ -1,0 +1,31 @@
+================================================================================
+PREFERENCES — WHAT THE OWNER ASKED FOR MORE THAN ONCE
+Last verified: 2026-09-27 (created by the feature-kit).
+================================================================================
+
+The rule (from /feature): the SECOND time the owner asks for the same thing — a
+design approach, an architectural choice, a way of laying something out — log
+it here with what was asked and where it was applied. On the THIRD, ask once
+whether to make it standing. If yes, move it into the design or platform doc it
+belongs to (so every screen obeys it without being asked) and mark it STANDING
+here with a pointer.
+
+--------------------------------------------------------------------------------
+LOG  (asked twice — watching for a third)
+--------------------------------------------------------------------------------
+(date · what was asked · where it was applied)
+2026-09-27 · "just copy" means copy — do not rename, replace or delete what is
+            already there · the project skills: the global /feature and
+            /copy-adapt were copied beside /preflight and /adapt, not over them.
+            Same root as the STANDING rule below; a third instance makes
+            "build exactly the words asked" a platform rule.
+
+--------------------------------------------------------------------------------
+STANDING  (made a rule — lives in the doc named)
+--------------------------------------------------------------------------------
+(date made standing · the rule · -> the doc that now carries it)
+2026-09-24 · Don't touch UI that was not asked about; a layout fix must not
+            alter neighbouring panels (the Vitals divider must still drag over
+            the gyro) · -> features/desktop/pages-and-windows.txt, INVARIANTS.
+            Was a machine-local memory until 2026-09-27; moved here so a
+            Claude Code cloud session sees it too.

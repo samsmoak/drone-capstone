@@ -59,6 +59,10 @@ DECISIONS
 
 INVARIANTS
 
+- PUBLISHED WHENEVER A LINK IS OPEN, RECORDED ONLY IN A SESSION. Standby links
+  (sessions-and-modes.txt) publish vitals to the window; only a session's
+  history writes them to disk.
+
 - A log block carries at most 26 bytes (cflib LogConfig.MAX_LEN). pack_blocks
   packs by the byte width the DRONE reports for each variable, not by a width
   assumed here. Over-fill and the block is silently rejected by the firmware.

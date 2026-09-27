@@ -1,0 +1,76 @@
+SET UP — a drone out of the box to a session, in four steps
+============================================================
+
+WHAT IT IS
+
+The Set up page (sidebar). One list, one step open at a time:
+
+  1. Connect the drone          Crazyradio in, drone on (ticks itself)
+  2. Install camera software    check → install what is missing → unplug → verified
+  3. Connect the camera to Wi-Fi   → the Drone Wi-Fi page (drone-wifi.txt)
+  4. Start a session            → Home
+
+Step 2 puts on a new drone exactly what the first drone was given by hand.
+
+
+WHERE IT LIVES
+
+  desktop/src/pages/setup/SetupPage.tsx              the page
+  backend/agent/cropwatcher/drone_setup.py           check, install, unplug, verify
+  backend/agent/cropwatcher/firmware_bundle/         the three files + manifest.json
+  backend/agent/cropwatcher/flash_firmware.py        STM32 flasher (progress added)
+  backend/agent/cropwatcher/camera/flash_gap8.py     AI-deck flasher, gap8 | esp
+  backend/agent/packaging/cropwatcher-agent.spec     bundles firmware_bundle/
+  firmware/drone-wifi/src/drone_wifi.c               the cwsetup.fw / .deck params
+  GET /setup · POST /setup/check · POST /setup/install · event "setup"
+
+
+THE BUNDLE (manifest.json, sha256 each — a mismatch refuses to flash)
+
+  main    cf2.bin          crazyflie-firmware 2025.12.1 + drone_wifi v2
+  camera  aideck_gap8.bin  Bitcraze aideck-gap8-examples 2025.02, official
+                           wifi_img_streamer_with_ap
+  wifi    aideck_esp.bin   Bitcraze aideck-esp-firmware 2025.02 +
+                           firmware/aideck-esp/close-client-once.patch
+Updating one: rebuild it (firmware/*/build.sh), copy it in, regenerate the
+sha256, bump "bundle" (deck parts) or "drone_wifi" (main) so drones update.
+
+
+DECISIONS
+
+- WHAT A DRONE HAS IS READ, NOT ASSUMED. cwsetup.fw (present only in our
+  firmware) says whether main is ours and which version; cwsetup.deck, stored
+  PERSISTENTLY on the drone after a verified install, says which deck bundle it
+  carries — the deck's own chips cannot report their firmware over the radio.
+  Only what is missing or older is flashed; a set-up drone is told so.
+- The deck's two parts install together: they were tested together, and the
+  marker records them as one bundle.
+- The agent does the flashing: it is the radio's only owner (standby paused,
+  resumed after). Refused during a session.
+- Words on the page are instructions; the why is here.
+
+
+INVARIANTS
+
+- ORDER: main, then camera (the GAP8 is written THROUGH the ESP32), then wifi.
+- AFTER THE ESP32 IS FLASHED THE GAP8 DOES NOT START until the battery is
+  unplugged ~10 s (Bitcraze Discussion #1305; measured 2026-09-24 — a restart
+  over the radio is not enough). The page asks, and the check counts only once
+  the drone has left the radio AND come back: the drone's console keeps old
+  lines, and "GAP8 running" from before the flash must not pass for after it.
+- NOT BELOW 3.8 V: a flash that loses power can leave a drone unable to start.
+- The marker is written only after the camera is seen starting.
+- The page cannot tell a Crazyflie 2.1 from a 2.1 Brushless (the radio does not
+  say; cflib's bootloader reports both as "cf2"). It is for the 2.1 + AI deck.
+
+
+RELATED
+
+  depends-on        drone-wifi.txt   step 3; drone_wifi is what "main" installs
+  depends-on        camera.txt       the patched ESP32 and the GAP8 streamer
+  shares-data-with  ../backend/sessions-and-modes.txt  pauses and resumes standby
+
+
+LAST VERIFIED  2026-09-24: agent tests (16 for setup: parts chosen, order,
+skip-installed, low battery, real unplug, damaged file, marker only after the
+camera starts); desktop build. NOT YET run end to end on a drone.

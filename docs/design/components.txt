@@ -1,0 +1,29 @@
+================================================================================
+COMPONENTS — THE SHARED BUILDING BLOCKS
+Reach for one of these before writing a new one.
+Last verified: 2026-09-27 (created by the feature-kit — not yet filled in).
+================================================================================
+
+--------------------------------------------------------------------------------
+1. THE SHARED LAYER
+--------------------------------------------------------------------------------
+List each shared component with its path and the one job it does, e.g.
+  <path/to/shared/widget.ext>  <Name> — what it is for, when NOT to use it
+
+--------------------------------------------------------------------------------
+2. EXTRACTION CANDIDATES  (the rule of three, written down)
+--------------------------------------------------------------------------------
+/copy-adapt writes here the second or third time the same thing is copied, so
+the flag survives the conversation. Clear an entry when it is extracted.
+(date · what keeps being copied · the copies (paths) · where it should live)
+
+--------------------------------------------------------------------------------
+3. RULES
+--------------------------------------------------------------------------------
+• Tokens only — no raw colours or ad-hoc sizes.
+• Every theme the project supports, every component, every time.
+
+--------------------------------------------------------------------------------
+RELATED
+--------------------------------------------------------------------------------
+(add typed edges as other design/platform docs appear)

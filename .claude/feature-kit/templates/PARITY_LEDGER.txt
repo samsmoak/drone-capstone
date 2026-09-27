@@ -1,0 +1,49 @@
+================================================================================
+{{TITLE}} — PARITY LEDGER
+Source of truth: {{SOURCE}}. Port target: {{TARGET}}.
+Created by the feature-kit on {{DATE}} for /copy-adapt ports across repos or
+stacks.
+================================================================================
+
+Statuses (one line per ported item):
+  [TODO]     not ported yet
+  [PARTIAL]  ported, not yet through the done-bar
+  [PARITY]   same information, order, copy and states as the source — cleared
+             the done-bar (gates clean, driven against the real backend, every
+             theme checked)
+  [ADAPTED]  deliberately different because the target platform forces it —
+             say what and why
+  [N/A]      no equivalent on the target — say why
+  [FIXED]    a bug the port found, fixed on both sides (bug parity)
+
+Every cycle updates its lines and appends to the CYCLE LOG at the bottom.
+
+================================================================================
+0. TRANSLATION MAP   (the porting vocabulary — fill it in on the first port)
+================================================================================
+Derived by reading both repos, never from how such ports are usually done.
+
+  SOURCE CONSTRUCT                TARGET CONSTRUCT
+  ------------------------------  ----------------------------------------------
+  <screen / route>                <page / route>
+  <shared widget>                 <shared component>
+  <state / data layer>            <state / data layer>
+  <modal / sheet / dialog>        <equivalent>
+  <strings / i18n keys>           <strings / i18n keys — SAME KEY NAMES>
+  <theme tokens>                  <theme tokens — never a raw value>
+
+KEEP IDENTICAL ACROSS THE PORT: i18n key names, permission/capability names,
+endpoint paths and payloads, money representation.
+
+NO EQUIVALENT — ADAPT, DO NOT DROP. Mark the line [ADAPTED] or [N/A] with the
+reason.
+
+================================================================================
+1. ITEMS
+================================================================================
+[TODO]    <item>  (source: <path>)
+
+================================================================================
+CYCLE LOG
+================================================================================
+{{DATE}}  Ledger created.
