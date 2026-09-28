@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Everything a fresh clone needs before `pnpm app`, on macOS, Windows or Linux
-// (not Linux inside WSL — checkWsl says why):
+// (inside WSL too — checkWsl says what the radio needs there):
 //
 //   node scripts/setup.mjs            check, then install
 //   node scripts/setup.mjs --check    check only; change nothing
@@ -101,14 +101,13 @@ const versionAtLeast = (have, want) => {
 // ── checks ────────────────────────────────────────────────────────────────
 
 /**
- * Linux inside WSL builds and installs cleanly (2026-09-27, Ubuntu under
- * Windows) and is still the wrong machine: the app lands in WSL's Linux, not
- * in the Start menu, and WSL sees no USB device, so the Crazyradio is out of
- * reach. The build also ran 13 m 47 s from /mnt/c. Refused with the fix;
- * CROPWATCHER_ALLOW_WSL=1 is for someone who has set up WSLg and usbipd.
+ * Linux inside WSL builds, installs and runs (2026-09-27, Ubuntu under
+ * Windows, the window through WSLg) — but WSL sees no USB device until one
+ * is attached with usbipd-win, so the app finds no Crazyradio. Said, never
+ * refused: the app itself works there.
  */
 function checkWsl() {
-  if (!LINUX || process.env.CROPWATCHER_ALLOW_WSL === "1") return;
+  if (!LINUX) return;
   let release = "";
   try {
     release = readFileSync("/proc/sys/kernel/osrelease", "utf8");
@@ -116,11 +115,10 @@ function checkWsl() {
     /* not readable: treat as plain Linux */
   }
   if (!process.env.WSL_DISTRO_NAME && !/microsoft/i.test(release)) return;
-  problem("This is Linux inside WSL on Windows. CropWatcher installed here would not appear in "
-    + "the Start menu, and WSL cannot see the Crazyradio",
-    "Open PowerShell on Windows (not the Ubuntu terminal), clone the repo to a Windows folder, "
-    + "and run node scripts/install.mjs there. See the Windows steps at "
-    + "https://drone-capstone.vercel.app/setup/desktop-app");
+  note("This is Linux inside WSL. The app will run, but it cannot see the Crazyradio until "
+    + "the dongle is attached to WSL with usbipd-win "
+    + "(https://learn.microsoft.com/windows/wsl/connect-usb) — or install on Windows itself, "
+    + "from PowerShell.");
 }
 
 function checkNode() {
@@ -201,18 +199,20 @@ function checkNativeToolchain() {
  * The packages that provide everything below, per distribution family:
  * Tauri's own lists (https://v2.tauri.app/start/prerequisites/), plus the
  * D-Bus headers the Wi-Fi password store needs (keyring's Secret Service
- * backend, desktop/src-tauri/Cargo.toml) and pkg-config.
+ * backend, desktop/src-tauri/Cargo.toml), pkg-config, and xdg-utils — Tauri's
+ * AppImage bundle needs xdg-open, so `pnpm app` failed without it on an
+ * Ubuntu that lacked it (2026-09-27). install.mjs never bundles on Linux.
  */
 const LINUX_PACKAGES = {
   debian: "sudo apt update && sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget " +
-    "file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev pkg-config",
+    "file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev pkg-config xdg-utils",
   fedora: "sudo dnf install webkit2gtk4.1-devel openssl-devel curl wget file " +
-    "libappindicator-gtk3-devel librsvg2-devel libxdo-devel dbus-devel pkgconf-pkg-config && " +
+    "libappindicator-gtk3-devel librsvg2-devel libxdo-devel dbus-devel pkgconf-pkg-config xdg-utils && " +
     "sudo dnf group install \"c-development\"",
   arch: "sudo pacman -S --needed webkit2gtk-4.1 base-devel curl wget file openssl " +
-    "appmenu-gtk-module libappindicator-gtk3 librsvg xdotool dbus",
+    "appmenu-gtk-module libappindicator-gtk3 librsvg xdotool dbus xdg-utils",
   suse: "sudo zypper in webkit2gtk3-devel libopenssl-devel curl wget file libappindicator3-1 " +
-    "librsvg-devel dbus-1-devel pkg-config && sudo zypper in -t pattern devel_basis",
+    "librsvg-devel dbus-1-devel pkg-config xdg-utils && sudo zypper in -t pattern devel_basis",
 };
 
 /** "debian" | "fedora" | "arch" | "suse" | null, from /etc/os-release. */
@@ -262,6 +262,11 @@ function checkLinuxToolchain() {
     problem(`Linux build libraries or tools are missing: ${missing.join(", ")}`, linuxPackagesFix());
   } else {
     ok(`Linux build libraries (${libraries.join(", ")})`);
+  }
+  // Only `pnpm app` needs it (the AppImage), so it is a note, not a problem.
+  if (!run("xdg-open", ["--version"]).ok) {
+    note("xdg-open not found. The install does not need it; `pnpm app` does — install the "
+      + "xdg-utils package.");
   }
 }
 

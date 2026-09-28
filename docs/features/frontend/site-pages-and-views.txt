@@ -101,8 +101,17 @@ looks like an editor test. After a deploy that changes the setup wording, use
 Re-checked 2026-09-27: still not reset, so the live guide still offers "One
 download … no terminal" and a Git Bash build script that no longer exists.
 The defaults no longer have the download step — the installers in the bucket
-are the last CI builds (Windows 2026-09-21), older than every install fix —
-and they tell a Windows user to stay out of the Ubuntu (WSL) terminal.
+are the last CI builds (Windows 2026-09-21), older than every install fix.
+Each OS step now asks only for Git and Node before the one command, and says
+what the command checks for itself in the step's note.
+
+A NEW FIELD SHOWS AT ONCE; A CHANGED ONE WAITS FOR THE RESET. normalizeContent
+takes each field from the stored row when it has it, from the defaults when it
+does not. So the "Useful commands" section (commandsTitle, commandsIntro,
+reference — added 2026-09-27) is live on the next deploy even though the
+stored `setup` row predates it, while the rewritten steps stay hidden behind
+the row's old ones until "Reset to original". Checked on a local production
+build against the live row.
 
 
 WHEN A SAVE GOES WRONG

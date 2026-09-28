@@ -173,16 +173,19 @@ INVARIANTS
   1.5, validated in CI), the icon in hicolor, a `cropwatcher` link in
   ~/.local/bin (never over a file that is not ours). Not an AppImage (needs
   FUSE 2, absent on current Ubuntu) and not a .deb (needs sudo).
-- NO APPIMAGE FROM `pnpm tauri build` EITHER. bundle.targets lists every
-  target except appimage: Tauri's AppImage bundler needs xdg-open, and
-  `pnpm app` on an Ubuntu without xdg-utils built the .deb and .rpm and then
-  failed (2026-09-27). install.mjs never bundles on Linux (--no-bundle).
-- LINUX INSIDE WSL IS REFUSED (setup.mjs checkWsl). It builds and installs,
-  and is the wrong machine: the app lands in WSL's Linux, never the Start
-  menu, and WSL sees no USB, so no Crazyradio. Measured on a teammate's PC
-  2026-09-27 (13 m 47 s to build from /mnt/c). Detected by WSL_DISTRO_NAME or
-  "microsoft" in /proc/sys/kernel/osrelease; CROPWATCHER_ALLOW_WSL=1 is the
-  way past it for someone with WSLg and usbipd set up.
+- `pnpm app` ON LINUX NEEDS xdg-utils. bundle.targets is "all", and Tauri's
+  AppImage bundle calls xdg-open: on an Ubuntu without xdg-utils `pnpm app`
+  built the .deb and .rpm, then failed "xdg-open binary not found"
+  (2026-09-27, a teammate's Ubuntu under WSL; installing xdg-utils fixed it).
+  install.mjs is unaffected — it never bundles on Linux (--no-bundle). So
+  xdg-utils is in setup.mjs's package line, and a missing xdg-open is a note,
+  never a problem that blocks the install.
+- LINUX INSIDE WSL IS NOTED, NEVER REFUSED (setup.mjs checkWsl). The same
+  teammate's install built, installed and opened there (the window through
+  WSLg). What it cannot do yet is see the Crazyradio: WSL has no USB until a
+  device is attached with usbipd-win. Detected by WSL_DISTRO_NAME or
+  "microsoft" in /proc/sys/kernel/osrelease. A first version refused WSL
+  outright; it would have blocked a setup that works, and never shipped.
 - THE WI-FI PASSWORD STORE ON LINUX IS SECRET SERVICE (keyring
   sync-secret-service + crypto-rust, Cargo.toml). With no Linux feature
   keyring 3 uses its MOCK store: the password "saved" and was gone at the next
@@ -244,9 +247,11 @@ NOT YET VERIFIED
   2026-09-16) but has not yet flown a drone from inside the bundle.
 
 
-LAST VERIFIED  2026-09-27, the two Linux rules above only: cargo test passes with
-the new bundle.targets (the config is parsed at compile time). The WSL check
-is NOT yet run on WSL — its trigger is read off the teammate's screenshots.
+LAST VERIFIED  2026-09-27, the two Linux rules above only: setup.mjs --check
+unchanged on an M-series Mac; checkWsl and the xdg-open note exercised by
+running setup.mjs with process.platform forced to linux, with and without
+WSL_DISTRO_NAME (a note, not counted among the problems). Not yet run on a
+real WSL — the teammate's report is the evidence it runs there.
 LAST VERIFIED  2026-09-25 (second pass): launched through LaunchServices
 (`open`) on an M-series Mac — shell.log recorded `ready` and, on a second
 `open`, `reopen` in the same process; the window on screen at 1280×821,

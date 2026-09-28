@@ -31,8 +31,22 @@ function CheckIcon() {
   );
 }
 
-/** Terminal commands, one per row, each copied by clicking it. */
-export function CommandList({ commands }: { commands: string[] }) {
+/**
+ * Terminal commands, one per row, each copied by clicking it.
+ *
+ * `numbered` (the default) is for steps run in order. A reference list turns
+ * it off, and passes `notes` — one line per command, saying what it does,
+ * shown under its row rather than inside the button so it is not copied.
+ */
+export function CommandList({
+  commands,
+  notes = [],
+  numbered = true,
+}: {
+  commands: string[];
+  notes?: string[];
+  numbered?: boolean;
+}) {
   const [copied, setCopied] = useState<number | null>(null);
 
   async function copy(index: number, value: string) {
@@ -47,27 +61,31 @@ export function CommandList({ commands }: { commands: string[] }) {
 
   if (commands.length === 0) return null;
 
+  const List = numbered ? "ol" : "ul";
   return (
-    <ol className="grid gap-2">
+    <List className={numbered ? "grid gap-2" : "grid gap-3"}>
       {commands.map((command, i) => {
         const done = copied === i;
+        const note = notes[i];
         return (
           <li key={`${i}-${command}`}>
             <button
               type="button"
               onClick={() => copy(i, command)}
               title="Click to copy"
-              aria-label={`Copy command ${i + 1}: ${command}`}
+              aria-label={numbered ? `Copy command ${i + 1}: ${command}` : `Copy command: ${command}`}
               className={`group flex w-full min-w-0 cursor-pointer items-start gap-3 rounded-lg border bg-[var(--surface-2)] px-3.5 py-2.5 text-left transition-colors ${
                 done ? "border-[var(--heading)]" : "border-[var(--border)] hover:border-[var(--heading)]"
               }`}
             >
-              <span
-                aria-hidden="true"
-                className="tabular mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded text-[11px] font-semibold text-[var(--muted)] ring-1 ring-[var(--border)]"
-              >
-                {i + 1}
-              </span>
+              {numbered && (
+                <span
+                  aria-hidden="true"
+                  className="tabular mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded text-[11px] font-semibold text-[var(--muted)] ring-1 ring-[var(--border)]"
+                >
+                  {i + 1}
+                </span>
+              )}
               <code className="min-w-0 flex-1 font-mono text-[13px] leading-5 wrap-anywhere">
                 <span aria-hidden="true" className="select-none text-[var(--muted)]">$ </span>
                 {command}
@@ -81,9 +99,10 @@ export function CommandList({ commands }: { commands: string[] }) {
                 {done ? <><CheckIcon /> Copied</> : <><CopyIcon /> Copy</>}
               </span>
             </button>
+            {note && <p className="mt-1.5 px-1 text-sm text-[var(--muted)]">{note}</p>}
           </li>
         );
       })}
-    </ol>
+    </List>
   );
 }
