@@ -103,7 +103,7 @@ export function AgentReachability() {
 
       {state.kind === "absent" && (
         <p className="text-sm text-[var(--muted)]">
-          Start the CropWatcher app on the computer with the radio. If it is running and this
+          Start the DroneDeck app on the computer with the radio. If it is running and this
           still fails, the browser may be blocking a web page from reaching this computer — the
           desktop app is not affected.
         </p>

@@ -88,7 +88,7 @@ export function ManualControl() {
       // A page served over https may refuse to open ws:// at all.
       setSocket(
         "error",
-        "This browser would not open a connection to the agent. Use the CropWatcher desktop app for manual control.",
+        "This browser would not open a connection to the agent. Use the DroneDeck desktop app for manual control.",
       );
       return;
     }
@@ -132,7 +132,7 @@ export function ManualControl() {
     ws.addEventListener("error", () => {
       setSocket(
         "error",
-        "Could not reach the agent on this computer. Check that CropWatcher is running and the radio is plugged in — or use the desktop app, which some browsers require.",
+        "Could not reach the agent on this computer. Check that DroneDeck is running and the radio is plugged in — or use the desktop app, which some browsers require.",
       );
     });
   };

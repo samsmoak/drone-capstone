@@ -7,7 +7,7 @@ import { getPageContent, getPublishedAlbums } from "@/lib/queries";
 
 export const metadata: Metadata = {
   title: "Gallery",
-  description: "Photos and videos of CropWatcher: the hardware, the team, and drones in flight.",
+  description: "Photos and videos of DroneDeck: the hardware, the team, and drones in flight.",
 };
 
 export default async function GalleryPage() {

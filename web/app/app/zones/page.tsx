@@ -17,7 +17,7 @@ export default async function ZonesPage() {
         <PageHeader title="Zones" />
         <EmptyState
           title="No zones defined"
-          hint="Zones divide the greenhouse floor into areas the drone reports on. They are added to the zones table in Supabase."
+          hint="Zones divide the flight area into the areas the drone reports on. They are added to the zones table in Supabase."
         />
       </div>
     );
@@ -27,7 +27,7 @@ export default async function ZonesPage() {
     <div className="space-y-8">
       <PageHeader
         title="Zones"
-        description="The greenhouse from above. Each zone shows its most recent health estimate, from whichever flight last covered it."
+        description="The flight area from above. Each zone shows its most recent health estimate, from whichever flight last covered it."
       />
 
       {health.size === 0 && (
@@ -35,7 +35,7 @@ export default async function ZonesPage() {
           role="status"
           className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 text-sm"
         >
-          No health estimates yet. The map fills in once the agent runs crop-health
+          No health estimates yet. The map fills in once the inspection pipeline runs
           inference after a flight. Flight telemetry is already available under{" "}
           <Link href={FLIGHTS} className="underline underline-offset-4">
             Flights

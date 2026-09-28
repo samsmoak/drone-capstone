@@ -30,6 +30,28 @@ Two things that shape the whole website:
    and it is what the area is.
 
 
+THE HOME PAGE (DroneDeck, since 2026-09-28)
+
+The name is the Space Grotesk wordmark beside the drone mark
+(components/site/Wordmark.tsx); the Tagline field is the line under it. Then,
+each section left out when its fields are empty: Numbers (value + what it
+counts), the six Part cards (photo, status tag, text, and a link to the part's
+project page), the Roadmap sprint by sprint (when, status tag, what happens),
+and the planning document (web/public/docs/, linked, opens in a new tab). The
+status tags always show the word; the coloured dot is never the only signal,
+and the text stays the ink colour so no status hue must pass 4.5:1.
+
+LIGHT AND DARK, CHOSEN AND REMEMBERED
+
+A sun/moon button in the visitor nav, the operator sidebar, the mobile nav and
+the sign-in page (components/site/ThemeToggle.tsx) sets data-theme on <html>
+and saves the choice in localStorage; with none saved the system setting rules.
+An inline script in app/layout.tsx applies a saved choice before first paint,
+so no page flashes the other theme. Every toggle on a page, and other tabs,
+follow a change (lib/theme.ts subscribeTheme). Both token sets already existed
+in globals.css; nothing else had to change, because no component uses dark:.
+
+
 ONE WIDTH FOR THE VISITOR SITE
 
 lib/layout.ts SITE_CONTAINER (max-w-6xl, px-6) is used by the navbar, the footer
@@ -100,6 +122,13 @@ invisible to visitors, and the owner never reached "Reset to original" in
 /admin/pages. Renaming the key retired the row without needing admin access:
 nothing reads `setup` any more, and the row is left in the table, harmless.
 Its editor is now /admin/pages/setup-desktop.
+
+A REWRITE CAN RETIRE AN OLD SAVED COPY: PageSpec.defaultsRevised. A page whose
+defaults have been rewritten carries the date; getPageContent sets aside a
+stored row saved BEFORE it, and an edit saved after it wins as usual. Home has
+it (2026-09-28): its 2026-09-21 row would otherwise have kept the CropWatcher
+greenhouse wording live over the DroneDeck rewrite. The admin editor reads
+through the same function, so it opens on the new wording too.
 
 A STORED ROW HIDES CHANGED DEFAULTS; A NEW FIELD STILL SHOWS. normalizeContent
 takes each field from the stored row when it has it, from the defaults when it
@@ -253,6 +282,9 @@ RELATED
   shares-data-with  ../development/releases.txt   the setup guide's terminal steps (install.mjs)
 
 
-LAST VERIFIED  2026-09-27, the setup guide section only: lib/site-content.ts against the
+LAST VERIFIED  2026-09-28: the home page and the setup guide rendered from a local
+production build against the live site_pages rows (home's 2026-09-21 row set
+aside), screenshotted light and dark in headless Chrome. Before that, 2026-09-27,
+the setup guide section only: lib/site-content.ts against the
 live site_pages row for `setup` (read with the publishable key) and the live
 /setup/desktop-app page.

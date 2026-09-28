@@ -5,7 +5,13 @@ import App from "@/App";
 import { api, connectToShell } from "@/lib/agent";
 import "@fontsource-variable/inter";
 import "@fontsource-variable/fraunces";
+import "@fontsource/space-grotesk/500.css";
+import "@fontsource/space-grotesk/700.css";
 import "./styles.css";
+import { bootTheme } from "@/lib/theme";
+
+// The saved light/dark choice, before anything renders (lib/theme.ts).
+bootTheme();
 
 /**
  * Closing the window ends the session rather than vanishing mid-flight.

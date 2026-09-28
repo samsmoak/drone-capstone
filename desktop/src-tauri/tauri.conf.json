@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "CropWatcher",
+  "productName": "DroneDeck",
   "version": "0.1.0",
   "identifier": "com.cropwatcher.desktop",
   "build": {
@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "CropWatcher",
+        "title": "DroneDeck",
         "center": true,
         "width": 1280,
         "height": 820,

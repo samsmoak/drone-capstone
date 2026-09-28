@@ -12,9 +12,9 @@ import { fileURLToPath } from "node:url";
 const release = resolve(dirname(fileURLToPath(import.meta.url)), "../src-tauri/target/release");
 
 // The Cargo package is "desktop", so that is the executable's name; the
-// installers rename it to CropWatcher.
+// installers rename it to DroneDeck (the productName).
 const target = {
-  darwin: join(release, "bundle", "macos", "CropWatcher.app"),
+  darwin: join(release, "bundle", "macos", "DroneDeck.app"),
   win32: join(release, "desktop.exe"),
 }[process.platform] ?? join(release, "desktop");
 

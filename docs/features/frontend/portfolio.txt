@@ -35,6 +35,22 @@ WHERE IT LIVES
   components/editor/*, lib/blocknote/*, lib/upload.ts.
 
 
+THE PROJECT PAGES ARE THE SIX PARTS (since 2026-09-28)
+
+backend/supabase/seed/dronedeck_projects.py writes an overview (`dronedeck`)
+and one page per part of the Project Management Planning document —
+apps-and-manual-flight, autonomous-flight, data-collection, anomaly-detection,
+documentation, testing — each with its user stories, owners, estimates,
+acceptance criteria, what is built and what is left. It needs the secret key,
+so the owner runs it (dry run first, then --apply). It sets the six starter
+projects from seed/portfolio.py to draft, and never touches `design-document`,
+which the team wrote in /admin. Covers and inline images are site paths into
+web/public/projects/ (CREDITS.txt), so they deploy with the site rather than
+living in the bucket. Do not re-run seed/portfolio.py: it matches team members
+by NAME, and "Kevin" was renamed "Kevin Loi" in /admin — it would create a
+second Kevin.
+
+
 WHAT CHANGED IN THE PORT, AND WHY
 
   multi-tenant sites + site_id      one site: dropped
@@ -43,7 +59,8 @@ WHAT CHANGED IN THE PORT, AND WHY
                                     + email under each card
   highlights, covers carousel,      dropped — not asked for; one cover image
   screenshots, videos, documents
-  theme toggle (ThemeProvider)      system colour scheme, as the rest of the site
+  theme toggle (ThemeProvider)      the site-wide light/dark switch in the nav
+                                    (components/site/ThemeToggle.tsx, since 2026-09-28)
   (new) team_members + project_members tables, TeamManager, a team picker in the
   project editor
 

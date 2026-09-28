@@ -16,12 +16,16 @@ export function Nav({
   items,
   brand,
   brandHref = "/",
+  brandLabel,
   trailing,
   cta,
   width = SITE_CONTAINER,
 }: {
   items: readonly NavItem[];
-  brand: string;
+  /** The wordmark, or plain text. */
+  brand: React.ReactNode;
+  /** What the brand link is announced as, since the wordmark is partly an image. */
+  brandLabel?: string;
   brandHref?: string;
   trailing?: React.ReactNode;
   /** Sits with the links, not out at the far right — it is a destination too. */
@@ -48,7 +52,7 @@ export function Nav({
         aria-label="Main"
         className={`flex ${width} flex-wrap items-center gap-x-6 gap-y-2 py-3`}
       >
-        <Link href={brandHref} className="font-semibold tracking-tight">
+        <Link href={brandHref} aria-label={brandLabel} className="flex min-h-11 items-center font-semibold tracking-tight">
           {brand}
         </Link>
 

@@ -94,13 +94,13 @@ INVARIANTS
 
 KNOWN DIVERGENCE (2026-09-25)
 
-- /apps still offers downloads from the old bucket, which holds the last
-  builds published: macOS 2026-09-24, Windows 2026-09-21 — behind main and
-  without this work. The setup guide no longer does: on 2026-09-27 the owner
-  said to drop the bundled download and give the install instructions only,
-  so its "Install the CropWatcher app" step is gone (live 2026-09-28 — see
-  ../frontend/site-pages-and-views.txt for the stored copy that hid it).
-  /apps itself has not been decided.
+- Nothing is offered for download. On 2026-09-27 the owner said to drop the
+  bundled download and give the install instructions only: the setup guide's
+  download step went first, and on 2026-09-28 /apps too — the desktop app's
+  `platforms` list in web/lib/products.ts is empty, so its card leads to the
+  setup guide and /apps/desktop-app is a 404. The bucket still holds CI's last
+  builds (macOS 2026-09-24, Windows 2026-09-21), under the old CropWatcher
+  name and older than every install fix; nothing links to them.
 - The GitHub Actions secrets SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are
   no longer used by anything, and the latter bypasses RLS. The owner should
   delete them (CLAUDE.md, "Three things only the project owner can do").

@@ -17,7 +17,7 @@ export async function generateMetadata({ params }: PageProps<"/team/[slug]">): P
   if (!member) return { title: "Team member not found" };
   return {
     title: member.full_name,
-    description: member.headline || member.bio || `${member.full_name} on the CropWatcher team.`,
+    description: member.headline || member.bio || `${member.full_name} on the DroneDeck team.`,
   };
 }
 

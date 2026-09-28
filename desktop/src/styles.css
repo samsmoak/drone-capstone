@@ -260,6 +260,13 @@ body {
   letter-spacing: -0.015em;
 }
 
+/* The DroneDeck wordmark, and only the wordmark (components/Wordmark.tsx):
+   Space Grotesk, bundled with the app like the other faces. */
+.font-brand {
+  font-family: "Space Grotesk", var(--font-sans);
+  letter-spacing: -0.035em;
+}
+
 /* Section eyebrows: small, spaced capitals above a title. */
 .eyebrow {
   font-size: 0.625rem;

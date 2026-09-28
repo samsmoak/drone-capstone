@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { HOME, OPERATOR_HOME } from "@/lib/routes";
 import { OPERATOR_GROUPS, activeHref } from "./nav-items";
 import { ProfileMenu, type OperatorAccount } from "./ProfileMenu";
+import { ThemeToggle } from "@/components/site/ThemeToggle";
+import { Wordmark } from "@/components/site/Wordmark";
 
 /**
  * The operator view's left sidebar. Copied from ../doctor-portfolio's
@@ -21,11 +23,8 @@ export function OperatorSidebar({ account, isOperator }: { account: OperatorAcco
     <aside className="flex h-full flex-col">
       <div className="px-5 py-6">
         {/* Home of this view: the dashboard. */}
-        <Link href={OPERATOR_HOME} className="flex items-center gap-2.5">
-          <span className="font-display flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--primary)] text-lg font-semibold text-[var(--on-primary)]">
-            C
-          </span>
-          <span className="font-display text-lg font-semibold">CropWatcher</span>
+        <Link href={OPERATOR_HOME} aria-label="DroneDeck — dashboard home" className="flex min-h-11 items-center">
+          <Wordmark />
         </Link>
       </div>
 
@@ -61,15 +60,18 @@ export function OperatorSidebar({ account, isOperator }: { account: OperatorAcco
       </nav>
 
       <div className="space-y-1 border-t border-[var(--border)] p-3">
-        <Link
-          href={HOME}
-          className="flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm font-medium text-[var(--muted)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--foreground)]"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7 7-7M3 12h18" />
-          </svg>
-          View site
-        </Link>
+        <div className="flex items-center gap-1">
+          <Link
+            href={HOME}
+            className="flex min-h-10 flex-1 items-center gap-3 rounded-xl px-3 text-sm font-medium text-[var(--muted)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--foreground)]"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7 7-7M3 12h18" />
+            </svg>
+            View site
+          </Link>
+          <ThemeToggle />
+        </div>
         {account && <ProfileMenu account={account} placement="up" />}
       </div>
     </aside>

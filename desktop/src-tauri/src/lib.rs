@@ -63,7 +63,7 @@ struct AgentProcess(Mutex<Option<CommandChild>>);
 /// second dies before the window has registered a listener — and that is the
 /// case the operator most needs explained. Before this, the reason was emitted
 /// as `agent-log` lines nothing listened to, and the window could only say
-/// "Could not reach the flight agent. Restart CropWatcher."
+/// "Could not reach the flight agent. Restart DroneDeck."
 #[derive(Default)]
 struct AgentExit(Mutex<Option<String>>);
 
@@ -98,8 +98,8 @@ fn describe_exit(code: Option<i32>, last_error: Option<&str>) -> String {
             || lower.contains("only one usage of each socket address")
         {
             return format!(
-                "Port {AGENT_PORT} is already in use — another copy of CropWatcher, or an agent \
-                 started from a terminal, is running. Quit it, then reopen CropWatcher."
+                "Port {AGENT_PORT} is already in use — another copy of DroneDeck, or an agent \
+                 started from a terminal, is running. Quit it, then reopen DroneDeck."
             );
         }
     }
@@ -109,7 +109,7 @@ fn describe_exit(code: Option<i32>, last_error: Option<&str>) -> String {
         format!(" — {}", cut.trim_end_matches('.'))
     });
     format!(
-        "The flight agent stopped {how}{}. Quit and reopen CropWatcher; if it stops again, \
+        "The flight agent stopped {how}{}. Quit and reopen DroneDeck; if it stops again, \
          its log has the details.",
         quoted.unwrap_or_default()
     )
@@ -145,6 +145,9 @@ fn agent_data_dir() -> Option<std::path::PathBuf> {
             None => home()?.join(".local").join("share"),
         }
     };
+    // Still "CropWatcher": the app was renamed DroneDeck on 2026-09-28, but its
+    // data folder (sign-in, sessions, logs — backend/agent/cropwatcher/paths.py)
+    // kept the old name so nobody's record moved.
     Some(root.join("CropWatcher"))
 }
 
@@ -478,7 +481,7 @@ pub fn run() {
                 );
                 agent_stopped(
                     app.handle(),
-                    format!("The flight agent could not start ({message}). Reinstall CropWatcher."),
+                    format!("The flight agent could not start ({message}). Reinstall DroneDeck."),
                 );
             }
             Ok(())
@@ -529,7 +532,7 @@ mod tests {
                     ('127.0.0.1', 8765): address already in use";
         let reason = describe_exit(Some(1), Some(line));
         assert!(reason.contains("Port 8765 is already in use"), "{reason}");
-        assert!(reason.contains("another copy of CropWatcher"));
+        assert!(reason.contains("another copy of DroneDeck"));
     }
 
     #[test]
@@ -546,7 +549,7 @@ mod tests {
         assert_eq!(
             reason,
             "The flight agent stopped with exit code 1 — ModuleNotFoundError: No module \
-             named 'usb'. Quit and reopen CropWatcher; if it stops again, its log has the details."
+             named 'usb'. Quit and reopen DroneDeck; if it stops again, its log has the details."
         );
     }
 

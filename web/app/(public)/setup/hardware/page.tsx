@@ -6,7 +6,7 @@ import { items, strings, text } from "@/lib/site-content";
 export const metadata = {
   title: "Hardware",
   description:
-    "Every component of the CropWatcher kit, photographed and labelled — including where " +
+    "Every component of the DroneDeck kit, photographed and labelled — including where " +
     "the sensors actually are.",
 };
 

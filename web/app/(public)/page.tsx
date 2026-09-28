@@ -1,38 +1,49 @@
 import { PROSE_COLUMN, SITE_CONTAINER } from "@/lib/layout";
 import Image from "next/image";
 import Link from "next/link";
+import { Wordmark } from "@/components/site/Wordmark";
 import { getPageContent, getPublishedAlbums } from "@/lib/queries";
 import { GALLERY, galleryPath, OPERATOR_HOME, PROJECTS, TEAM } from "@/lib/routes";
-import { flag, items, text } from "@/lib/site-content";
+import { flag, items, text, type ContentObject } from "@/lib/site-content";
 
 export const metadata = {
-  title: "CropWatcher — autonomous crop-health monitoring",
+  title: "DroneDeck — autonomous indoor drone inspection",
   description:
-    "An indoor greenhouse scouting system built on a Crazyflie 2.1: autonomous flight, " +
-    "position-tagged environmental data, and zone-level crop-health estimates.",
+    "An autonomous indoor inspection drone built on a Crazyflie 2.1: it flies a route of " +
+    "inspection points, records temperature, pressure and images at each, and flags what " +
+    "looks wrong on a dashboard.",
 };
 
 /**
  * The landing page. Every word and photo here is edited at /admin/pages/home.
  *
- * The photos are the project's own: the hero and the capability cards take
- * pictures chosen in the admin (defaulting to the kit photos in /public), and
- * the strip at the bottom is the real gallery — album covers, straight from the
- * table, so it fills itself as albums are added and never shows a placeholder
- * for an album that is not there.
+ * Top to bottom: the name and what it is, the numbers that size the project,
+ * the six parts it is built from (each card links to that part's write-up),
+ * the roadmap sprint by sprint, the planning document itself, the gallery
+ * strip, and the team. Every section is left out when its fields are empty,
+ * so an edit that clears one never leaves an empty heading behind.
  */
 export default async function LandingPage() {
   const home = await getPageContent("home");
   const albums = flag(home, "showGallery") ? (await getPublishedAlbums()).slice(0, 4) : [];
   const hero = text(home, "heroImage");
+  const stats = items(home, "stats").filter((s) => text(s, "value"));
+  const parts = items(home, "capabilities");
+  const roadmap = items(home, "roadmap");
+  const planFile = text(home, "planFile");
 
   return (
     <main className={`${SITE_CONTAINER} py-16 md:py-20`}>
       <section className="grid items-center gap-10 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:gap-14">
         <div className={PROSE_COLUMN}>
           <p className="eyebrow text-[var(--heading)]">{text(home, "eyebrow")}</p>
-          <h1 className="font-display mt-3 text-4xl font-semibold tracking-tight sm:text-6xl">{text(home, "title")}</h1>
-          <p className="mt-5 max-w-2xl text-lg leading-relaxed text-[var(--muted)]">{text(home, "intro")}</p>
+          <h1 className="mt-4">
+            <Wordmark size="lg" />
+          </h1>
+          <p className="font-display mt-5 text-2xl font-semibold leading-snug tracking-tight sm:text-3xl">
+            {text(home, "title")}
+          </p>
+          <p className="mt-4 max-w-2xl text-lg leading-relaxed text-[var(--muted)]">{text(home, "intro")}</p>
 
           <div className="mt-8 flex flex-wrap gap-3">
             <Link href={PROJECTS}
@@ -47,38 +58,100 @@ export default async function LandingPage() {
         </div>
 
         {hero && (
-          <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] shadow-sm">
+          <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl border border-[var(--border)] bg-white shadow-sm">
+            {/* A white well in both themes: the photograph's own background is white. */}
             <Image
               src={hero}
               alt={text(home, "heroImageAlt")}
               fill
               priority
               sizes="(max-width: 1024px) 100vw, 40vw"
-              className="object-cover"
+              className="object-contain p-4"
             />
           </div>
         )}
       </section>
 
-      <section className="mt-16 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {items(home, "capabilities").map((item, i) => {
-          const image = text(item, "image");
-          return (
-            <article key={`${text(item, "title")}-${i}`}
-                     className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
-              {image && (
-                <div className="relative aspect-[16/10] bg-[var(--surface-2)]">
-                  <Image src={image} alt="" fill sizes="(max-width: 640px) 100vw, 25vw" className="object-cover" />
-                </div>
-              )}
-              <div className="p-6">
-                <h2 className="font-display text-lg font-semibold">{text(item, "title")}</h2>
-                <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">{text(item, "body")}</p>
+      {stats.length > 0 && (
+        <section aria-label="The project in numbers" className="mt-14">
+          <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--border)] sm:grid-cols-4">
+            {stats.map((stat, i) => (
+              <div key={`${text(stat, "label")}-${i}`} className="bg-[var(--surface)] p-5">
+                <dt className="text-sm text-[var(--muted)]">{text(stat, "label")}</dt>
+                <dd className="font-display mt-1 text-3xl font-semibold tracking-tight">{text(stat, "value")}</dd>
               </div>
-            </article>
-          );
-        })}
-      </section>
+            ))}
+          </dl>
+        </section>
+      )}
+
+      {parts.length > 0 && (
+        <section aria-labelledby="parts-heading" className="mt-16">
+          {text(home, "capabilitiesTitle") && (
+            <div className={PROSE_COLUMN}>
+              <h2 id="parts-heading" className="font-display text-3xl font-semibold tracking-tight">
+                {text(home, "capabilitiesTitle")}
+              </h2>
+              {text(home, "capabilitiesIntro") && (
+                <p className="mt-3 leading-relaxed text-[var(--muted)]">{text(home, "capabilitiesIntro")}</p>
+              )}
+            </div>
+          )}
+          <ul className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {parts.map((item, i) => (
+              <li key={`${text(item, "title")}-${i}`}>
+                <PartCard item={item} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {roadmap.length > 0 && (
+        <section aria-labelledby="roadmap-heading" className="mt-20">
+          <div className={PROSE_COLUMN}>
+            <h2 id="roadmap-heading" className="font-display text-3xl font-semibold tracking-tight">
+              {text(home, "roadmapTitle")}
+            </h2>
+            {text(home, "roadmapIntro") && (
+              <p className="mt-3 leading-relaxed text-[var(--muted)]">{text(home, "roadmapIntro")}</p>
+            )}
+          </div>
+          <ol className="mt-8 grid gap-3">
+            {roadmap.map((stage, i) => (
+              <li key={`${text(stage, "when")}-${i}`}
+                  className="grid gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)] md:gap-6">
+                <div>
+                  <p className="tabular text-sm font-medium">{text(stage, "when")}</p>
+                  {text(stage, "status") && <StatusTag status={text(stage, "status")} className="mt-2" />}
+                </div>
+                <div>
+                  <h3 className="font-medium">{text(stage, "title")}</h3>
+                  <p className="mt-1.5 text-sm leading-relaxed text-[var(--muted)]">{text(stage, "body")}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
+      {planFile && (
+        <section aria-labelledby="plan-heading"
+                 className="mt-16 flex flex-col gap-5 rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
+          <div className="max-w-2xl">
+            <h2 id="plan-heading" className="font-display text-2xl font-semibold tracking-tight">{text(home, "planTitle")}</h2>
+            <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">{text(home, "planBody")}</p>
+          </div>
+          <a href={planFile} target="_blank" rel="noopener"
+             className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg bg-[var(--primary)] px-5 font-medium text-[var(--on-primary)]">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9l-6-6Z M14 3v6h6 M9 14h6 M9 17h4" />
+            </svg>
+            {text(home, "planLinkLabel")}
+            <span className="sr-only"> (PDF, opens in a new tab)</span>
+          </a>
+        </section>
+      )}
 
       {albums.length > 0 && (
         <section className="mt-16">
@@ -119,5 +192,48 @@ export default async function LandingPage() {
         </p>
       </section>
     </main>
+  );
+}
+
+/** One of the six parts: photo, status tag, title, text — a link when it has one. */
+function PartCard({ item }: { item: ContentObject }) {
+  const image = text(item, "image");
+  const href = text(item, "href");
+  const body = (
+    <article className="flex h-full flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] transition-colors group-hover:border-[var(--heading)]">
+      {image && (
+        <div className="relative aspect-[16/10] bg-[var(--surface-2)]">
+          <Image src={image} alt="" fill sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw" className="object-cover" />
+        </div>
+      )}
+      <div className="flex flex-1 flex-col p-6">
+        {text(item, "status") && <StatusTag status={text(item, "status")} className="self-start" />}
+        <h3 className="font-display mt-3 text-lg font-semibold group-hover:text-[var(--heading)]">{text(item, "title")}</h3>
+        <p className="mt-2 flex-1 text-sm leading-relaxed text-[var(--muted)]">{text(item, "body")}</p>
+        {href && <p className="mt-4 text-sm font-medium text-[var(--heading)]">Read how it is built →</p>}
+      </div>
+    </article>
+  );
+  return href
+    ? <Link href={href} className="group block h-full rounded-xl">{body}</Link>
+    : <div className="h-full">{body}</div>;
+}
+
+/**
+ * A status as a tag: the word always, a coloured dot beside it. The colour is
+ * never the only signal (WCAG 1.4.1), and the text stays the ink colour, so no
+ * status hue has to clear 4.5:1 as text.
+ */
+function StatusTag({ status, className = "" }: { status: string; className?: string }) {
+  const key = status.trim().toLowerCase();
+  const tone =
+    key === "built" || key === "done" ? "var(--status-good)"
+      : key === "in progress" || key === "now" ? "var(--status-warning)"
+      : "var(--axis)";
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-2.5 py-0.5 text-xs font-medium ${className}`}>
+      <span aria-hidden="true" className="h-2 w-2 rounded-full" style={{ background: tone }} />
+      {status}
+    </span>
   );
 }

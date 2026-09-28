@@ -4,13 +4,17 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { categoryColor } from "@/lib/categories";
 import { bundleFile, formatBytes, formatDate, manifest } from "@/lib/installers";
-import { DOWNLOADABLE, PRODUCTS, productBySlug } from "@/lib/products";
+import { PRODUCTS, productBySlug } from "@/lib/products";
 import { getPageContent } from "@/lib/queries";
 import { APPS, appPath, setupPath } from "@/lib/routes";
 import { text } from "@/lib/site-content";
 
+// Every product, not only the downloadable ones: with none downloadable (the
+// desktop app installs from a terminal since 2026-09-27) an empty list makes
+// Next 16 treat the route as static, and the layout's cookie read then turns
+// every request into a 500 instead of the page's own notFound().
 export function generateStaticParams() {
-  return DOWNLOADABLE.map((product) => ({ slug: product.slug }));
+  return PRODUCTS.map((product) => ({ slug: product.slug }));
 }
 
 export async function generateMetadata({ params }: PageProps<"/apps/[slug]">): Promise<Metadata> {

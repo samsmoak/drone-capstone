@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { HOME, OPERATOR_HOME } from "@/lib/routes";
 import { OPERATOR_GROUPS, activeHref } from "./nav-items";
 import { ProfileMenu, type OperatorAccount } from "./ProfileMenu";
+import { ThemeToggle } from "@/components/site/ThemeToggle";
+import { Wordmark } from "@/components/site/Wordmark";
 
 /** The phone and tablet version of the sidebar. Copied from ../doctor-portfolio's AdminMobileNav. */
 export function OperatorMobileNav({ account, isOperator }: { account: OperatorAccount | null; isOperator: boolean }) {
@@ -16,8 +18,9 @@ export function OperatorMobileNav({ account, isOperator }: { account: OperatorAc
   return (
     <div className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--surface)]/95 backdrop-blur-md lg:hidden">
       <div className="flex items-center justify-between gap-3 px-4 py-2.5">
-        <Link href={OPERATOR_HOME} className="font-display text-lg font-semibold">CropWatcher</Link>
+        <Link href={OPERATOR_HOME} aria-label="DroneDeck — dashboard home" className="flex min-h-10 items-center"><Wordmark /></Link>
         <div className="flex items-center gap-2">
+          <ThemeToggle />
           <Link href={HOME} className="inline-flex min-h-10 items-center rounded-lg px-3 text-sm font-medium text-[var(--muted)]">
             View site
           </Link>
