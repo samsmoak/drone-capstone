@@ -103,7 +103,7 @@ export function ProjectEditor({ project, allMembers }: { project: ProjectWithTea
   }
 
   return (
-    <div className="grid gap-6">
+    <div className="grid grid-cols-1 gap-6">
       <EditorBar
         back={ADMIN_PROJECTS}
         backLabel="Projects"
@@ -137,9 +137,9 @@ export function ProjectEditor({ project, allMembers }: { project: ProjectWithTea
         />
       )}
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="grid content-start gap-6">
-          <Card className="grid gap-5 p-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="grid grid-cols-1 content-start gap-6">
+          <Card className="grid grid-cols-1 gap-5 p-6">
             <div><Label htmlFor="title">Title</Label><Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} /></div>
             <div><Label htmlFor="subtitle">Subtitle</Label><Input id="subtitle" value={subtitle} onChange={(e) => setSubtitle(e.target.value)} /></div>
             <div><Label htmlFor="summary">Summary (card blurb)</Label><Textarea id="summary" rows={3} value={summary} onChange={(e) => setSummary(e.target.value)} /></div>
@@ -161,7 +161,7 @@ export function ProjectEditor({ project, allMembers }: { project: ProjectWithTea
                 No team members yet. <Link href={ADMIN_TEAM} className="underline">Add them</Link> first.
               </p>
             ) : (
-              <ul className="grid gap-1">
+              <ul className="grid grid-cols-1 gap-1">
                 {allMembers.map((m) => (
                   <li key={m.id}>
                     <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-2 hover:bg-[var(--surface-2)]">

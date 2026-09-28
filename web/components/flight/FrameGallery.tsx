@@ -126,7 +126,7 @@ export function FrameGallery({ frames }: { frames: SessionFrame[] }) {
 
           {/* Every frame, small — jump anywhere without paging. */}
           {count > 1 && (
-            <ol className="flex gap-2 overflow-x-auto pb-2" aria-label="All frames">
+            <ol className="flex gap-2 overflow-x-auto [contain:paint] pb-2" aria-label="All frames">
               {frames.map((f, i) => (
                 <li key={f.seq} className="shrink-0">
                   <button

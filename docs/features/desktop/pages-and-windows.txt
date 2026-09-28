@@ -406,15 +406,24 @@ INVARIANTS
   `?theme=dark|light` pins the tokens rather than trusting whichever one the
   machine is set to.
 
-  MEASURED 2026-09-22, all PASS — nothing crossing the viewport, no page-level
-  horizontal scroll:
+  MEASURED 2026-09-28, all PASS — 720, 900, 1024, 1280 and 1600, light and
+  dark, with the self-test failing as it must. Two things had to change first:
 
-      720  light   720  dark      the window's minimum, stacked layout
-     1280  light  1280  dark      the window's default, two-column layout
-     1600  light
+    - It had regressed at 720 since the 2026-09-22 run (a console change of
+      09-23/24): the command log's wrapper, a child of its split's row, had no
+      min-w-0, so the log's widest line set it to 488 px in a 446 px pane. Both
+      log and vitals wrappers in ConsolePane.tsx now carry min-w-0.
+    - measure.ts skips the descendants of an <svg> that clips them
+      (isClippedBySvg). The attitude indicator draws its horizon wider than its
+      frame on purpose; once the rail folded at 720 its hidden geometry read as
+      left=-57. The <svg> itself is still measured.
 
-  1000 was not run: the split is a single `lg` breakpoint at 1024, so 1000 is
-  in the same stacked regime as 720 and both regimes are covered above.
+THE RAIL FOLDS ITSELF IN A NARROW WINDOW (Sidebar.tsx, since 2026-09-28)
+
+Below 960 px the rail is icons only — at 720 the expanded rail took a third of
+the window. Hover still opens it over the page, and the pin opens it for now.
+The saved choice (localStorage cropwatcher.sidebar) is untouched and comes back
+when the window widens.
 
   RUN THE SELF-TEST BESIDE IT. `?selftest=1` plants one 3000 px element and must
   report FAIL; it does, naming `div#selftest-overflow right=3000`. This is not

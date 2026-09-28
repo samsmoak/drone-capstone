@@ -31,7 +31,7 @@
  * - Buttons, not links: this app has no router.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { Mode, Session } from "@/lib/agent";
 import { TONE_COLOR, TONE_ICON, type Tone } from "@/components/ui";
 import type { Page } from "@/App";
@@ -53,6 +53,21 @@ const STORE_KEY = "cropwatcher.sidebar";
  * private window or cleared site data can make it throw or come back empty.
  * Every read and write is guarded and the default is a usable state.
  */
+/**
+ * A narrow window folds the rail to icons by itself (below 960 px: at the
+ * window's 720 px minimum the expanded rail took a third of the width). The
+ * saved choice is kept and comes back when the window widens; while narrow,
+ * the pin opens and closes the rail for now only, and hover still expands it
+ * over the page as usual.
+ */
+const NARROW = "(max-width: 959px)";
+const subscribeNarrow = (onChange: () => void) => {
+  const media = window.matchMedia(NARROW);
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+};
+const isNarrow = () => window.matchMedia(NARROW).matches;
+
 function loadLocked(): Locked {
   try {
     return localStorage.getItem(STORE_KEY) === "collapsed" ? "collapsed" : "expanded";
@@ -75,13 +90,18 @@ export function Sidebar({
   onSetMode: (mode: Mode) => void;
   onSignOut: () => void;
 }) {
-  const [locked, setLocked] = useState<Locked>(loadLocked);
+  const [saved, setSaved] = useState<Locked>(loadLocked);
+  const narrow = useSyncExternalStore(subscribeNarrow, isNarrow);
+  const [narrowOpen, setNarrowOpen] = useState(false);
+  // What the rail does now: the saved choice, or folded while the window is narrow.
+  const locked: Locked = narrow ? (narrowOpen ? "expanded" : "collapsed") : saved;
+  const setLocked = (next: Locked) => (narrow ? setNarrowOpen(next === "expanded") : setSaved(next));
   const [hovered, setHovered] = useState(false);
   const leaveTimer = useRef<number | null>(null);
 
   useEffect(() => {
-    try { localStorage.setItem(STORE_KEY, locked); } catch { /* private window */ }
-  }, [locked]);
+    try { localStorage.setItem(STORE_KEY, saved); } catch { /* private window */ }
+  }, [saved]);
 
   // A flight starting while the rail is hovered open must close it, or it sits
   // over the console for as long as the pointer happens to rest there.

@@ -68,7 +68,7 @@ export function PageEditor({ pageKey, initial, edited }: { pageKey: PageKey; ini
             : { kind: "idle" };
 
   return (
-    <div className="grid gap-6">
+    <div className="grid grid-cols-1 gap-6">
       <EditorBar
         back={ADMIN_PAGES}
         backLabel="Pages"
@@ -91,7 +91,7 @@ export function PageEditor({ pageKey, initial, edited }: { pageKey: PageKey; ini
         />
       )}
 
-      <Card className="grid gap-7 p-6 lg:p-8">
+      <Card className="grid grid-cols-1 gap-7 p-6 lg:p-8">
         <Fields fields={spec.fields} value={content} onChange={update} />
       </Card>
     </div>
@@ -109,7 +109,7 @@ function Fields({ fields, value, onChange, idPrefix = "f" }: {
   // Short fields share a row; long ones take the full width.
   const wide = (f: FieldSpec) => f.type === "textarea" || f.type === "strings" || f.type === "items";
   return (
-    <div className="grid gap-6 md:grid-cols-2">
+    <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
       {fields.map((field) => (
         <div key={field.key} className={wide(field) ? "md:col-span-2" : ""}>
           <Field field={field} id={`${idPrefix}-${field.key}`} value={value[field.key]}
@@ -167,7 +167,7 @@ function Field({ field, id, value, onChange }: {
       return (
         <fieldset>
           <legend className="eyebrow mb-3">{field.label}</legend>
-          <ol className="grid gap-3">
+          <ol className="grid grid-cols-1 gap-3">
             {list.map((item, i) => (
               <li key={i} className="flex items-start gap-2">
                 <span className="tabular mt-3 w-6 shrink-0 text-right text-xs text-[var(--muted)]">{i + 1}</span>
@@ -191,7 +191,7 @@ function Field({ field, id, value, onChange }: {
       return (
         <fieldset>
           <legend className="eyebrow mb-3">{field.label}</legend>
-          <ol className="grid gap-4">
+          <ol className="grid grid-cols-1 gap-4">
             {list.map((item, i) => {
               const titleField = field.fields.find((f) => f.type === "text");
               const heading = titleField && typeof item[titleField.key] === "string" ? (item[titleField.key] as string) : "";

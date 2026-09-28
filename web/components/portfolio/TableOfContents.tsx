@@ -5,7 +5,14 @@ import { useCallback, useEffect, useState } from "react";
 type Section = { id: string; title: string; level?: number };
 
 /** Scroll-spy contents for a project write-up. Copied from ../doctor-portfolio. */
-export function TableOfContents({ sections }: { sections: Section[] }) {
+export function TableOfContents({
+  sections,
+  variant = "rail",
+}: {
+  sections: Section[];
+  /** "rail": the sticky card beside the article. "inline": bare, inside a Collapsible. */
+  variant?: "rail" | "inline";
+}) {
   const [activeId, setActiveId] = useState(sections[0]?.id || "");
 
   const updateActiveSection = useCallback(() => {
@@ -48,9 +55,14 @@ export function TableOfContents({ sections }: { sections: Section[] }) {
   return (
     <nav
       aria-label="On this page"
-      className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 lg:sticky lg:top-24"
+      // The rail caps its height and scrolls inside itself: a sticky box taller
+      // than the window cannot be scrolled to its end, and a part's ten user
+      // stories make this list tall.
+      className={variant === "rail"
+        ? "max-h-[calc(100dvh-7.5rem)] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 lg:sticky lg:top-24"
+        : "rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3"}
     >
-      <h2 className="eyebrow mb-4">On this page</h2>
+      {variant === "rail" && <h2 className="eyebrow mb-4">On this page</h2>}
       <ul className="space-y-0.5 text-sm">
         {sections.map((section) => {
           const active = activeId === section.id;

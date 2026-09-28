@@ -93,7 +93,7 @@ export function TeamManager({ initial }: { initial: TeamMemberRow[] }) {
   const set = <K extends keyof MemberInput>(key: K, value: MemberInput[K]) => setDraft((d) => ({ ...d, [key]: value }));
 
   return (
-    <div className="grid gap-6">
+    <div className="grid grid-cols-1 gap-6">
       <EditorBar
         title="Team"
         description="The people on /team and beside each project. The order here is the order shown."
@@ -126,11 +126,11 @@ export function TeamManager({ initial }: { initial: TeamMemberRow[] }) {
       )}
 
       {editing && (
-        <Card className="grid gap-8 p-6">
-          <div className="grid gap-6 md:grid-cols-[14rem_minmax(0,1fr)]">
+        <Card className="grid grid-cols-1 gap-8 p-6">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-[14rem_minmax(0,1fr)]">
             <ImagePicker label="Photo" value={draft.avatar_url} onChange={(url) => set("avatar_url", url)} prefix="team" />
-            <div className="grid gap-4">
-              <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div><Label htmlFor="m-name">Name</Label><Input id="m-name" value={draft.full_name} onChange={(e) => set("full_name", e.target.value)} /></div>
                 <div><Label htmlFor="m-role">Role</Label><Input id="m-role" value={draft.role} onChange={(e) => set("role", e.target.value)} placeholder="Flight software" /></div>
                 <div>
@@ -174,10 +174,10 @@ export function TeamManager({ initial }: { initial: TeamMemberRow[] }) {
             blank={() => ({ title: "", body: "", image_url: null })}
           >
             {(hobby, setHobby) => (
-              <div className="grid gap-4 md:grid-cols-[12rem_minmax(0,1fr)]">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-[12rem_minmax(0,1fr)]">
                 <ImagePicker label="Photo" value={hobby.image_url} prefix="team" aspectClass="aspect-[4/3]"
                              onChange={(url) => setHobby({ ...hobby, image_url: url })} />
-                <div className="grid gap-3">
+                <div className="grid grid-cols-1 gap-3">
                   <div><Label>Title</Label><Input value={hobby.title} onChange={(e) => setHobby({ ...hobby, title: e.target.value })} placeholder="Photography" /></div>
                   <div><Label>What about it</Label><Textarea rows={3} value={hobby.body} onChange={(e) => setHobby({ ...hobby, body: e.target.value })} /></div>
                 </div>
@@ -191,7 +191,7 @@ export function TeamManager({ initial }: { initial: TeamMemberRow[] }) {
             blank={() => ({ label: "", url: "" })}
           >
             {(link, setLink) => (
-              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
                 <div><Label>Label</Label><Input value={link.label} onChange={(e) => setLink({ ...link, label: e.target.value })} placeholder="GitHub" /></div>
                 <div><Label>Address</Label><Input value={link.url} onChange={(e) => setLink({ ...link, url: e.target.value })} placeholder="https://github.com/…" /></div>
               </div>
@@ -204,7 +204,7 @@ export function TeamManager({ initial }: { initial: TeamMemberRow[] }) {
             blank={() => ({ url: "", caption: "" })}
           >
             {(photo, setPhoto) => (
-              <div className="grid gap-4 md:grid-cols-[12rem_minmax(0,1fr)]">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-[12rem_minmax(0,1fr)]">
                 <ImagePicker label="Photo" value={photo.url || null} prefix="team"
                              onChange={(url) => setPhoto({ ...photo, url: url ?? "" })} />
                 <div><Label>Caption</Label><Input value={photo.caption} onChange={(e) => setPhoto({ ...photo, caption: e.target.value })} placeholder="Optional" /></div>
@@ -222,7 +222,7 @@ export function TeamManager({ initial }: { initial: TeamMemberRow[] }) {
       {items.length === 0 ? (
         <div className="rounded-xl border border-dashed border-[var(--border)] p-16 text-center text-[var(--muted)]">No team members yet.</div>
       ) : (
-        <ul className="grid gap-3">
+        <ul className="grid grid-cols-1 gap-3">
           {items.map((m, i) => (
             <li key={m.id}>
               <Card className="flex flex-wrap items-center gap-4 p-4">

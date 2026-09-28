@@ -62,7 +62,7 @@ export function AlbumsManager({ initial }: { initial: AlbumCard[] }) {
   }
 
   return (
-    <div className="grid gap-6">
+    <div className="grid grid-cols-1 gap-6">
       <header>
         <h1 className="font-display text-3xl font-semibold">Gallery</h1>
         <p className="mt-1 text-sm text-[var(--muted)]">Albums of photos and videos on the public gallery. The order here is the order shown.</p>
@@ -79,7 +79,7 @@ export function AlbumsManager({ initial }: { initial: AlbumCard[] }) {
       {items.length === 0 ? (
         <div className="rounded-xl border border-dashed border-[var(--border)] p-16 text-center text-[var(--muted)]">No albums yet.</div>
       ) : (
-        <ul className="grid gap-3">
+        <ul className="grid grid-cols-1 gap-3">
           {items.map((a, i) => (
             <li key={a.id}>
               <Card className="flex flex-wrap items-center gap-4 p-4">

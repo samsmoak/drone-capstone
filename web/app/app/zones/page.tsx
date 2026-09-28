@@ -53,7 +53,7 @@ export default async function ZonesPage() {
           tabIndex={0}
           role="region"
           aria-label="Zone map"
-          className="max-w-3xl overflow-x-auto rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-3"
+          className="max-w-3xl overflow-x-auto [contain:paint] rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-3"
         >
           <ZoneMap zones={zones} health={health} />
         </div>
@@ -65,7 +65,7 @@ export default async function ZonesPage() {
         <h2 id="table-heading" className="text-lg font-semibold text-[var(--heading)]">
           All zones
         </h2>
-        <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
+        <div className="overflow-x-auto [contain:paint] rounded-lg border border-[var(--border)]">
           <table className="w-full border-collapse text-left text-sm">
             <thead className="bg-[var(--surface-2)]">
               <tr>

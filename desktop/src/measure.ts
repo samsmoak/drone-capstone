@@ -44,6 +44,7 @@ export function findOverflow(): Overflow[] {
     // the viewport — that is what the container is for. Only overflow that
     // reaches the PAGE is a layout fault.
     if (isInsideScroller(el)) continue;
+    if (isClippedBySvg(el)) continue;
     const rect = el.getBoundingClientRect();
     if (rect.width === 0 && rect.height === 0) continue;
     if (rect.right > width + SLOP_PX || rect.left < -SLOP_PX) {
@@ -74,6 +75,25 @@ function isInsideScroller(el: Element): boolean {
     node = node.parentElement;
   }
   return false;
+}
+
+/**
+ * Is this a shape inside an <svg> that clips it?
+ *
+ * An inner SVG element's box is its geometry, not what is painted: the
+ * attitude indicator draws its horizon and pitch ladder far wider than its
+ * frame on purpose, and the <svg> clips them (overflow: hidden is the SVG
+ * default). With the rail folded at 720 px the indicator sat near the left
+ * edge, and its hidden geometry was reported at left=-57 (2026-09-28). The
+ * <svg> element itself is still measured like any other element; only its
+ * descendants are exempt, and only while it clips.
+ */
+function isClippedBySvg(el: Element): boolean {
+  if (!(el instanceof SVGElement) || el instanceof SVGSVGElement) return false;
+  const owner = el.ownerSVGElement;
+  if (!owner) return false;
+  const overflow = getComputedStyle(owner).overflow;
+  return overflow !== "visible";
 }
 
 /**

@@ -209,7 +209,7 @@ export default async function FlightPage(props: PageProps<"/app/flights/[id]">) 
             a flight, once the inspection pipeline (clean, classify, interpret) runs on it.
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
+          <div className="overflow-x-auto [contain:paint] rounded-lg border border-[var(--border)]">
             <table className="w-full border-collapse text-left text-sm">
               <thead className="bg-[var(--surface-2)]">
                 <tr>

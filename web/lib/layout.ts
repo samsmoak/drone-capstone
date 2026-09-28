@@ -11,5 +11,16 @@
  */
 export const SITE_CONTAINER = "mx-auto w-full max-w-6xl px-6";
 
+/**
+ * The wider frame for pages with three columns — a project write-up has its
+ * contents, the article and the team side by side, and at 72rem the article
+ * was left about 630 px (2026-09-28). The navbar switches to this width on the
+ * same pages (WIDE_PAGES), so the edges still line up.
+ */
+export const WIDE_CONTAINER = "mx-auto w-full max-w-[90rem] px-6";
+
+/** Path prefixes whose pages use WIDE_CONTAINER. "/projects/" is the write-ups, not the list. */
+export const WIDE_PAGES = ["/projects/"] as const;
+
 /** About 75 characters at body size — the comfortable reading measure. */
 export const PROSE_COLUMN = "max-w-3xl";

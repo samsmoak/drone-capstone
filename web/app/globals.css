@@ -271,7 +271,12 @@ body {
   padding: 0.1em 0.35em;
 }
 .portfolio-prose img { border-radius: 8px; border: 1px solid var(--border); max-width: 100%; height: auto; }
-.portfolio-prose table { width: 100%; border-collapse: collapse; font-size: 0.95em; }
+/* contain: paint — without it mobile Chrome widened its layout viewport to fit
+   a scroller's content (a 390 px phone laid out at 510), so the page scrolled
+   sideways even though the table was inside a scroller (2026-09-28). Every
+   horizontal scroller on the site carries it ([contain:paint]). */
+.portfolio-prose .prose-table { max-width: 100%; overflow-x: auto; contain: paint; }
+.portfolio-prose table { width: 100%; min-width: 32rem; border-collapse: collapse; font-size: 0.95em; }
 .portfolio-prose th,
 .portfolio-prose td { border: 1px solid var(--border); padding: 0.5em 0.75em; text-align: left; }
 .portfolio-prose th { background: var(--surface-2); font-weight: 600; }

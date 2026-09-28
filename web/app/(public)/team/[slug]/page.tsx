@@ -10,6 +10,7 @@ import { PhotoWall } from "@/components/portfolio/PhotoWall";
 import { getProjectsForMember, getTeamMemberBySlug, getTeamMembers } from "@/lib/queries";
 import { TEAM } from "@/lib/routes";
 import { hobbies, links, paragraphs, photos } from "@/lib/team-profile";
+import { Collapsible } from "@/components/site/Collapsible";
 
 export async function generateMetadata({ params }: PageProps<"/team/[slug]">): Promise<Metadata> {
   const { slug } = await params;
@@ -162,7 +163,9 @@ export default async function TeamMemberPage({ params }: PageProps<"/team/[slug]
 
         {/* Sticky, like the project page's team column. */}
         <aside className="lg:col-span-4 lg:sticky lg:top-24 lg:self-start xl:col-span-3">
-          <MemberSidebar team={team} projects={projects} activeId={member.id} />
+          <Collapsible label="The team, and their projects">
+            <MemberSidebar team={team} projects={projects} activeId={member.id} />
+          </Collapsible>
         </aside>
       </div>
     </main>
