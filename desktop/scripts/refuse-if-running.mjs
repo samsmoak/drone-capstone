@@ -1,7 +1,7 @@
-// Refuse to build while CropWatcher is running from the build folder.
+// Refuse to build while DroneDeck is running from the build folder.
 //
 // `pnpm tauri build` rewrites src-tauri/target/release/bundle/macos/
-// CropWatcher.app in place — and that is exactly the copy `pnpm app` opens. A
+// DroneDeck.app in place — and that is exactly the copy `pnpm app` opens. A
 // running program whose signed code is overwritten underneath it can be killed
 // by macOS without warning; on 2026-09-25 a copy running there stopped 24 s
 // after a rebuild replaced it. That copy may be flying a drone. On Windows the
@@ -18,13 +18,13 @@ const release = resolve(dirname(fileURLToPath(import.meta.url)), "../src-tauri/t
 
 function runningFromBuildFolder() {
   if (process.platform === "darwin") {
-    const bundle = join(release, "bundle", "macos", "CropWatcher.app", "Contents", "MacOS");
+    const bundle = join(release, "bundle", "macos", "DroneDeck.app", "Contents", "MacOS");
     const found = spawnSync("pgrep", ["-f", `${bundle}/`], { encoding: "utf8" });
     return found.status === 0 && found.stdout.trim() !== "";
   }
   if (process.platform === "win32") {
     // tasklist has no paths; PowerShell does. Only the build folder's copy
-    // matters — an installed CropWatcher is elsewhere and is not touched.
+    // matters — an installed DroneDeck is elsewhere and is not touched.
     const exe = join(release, "desktop.exe").toLowerCase();
     const found = spawnSync("powershell", ["-NoProfile", "-Command",
       "Get-Process desktop -ErrorAction SilentlyContinue | ForEach-Object { $_.Path }"],
@@ -44,7 +44,7 @@ function runningFromBuildFolder() {
 
 if (runningFromBuildFolder()) {
   console.error(
-    "\n  CropWatcher is running from the build folder, and this build would replace it" +
+    "\n  DroneDeck is running from the build folder, and this build would replace it" +
     "\n  while it runs. Quit it first — closing it lands the drone and ends the session —" +
     "\n  then build again.\n",
   );

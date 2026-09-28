@@ -6,7 +6,7 @@ import { getPageContent, getTeamMembers } from "@/lib/queries";
 
 export const metadata: Metadata = {
   title: "Team",
-  description: "The people who built CropWatcher.",
+  description: "The people who built DroneDeck.",
 };
 
 export default async function TeamPage() {

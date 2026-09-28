@@ -141,7 +141,7 @@ export function ProfileMenu({ session, onSignIn, onSignOut, placement = "down", 
             <div className="p-4">
               <p className="font-medium">Not signed in</p>
               <p className="mt-1 text-sm text-[var(--muted)]">
-                Sign in with your CropWatcher account to fly. You stay signed in until you sign out.
+                Sign in with your DroneDeck account to fly. You stay signed in until you sign out.
               </p>
               <button
                 type="button"

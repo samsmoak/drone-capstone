@@ -21,6 +21,8 @@ import os
 import sys
 from pathlib import Path
 
+# The app is DroneDeck since 2026-09-28; the folder keeps its first name so an
+# existing sign-in, session history and outbox are found where they were.
 APP_NAME = "CropWatcher"
 
 

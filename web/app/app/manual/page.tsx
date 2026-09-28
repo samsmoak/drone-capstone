@@ -13,7 +13,7 @@ export default function ManualPage() {
         description={
           <>
             Fly the drone by keyboard. This only works on the computer the radio is plugged
-            into, with CropWatcher running —{" "}
+            into, with DroneDeck running —{" "}
             <Link href={SETUP} className="underline underline-offset-4">
               set it up
             </Link>{" "}

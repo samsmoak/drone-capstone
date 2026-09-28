@@ -19,11 +19,11 @@ import type { MetadataRoute } from "next";
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "CropWatcher",
-    short_name: "CropWatcher",
+    name: "DroneDeck",
+    short_name: "DroneDeck",
     description:
-      "Autonomous indoor crop-health monitoring with a Crazyflie 2.1 — flight, " +
-      "position-tagged telemetry, and zone-level health estimates.",
+      "An autonomous indoor drone inspection system on a Crazyflie 2.1 — flight, " +
+      "position-tagged sensor data and images, and the findings on one dashboard.",
     // The operator area, not the marketing home page: someone who installs this
     // is here to read flight data.
     start_url: "/app",
@@ -34,21 +34,11 @@ export default function manifest(): MetadataRoute.Manifest {
     orientation: "any",
     categories: ["productivity", "utilities"],
     icons: [
-      {
-        // Vector, so it is crisp at every size the OS asks for and there is no
-        // binary blob in the repo. Chrome has accepted SVG manifest icons for
-        // installability since 108.
-        src: "/icon.svg",
-        sizes: "any",
-        type: "image/svg+xml",
-        purpose: "any",
-      },
-      {
-        src: "/apple-icon",
-        sizes: "180x180",
-        type: "image/png",
-        purpose: "maskable",
-      },
+      // The drone on its rounded tile (public/brand/, generated from the one
+      // stock photograph in public/brand/CREDITS.txt).
+      { src: "/brand/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      // Full-bleed with a safe margin: the OS draws its own mask over this one.
+      { src: "/brand/maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
   };
 }

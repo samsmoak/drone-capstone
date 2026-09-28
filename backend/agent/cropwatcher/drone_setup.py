@@ -94,7 +94,7 @@ def verified_file(bundle: Path, part: str, manifest: dict[str, Any]) -> Path:
     path: Path = bundle / str(entry["file"])
     if hashlib.sha256(path.read_bytes()).hexdigest() != entry["sha256"]:
         raise SetupError(f"The bundled {PART_LABEL[part].lower()} file is damaged. "
-                         "Reinstall CropWatcher.")
+                         "Reinstall DroneDeck.")
     return path
 
 

@@ -117,6 +117,8 @@ pub fn merge(raw: Vec<Network>) -> Vec<Network> {
 
 // ── the secure store ─────────────────────────────────────────────────────
 
+// Kept from before the rename to DroneDeck (2026-09-28): a new service name
+// would orphan every Wi-Fi password already saved.
 const SERVICE: &str = "CropWatcher";
 const ACCOUNT: &str = "drone-wifi";
 

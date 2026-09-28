@@ -12,8 +12,8 @@ import { text } from "@/lib/site-content";
 export const metadata: Metadata = {
   title: "Apps",
   description:
-    "Download the CropWatcher desktop app for macOS or Windows. Built by CI from the main " +
-    "branch, so the download is never behind the code.",
+    "Get DroneDeck: the desktop app installs with one command on macOS, Windows or Linux, " +
+    "and the dashboard is this website.",
 };
 
 /** What the card says instead of a size: how many builds are actually there. */

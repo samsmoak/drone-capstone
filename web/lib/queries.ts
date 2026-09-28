@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { LOGIN } from "@/lib/routes";
 import type { Database } from "@/types/database";
-import { normalizeContent, type ContentObject, type PageKey } from "@/lib/site-content";
+import { normalizeContent, PAGE_SPECS, type ContentObject, type PageKey, type PageSpec } from "@/lib/site-content";
 
 export type FlightRow = Database["public"]["Tables"]["flights"]["Row"];
 export type TelemetryRow = Database["public"]["Tables"]["telemetry"]["Row"];
@@ -546,10 +546,18 @@ export const getAlbumByIdAdmin = cache(async (id: string): Promise<AlbumWithItem
  */
 export const getPageContent = cache(async (key: PageKey): Promise<ContentObject> => {
   const supabase = await createClient();
-  const { data, error } = await supabase.from("site_pages").select("content").eq("key", key).maybeSingle();
+  const { data, error } = await supabase
+    .from("site_pages").select("content, updated_at").eq("key", key).maybeSingle();
   if (error && !missingTable(error)) console.error(`page content read failed: ${key}`, error.code, error.message);
-  return normalizeContent(key, data?.content ?? null);
+  return normalizeContent(key, overrideStillCurrent(key, data) ? data?.content ?? null : null);
 });
+
+/** Is a stored override newer than the page's last rewrite? (PageSpec.defaultsRevised) */
+function overrideStillCurrent(key: PageKey, row: { updated_at: string } | null): boolean {
+  const revised: string | undefined = (PAGE_SPECS[key] as PageSpec).defaultsRevised;
+  if (!row || !revised) return true;
+  return new Date(row.updated_at).getTime() >= new Date(revised).getTime();
+}
 
 /** Admin: which pages carry an override, and when each was last edited. */
 export const getEditedPages = cache(async (): Promise<Map<string, string>> => {

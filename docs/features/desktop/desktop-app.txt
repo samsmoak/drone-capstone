@@ -12,7 +12,7 @@ THE FOLDER IS `desktop/`.
 
   desktop/src/          the React UI (see pages-and-windows.txt)
   desktop/src-tauri/    the Rust shell
-  desktop/src-tauri/target/release/bundle/macos/CropWatcher.app   the built app
+  desktop/src-tauri/target/release/bundle/macos/DroneDeck.app     the built app
 
 
 WHERE IT LIVES
@@ -119,7 +119,7 @@ DECISIONS
   at all.
 - A BUILD REFUSES TO RUN WHILE A COPY RUNS FROM THE BUILD FOLDER
   (desktop/scripts/refuse-if-running.mjs, first step of build:all). `pnpm tauri
-  build` rewrites bundle/macos/CropWatcher.app in place — the copy `pnpm app`
+  build` rewrites bundle/macos/DroneDeck.app in place — the copy `pnpm app`
   opens — and macOS can kill a program whose signed code changes under it. On
   2026-09-25 a copy running there stopped 24 s after a rebuild replaced it
   (unproven cause: no crash report; it may have been quit). It may be flying.
@@ -132,7 +132,7 @@ DECISIONS
 
       Contents/MacOS/cropwatcher-agent   42 MB   the frozen agent
       Contents/MacOS/desktop            7.5 MB   the Rust shell + webview
-      CropWatcher.app                    50 MB
+      DroneDeck.app (then CropWatcher)   50 MB
       CropWatcher_0.1.0_aarch64.dmg      48 MB
 
   The growth is the AGENT, not the window: the frontend bundle is 647 KB
@@ -145,6 +145,49 @@ DECISIONS
   builds its own with scripts/install.mjs. See ../development/releases.txt
   for why the published installers stopped (the Windows one outgrew
   Supabase's 50 MB limit) and what the website still shows.
+
+
+THE NAME: DRONEDECK SINCE 2026-09-28 (was CropWatcher)
+
+  Renamed           productName and window title (tauri.conf.json), the
+                    installed bundle (DroneDeck.app; %LOCALAPPDATA%\DroneDeck;
+                    ~/.local/lib/dronedeck + a `dronedeck` command), every
+                    message the app, the shell and the agent show, the icons
+                    (src-tauri/icons/, generated with `tauri icon` from the
+                    drone photograph in web/public/brand/CREDITS.txt), and the
+                    sidebar: the drone mark and the Space Grotesk wordmark
+                    (components/Wordmark.tsx, copied from the website's).
+  Kept, on purpose  the identifier com.cropwatcher.desktop, the agent's data
+                    folder (paths.py APP_NAME, mirrored in lib.rs), the keychain
+                    service in wifi/mod.rs, the Python package, the sidecar
+                    name cropwatcher-agent, the repo's `./cropwatcher` CLI and
+                    the CROPWATCHER_* environment variables. Each of the first
+                    three is where an existing sign-in, session history or saved
+                    Wi-Fi password lives; renaming them would lose it.
+  The old install   install.mjs removes it once DroneDeck is installed
+                    (removeLegacyCopy): the CropWatcher.app bundle, the old
+                    per-user Windows install via its own uninstall.exe /S, and
+                    the old Linux folder, menu entry, icon and command — only
+                    what the script can prove it put there — and refuses to
+                    start while the old copy is running. Skipped for a test
+                    install into CROPWATCHER_INSTALL_DIR.
+  On macOS          the renamed app is a new app to the Keychain: the first
+                    Wi-Fi connection asks again (the banner in App.tsx says so).
+
+LIGHT AND DARK
+
+The sidebar's theme row (components/ThemeToggle.tsx) switches light ↔ dark and
+remembers it in the webview's localStorage (lib/theme.ts); no choice saved means
+follow the system. main.tsx applies the saved choice before the first render —
+not an inline script in index.html, which the window's CSP would block. Both
+token sets were already in styles.css; the switch only sets data-theme.
+
+  Copies of the website's (each file carries a PARITY marker):
+    desktop/src/components/Wordmark.tsx     from web/components/site/Wordmark.tsx
+    desktop/src/components/ThemeToggle.tsx  from web/components/site/ThemeToggle.tsx
+    desktop/src/lib/theme.ts                from web/lib/theme.ts
+  A change to the wordmark, the storage key or the toggle's behaviour is made
+  in both. See ../frontend/site-pages-and-views.txt, "LIGHT AND DARK".
 
 
 INVARIANTS
@@ -167,10 +210,10 @@ INVARIANTS
   by the verifier on every OS CI builds (it had only been measured on macOS).
   An agent that survives fails the build and is killed with its whole tree.
 - LINUX INSTALLS PER USER, NO SUDO (install.mjs): the program in
-  ~/.local/lib/cropwatcher (desktop + cropwatcher-agent side by side, as
+  ~/.local/lib/dronedeck (desktop + cropwatcher-agent side by side, as
   tauri-build leaves them in target/release — the app finds its sidecar
   there), a menu entry in $XDG_DATA_HOME/applications (Desktop Entry Spec
-  1.5, validated in CI), the icon in hicolor, a `cropwatcher` link in
+  1.5, validated in CI), the icon in hicolor, a `dronedeck` link in
   ~/.local/bin (never over a file that is not ours). Not an AppImage (needs
   FUSE 2, absent on current Ubuntu) and not a .deb (needs sudo).
 - `pnpm app` ON LINUX NEEDS xdg-utils. bundle.targets is "all", and Tauri's

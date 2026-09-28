@@ -20,9 +20,13 @@
 > true was moved into the docs below. **Do not recreate it:** a hand-maintained
 > status file beside a generated router is the thing that drifted.
 
-**drone-capstone** — CropWatcher: an indoor greenhouse crop-health monitoring system built
-around a Crazyflie 2.1. The drone flies autonomous scouting missions, logs position-tagged
-environmental data, and surfaces it as zone-level crop-health estimates in a web dashboard.
+**drone-capstone** — DroneDeck: an autonomous indoor inspection system built around a
+Crazyflie 2.1. The drone flies a route of inspection points, records temperature,
+pressure and images at each, and the findings surface on a web dashboard. Named
+CropWatcher until 2026-09-28 (a greenhouse brief); the code keeps that name wherever
+changing it would move someone's data — see `docs/features/desktop/desktop-app.txt`,
+"THE NAME". The project's parts, stories and owners come from
+`web/public/docs/dronedeck-project-management-planning.pdf`.
 
 ## The constraint everything follows from
 

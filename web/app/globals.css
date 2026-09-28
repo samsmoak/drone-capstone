@@ -219,6 +219,13 @@ body {
   letter-spacing: -0.015em;
 }
 
+/* The DroneDeck wordmark, and only the wordmark: Space Grotesk's squared
+   geometry reads as instrument lettering beside the drone mark. */
+.font-brand {
+  font-family: var(--font-space-grotesk), var(--font-inter), system-ui, sans-serif;
+  letter-spacing: -0.035em;
+}
+
 .eyebrow {
   font-size: 0.6875rem;
   font-weight: 600;

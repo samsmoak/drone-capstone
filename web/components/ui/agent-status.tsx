@@ -7,7 +7,7 @@ type Status = "checking" | "running" | "absent";
 const AGENT_URL = process.env.NEXT_PUBLIC_AGENT_URL ?? "http://127.0.0.1:8765";
 
 /**
- * Whether the CropWatcher app is installed and running on this machine.
+ * Whether the DroneDeck app is installed and running on this machine.
  *
  * The page tells you where you are instead of making you guess. All three
  * states say something useful — "absent" is a normal outcome for a visitor
@@ -41,7 +41,7 @@ export function AgentStatus() {
         aria-live="polite"
         className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--muted)]"
       >
-        Checking whether CropWatcher is running on this computer…
+        Checking whether DroneDeck is running on this computer…
       </div>
     );
   }
@@ -66,8 +66,8 @@ export function AgentStatus() {
           {running ? "●" : "○"}
         </span>
         {running
-          ? "CropWatcher is running on this computer"
-          : "CropWatcher is not running on this computer"}
+          ? "DroneDeck is running on this computer"
+          : "DroneDeck is not running on this computer"}
       </p>
       <p className="mt-1 text-[var(--muted)]">
         {running

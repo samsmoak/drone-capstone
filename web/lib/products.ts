@@ -3,8 +3,8 @@
  *
  * Two pieces, because the radio is a USB dongle (see the repo's CLAUDE.md): the
  * desktop app on the laptop that holds it, and the website that reads what it
- * records. Each has its own setup guide at /setup/<slug>, and the ones with
- * installers have their downloads at /apps/<slug>.
+ * records. Each has its own setup guide at /setup/<slug>. Neither has a download
+ * today (see desktop-app below); /apps/<slug> is kept for when one does.
  *
  * The flight agent is not listed. It ships inside the desktop app, so nobody who
  * flies the drone ever sets it up; running it from source is developer work,
@@ -51,20 +51,10 @@ export type Product = {
   source: string;
 };
 
-// macOS 15 removed Control-click → Open as a way past Gatekeeper for an
-// unsigned app; on 15 and later the only way is Privacy & Security.
-const GATEKEEPER =
-  "macOS will say it cannot check the app for malicious software. Click Done, then open " +
-  "System Settings → Privacy & Security and click Open Anyway next to CropWatcher. On macOS " +
-  "14 or earlier, Control-click the app and choose Open instead. Only the first launch asks.";
-
-const SMARTSCREEN =
-  "Windows SmartScreen will warn about an unrecognised app. Choose More info → Run anyway.";
-
 export const PRODUCTS: Product[] = [
   {
     slug: "desktop-app",
-    name: "CropWatcher desktop app",
+    name: "DroneDeck desktop app",
     summary:
       "The app that flies the drone. It bundles the flight agent, and the laptop with the " +
       "Crazyradio builds and installs it for itself with one command.",
@@ -72,33 +62,23 @@ export const PRODUCTS: Product[] = [
     runsOn: "The laptop with the Crazyradio plugged in",
     points: [
       "Pre-flight checks, autonomous missions and manual flight from the keyboard.",
-      "Live sensor windows at 10 Hz, and every session recorded to that computer.",
+      "Live sensor windows at 10 Hz, the drone's camera, and every session recorded to that computer.",
       "Uploads finished flights to this dashboard when it can reach the network.",
     ],
     setupPage: "setup-desktop",
     source: "desktop/",
-    platforms: [
-      {
-        object: "latest/CropWatcher-macos.dmg",
-        os: "macOS",
-        // macos-latest runners are Apple silicon; an Intel build is not produced.
-        note: "Apple silicon · macOS 13 or newer",
-        unsigned: GATEKEEPER,
-      },
-      {
-        object: "latest/CropWatcher-windows.exe",
-        os: "Windows",
-        note: "64-bit · Windows 10 or newer",
-        unsigned: SMARTSCREEN,
-      },
-    ],
+    // No downloads: every computer builds its own with node scripts/install.mjs
+    // (the owner's call, 2026-09-27). The bucket still holds CI's last builds
+    // from before the rename, older than every install fix — not offered.
+    platforms: [],
+    instead: "One install command — see the setup guide",
   },
   {
     slug: "dashboard",
     name: "Dashboard and website",
     summary:
-      "This site: the public pages and the operator dashboard that reads the flights, zones " +
-      "and crop-health estimates the drone records.",
+      "This site: the public pages, and the operator dashboard that reads the flights, sensor " +
+      "readings, camera frames and inspection results the drone records.",
     category: "web",
     runsOn: "Anywhere — it is a website",
     points: [

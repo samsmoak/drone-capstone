@@ -423,7 +423,7 @@ export function SignIn({ run }: { run: Run }) {
   return (
     <Panel
       title="Sign in"
-      note="Flights are recorded against the person who flew them, so the drone will not arm until someone is signed in. Use your CropWatcher account."
+      note="Flights are recorded against the person who flew them, so the drone will not arm until someone is signed in. Use your DroneDeck account."
     >
       <form onSubmit={submit} className="grid max-w-sm gap-3">
         <label className="grid gap-1 text-sm">

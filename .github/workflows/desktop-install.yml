@@ -1,6 +1,6 @@
 # Prove the terminal install works on every kind of machine it is meant for.
 #
-# CropWatcher is installed from a terminal, not downloaded (decided
+# DroneDeck is installed from a terminal, not downloaded (decided
 # 2026-09-25):
 #
 #   git clone https://github.com/samsmoak/drone-capstone.git
@@ -117,9 +117,9 @@ jobs:
       - name: The Linux install is in place
         if: runner.os == 'Linux'
         run: |
-          test -x ~/.local/lib/cropwatcher/desktop
-          test -x ~/.local/lib/cropwatcher/cropwatcher-agent
-          test -L ~/.local/bin/cropwatcher
-          test -f ~/.local/share/icons/hicolor/128x128/apps/cropwatcher.png
-          desktop-file-validate ~/.local/share/applications/cropwatcher.desktop
-          cat ~/.local/share/applications/cropwatcher.desktop
+          test -x ~/.local/lib/dronedeck/desktop
+          test -x ~/.local/lib/dronedeck/cropwatcher-agent
+          test -L ~/.local/bin/dronedeck
+          test -f ~/.local/share/icons/hicolor/128x128/apps/dronedeck.png
+          desktop-file-validate ~/.local/share/applications/dronedeck.desktop
+          cat ~/.local/share/applications/dronedeck.desktop

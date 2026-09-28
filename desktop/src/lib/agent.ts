@@ -167,7 +167,7 @@ const HEALTH_PROBE_MS = 2000;
  * opaque response) and only a refused connection rejects. That is the one
  * distinction a failed command needs — "the agent is not running" and "the
  * agent is running but this request did not get through" were both reported
- * as "Could not reach the flight agent. Restart CropWatcher."
+ * as "Could not reach the flight agent. Restart DroneDeck."
  */
 async function agentAnswers(): Promise<boolean> {
   const controller = new AbortController();
@@ -192,7 +192,7 @@ async function unreachable(path: string): Promise<string> {
   // it here would put the same paragraph on screen twice.
   return agentExit
     ? "The flight agent on this computer is not running."
-    : "The flight agent on this computer is not running. Quit and reopen CropWatcher.";
+    : "The flight agent on this computer is not running. Quit and reopen DroneDeck.";
 }
 
 /**
@@ -420,7 +420,7 @@ export class LiveConnection {
         // talking to that copy's agent with a token it does not know.
         this.closed = true;
         this.handlers.onRefused(
-          "Another copy of CropWatcher is already running on this computer. " +
+          "Another copy of DroneDeck is already running on this computer. " +
           "Quit it, then reopen this window.",
         );
         socket.close();

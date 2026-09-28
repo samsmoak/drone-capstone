@@ -29,6 +29,14 @@ export type PageSpec = {
   description: string;
   path: string;
   fields: FieldSpec[];
+  /**
+   * When this page's default wording was last rewritten (ISO date). A stored
+   * override saved BEFORE it is set aside and the defaults shown instead: the
+   * override was an edit of the old wording, and keeping it would hide the
+   * rewrite from every visitor (the `setup` row did exactly that for a week).
+   * An edit saved after it wins as usual.
+   */
+  defaultsRevised?: string;
 };
 
 export type ContentValue = string | boolean | string[] | ContentObject[];
@@ -100,20 +108,50 @@ export const PAGE_SPECS = {
     title: "Home",
     description: "The landing page every visitor sees first.",
     path: "/",
+    defaultsRevised: "2026-09-28T00:00:00Z",
     fields: [
-      ...HEADER_FIELDS,
+      { type: "text", key: "eyebrow", label: "Small label above the name" },
+      { type: "text", key: "title", label: "Tagline", hint: "The line under the DroneDeck name." },
+      { type: "textarea", key: "intro", label: "Introduction" },
       { type: "text", key: "primaryCta", label: "Main button", hint: "Goes to Projects." },
       { type: "text", key: "secondaryCta", label: "Second button", hint: "Goes to the dashboard (sign-in first)." },
       { type: "image", key: "heroImage", label: "Main photo", hint: "Beside the title. Leave empty for none." },
       { type: "text", key: "heroImageAlt", label: "Main photo description", hint: "Read aloud by screen readers." },
       {
-        type: "items", key: "capabilities", label: "Capability cards", itemLabel: "Card",
+        type: "items", key: "stats", label: "Numbers", itemLabel: "Number",
+        hint: "A row of figures under the introduction. Each is a value and what it counts.",
+        fields: [
+          { type: "text", key: "value", label: "Value" },
+          { type: "text", key: "label", label: "What it counts" },
+        ],
+      },
+      { type: "text", key: "capabilitiesTitle", label: "Title above the part cards" },
+      { type: "textarea", key: "capabilitiesIntro", label: "Text above the part cards" },
+      {
+        type: "items", key: "capabilities", label: "Part cards", itemLabel: "Card",
         fields: [
           { type: "image", key: "image", label: "Photo", hint: "Optional. Sits above the title." },
           { type: "text", key: "title", label: "Title" },
+          { type: "text", key: "status", label: "Status", hint: "Built, In progress or Planned — shown as a tag." },
           { type: "textarea", key: "body", label: "Text" },
+          { type: "text", key: "href", label: "Link", hint: "Where the card goes, e.g. /projects/autonomous-flight. Empty for none." },
         ],
       },
+      { type: "text", key: "roadmapTitle", label: "Roadmap title" },
+      { type: "textarea", key: "roadmapIntro", label: "Roadmap introduction" },
+      {
+        type: "items", key: "roadmap", label: "Roadmap", itemLabel: "Stage",
+        fields: [
+          { type: "text", key: "when", label: "When", hint: "e.g. Sprint 1 · 28 Sep – 11 Oct" },
+          { type: "text", key: "title", label: "Title" },
+          { type: "text", key: "status", label: "Status", hint: "Done, Now or Next — shown as a tag." },
+          { type: "textarea", key: "body", label: "What happens" },
+        ],
+      },
+      { type: "text", key: "planTitle", label: "Plan document title" },
+      { type: "textarea", key: "planBody", label: "Plan document text" },
+      { type: "text", key: "planLinkLabel", label: "Plan document link label" },
+      { type: "text", key: "planFile", label: "Plan document file", hint: "A site path, e.g. /docs/dronedeck-project-management-planning.pdf" },
       { type: "boolean", key: "showGallery", label: "Show a strip of photos from the gallery" },
       { type: "text", key: "galleryTitle", label: "Title of the photo strip" },
       { type: "text", key: "teamLine", label: "Line above the footer" },
@@ -203,84 +241,222 @@ export function isPageKey(value: string): value is PageKey {
 
 export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
   site: {
-    footerText: "CropWatcher — capstone project. Built on a Crazyflie 2.1.",
+    footerText:
+      "DroneDeck — Team 18's capstone: an autonomous indoor inspection drone on a Crazyflie 2.1.",
     footerLinkLabel: "Set up the system",
   },
   home: {
-    eyebrow: "Capstone project",
-    title: "CropWatcher",
+    eyebrow: "Team 18 · Capstone project",
+    title: "An autonomous drone that inspects the site it is deployed in.",
     intro:
-      "An autonomous indoor scouting drone that flies a greenhouse, records position-tagged " +
-      "environmental data, and turns it into a crop-health map.",
-    primaryCta: "See the projects",
+      "DroneDeck flies a Crazyflie 2.1 through a route of inspection points, records temperature, " +
+      "pressure and images at each one, and flags equipment that looks wrong — on a desktop app " +
+      "that flies it, and a dashboard that shows what it found.",
+    primaryCta: "See how it is built",
     secondaryCta: "Dashboard",
-    heroImage: "/home/hero-greenhouse.jpg",
-    heroImageAlt: "Rows of crops growing under a greenhouse roof",
-    showGallery: true,
-    galleryTitle: "From the gallery",
+    heroImage: "/brand/drone-hero.webp",
+    heroImageAlt: "A grey quadcopter drone hovering against a white background",
+    stats: [
+      { value: "41", label: "User stories · 34 MVP, 7 stretch" },
+      { value: "13", label: "Stories built before Sprint 1" },
+      { value: "689", label: "Person-hours planned" },
+      { value: "695", label: "Automated tests on the flight code" },
+    ],
+    capabilitiesTitle: "Six parts, one system",
+    capabilitiesIntro:
+      "Our planning document splits the work into six parts. The apps and the flight software " +
+      "under them are built; autonomous flight and the data pipeline are this sprint's work. " +
+      "Each part has its own page: what it does, how it was built or will be, who owns it, " +
+      "and what is left.",
     capabilities: [
       {
-        image: "/home/autonomous-flight.jpg",
-        title: "Autonomous flight",
+        image: "/projects/apps.webp",
+        title: "Apps, manual flight and live view",
+        status: "Built",
         body:
-          "Lawnmower scans and custom waypoint routes, flown under closed-loop position " +
-          "control with Lighthouse indoor positioning.",
+          "A desktop app that flies the drone and a website with an operator dashboard, one " +
+          "account for both. Keyboard flight at 50 Hz that holds its position, live sensors, " +
+          "the drone's camera, and every flight saved for comparison.",
+        href: "/projects/apps-and-manual-flight",
       },
       {
-        image: "/home/sensing.jpg",
-        title: "Corrected sensing",
+        image: "/projects/autonomous-flight.webp",
+        title: "Autonomous flight and navigation",
+        status: "In progress",
         body:
-          "The barometer sits on a board that heats itself. A two-timescale thermal model " +
-          "separates the electronics from the room, validated to 0.12 °F.",
+          "Take off, fly a planned route from one inspection point to the next, and land where " +
+          "it started — inside a virtual fence, on Lighthouse positioning. The fence and the route " +
+          "planner are built; the flights are Sprint 1.",
+        href: "/projects/autonomous-flight",
       },
       {
-        image: "/home/safety.jpg",
-        title: "Safety before arming",
+        image: "/projects/data-collection.webp",
+        title: "Data collection",
+        status: "In progress",
         body:
-          "Every plan is checked against a geofence and an obstacle map before a motor " +
-          "spins — including the leg out of the takeoff point.",
+          "Temperature, pressure and position ten times a second, greyscale images from the AI " +
+          "deck, written to disk first and uploaded after. Next: capturing at each inspection " +
+          "point and tagging every reading with its point.",
+        href: "/projects/data-collection",
       },
       {
-        image: "/home/zones.jpg",
-        title: "Zone-level health",
+        image: "/projects/data-processing.webp",
+        title: "Anomaly detection and alerts",
+        status: "In progress",
         body:
-          "Position-tagged readings become a greenhouse map, so a grower can see which rows " +
-          "need attention rather than reading a spreadsheet.",
+          "One pipeline per flight — clean the readings, sharpen the images, classify, " +
+          "interpret — ending in a verdict for every inspection point and an alert with its " +
+          "reason. Training data and the first classifier start in Sprint 1.",
+        href: "/projects/anomaly-detection",
+      },
+      {
+        image: "/projects/documentation.webp",
+        title: "Documentation",
+        status: "In progress",
+        body:
+          "Setup, operating and waypoint guides written so someone outside the team can run a " +
+          "mission, plus a record of every decision and problem, kept each sprint.",
+        href: "/projects/documentation",
+      },
+      {
+        image: "/projects/testing.webp",
+        title: "Testing and experiment design",
+        status: "In progress",
+        body:
+          "Boxes standing in for equipment, a written definition of faulty, a hand warmer for " +
+          "an abnormal reading, and a thermometer and barometer to check the drone against.",
+        href: "/projects/testing",
       },
     ],
-    teamLine: "Built on a Crazyflie 2.1 with Lighthouse positioning.",
+    roadmapTitle: "Where the project stands",
+    roadmapIntro:
+      "Sprint by sprint, from our planning document. Sprint 0 is what was built before the plan " +
+      "was written; Sprint 1 is the backlog we committed to on 28 September. Later sprints show " +
+      "the order the remaining stories are planned in — the dates for each task are in our Jira " +
+      "timeline.",
+    roadmap: [
+      {
+        when: "Sprint 0 · 16–27 Sep",
+        status: "Done",
+        title: "The apps and the flight software under them",
+        body:
+          "Website and desktop app, one sign-in with an operator role enforced in the database, " +
+          "keyboard flight that holds its position, live sensor windows, the live camera, " +
+          "flight history and comparison, pre-flight checks with an audit trail, a one-command " +
+          "install on macOS, Windows and Linux, the virtual fence, the mission planner, and " +
+          "recording plus upload of every reading and frame.",
+      },
+      {
+        when: "Sprint 1 · 28 Sep – 11 Oct",
+        status: "Now",
+        title: "First autonomous flights, the test rig and the first model",
+        body:
+          "Hannah and Samuel: measure the base stations, fly take-off → Point A → Point B → land " +
+          "three times in a row. Hannah and Yordanos: build the test boxes, define faulty, take " +
+          "reference readings and photograph the boxes for training. Kevin: clean bad sensor " +
+          "readings, sharpen and colourise frames. Reagan: sharpen frames, train the first " +
+          "faulty / not-faulty image classifier.",
+      },
+      {
+        when: "Sprint 2 · 12–25 Oct",
+        status: "Next",
+        title: "Capture at every point, and one pipeline",
+        body:
+          "Return to base at the end of every mission; capture images and readings while holding " +
+          "at each inspection point and tag them with the point's ID; one command that runs a " +
+          "recorded flight through the pipeline; thresholds and a sensor classifier that flag " +
+          "anomalies with a reason; hand-warmer tests; the setup guide.",
+      },
+      {
+        when: "Sprint 3 · 26 Oct – 8 Nov",
+        status: "Next",
+        title: "Missions from the website, alerts on the dashboard",
+        body:
+          "The flight agent picks up routes queued on the website; flagged equipment is " +
+          "highlighted on the dashboard and each alert opens to its reading or image and " +
+          "reason; the operating guide; a full mission over the test boxes, end to end.",
+      },
+      {
+        when: "Sprint 4 · 9–22 Nov",
+        status: "Next",
+        title: "The waypoint guide, and the first stretch goals",
+        body:
+          "Marker and waypoint guide for a new indoor space; return to base on low battery; " +
+          "flagging change against a baseline image; anomaly detection during the flight " +
+          "rather than after it.",
+      },
+      {
+        when: "Thanksgiving · 23–29 Nov",
+        status: "Next",
+        title: "A lighter week",
+        body: "Hannah and Reagan work ten hours rather than twelve; everyone else keeps their usual hours.",
+      },
+      {
+        when: "Sprint 5 · 30 Nov – 6 Dec",
+        status: "Next",
+        title: "Remaining stretch goals",
+        body:
+          "A second, closer pass over a flagged point; a model that combines images, readings " +
+          "and the equipment's history; obstacle detection with a range sensor; plain-English " +
+          "commands.",
+      },
+      {
+        when: "Final · 7–13 Dec",
+        status: "Next",
+        title: "Demo and hand-over",
+        body: "Final demonstration, the documentation complete, and the system handed over runnable by someone outside the team.",
+      },
+    ],
+    planTitle: "Our project management plan",
+    planBody:
+      "Everything above comes from this document: the person-hours each of us has, all 41 user " +
+      "stories with their owners, estimates and acceptance criteria, the Gantt chart, and the " +
+      "Sprint 1 backlog.",
+    planLinkLabel: "Read the plan (PDF)",
+    planFile: "/docs/dronedeck-project-management-planning.pdf",
+    showGallery: true,
+    galleryTitle: "From the gallery",
+    teamLine:
+      "Built by Hannah Alexander, Reagan Gary, Kevin Loi, Yordanos Tessema and Samuel Zih, on a " +
+      "Crazyflie 2.1 with Lighthouse positioning.",
     teamLinkLabel: "Meet the team",
   },
   projects: {
-    eyebrow: "Portfolio",
-    title: "Projects",
+    eyebrow: "Six parts",
+    title: "How DroneDeck is built",
     intro:
-      "The pieces that make CropWatcher fly, sense and stay safe — each written up by the " +
-      "people who built it.",
+      "The six parts our planning document divides the work into, one page each: what the part " +
+      "does, how we built it or plan to, who owns which story, and what is left. The team's " +
+      "design document is here too.",
   },
   team: {
-    eyebrow: "Capstone team",
+    eyebrow: "Team 18",
     title: "The team",
-    intro: "The people who designed, built and flew CropWatcher.",
+    intro:
+      "Five people, one part each to lead: Hannah — autonomous flight; Kevin — data " +
+      "collection; Reagan — anomaly detection; Samuel — the apps, manual flight and live view; " +
+      "Yordanos — documentation. Testing is shared.",
   },
   gallery: {
     eyebrow: "Gallery",
     title: "The kit, the team, and the drone in the air",
-    intro: "Photos and videos from building and flying CropWatcher, grouped into albums.",
+    intro: "Photos and videos from building and flying DroneDeck, grouped into albums.",
   },
   apps: {
-    eyebrow: "Downloads",
-    title: "Get the apps",
+    eyebrow: "Apps",
+    title: "Get DroneDeck",
     intro:
-      "Everything you need to run CropWatcher on your own machine. Each build is produced by " +
-      "CI from the code on the main branch, so what is here is what the project is.",
+      "The desktop app is not downloaded: each computer builds and installs its own copy with " +
+      "one command, on macOS, Windows or Linux. The dashboard is this website — nothing to install.",
     note:
       "The desktop app has to run on the computer with the Crazyradio plugged in — the radio " +
       "is a USB dongle, so no website can command the drone.",
-    unsignedTitle: "Your computer will warn you",
+    unsignedTitle: "Why there is no download",
     unsignedIntro:
-      "These builds are not code-signed: a capstone project has no Apple or Microsoft " +
-      "developer certificate. The warning is about the certificate, not about the file.",
+      "A capstone project has no Apple or Microsoft code-signing certificate, so a downloaded " +
+      "build meets a security warning on every machine — and an Intel Mac and an Apple-silicon " +
+      "Mac each need their own. Building on the computer that will run it avoids both: the " +
+      "install command checks the computer first and says exactly what to install.",
   },
   "setup-index": {
     eyebrow: "Set Up",
@@ -379,7 +555,7 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
       {
         title: "Install from a terminal — Mac",
         paragraphs: [
-          "One command builds CropWatcher on your Mac and puts it in Applications — right for "
+          "One command builds DroneDeck on your Mac and puts it in Applications — right for "
           + "Apple silicon and Intel alike. The first build takes about ten minutes; updates are "
           + "quicker. You need two things before you start:",
         ],
@@ -404,7 +580,7 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
       {
         title: "Install from a terminal — Windows",
         paragraphs: [
-          "One command builds CropWatcher on your PC and installs it for your user — no "
+          "One command builds DroneDeck on your PC and installs it for your user — no "
           + "administrator prompt — and it appears in the Start menu. The first build takes about "
           + "ten minutes. Use PowerShell, Command Prompt or Git Bash, in a normal Windows folder. "
           + "You need two things before you start:",
@@ -431,8 +607,8 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
       {
         title: "Install from a terminal — Linux",
         paragraphs: [
-          "One command builds CropWatcher and installs it for your user — no sudo for the "
-          + "install itself — in your applications menu and as the command cropwatcher. The "
+          "One command builds DroneDeck and installs it for your user — no sudo for the "
+          + "install itself — in your applications menu and as the command dronedeck. The "
           + "first build takes about ten minutes. Ubuntu under WSL on a Windows PC works the same "
           + "way; the radio needs one extra step there (see Plug in the radio). You need two "
           + "things before you start:",
@@ -486,9 +662,12 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
         title: "Set up positioning",
         paragraphs: [
           "The drone cannot hold a position without this. Two base stations, in opposite corners " +
-          "of the flight area, about two metres up, both angled toward the middle.",
-          "Then run geometry calibration once: place the drone where you want the origin, keep " +
-          "it still, and start the estimate. Repeat this any time a base station is moved or knocked.",
+          "of the flight area, about two metres up, both angled toward the middle. One works; " +
+          "two is steadier, because a single station leaves nothing to fall back on when the " +
+          "drone blocks its own view.",
+          "Then measure where the stations are, once: quit the app, and from the drone-capstone " +
+          "folder run ./cropwatcher geometry --distance 1.0 — it asks you to move the drone " +
+          "between samples. Repeat it any time a base station is moved or knocked.",
         ],
         bullets: [],
         note: "",
@@ -497,14 +676,14 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
       },
       {
         title: "Check before you fly",
-        paragraphs: ["Press Check in the app. Nothing spins — it asks the drone four questions and shows the answers:"],
+        paragraphs: ["On the Control page, press Start session. Nothing spins — the app asks the drone its questions and shows each answer as it arrives, among them:"],
         bullets: [
           "Is the battery charged enough to arm?",
           "Is the positioning deck fitted?",
           "Can it see the base stations?",
           "Has its position estimate settled?",
         ],
-        note: "All four green means you are ready. Anything else tells you exactly what to fix.",
+        note: "Green means ready. Anything else names what to fix, in plain words — and flying without positioning needs a second, explicit confirmation.",
         showDownloads: false,
         linkHardware: false,
       },
@@ -529,7 +708,7 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
       { group: "Install and update", command: "git pull",
         what: "Get the newest version of the code." },
       { group: "Install and update", command: "node scripts/install.mjs",
-        what: "Install CropWatcher, or update it to what you just pulled. Quit the app first — " +
+        what: "Install DroneDeck, or update it to what you just pulled. Quit the app first — " +
               "the command will not replace a copy that is running, because closing it lands a " +
               "drone that is flying." },
       { group: "Install and update", command: "node scripts/install.mjs --open",
@@ -538,31 +717,32 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
         what: "Build only, and say where the build is. The installed app is left alone." },
       { group: "Install and update", command: "node scripts/setup.mjs --check",
         what: "Check this computer for everything the build needs, and change nothing." },
-      { group: "Open and remove", command: "open -a CropWatcher",
+      { group: "Open and remove", command: "open -a DroneDeck",
         what: "Mac: open the app. It is also in Applications and Launchpad." },
-      { group: "Open and remove", command: "cropwatcher",
+      { group: "Open and remove", command: "dronedeck",
         what: "Linux: open the app, when ~/.local/bin is on your PATH. It is also in your " +
               "applications menu. On Windows, open it from the Start menu." },
-      { group: "Open and remove", command: "rm -rf /Applications/CropWatcher.app",
+      { group: "Open and remove", command: "rm -rf /Applications/DroneDeck.app",
         what: "Mac: remove the app — or drag it from Applications to the Bin. If it was " +
               "installed to ~/Applications, remove it from there." },
-      { group: "Open and remove", command: "& \"$env:LOCALAPPDATA\\CropWatcher\\uninstall.exe\"",
+      { group: "Open and remove", command: "& \"$env:LOCALAPPDATA\\DroneDeck\\uninstall.exe\"",
         what: "Windows, in PowerShell: remove the app. Or Settings → Apps → Installed apps → " +
-              "CropWatcher → Uninstall." },
+              "DroneDeck → Uninstall." },
       { group: "Open and remove",
-        command: "rm -r ~/.local/lib/cropwatcher ~/.local/share/applications/cropwatcher.desktop " +
-                 "~/.local/share/icons/hicolor/128x128/apps/cropwatcher.png ~/.local/bin/cropwatcher",
+        command: "rm -r ~/.local/lib/dronedeck ~/.local/share/applications/dronedeck.desktop " +
+                 "~/.local/share/icons/hicolor/128x128/apps/dronedeck.png ~/.local/bin/dronedeck",
         what: "Linux: remove the app. The install command prints this line with your exact paths." },
       { group: "Logs", command: "open ~/Library/Application\\ Support/CropWatcher/logs",
-        what: "Mac: the folder with agent.log — send it to us when the app reports a problem." },
+        what: "Mac: the folder with agent.log — send it to us when the app reports a problem. " +
+              "It keeps the app's first name, CropWatcher, so older sessions are still found." },
       { group: "Logs", command: "explorer \"$env:APPDATA\\CropWatcher\\logs\"",
         what: "Windows, in PowerShell: the same folder." },
       { group: "Logs", command: "ls ~/.local/share/CropWatcher/logs",
         what: "Linux: the same folder." },
       { group: "Flight lab (developers)", command: "./cropwatcher check",
         what: "Every pre-flight check, from the terminal. Never spins a motor. Quit the app " +
-              "first — only one program can use the radio at a time. Keep the ./ : on Linux, " +
-              "cropwatcher without it opens the app instead. On Windows, run these in Git Bash." },
+              "first — only one program can use the radio at a time. The ./ matters: it runs the " +
+              "flight agent from the repo folder. On Windows, run these in Git Bash." },
       { group: "Flight lab (developers)", command: "./cropwatcher stations --seconds 20",
         what: "Which base stations the drone is receiving, live, for 20 seconds." },
       { group: "Flight lab (developers)", command: "./cropwatcher geometry --distance 1.0",
@@ -608,7 +788,7 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
         fix:
           "Install usbipd-win on Windows and attach the dongle to WSL, as Microsoft describes at " +
           "learn.microsoft.com/windows/wsl/connect-usb, then add the udev rule (the install " +
-          "command prints it). Or install CropWatcher on Windows itself, from PowerShell — then " +
+          "command prints it). Or install DroneDeck on Windows itself, from PowerShell — then " +
           "it is in the Start menu and uses the Zadig driver instead.",
       },
       {
@@ -617,6 +797,14 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
         fix:
           "Install the xdg-utils package (on Debian or Ubuntu: sudo apt install xdg-utils) and run " +
           "it again. node scripts/install.mjs does not need it — it builds only what it installs.",
+      },
+      {
+        symptom: "The old CropWatcher app is still installed",
+        cause: "The app was renamed DroneDeck on 28 September 2026.",
+        fix:
+          "Run node scripts/install.mjs again after git pull. Once DroneDeck is installed it " +
+          "removes the CropWatcher copy it installed before — quit that copy first. Your sign-in, " +
+          "sessions and saved Wi-Fi passwords carry over.",
       },
       {
         symptom: "Linux: the app says this user may not open the Crazyradio",
@@ -630,7 +818,7 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
         symptom: "The app says it is not connected to the flight agent",
         cause: "The part of the app that talks to the radio stopped, or another copy holds its port.",
         fix:
-          "The message says which. Quit every copy of CropWatcher (and any agent started from a " +
+          "The message says which. Quit every copy of DroneDeck (and any agent started from a " +
           "terminal), then reopen it. If it stops again, its log is in ~/Library/Application " +
           "Support/CropWatcher/logs on a Mac, %APPDATA%\\CropWatcher\\logs on Windows and " +
           "~/.local/share/CropWatcher/logs on Linux — send us agent.log.",
@@ -660,7 +848,7 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
         symptom: "Manual control will not connect",
         cause: "The browser cannot reach the app on your machine.",
         fix:
-          "Manual flight needs the CropWatcher app running on the same computer or the same " +
+          "Manual flight needs the DroneDeck app running on the same computer or the same " +
           "network. It deliberately does not work over the internet: the delay would make the " +
           "drone unflyable.",
       },

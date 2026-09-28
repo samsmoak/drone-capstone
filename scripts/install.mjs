@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Install CropWatcher from a terminal, on macOS, Windows or Linux, in one command:
+// Install DroneDeck from a terminal, on macOS, Windows or Linux, in one command:
 //
 //   git clone https://github.com/samsmoak/drone-capstone.git
 //   cd drone-capstone
@@ -14,10 +14,16 @@
 //   3. the install — macOS copies the app into /Applications (~/Applications
 //      if that is not writable); Windows runs the installer silently, for
 //      this user only, so no administrator prompt; Linux installs for this
-//      user only too — the program in ~/.local/lib/cropwatcher, a menu entry,
-//      an icon, and a `cropwatcher` command in ~/.local/bin. No sudo anywhere.
+//      user only too — the program in ~/.local/lib/dronedeck, a menu entry,
+//      an icon, and a `dronedeck` command in ~/.local/bin. No sudo anywhere.
 //
 // Running it again updates the installed app in place.
+//
+// The app was called CropWatcher until 2026-09-28. A copy installed under that
+// name is removed once DroneDeck is installed (removeLegacyCopy) — only files
+// this script put there, and never while that copy is running. Sign-in,
+// sessions and saved Wi-Fi passwords are untouched: the agent's data folder,
+// the app identifier and the keychain entry keep their original names.
 //
 //   --open         open the app when it is installed
 //   --no-install   build only; leave the installed app alone
@@ -27,7 +33,7 @@
 // which is also what makes an Intel Mac and an Apple-silicon Mac each get the
 // right one (PyInstaller freezes for the CPU of the machine it runs on).
 //
-// CROPWATCHER_INSTALL_DIR (macOS: the folder for CropWatcher.app; Linux: the
+// CROPWATCHER_INSTALL_DIR (macOS: the folder for DroneDeck.app; Linux: the
 // program folder) installs somewhere else — for testing.
 //
 // The Crazyradio needs a one-time administrator step on Windows (a driver)
@@ -50,7 +56,9 @@ const RELEASE = join(DESKTOP, "src-tauri", "target", "release");
 const WINDOWS = process.platform === "win32";
 const MAC = process.platform === "darwin";
 const LINUX = process.platform === "linux";
-const APP = "CropWatcher";
+const APP = "DroneDeck";
+/** The name it was installed under before 2026-09-28. */
+const LEGACY_APP = "CropWatcher";
 
 const USAGE = "usage: node scripts/install.mjs [--open] [--no-install] [--dev]";
 const flags = process.argv.slice(2);
@@ -95,14 +103,18 @@ function macInstallDir() {
 // Linux, per the XDG Base Directory spec: programs under ~/.local/lib, the
 // menu entry and icon under $XDG_DATA_HOME, commands in ~/.local/bin.
 const DATA_HOME = process.env.XDG_DATA_HOME || join(homedir(), ".local", "share");
-const linuxPaths = () => ({
-  dir: process.env.CROPWATCHER_INSTALL_DIR
-    ? resolve(process.env.CROPWATCHER_INSTALL_DIR)
-    : join(homedir(), ".local", "lib", "cropwatcher"),
-  menu: join(DATA_HOME, "applications", "cropwatcher.desktop"),
-  icon: join(DATA_HOME, "icons", "hicolor", "128x128", "apps", "cropwatcher.png"),
-  link: join(homedir(), ".local", "bin", "cropwatcher"),
+const linuxPathsFor = (name) => ({
+  dir: join(homedir(), ".local", "lib", name),
+  menu: join(DATA_HOME, "applications", `${name}.desktop`),
+  icon: join(DATA_HOME, "icons", "hicolor", "128x128", "apps", `${name}.png`),
+  link: join(homedir(), ".local", "bin", name),
 });
+const linuxPaths = () => ({
+  ...linuxPathsFor("dronedeck"),
+  ...(process.env.CROPWATCHER_INSTALL_DIR ? { dir: resolve(process.env.CROPWATCHER_INSTALL_DIR) } : {}),
+});
+/** Where a CropWatcher-era install lives: the same layout under the old name. */
+const legacyLinuxPaths = () => linuxPathsFor("cropwatcher");
 
 /** A pgrep pattern matching exactly this program, whatever its path holds. */
 const exactProgram = (path) => `^${path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}( |$)`;
@@ -123,7 +135,7 @@ function runningCopy(target) {
     return found.status === 0 && found.stdout.trim() !== "";
   }
   if (WINDOWS) {
-    for (const image of [`${APP}.exe`, "desktop.exe", "cropwatcher-agent.exe"]) {
+    for (const image of [`${APP}.exe`, `${LEGACY_APP}.exe`, "desktop.exe", "cropwatcher-agent.exe"]) {
       const found = spawnSync("tasklist", ["/FI", `IMAGENAME eq ${image}`, "/NH"],
         { encoding: "utf8", windowsHide: true });
       if ((found.stdout ?? "").toLowerCase().includes(image.toLowerCase())) return true;
@@ -132,16 +144,22 @@ function runningCopy(target) {
   return false;
 }
 
-function refuseIfRunning(target) {
+function refuseIfRunning(target, name = APP) {
   if (INSTALL && runningCopy(target)) {
-    fail(`${APP} is running${target ? ` from ${target}` : ""}. Quit it first — closing it lands the ` +
+    fail(`${name} is running${target ? ` from ${target}` : ""}. Quit it first — closing it lands the ` +
       "drone and ends the session — then run this again.");
   }
 }
 
 const target = MAC ? join(macInstallDir(), `${APP}.app`) : LINUX ? linuxPaths().dir : null;
+// The CropWatcher-era copy, removed after the install — so it must not be
+// running either. Skipped for a test install into CROPWATCHER_INSTALL_DIR.
+const MIGRATE = INSTALL && !process.env.CROPWATCHER_INSTALL_DIR;
+const legacyTarget = !MIGRATE ? null
+  : MAC ? join(macInstallDir(), `${LEGACY_APP}.app`) : LINUX ? legacyLinuxPaths().dir : null;
 // Before minutes of building, not after.
 refuseIfRunning(target);
+if (legacyTarget && existsSync(legacyTarget)) refuseIfRunning(legacyTarget, LEGACY_APP);
 
 // ── 1. setup ──────────────────────────────────────────────────────────────
 
@@ -204,9 +222,11 @@ if (MAC) {
   installed = join(home, exe);
 }
 
+if (MIGRATE) removeLegacyCopy();
+
 const openFrom = MAC ? "Applications or Launchpad"
   : WINDOWS ? "the Start menu"
-  : "your applications menu (CropWatcher), or run: cropwatcher";
+  : "your applications menu (DroneDeck), or run: dronedeck";
 console.log(`
 Installed ${APP} ${version}:
   ${installed}
@@ -268,8 +288,8 @@ function installOnLinux() {
     "Type=Application",
     "Version=1.5",
     `Name=${APP}`,
-    "GenericName=Greenhouse drone",
-    "Comment=Fly the Crazyflie and record crop-health readings",
+    "GenericName=Drone inspection",
+    "Comment=Fly the Crazyflie inspection drone and review what it recorded",
     `Exec=${execQuote(join(dir, "desktop"))}`,
     `Icon=${icon}`,
     "Terminal=false",
@@ -285,7 +305,7 @@ function installOnLinux() {
     spawnSync("update-desktop-database", [dirname(menu)], { stdio: "ignore" });
   }
 
-  // A `cropwatcher` command — but never over a file that is not ours.
+  // A `dronedeck` command — but never over a file that is not ours.
   mkdirSync(dirname(link), { recursive: true });
   let ours = true;
   try {
@@ -300,7 +320,51 @@ function installOnLinux() {
     const onPath = (process.env.PATH ?? "").split(":").includes(dirname(link));
     if (!onPath) console.log(`  note: ${dirname(link)} is not on PATH; the menu entry still works.`);
   } else {
-    console.log(`  note: ${link} already exists and is not CropWatcher's; left alone.`);
+    console.log(`  note: ${link} already exists and is not ${APP}'s; left alone.`);
   }
   return join(dir, "desktop");
+}
+
+// ── the CropWatcher-era install ───────────────────────────────────────────
+
+/**
+ * Remove the copy installed under the old name, once DroneDeck is in place.
+ * Only what this script itself installed there: an app bundle / program
+ * folder of the old name, and on Linux the menu entry, icon and command that
+ * point into it. Anything that does not look like ours is left and reported.
+ * The running check happened before the build (refuseIfRunning).
+ */
+function removeLegacyCopy() {
+  if (MAC) {
+    const legacy = join(macInstallDir(), `${LEGACY_APP}.app`);
+    if (!existsSync(join(legacy, "Contents", "MacOS", "cropwatcher-agent"))) return;
+    rmSync(legacy, { recursive: true, force: true });
+    console.log(`==> removed the old ${LEGACY_APP}.app — this app replaces it`);
+  } else if (WINDOWS) {
+    const home = join(process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"), LEGACY_APP);
+    const uninstaller = join(home, "uninstall.exe");
+    if (!existsSync(uninstaller)) return;
+    // /S: silent, the same per-user uninstaller Settings → Apps would run.
+    const result = spawnSync(uninstaller, ["/S"], { windowsHide: true });
+    console.log(result.status === 0
+      ? `==> removed the old ${LEGACY_APP} — this app replaces it`
+      : `  note: could not remove the old ${LEGACY_APP}; uninstall it from Settings → Apps.`);
+  } else if (LINUX) {
+    const { dir, menu, icon, link } = legacyLinuxPaths();
+    const program = join(dir, "desktop");
+    if (!existsSync(program) || !existsSync(join(dir, "cropwatcher-agent"))) return;
+    try {
+      if (lstatSync(link).isSymbolicLink() && readlinkSync(link) === program) rmSync(link);
+    } catch {
+      // No command was installed.
+    }
+    try {
+      if (readFileSync(menu, "utf8").includes(execQuote(program))) rmSync(menu);
+    } catch {
+      // No menu entry.
+    }
+    rmSync(icon, { force: true });
+    rmSync(dir, { recursive: true, force: true });
+    console.log(`==> removed the old ${LEGACY_APP} install — this app replaces it`);
+  }
 }

@@ -37,6 +37,8 @@ import { TONE_COLOR, TONE_ICON, type Tone } from "@/components/ui";
 import type { Page } from "@/App";
 import { NAV_GROUPS } from "@/components/nav-items";
 import { ProfileMenu } from "@/components/ProfileMenu";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { Wordmark } from "@/components/Wordmark";
 import { openDashboard } from "@/lib/web";
 
 type Locked = "expanded" | "collapsed";
@@ -124,18 +126,15 @@ export function Sidebar({
           transition: "width 120ms ease",
         }}
       >
-        {/* Brand + the pin. Fraunces lives here and nowhere else in the app. */}
+        {/* Brand + the pin. The wordmark's face lives here and nowhere else. */}
         <div className="flex items-center gap-2 px-2 py-3">
           <button
             type="button"
             onClick={() => onNavigate("home")}
-            aria-label="CropWatcher — go to Home"
-            className="flex min-w-0 items-center gap-2.5"
+            aria-label="DroneDeck — go to Home"
+            className="flex min-w-0 items-center"
           >
-            <span className="font-display flex h-8 w-8 shrink-0 items-center justify-center bg-[var(--primary)] text-base font-semibold text-[var(--on-primary)]">
-              C
-            </span>
-            {expanded && <span className="font-display truncate text-base font-semibold">CropWatcher</span>}
+            <Wordmark showName={expanded} />
           </button>
           {expanded && (
             <button
@@ -247,6 +246,7 @@ export function Sidebar({
             </svg>
             {expanded && <span className="truncate">Open the dashboard</span>}
           </button>
+          <ThemeToggle wide={expanded} />
           <ProfileMenu
             session={session}
             placement="up"

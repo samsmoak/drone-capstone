@@ -10,7 +10,7 @@ import { APPS, HARDWARE, setupPath } from "@/lib/routes";
 export const metadata: Metadata = {
   title: "Set up the system",
   description:
-    "Setup guides for each piece of CropWatcher: the desktop app that flies the drone, the " +
+    "Setup guides for each piece of DroneDeck: the desktop app that flies the drone, the " +
     "flight agent it bundles, and the dashboard that reads what they record.",
 };
 

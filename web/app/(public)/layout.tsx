@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { DashboardLink, VisitorAccount } from "@/components/site/VisitorAccount";
 import { Nav } from "@/components/ui/nav";
+import { ThemeToggle } from "@/components/site/ThemeToggle";
+import { Wordmark } from "@/components/site/Wordmark";
 import { getCurrentProfile, getPageContent } from "@/lib/queries";
 import { SITE_CONTAINER } from "@/lib/layout";
 import { HOME, PUBLIC_NAV, SETUP } from "@/lib/routes";
@@ -17,11 +19,12 @@ export default async function PublicLayout({ children }: { children: React.React
   return (
     <>
       <Nav
-        brand="CropWatcher"
+        brand={<Wordmark />}
+        brandLabel="DroneDeck — home"
         brandHref={HOME}
         items={PUBLIC_NAV}
         cta={<DashboardLink />}
-        trailing={<VisitorAccount account={account} />}
+        trailing={<div className="flex items-center gap-1"><ThemeToggle /><VisitorAccount account={account} /></div>}
       />
       <div id="main">{children}</div>
       <footer className="mt-20 border-t border-[var(--border)]">

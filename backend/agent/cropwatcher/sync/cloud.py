@@ -60,7 +60,7 @@ SIGN_IN_DEADLINE_S = 25.0
 
 TIMED_OUT = (
     "Supabase did not answer within {seconds:.0f} seconds. Check this computer's internet "
-    "connection, and that no firewall or security software is blocking CropWatcher — "
+    "connection, and that no firewall or security software is blocking DroneDeck — "
     "then try again."
 )
 STILL_WAITING = "The last sign-in is still waiting for Supabase. Try again in a moment."

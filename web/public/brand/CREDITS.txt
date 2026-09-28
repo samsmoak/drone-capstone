@@ -1,0 +1,17 @@
+The DroneDeck mark, icons and header image.
+
+All of them are cut from one stock photograph, free under the Unsplash Licence
+(https://unsplash.com/license — commercial use, no permission or attribution
+required). Credited here anyway so it can be traced and replaced:
+
+  unsplash photo-1597353361282-e3d3af9f4ab7  (Rythik, PAf9rj_DKCU)
+  "Gray and black drone with white background"
+
+  drone-hero.webp      the whole photograph, background flattened to white
+  drone-mark-256.png   the drone on a rounded white tile — the logo beside the
+                       wordmark in the website and the desktop app
+  icon-512.png         the same tile, for the web manifest
+  maskable-512.png     full-bleed with a safe margin, for OS-masked icons
+
+The website's app/icon.png, app/apple-icon.png and app/favicon.ico, and the
+desktop app's src-tauri/icons/, are generated from the same photograph.

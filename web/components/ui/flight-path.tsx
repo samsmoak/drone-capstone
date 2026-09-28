@@ -1,7 +1,7 @@
 import type { TelemetryRow, ZoneRow } from "@/lib/queries";
 
 /**
- * The drone's track over the greenhouse floor, top-down. Plain SVG.
+ * The drone's track over the flight area, top-down. Plain SVG.
  *
  * Equal scale on both axes, always. A path drawn with independent x and y
  * scales turns a square lawnmower pattern into a rectangle and makes a

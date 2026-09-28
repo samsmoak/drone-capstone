@@ -1,5 +1,5 @@
 /**
- * The CropWatcher window.
+ * The DroneDeck window.
  *
  * A left sidebar for navigation, a strip across the top for flight state and
  * stopping, then one page at a time: Home (where you are and what to do next),
@@ -111,7 +111,7 @@ export default function App() {
   const live = useRef<LiveConnection | null>(null);
   const startedAt = useRef<number | null>(null);
   // Why the agent is not running, from the shell (lib.rs), and where its log
-  // is. Before these, a dead agent was only ever "Restart CropWatcher".
+  // is. Before these, a dead agent was only ever "Restart DroneDeck".
   const [agentExit, setAgentExit] = useState<string | null>(null);
   const [logPath, setLogPath] = useState<string | null>(null);
 
@@ -348,7 +348,7 @@ export default function App() {
           <div className="border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2">
             <Message
               tone="warning"
-              text="macOS is asking whether CropWatcher may use the saved Wi-Fi password. Answer the Keychain prompt (Always Allow) so the drone can join its network."
+              text="macOS is asking whether DroneDeck may use the saved Wi-Fi password. Answer the Keychain prompt (Always Allow) so the drone can join its network."
             />
           </div>
         )}

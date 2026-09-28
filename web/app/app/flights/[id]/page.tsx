@@ -206,7 +206,7 @@ export default async function FlightPage(props: PageProps<"/app/flights/[id]">) 
         {predictions.length === 0 ? (
           <p className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-6 text-sm text-[var(--muted)]">
             No health estimates for this flight. Estimates are produced by the agent after
-            a flight, once crop-health inference is enabled.
+            a flight, once the inspection pipeline (clean, classify, interpret) runs on it.
           </p>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-[var(--border)]">

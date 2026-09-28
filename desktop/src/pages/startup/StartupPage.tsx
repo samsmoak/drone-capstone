@@ -43,7 +43,7 @@ export function StartupPage({ connected }: { connected: boolean }) {
           text={
             connected
               ? "Signing back in is taking longer than usual. Check this computer's internet connection — you can still sign in by hand once this clears."
-              : "The flight agent has not answered. It may not have started, or another copy of CropWatcher may already be running. Quit any other copy and reopen this window."
+              : "The flight agent has not answered. It may not have started, or another copy of DroneDeck may already be running. Quit any other copy and reopen this window."
           }
         />
       )}

@@ -6,7 +6,7 @@ import { getPageContent, getPublishedProjects } from "@/lib/queries";
 
 export const metadata: Metadata = {
   title: "Projects",
-  description: "The work behind CropWatcher: flight, sensing, safety and the software around them.",
+  description: "The six parts of DroneDeck — apps, autonomous flight, data collection, anomaly detection, documentation and testing — one write-up each.",
 };
 
 export default async function ProjectsPage() {

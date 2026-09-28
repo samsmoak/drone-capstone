@@ -1,7 +1,7 @@
 import type { PredictionRow, ZoneRow } from "@/lib/queries";
 
 /**
- * The greenhouse, top-down, each zone shaded by its latest health estimate.
+ * The flight area, top-down, each zone shaded by its latest health estimate.
  * Plain SVG rectangles.
  *
  * Magnitude, so a sequential ramp: one hue, light → dark, never a rainbow and

@@ -148,7 +148,7 @@ export function DroneWifiForm({ onSaved, onCancel, cancelLabel = "Cancel" }: {
       )}
       {permission === "denied" && (
         <p className="text-xs text-[var(--muted)]">
-          Names hidden — allow CropWatcher in Location Services to list them.
+          Names hidden — allow DroneDeck in Location Services to list them.
         </p>
       )}
 

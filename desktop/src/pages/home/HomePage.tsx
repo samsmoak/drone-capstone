@@ -64,7 +64,7 @@ function steps(mode: Mode): string[] {
  *  email, and repeating it in a title reads as a mistake. */
 function greeting(session: Session | null): string {
   const operator = session?.operator;
-  if (!operator) return "CropWatcher";
+  if (!operator) return "DroneDeck";
   const name = operator.name && operator.name !== operator.email ? operator.name : null;
   return name ? `Welcome back, ${name}` : "Welcome back";
 }
@@ -134,7 +134,7 @@ export function HomePage({ session, telemetry, sync, connected, run, onGo }: Pro
             label: "Agent",
             value: connected ? "Running" : "Not running",
             tone: connected ? "good" : "critical",
-            hint: connected ? "On this computer" : "Restart CropWatcher",
+            hint: connected ? "On this computer" : "Restart DroneDeck",
           },
           {
             label: "Signed in",

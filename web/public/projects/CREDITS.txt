@@ -1,0 +1,16 @@
+Cover photographs for the six parts of DroneDeck, and the overview.
+
+Stock photographs, free under the Unsplash Licence (https://unsplash.com/license
+— commercial use, no permission or attribution required). Credited anyway, by
+photo id, so each can be traced and replaced with the team's own photograph:
+
+  dronedeck.webp          photo-1597353361282-e3d3af9f4ab7  (Rythik) — the brand photograph
+  apps.webp               photo-1551288049-bebda4e38f71     (Luke Chesser)
+  autonomous-flight.webp  photo-1487219116710-23ffcb172b2b
+  data-collection.webp    photo-1527356900876-cae61d8d8462  (Victor Aznabaev)
+  data-processing.webp    photo-1526628953301-3e589a6a8b74  (Stephen Dawson)
+  documentation.webp      photo-1731963094554-c5c981ccdefd  (nedimshoots)
+  testing.webp            photo-1609725236589-d987ffc8133a  (Edgar Soto)
+
+They are the project covers (backend/supabase/seed/dronedeck_projects.py) and the
+part cards on the home page.
