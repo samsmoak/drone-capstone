@@ -1,4 +1,5 @@
-import { SITE_CONTAINER } from "@/lib/layout";
+import { WIDE_CONTAINER } from "@/lib/layout";
+import { Collapsible } from "@/components/site/Collapsible";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
@@ -31,7 +32,7 @@ export default async function ProjectPage({ params }: PageProps<"/projects/[slug
   const { html, sections } = await renderProjectContent(project.content);
 
   return (
-    <main className={`${SITE_CONTAINER} py-10 md:py-14`}>
+    <main className={`${WIDE_CONTAINER} py-10 md:py-14`}>
       <Link
         href={PROJECTS}
         className="mb-8 inline-flex items-center gap-1.5 text-sm font-medium text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
@@ -43,11 +44,20 @@ export default async function ProjectPage({ params }: PageProps<"/projects/[slug
       </Link>
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
-        <aside className="hidden lg:col-span-2 lg:block">
+        <aside className="hidden xl:col-span-2 xl:block">
           <TableOfContents sections={sections} />
         </aside>
 
-        <article className="min-w-0 lg:col-span-7">
+        {/* Below 1280 px the rail above is hidden; the contents fold in here instead. */}
+        {sections.length > 0 && (
+          <div className="xl:hidden lg:col-span-12">
+            <Collapsible label="On this page" breakpoint="xl">
+              <TableOfContents sections={sections} variant="inline" />
+            </Collapsible>
+          </div>
+        )}
+
+        <article className="min-w-0 lg:col-span-8 xl:col-span-7">
           <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm sm:p-9 lg:p-10">
             {project.category && <p className="eyebrow text-[var(--heading)]">{project.category}</p>}
             <h1 className="font-display mt-3 text-3xl font-semibold leading-tight sm:text-4xl">
@@ -85,8 +95,10 @@ export default async function ProjectPage({ params }: PageProps<"/projects/[slug
 
         {/* Sticky like the contents on the left. The team stays a stack until
             opened, so the column is short enough to stay in view. */}
-        <aside className="lg:col-span-3 lg:sticky lg:top-24 lg:self-start">
-          <TeamSidebar team={project.team} projects={allProjects} activeSlug={project.slug} />
+        <aside className="lg:col-span-4 xl:col-span-3 lg:sticky lg:top-24 lg:self-start">
+          <Collapsible label="The team, and every project">
+            <TeamSidebar team={project.team} projects={allProjects} activeSlug={project.slug} />
+          </Collapsible>
         </aside>
       </div>
     </main>

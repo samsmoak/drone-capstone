@@ -19,6 +19,14 @@ LOG  (asked twice — watching for a third)
             /copy-adapt were copied beside /preflight and /adapt, not over them.
             Same root as the STANDING rule below; a third instance makes
             "build exactly the words asked" a platform rule.
+2026-09-28 · responsive everywhere, small screens first — "the nav should be a
+            hamburger with a sidebar menu", "make use of collapsible sidemenus
+            for smaller screens", "everything should be very responsive — so
+            should the desktop app" · the visitor nav and the operator bar
+            became drawers (components/ui/drawer.tsx), the write-up and member
+            side menus fold (components/site/Collapsible.tsx), the desktop
+            rail folds below 960 px. Asked twice in one request; a third makes
+            "phone-first, measured at 390 / 768 / 1024 / 1440" a design rule.
 
 --------------------------------------------------------------------------------
 STANDING  (made a rule — lives in the doc named)

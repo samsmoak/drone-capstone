@@ -52,6 +52,42 @@ follow a change (lib/theme.ts subscribeTheme). Both token sets already existed
 in globals.css; nothing else had to change, because no component uses dark:.
 
 
+SMALL SCREENS (since 2026-09-28)
+
+  The nav         below 1024 px: wordmark, theme switch and a menu button; the
+                  links, Dashboard and the account live in a drawer
+                  (components/ui/drawer.tsx — a modal dialog rendered into
+                  <body>: focus kept inside, Escape and the backdrop close it,
+                  the page cannot scroll, focus returns to the button). The
+                  header is sticky. The drawer is shared with the operator bar.
+  Side menus      a write-up's contents (below 1280) and its team / project
+                  list (below 1024) fold into toggles (Collapsible.tsx), closed
+                  at first; from the breakpoint up CSS keeps them open.
+  Tables          every horizontal scroller carries contain: paint
+                  ([contain:paint]; .prose-table in globals.css). Without it
+                  mobile Chrome laid a 390 px phone out at 510 to fit a table
+                  that was already inside a scroller. Write-up tables are
+                  wrapped in a labelled, focusable scroller by render.ts.
+  Measured        every visitor page at 390 / 768 / 1024 / 1440 and every
+                  operator and admin page at 390 / 768: no page scrolls
+                  sideways. The remaining small targets are links inside
+                  prose, which WCAG 2.5.8 exempts.
+
+THE SIX PARTS ON /projects
+
+The part cards (components/site/PartCards.tsx) are drawn from the home page's
+"Part cards" field on both the home page and /projects, so the two can never
+list different parts. /projects then lists every other published write-up —
+the overview and the design document — and leaves out any project a part card
+already links to.
+
+WIDE PAGES
+
+A write-up (/projects/<slug>) uses WIDE_CONTAINER (90rem) and the navbar widens
+with it (lib/layout.ts WIDE_PAGES), so their edges still line up; at 72rem the
+article was about 630 px between its contents rail and the team column.
+
+
 ONE WIDTH FOR THE VISITOR SITE
 
 lib/layout.ts SITE_CONTAINER (max-w-6xl, px-6) is used by the navbar, the footer

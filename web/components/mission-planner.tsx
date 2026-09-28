@@ -100,7 +100,7 @@ export function MissionPlanner({ zones, canQueue }: { zones: ZoneRow[]; canQueue
           tabIndex={0}
           role="region"
           aria-label="Route map"
-          className="overflow-x-auto rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-3"
+          className="overflow-x-auto [contain:paint] rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-3"
         >
           <svg
             viewBox={`0 0 ${SIZE_W} ${height}`}

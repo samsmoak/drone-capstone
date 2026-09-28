@@ -39,7 +39,7 @@ export function ListEditor<T>({
   }
 
   return (
-    <section className="grid gap-3">
+    <section className="grid grid-cols-1 gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="eyebrow">{label}</h3>
         <span className="text-xs text-[var(--muted)]">
@@ -53,10 +53,10 @@ export function ListEditor<T>({
         </p>
       )}
 
-      <ul className="grid gap-3">
+      <ul className="grid grid-cols-1 gap-3">
         {items.map((item, i) => (
           <li key={i}>
-            <Card className="grid gap-4 p-4">
+            <Card className="grid grid-cols-1 gap-4 p-4">
               <div className="flex items-center justify-between gap-2">
                 <span className="eyebrow">
                   {label.replace(/s$/, "")} {i + 1}

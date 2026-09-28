@@ -4,7 +4,7 @@ import { Nav } from "@/components/ui/nav";
 import { ThemeToggle } from "@/components/site/ThemeToggle";
 import { Wordmark } from "@/components/site/Wordmark";
 import { getCurrentProfile, getPageContent } from "@/lib/queries";
-import { SITE_CONTAINER } from "@/lib/layout";
+import { SITE_CONTAINER, WIDE_CONTAINER, WIDE_PAGES } from "@/lib/layout";
 import { HOME, PUBLIC_NAV, SETUP } from "@/lib/routes";
 import { text } from "@/lib/site-content";
 
@@ -24,7 +24,9 @@ export default async function PublicLayout({ children }: { children: React.React
         brandHref={HOME}
         items={PUBLIC_NAV}
         cta={<DashboardLink />}
-        trailing={<div className="flex items-center gap-1"><ThemeToggle /><VisitorAccount account={account} /></div>}
+        actions={<ThemeToggle />}
+        trailing={<VisitorAccount account={account} />}
+        wide={{ prefixes: WIDE_PAGES, width: WIDE_CONTAINER }}
       />
       <div id="main">{children}</div>
       <footer className="mt-20 border-t border-[var(--border)]">

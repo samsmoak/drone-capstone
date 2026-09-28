@@ -142,7 +142,7 @@ export function AlbumEditor({ album }: { album: AlbumWithItems }) {
     setItems((prev) => prev.map((it) => (it.id === id ? { ...it, [key]: value } : it)));
 
   return (
-    <div className="grid gap-6">
+    <div className="grid grid-cols-1 gap-6">
       <EditorBar
         back={ADMIN_GALLERY}
         backLabel="Gallery"
@@ -178,8 +178,8 @@ export function AlbumEditor({ album }: { album: AlbumWithItems }) {
         />
       )}
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="grid content-start gap-5 p-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <Card className="grid grid-cols-1 content-start gap-5 p-6">
           <div><Label htmlFor="a-title">Title</Label><Input id="a-title" value={title} onChange={(e) => setTitle(e.target.value)} /></div>
           <div><Label htmlFor="a-summary">Summary</Label><Textarea id="a-summary" rows={3} value={summary} onChange={(e) => setSummary(e.target.value)} /></div>
           <div className="grid grid-cols-2 gap-3">
@@ -190,8 +190,8 @@ export function AlbumEditor({ album }: { album: AlbumWithItems }) {
           <Button variant="danger" onClick={removeAlbum} disabled={pending} className="justify-start px-0">Delete album</Button>
         </Card>
 
-        <div className="grid content-start gap-6 lg:col-span-2">
-          <Card className="grid gap-4 p-6">
+        <div className="grid grid-cols-1 content-start gap-6 lg:col-span-2">
+          <Card className="grid grid-cols-1 gap-4 p-6">
             <Label>Add photos</Label>
             <input ref={fileInput} type="file" accept="image/*" multiple className="hidden"
                    onChange={(e) => { if (e.target.files?.length) void uploadFiles(e.target.files); e.target.value = ""; }} />
@@ -229,7 +229,7 @@ export function AlbumEditor({ album }: { album: AlbumWithItems }) {
           {items.length === 0 ? (
             <div className="rounded-xl border border-dashed border-[var(--border)] p-12 text-center text-[var(--muted)]">Nothing in this album yet.</div>
           ) : (
-            <ul className="grid gap-3">
+            <ul className="grid grid-cols-1 gap-3">
               {items.map((item, i) => {
                 const vid = item.kind === "video" ? youtubeId(item.url) : null;
                 const thumb = vid ? youtubeThumb(vid, "hq") : item.url;
@@ -244,7 +244,7 @@ export function AlbumEditor({ album }: { album: AlbumWithItems }) {
                         <Image src={thumb} alt="" fill sizes="112px" className="object-cover" unoptimized={!!vid} />
                         {vid && <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 text-[10px] font-semibold text-white">VIDEO</span>}
                       </div>
-                      <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
+                      <div className="grid grid-cols-1 min-w-0 flex-1 gap-2 sm:grid-cols-2">
                         <Input aria-label="Caption" value={item.caption} placeholder="Caption" onChange={(e) => setField(item.id, "caption", e.target.value)} />
                         <Input aria-label="Credit" value={item.credit} placeholder="Credit" onChange={(e) => setField(item.id, "credit", e.target.value)} />
                       </div>

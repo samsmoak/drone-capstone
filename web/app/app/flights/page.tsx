@@ -38,7 +38,7 @@ export default async function FlightsPage() {
         description="Every flight the agent has recorded, newest first."
       />
 
-      <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
+      <div className="overflow-x-auto [contain:paint] rounded-lg border border-[var(--border)]">
         <table className="w-full border-collapse text-left text-sm">
           <caption className="sr-only">
             Recorded flights, newest first

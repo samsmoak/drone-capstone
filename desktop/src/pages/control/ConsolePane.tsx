@@ -111,14 +111,17 @@ export function ConsolePane({
               max={0.94}
               label="Command log and vitals"
               className="min-h-0 flex-1"
+              // min-w-0 on both: each is a child of the split's row, and without
+              // it the log's widest line set its width — 488 px in a 446 px pane
+              // at the window's 720 px minimum (measured 2026-09-28).
               first={
-                <div className="flex min-h-0 flex-1 flex-col">
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                   <PaneTitle>Command log</PaneTitle>
                   <CommandLog lines={logLines} onClear={onClearLog} canExpand={!fullScreen} />
                 </div>
               }
               second={
-                <div className="flex min-h-0 flex-1 flex-col">
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                   <PaneTitle>Vitals</PaneTitle>
                   <VitalsTail history={history} />
                 </div>

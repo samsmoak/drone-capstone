@@ -15,6 +15,19 @@ function injectHeadingIds(html: string, sections: TocSection[]): string {
   });
 }
 
+/**
+ * Give every table its own horizontal scroller. A story table is six columns
+ * wide; on a 390 px phone it pushed the whole page 177 px sideways
+ * (2026-09-28). Now the table scrolls inside its box and the page does not.
+ * The wrapper is a focusable, labelled region so a keyboard can scroll it too
+ * (WCAG 2.1.1).
+ */
+function scrollableTables(html: string): string {
+  return html
+    .replace(/<table/g, '<div class="prose-table" role="region" aria-label="Table" tabindex="0"><table')
+    .replace(/<\/table>/g, "</table></div>");
+}
+
 /** Render a stored BlockNote document to themed static HTML for a public page. */
 export async function renderProjectContent(
   blocks: unknown,
@@ -30,5 +43,5 @@ export async function renderProjectContent(
   const raw = await editor.blocksToHTMLLossy(
     list as Parameters<typeof editor.blocksToHTMLLossy>[0],
   );
-  return { html: injectHeadingIds(raw, sections), sections };
+  return { html: scrollableTables(injectHeadingIds(raw, sections)), sections };
 }

@@ -13,8 +13,8 @@ import { Button } from "./ui";
  * TeamManager, ProjectsManager, AlbumsManager) scrolled their Save button off
  * the screen, so a long page had to be scrolled to the top to save it.
  *
- * `max-lg:top-[6.5rem]` clears the operator shell's mobile bar, which is
- * sticky itself; on a wide screen the sidebar is fixed and the bar sits at 0.
+ * `max-lg:top-[3.8rem]` clears the operator shell's mobile bar (one row since
+ * 2026-09-28: the pages moved into a drawer), which is sticky itself; on a wide screen the sidebar is fixed and the bar sits at 0.
  */
 
 export type EditorState =
@@ -41,7 +41,7 @@ export function EditorBar({
   children: React.ReactNode;
 }) {
   return (
-    <header className="sticky top-0 z-20 -mx-2 flex max-lg:top-[6.5rem] flex-wrap items-center justify-between gap-4 rounded-b-xl bg-[var(--background)]/95 px-2 py-3 backdrop-blur">
+    <header className="sticky top-0 z-20 -mx-2 flex max-lg:top-[3.8rem] flex-wrap items-center justify-between gap-4 rounded-b-xl bg-[var(--background)]/95 px-2 py-3 backdrop-blur">
       <div className="min-w-0">
         {back && (
           <Link href={back} className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]">

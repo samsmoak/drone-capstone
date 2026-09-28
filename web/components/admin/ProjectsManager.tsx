@@ -66,7 +66,7 @@ export function ProjectsManager({ initial }: { initial: ProjectCard[] }) {
   }
 
   return (
-    <div className="grid gap-6">
+    <div className="grid grid-cols-1 gap-6">
       <header>
         <h1 className="font-display text-3xl font-semibold">Projects</h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
@@ -93,7 +93,7 @@ export function ProjectsManager({ initial }: { initial: ProjectCard[] }) {
           No projects yet. Create the first one above.
         </div>
       ) : (
-        <ul className="grid gap-3">
+        <ul className="grid grid-cols-1 gap-3">
           {items.map((p, i) => (
             <li key={p.id}>
               <Card className={`flex flex-wrap items-center gap-4 p-4 ${busyId === p.id ? "opacity-60" : ""}`}>

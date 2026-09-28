@@ -86,7 +86,7 @@ export default async function SettingsPage() {
             unless started with <code className="text-[var(--foreground)]">--uri</code>.
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
+          <div className="overflow-x-auto [contain:paint] rounded-lg border border-[var(--border)]">
             <table className="w-full border-collapse text-left text-sm">
               <thead className="bg-[var(--surface-2)]">
                 <tr>
