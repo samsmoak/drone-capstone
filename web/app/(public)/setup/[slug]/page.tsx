@@ -9,7 +9,18 @@ import { categoryColor } from "@/lib/categories";
 import { PRODUCTS, productBySlug } from "@/lib/products";
 import { getPageContent } from "@/lib/queries";
 import { appPath, HARDWARE, SETUP, setupPath } from "@/lib/routes";
-import { flag, items, strings, text } from "@/lib/site-content";
+import { flag, items, strings, text, type ContentObject } from "@/lib/site-content";
+
+/** Reference rows grouped under each distinct group name, first appearance first. */
+function groupCommands(rows: ContentObject[]): { group: string; rows: ContentObject[] }[] {
+  const groups = new Map<string, ContentObject[]>();
+  for (const row of rows) {
+    if (!text(row, "command")) continue;
+    const group = text(row, "group") || "Other";
+    groups.set(group, [...(groups.get(group) ?? []), row]);
+  }
+  return [...groups].map(([group, grouped]) => ({ group, rows: grouped }));
+}
 
 export function generateStaticParams() {
   return PRODUCTS.map((product) => ({ slug: product.slug }));
@@ -39,6 +50,7 @@ export default async function SetupGuidePage({ params }: PageProps<"/setup/[slug
 
   const setup = await getPageContent(product.setupPage);
   const others = PRODUCTS.filter((p) => p.slug !== product.slug);
+  const reference = groupCommands(items(setup, "reference"));
 
   return (
     <main className={`${SITE_CONTAINER} py-14`}>
@@ -139,6 +151,29 @@ export default async function SetupGuidePage({ params }: PageProps<"/setup/[slug
               );
             })}
           </ol>
+
+          {reference.length > 0 && (
+            <section aria-labelledby="commands-heading" className="mt-14 border-t border-[var(--border)] pt-10">
+              <h2 id="commands-heading" className="font-display text-2xl font-semibold tracking-tight">
+                {text(setup, "commandsTitle")}
+              </h2>
+              {text(setup, "commandsIntro") && (
+                <p className="mt-2 text-[var(--muted)]">{text(setup, "commandsIntro")}</p>
+              )}
+              <div className="mt-6 space-y-8">
+                {reference.map(({ group, rows }) => (
+                  <div key={group}>
+                    <h3 className="eyebrow mb-3">{group}</h3>
+                    <CommandList
+                      numbered={false}
+                      commands={rows.map((row) => text(row, "command"))}
+                      notes={rows.map((row) => text(row, "what"))}
+                    />
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
         </div>
 
         <div className="grid gap-5 lg:sticky lg:top-8 lg:self-start">

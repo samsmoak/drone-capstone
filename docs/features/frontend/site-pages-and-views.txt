@@ -98,6 +98,20 @@ lib/site-content.ts does NOT change what visitors see. Checked 2026-09-25: the
 row equals the old defaults except " EDITED" appended to the intro, which
 looks like an editor test. After a deploy that changes the setup wording, use
 "Reset to original" in /admin/pages, or the old wording stays live.
+Re-checked 2026-09-27: still not reset, so the live guide still offers "One
+download … no terminal" and a Git Bash build script that no longer exists.
+The defaults no longer have the download step — the installers in the bucket
+are the last CI builds (Windows 2026-09-21), older than every install fix.
+Each OS step now asks only for Git and Node before the one command, and says
+what the command checks for itself in the step's note.
+
+A NEW FIELD SHOWS AT ONCE; A CHANGED ONE WAITS FOR THE RESET. normalizeContent
+takes each field from the stored row when it has it, from the defaults when it
+does not. So the "Useful commands" section (commandsTitle, commandsIntro,
+reference — added 2026-09-27) is live on the next deploy even though the
+stored `setup` row predates it, while the rewritten steps stay hidden behind
+the row's old ones until "Reset to original". Checked on a local production
+build against the live row.
 
 
 WHEN A SAVE GOES WRONG
@@ -243,5 +257,6 @@ RELATED
   shares-data-with  ../development/releases.txt   the setup guide's terminal steps (install.mjs)
 
 
-LAST VERIFIED  2026-09-25, the setup guide section only: lib/site-content.ts against the
-live site_pages row for `setup` (read with the publishable key).
+LAST VERIFIED  2026-09-27, the setup guide section only: lib/site-content.ts against the
+live site_pages row for `setup` (read with the publishable key) and the live
+/setup/desktop-app page.

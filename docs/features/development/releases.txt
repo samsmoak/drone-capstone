@@ -94,12 +94,13 @@ INVARIANTS
 
 KNOWN DIVERGENCE (2026-09-25)
 
-- The website still offers downloads. /apps and the setup guide's "Install
-  the CropWatcher app" step read the old bucket, which now holds the last
+- /apps still offers downloads from the old bucket, which holds the last
   builds published: macOS 2026-09-24, Windows 2026-09-21 — behind main and
-  without this work. The owner has not yet said whether to remove them; until
-  then they are stale, not broken. The setup guide's terminal steps are
-  current.
+  without this work. The setup guide no longer does: on 2026-09-27 the owner
+  said to drop the bundled download and give the install instructions only,
+  so its "Install the CropWatcher app" step is gone from the defaults (live
+  after "Reset to original" — see ../frontend/site-pages-and-views.txt).
+  /apps itself has not been decided.
 - The GitHub Actions secrets SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are
   no longer used by anything, and the latter bypasses RLS. The owner should
   delete them (CLAUDE.md, "Three things only the project owner can do").

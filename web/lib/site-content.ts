@@ -61,6 +61,17 @@ const SETUP_FIELDS: FieldSpec[] = [
       { type: "boolean", key: "linkHardware", label: "Link to the Hardware page" },
     ],
   },
+  { type: "text", key: "commandsTitle", label: "Useful commands title" },
+  { type: "textarea", key: "commandsIntro", label: "Useful commands introduction" },
+  {
+    type: "items", key: "reference", label: "Useful commands", itemLabel: "Command",
+    hint: "Shown after the steps, grouped under each distinct group name, in order.",
+    fields: [
+      { type: "text", key: "group", label: "Group", hint: "Commands with the same group are listed together." },
+      { type: "text", key: "command", label: "Command", hint: "Exactly what to type. It gets a copy button." },
+      { type: "text", key: "what", label: "What it does" },
+    ],
+  },
   { type: "text", key: "troubleTitle", label: "Troubleshooting title" },
   { type: "textarea", key: "troubleIntro", label: "Troubleshooting introduction" },
   {
@@ -362,30 +373,16 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
         linkHardware: true,
       },
       {
-        title: "Install the CropWatcher app",
-        paragraphs: ["One download. It contains everything — you will not need Python, a terminal, or any commands."],
-        bullets: [],
-        note:
-          "On a Mac, the first launch says macOS cannot check the app for malicious software. That " +
-          "is expected: the app is not signed. Click Done, open System Settings → Privacy & " +
-          "Security, and click Open Anyway next to CropWatcher. (On macOS 14 or earlier, " +
-          "Control-click the app and choose Open instead.) You only do this once.",
-        showDownloads: true,
-        linkHardware: false,
-      },
-      {
         title: "Install from a terminal — Mac",
         paragraphs: [
-          "Your Mac builds the app for itself and installs it into Applications, in about ten "
-          + "minutes — right for Apple silicon and Intel alike. Install these first:",
+          "One command builds CropWatcher on your Mac and puts it in Applications — right for "
+          + "Apple silicon and Intel alike. The first build takes about ten minutes; updates are "
+          + "quicker. You need two things before you start:",
         ],
         needs: [
-          "Xcode Command Line Tools — run xcode-select --install",
-          "Rust — from rustup.rs",
-          "Node.js 24",
-          "pnpm 10 — run npm install -g pnpm@10",
-          "Python 3.11 or newer — the python.org installer suits any Mac",
-          "Git",
+          "Git — type git --version in Terminal. If macOS offers to install the developer "
+            + "tools, accept: that is Git and the Xcode Command Line Tools in one go",
+          "Node.js 24 — from nodejs.org",
         ],
         commands: [
           "git clone https://github.com/samsmoak/drone-capstone.git",
@@ -393,27 +390,24 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
           "node scripts/install.mjs",
         ],
         bullets: [],
-        note: "The install command checks everything in the list first and says exactly what "
-              + "is missing, then builds CropWatcher and puts it in Applications. To update "
-              + "later: git pull, then run it again.",
+        note: "Everything else it checks for itself, first — Xcode Command Line Tools, Rust, "
+              + "pnpm 10 and Python 3.11 or newer — and lists each one missing with the exact "
+              + "command to install it, all at once. Install those, run node scripts/install.mjs "
+              + "again, and it carries on. Running it again later is also how you update.",
         showDownloads: false,
         linkHardware: false,
       },
       {
         title: "Install from a terminal — Windows",
         paragraphs: [
-          "Your PC builds the app for itself and installs it for your user, in about ten "
-          + "minutes. Any terminal works: PowerShell, Command Prompt or Git Bash. Install these "
-          + "first:",
+          "One command builds CropWatcher on your PC and installs it for your user — no "
+          + "administrator prompt — and it appears in the Start menu. The first build takes about "
+          + "ten minutes. Use PowerShell, Command Prompt or Git Bash, in a normal Windows folder. "
+          + "You need two things before you start:",
         ],
         needs: [
-          "Git for Windows",
-          "Microsoft C++ Build Tools, with \"Desktop development with C++\" ticked",
-          "Microsoft Edge WebView2 — already installed on Windows 10 (1803 or later) and 11",
-          "Rust — from rustup.rs",
-          "Node.js 24",
-          "pnpm 10 — run npm install -g pnpm@10",
-          "Python 3.11 or newer — tick \"Add python.exe to PATH\" in the installer",
+          "Git for Windows — from git-scm.com",
+          "Node.js 24 — from nodejs.org",
         ],
         commands: [
           "git clone https://github.com/samsmoak/drone-capstone.git",
@@ -421,29 +415,27 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
           "node scripts/install.mjs",
         ],
         bullets: [],
-        note: "The install command checks everything in the list first and says exactly what "
-              + "is missing, then builds CropWatcher and installs it — it appears in the Start "
-              + "menu. To update later: git pull, then run it again. Then install the radio's "
-              + "driver — see the next step.",
+        note: "Everything else it checks for itself, first — Microsoft C++ Build Tools (with "
+              + "\"Desktop development with C++\" ticked), Rust, pnpm 10 and Python 3.11 or newer "
+              + "(tick \"Add python.exe to PATH\" when you install it) — and lists each one "
+              + "missing with its fix, all at once. The C++ Build Tools are the slow one, so "
+              + "installing them before you start saves a round trip. Then install the radio's "
+              + "driver — see Plug in the radio.",
         showDownloads: false,
         linkHardware: false,
       },
       {
         title: "Install from a terminal — Linux",
         paragraphs: [
-          "Your computer builds the app for itself and installs it for your user — no sudo "
-          + "for the install itself — in about ten minutes. Install these first:",
+          "One command builds CropWatcher and installs it for your user — no sudo for the "
+          + "install itself — in your applications menu and as the command cropwatcher. The "
+          + "first build takes about ten minutes. Ubuntu under WSL on a Windows PC works the same "
+          + "way; the radio needs one extra step there (see Plug in the radio). You need two "
+          + "things before you start:",
         ],
         needs: [
-          "Tauri's Linux packages and the D-Bus headers — on Debian or Ubuntu: sudo apt install "
-            + "libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev "
-            + "libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev pkg-config",
-          "Rust — from rustup.rs",
-          "Node.js 24",
-          "pnpm 10 — run npm install -g pnpm@10",
-          "Python 3.11 or newer, with venv and its shared library — on Debian or Ubuntu: "
-            + "sudo apt install python3 python3-venv python3-dev",
           "Git",
+          "Node.js 24 — from nodejs.org",
         ],
         commands: [
           "git clone https://github.com/samsmoak/drone-capstone.git",
@@ -451,11 +443,13 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
           "node scripts/install.mjs",
         ],
         bullets: [],
-        note: "The install command checks everything in the list first and prints the exact "
-              + "command for your distribution if something is missing. CropWatcher then appears "
-              + "in your applications menu, and as the command cropwatcher. To update later: "
-              + "git pull, then run it again. Then give yourself access to the radio — see the "
-              + "next step.",
+        note: "Everything else it checks for itself, first — Rust, pnpm 10, Python 3.11 or newer "
+              + "with venv and its shared library, and Tauri's build libraries — and prints one "
+              + "install command for your distribution. On Debian or Ubuntu it is: sudo apt "
+              + "install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev "
+              + "libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev pkg-config xdg-utils "
+              + "python3 python3-venv python3-dev. Then give yourself access to the radio — see "
+              + "the next step.",
         showDownloads: false,
         linkHardware: false,
       },
@@ -478,7 +472,9 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
               "through libusb-win32 on Windows. On Linux, only root may open the radio until " +
               "you add Bitcraze's udev rule and join the plugdev group, once, then log out and " +
               "back in. The install command prints the exact commands, and the app says so " +
-              "if it finds the radio but may not open it.",
+              "if it finds the radio but may not open it. On Ubuntu under WSL, first attach " +
+              "the dongle to WSL with usbipd-win (learn.microsoft.com/windows/wsl/connect-usb) " +
+              "— until then WSL cannot see any USB device — then add the udev rule as above.",
         showDownloads: false,
         linkHardware: false,
       },
@@ -521,6 +517,58 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
         linkHardware: false,
       },
     ],
+    commandsTitle: "Useful commands",
+    commandsIntro:
+      "Run these in a terminal, inside the drone-capstone folder you cloned. Each one works on " +
+      "every system unless it names one.",
+    reference: [
+      { group: "Install and update", command: "git pull",
+        what: "Get the newest version of the code." },
+      { group: "Install and update", command: "node scripts/install.mjs",
+        what: "Install CropWatcher, or update it to what you just pulled. Quit the app first — " +
+              "the command will not replace a copy that is running, because closing it lands a " +
+              "drone that is flying." },
+      { group: "Install and update", command: "node scripts/install.mjs --open",
+        what: "The same, then open the app." },
+      { group: "Install and update", command: "node scripts/install.mjs --no-install",
+        what: "Build only, and say where the build is. The installed app is left alone." },
+      { group: "Install and update", command: "node scripts/setup.mjs --check",
+        what: "Check this computer for everything the build needs, and change nothing." },
+      { group: "Open and remove", command: "open -a CropWatcher",
+        what: "Mac: open the app. It is also in Applications and Launchpad." },
+      { group: "Open and remove", command: "cropwatcher",
+        what: "Linux: open the app, when ~/.local/bin is on your PATH. It is also in your " +
+              "applications menu. On Windows, open it from the Start menu." },
+      { group: "Open and remove", command: "rm -rf /Applications/CropWatcher.app",
+        what: "Mac: remove the app — or drag it from Applications to the Bin. If it was " +
+              "installed to ~/Applications, remove it from there." },
+      { group: "Open and remove", command: "& \"$env:LOCALAPPDATA\\CropWatcher\\uninstall.exe\"",
+        what: "Windows, in PowerShell: remove the app. Or Settings → Apps → Installed apps → " +
+              "CropWatcher → Uninstall." },
+      { group: "Open and remove",
+        command: "rm -r ~/.local/lib/cropwatcher ~/.local/share/applications/cropwatcher.desktop " +
+                 "~/.local/share/icons/hicolor/128x128/apps/cropwatcher.png ~/.local/bin/cropwatcher",
+        what: "Linux: remove the app. The install command prints this line with your exact paths." },
+      { group: "Logs", command: "open ~/Library/Application\\ Support/CropWatcher/logs",
+        what: "Mac: the folder with agent.log — send it to us when the app reports a problem." },
+      { group: "Logs", command: "explorer \"$env:APPDATA\\CropWatcher\\logs\"",
+        what: "Windows, in PowerShell: the same folder." },
+      { group: "Logs", command: "ls ~/.local/share/CropWatcher/logs",
+        what: "Linux: the same folder." },
+      { group: "Flight lab (developers)", command: "./cropwatcher check",
+        what: "Every pre-flight check, from the terminal. Never spins a motor. Quit the app " +
+              "first — only one program can use the radio at a time. Keep the ./ : on Linux, " +
+              "cropwatcher without it opens the app instead. On Windows, run these in Git Bash." },
+      { group: "Flight lab (developers)", command: "./cropwatcher stations --seconds 20",
+        what: "Which base stations the drone is receiving, live, for 20 seconds." },
+      { group: "Flight lab (developers)", command: "./cropwatcher geometry --distance 1.0",
+        what: "Measure where the base stations are. It asks you to move the drone between " +
+              "samples. Run it again whenever a station is moved." },
+      { group: "Flight lab (developers)", command: "./cropwatcher hover --height 0.3 --secs 10",
+        what: "Take off to 30 cm above the floor, hold for 10 seconds, land. Clear space first." },
+      { group: "Flight lab (developers)", command: "./cropwatcher proptest",
+        what: "The firmware's propeller test. The propellers spin — keep hands clear." },
+    ],
     troubleTitle: "When it will not fly",
     troubleIntro:
       "Every one of these cost us real time during bring-up. Symptoms first, because that is " +
@@ -549,6 +597,22 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
           "Run Zadig, choose Options → List All Devices, pick Crazyradio PA USB Dongle, choose " +
           "libusb-win32 and click Install Driver — or Replace Driver if it shows WinUSB. Then " +
           "unplug the dongle and plug it back in.",
+      },
+      {
+        symptom: "Ubuntu under WSL: the app opens, but finds no Crazyradio",
+        cause: "WSL cannot see USB devices until one is attached to it from Windows.",
+        fix:
+          "Install usbipd-win on Windows and attach the dongle to WSL, as Microsoft describes at " +
+          "learn.microsoft.com/windows/wsl/connect-usb, then add the udev rule (the install " +
+          "command prints it). Or install CropWatcher on Windows itself, from PowerShell — then " +
+          "it is in the Start menu and uses the Zadig driver instead.",
+      },
+      {
+        symptom: "Linux: pnpm app fails with \"xdg-open binary not found\"",
+        cause: "pnpm app is the developer build; it also makes an AppImage, which needs xdg-open.",
+        fix:
+          "Install the xdg-utils package (on Debian or Ubuntu: sudo apt install xdg-utils) and run " +
+          "it again. node scripts/install.mjs does not need it — it builds only what it installs.",
       },
       {
         symptom: "Linux: the app says this user may not open the Crazyradio",
