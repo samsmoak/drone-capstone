@@ -362,18 +362,6 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
         linkHardware: true,
       },
       {
-        title: "Install the CropWatcher app",
-        paragraphs: ["One download. It contains everything — you will not need Python, a terminal, or any commands."],
-        bullets: [],
-        note:
-          "On a Mac, the first launch says macOS cannot check the app for malicious software. That " +
-          "is expected: the app is not signed. Click Done, open System Settings → Privacy & " +
-          "Security, and click Open Anyway next to CropWatcher. (On macOS 14 or earlier, " +
-          "Control-click the app and choose Open instead.) You only do this once.",
-        showDownloads: true,
-        linkHardware: false,
-      },
-      {
         title: "Install from a terminal — Mac",
         paragraphs: [
           "Your Mac builds the app for itself and installs it into Applications, in about ten "
@@ -403,8 +391,11 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
         title: "Install from a terminal — Windows",
         paragraphs: [
           "Your PC builds the app for itself and installs it for your user, in about ten "
-          + "minutes. Any terminal works: PowerShell, Command Prompt or Git Bash. Install these "
-          + "first:",
+          + "minutes. Use a Windows terminal — PowerShell, Command Prompt or Git Bash — not the "
+          + "Ubuntu terminal, even if you have WSL: an app built there installs into Linux inside "
+          + "WSL, never reaches the Start menu, and cannot see the Crazyradio. The install command "
+          + "stops and says so if you try.",
+          "Install these first:",
         ],
         needs: [
           "Git for Windows",
@@ -432,7 +423,9 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
         title: "Install from a terminal — Linux",
         paragraphs: [
           "Your computer builds the app for itself and installs it for your user — no sudo "
-          + "for the install itself — in about ten minutes. Install these first:",
+          + "for the install itself — in about ten minutes. This is for a Linux computer: on a "
+          + "Windows PC, follow the Windows steps above, even if you have Ubuntu under WSL. "
+          + "Install these first:",
         ],
         needs: [
           "Tauri's Linux packages and the D-Bus headers — on Debian or Ubuntu: sudo apt install "
@@ -549,6 +542,21 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
           "Run Zadig, choose Options → List All Devices, pick Crazyradio PA USB Dongle, choose " +
           "libusb-win32 and click Install Driver — or Replace Driver if it shows WinUSB. Then " +
           "unplug the dongle and plug it back in.",
+      },
+      {
+        symptom: "Windows: it installed, but CropWatcher is not in the Start menu",
+        cause: "It was installed from the Ubuntu (WSL) terminal, so it went into Linux inside WSL.",
+        fix:
+          "Open PowerShell, clone the repo into a Windows folder (not /mnt/c from Ubuntu), and run " +
+          "node scripts/install.mjs there. WSL cannot reach the Crazyradio either, so the copy " +
+          "inside it could not fly the drone.",
+      },
+      {
+        symptom: "pnpm app fails: xdg-open binary not found",
+        cause: "pnpm app is the developer build, and it used to bundle an AppImage, which needs xdg-open.",
+        fix:
+          "To install, use node scripts/install.mjs instead — it builds only what it installs. " +
+          "pnpm app no longer builds an AppImage: git pull and it works without xdg-open.",
       },
       {
         symptom: "Linux: the app says this user may not open the Crazyradio",

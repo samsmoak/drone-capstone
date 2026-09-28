@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Everything a fresh clone needs before `pnpm app`, on macOS or Windows:
+// Everything a fresh clone needs before `pnpm app`, on macOS, Windows or Linux
+// (not Linux inside WSL — checkWsl says why):
 //
 //   node scripts/setup.mjs            check, then install
 //   node scripts/setup.mjs --check    check only; change nothing
@@ -98,6 +99,29 @@ const versionAtLeast = (have, want) => {
 };
 
 // ── checks ────────────────────────────────────────────────────────────────
+
+/**
+ * Linux inside WSL builds and installs cleanly (2026-09-27, Ubuntu under
+ * Windows) and is still the wrong machine: the app lands in WSL's Linux, not
+ * in the Start menu, and WSL sees no USB device, so the Crazyradio is out of
+ * reach. The build also ran 13 m 47 s from /mnt/c. Refused with the fix;
+ * CROPWATCHER_ALLOW_WSL=1 is for someone who has set up WSLg and usbipd.
+ */
+function checkWsl() {
+  if (!LINUX || process.env.CROPWATCHER_ALLOW_WSL === "1") return;
+  let release = "";
+  try {
+    release = readFileSync("/proc/sys/kernel/osrelease", "utf8");
+  } catch {
+    /* not readable: treat as plain Linux */
+  }
+  if (!process.env.WSL_DISTRO_NAME && !/microsoft/i.test(release)) return;
+  problem("This is Linux inside WSL on Windows. CropWatcher installed here would not appear in "
+    + "the Start menu, and WSL cannot see the Crazyradio",
+    "Open PowerShell on Windows (not the Ubuntu terminal), clone the repo to a Windows folder, "
+    + "and run node scripts/install.mjs there. See the Windows steps at "
+    + "https://drone-capstone.vercel.app/setup/desktop-app");
+}
 
 function checkNode() {
   const [major, minor] = process.versions.node.split(".").map(Number);
@@ -363,6 +387,7 @@ function venvState(targetCpu) {
 const os = { darwin: "macOS", win32: "Windows", linux: "Linux" }[process.platform] ?? process.platform;
 console.log(`\nCropWatcher setup — ${os} ${process.arch}${CHECK_ONLY ? " (checking only)" : ""}\n`);
 
+checkWsl();
 checkNode();
 const triple = checkRust();
 const targetCpu = triple ? triple.split("-")[0] : null;

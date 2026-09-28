@@ -66,8 +66,8 @@ export const PRODUCTS: Product[] = [
     slug: "desktop-app",
     name: "CropWatcher desktop app",
     summary:
-      "The app that flies the drone. It bundles the flight agent, so the laptop with the " +
-      "Crazyradio needs nothing else installed — no Python, no terminal.",
+      "The app that flies the drone. It bundles the flight agent, and the laptop with the " +
+      "Crazyradio builds and installs it for itself with one command.",
     category: "software",
     runsOn: "The laptop with the Crazyradio plugged in",
     points: [
