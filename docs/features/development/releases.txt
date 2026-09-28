@@ -98,8 +98,8 @@ KNOWN DIVERGENCE (2026-09-25)
   builds published: macOS 2026-09-24, Windows 2026-09-21 — behind main and
   without this work. The setup guide no longer does: on 2026-09-27 the owner
   said to drop the bundled download and give the install instructions only,
-  so its "Install the CropWatcher app" step is gone from the defaults (live
-  after "Reset to original" — see ../frontend/site-pages-and-views.txt).
+  so its "Install the CropWatcher app" step is gone (live 2026-09-28 — see
+  ../frontend/site-pages-and-views.txt for the stored copy that hid it).
   /apps itself has not been decided.
 - The GitHub Actions secrets SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are
   no longer used by anything, and the latter bypasses RLS. The owner should

@@ -75,7 +75,7 @@ export const PRODUCTS: Product[] = [
       "Live sensor windows at 10 Hz, and every session recorded to that computer.",
       "Uploads finished flights to this dashboard when it can reach the network.",
     ],
-    setupPage: "setup",
+    setupPage: "setup-desktop",
     source: "desktop/",
     platforms: [
       {
