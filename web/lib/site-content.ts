@@ -151,8 +151,12 @@ export const PAGE_SPECS = {
     path: "/setup",
     fields: HEADER_FIELDS,
   },
-  setup: {
-    key: "setup",
+  // Key "setup-desktop", not "setup": a `setup` row saved 2026-09-21 (the old
+  // wording plus an "EDITED" test) held the whole page and hid every change to
+  // these defaults. Renaming the key on 2026-09-28 retired it; that row is
+  // no longer read by anything.
+  "setup-desktop": {
+    key: "setup-desktop",
     title: "Set Up — desktop app",
     description: "From an unopened box to a first flight, and what to do when it will not fly.",
     path: "/setup/desktop-app",
@@ -190,7 +194,7 @@ export const PAGE_SPECS = {
 
 export type PageKey =
   | "site" | "home" | "projects" | "team" | "gallery" | "apps"
-  | "setup-index" | "setup" | "setup-web" | "hardware";
+  | "setup-index" | "setup-desktop" | "setup-web" | "hardware";
 export const PAGE_KEYS = Object.keys(PAGE_SPECS) as PageKey[];
 
 export function isPageKey(value: string): value is PageKey {
@@ -353,7 +357,7 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
       },
     ],
   },
-  setup: {
+  "setup-desktop": {
     title: "Set up the system",
     intro: "From an unopened box to a first flight. About 30 minutes, most of it waiting for a battery.",
     steps: [

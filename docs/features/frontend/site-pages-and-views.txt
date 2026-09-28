@@ -92,26 +92,22 @@ to use Git Bash for a bash build script, and this doc claimed the Windows CI
 runner built the published .exe that way. It never had: every Windows run
 failed. See ../development/releases.txt.)
 
-THE LIVE /setup PAGE IS A STORED COPY. site_pages has a `setup` row (saved
-2026-09-21) holding the whole page, so changing the defaults in
-lib/site-content.ts does NOT change what visitors see. Checked 2026-09-25: the
-row equals the old defaults except " EDITED" appended to the intro, which
-looks like an editor test. After a deploy that changes the setup wording, use
-"Reset to original" in /admin/pages, or the old wording stays live.
-Re-checked 2026-09-27: still not reset, so the live guide still offers "One
-download … no terminal" and a Git Bash build script that no longer exists.
-The defaults no longer have the download step — the installers in the bucket
-are the last CI builds (Windows 2026-09-21), older than every install fix.
-Each OS step now asks only for Git and Node before the one command, and says
-what the command checks for itself in the step's note.
+THE DESKTOP GUIDE'S PAGE KEY IS `setup-desktop` (since 2026-09-28). It was
+`setup`, and a `setup` row saved 2026-09-21 — the old wording with " EDITED"
+appended to the intro, an editor test — held the whole page: every change to
+the defaults since (the one-command install, the removed download step) stayed
+invisible to visitors, and the owner never reached "Reset to original" in
+/admin/pages. Renaming the key retired the row without needing admin access:
+nothing reads `setup` any more, and the row is left in the table, harmless.
+Its editor is now /admin/pages/setup-desktop.
 
-A NEW FIELD SHOWS AT ONCE; A CHANGED ONE WAITS FOR THE RESET. normalizeContent
+A STORED ROW HIDES CHANGED DEFAULTS; A NEW FIELD STILL SHOWS. normalizeContent
 takes each field from the stored row when it has it, from the defaults when it
-does not. So the "Useful commands" section (commandsTitle, commandsIntro,
-reference — added 2026-09-27) is live on the next deploy even though the
-stored `setup` row predates it, while the rewritten steps stay hidden behind
-the row's old ones until "Reset to original". Checked on a local production
-build against the live row.
+does not. So a field added to a spec is live on the next deploy even under an
+old row (the "Useful commands" section — commandsTitle, commandsIntro,
+reference — appeared above the stale steps on 2026-09-27), while a changed
+field waits until its row is reset. After changing a page's defaults, check
+site_pages for a row for that key.
 
 
 WHEN A SAVE GOES WRONG
