@@ -102,7 +102,9 @@ CONTROL: TWO COLUMNS, AND THE OPERATOR OWNS THE DIVIDER
 
 Above `lg`, left is the console and right is the controls, separated by a
 DRAGGABLE divider that starts at 60/40 in the console's favour and stays wherever
-it is left (components/SplitPane.tsx, remembered in localStorage). The console
+it is left (components/SplitPane.tsx, remembered in localStorage; its bounds
+may move with the container and it clamps to them live — the Auto editor's
+map/form divider uses that, auto-control.txt). The console
 holds readings; the controls are mostly buttons at a fixed size, so an even split
 wasted the half that could use it.
 

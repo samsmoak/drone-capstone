@@ -11,9 +11,16 @@
 import { useEffect, useId, useState } from "react";
 import { formatMetres } from "@/lib/format";
 
+/** A field that shows its value but takes no edit — an object that is not the
+ *  selected one (MissionEditor: only the selected object's numbers change).
+ *  Read-only, not disabled: a disabled control swallows the click that would
+ *  select its object, and drops out of the tab order. */
+const LOCKED = "read-only:cursor-default read-only:border-dashed read-only:bg-transparent";
+
 export function NumberField({
-  label, value, onCommit, unit = "m", step = 0.05, min, max, hint, width = "w-24",
+  label, value, onCommit, unit = "m", step = 0.05, min, max, hint, width = "w-24", readOnly = false,
 }: {
+  readOnly?: boolean;
   label: string;
   value: number;
   onCommit: (value: number) => void;
@@ -53,10 +60,11 @@ export function NumberField({
           min={min}
           max={max}
           value={text}
+          readOnly={readOnly}
           onChange={(e) => setText(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } }}
-          className={`mono min-h-9 ${width} border border-[var(--border)] bg-[var(--surface-2)] px-2 text-sm`}
+          onBlur={() => { if (!readOnly) commit(); }}
+          onKeyDown={(e) => { if (e.key === "Enter" && !readOnly) { e.preventDefault(); commit(); } }}
+          className={`mono min-h-9 ${width} border border-[var(--border)] bg-[var(--surface-2)] px-2 text-sm ${LOCKED}`}
         />
         <span className="text-[var(--muted)]">{unit}</span>
       </span>
@@ -67,7 +75,8 @@ export function NumberField({
   );
 }
 
-export function TextField({ label, value, onChange, placeholder, width = "w-full" }: {
+export function TextField({ label, value, onChange, placeholder, width = "w-full", readOnly = false }: {
+  readOnly?: boolean;
   label: string;
   value: string;
   onChange: (value: string) => void;
@@ -82,8 +91,9 @@ export function TextField({ label, value, onChange, placeholder, width = "w-full
         id={id}
         value={value}
         placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        className={`min-h-9 ${width} border border-[var(--border)] bg-[var(--surface-2)] px-2 text-sm`}
+        readOnly={readOnly}
+        onChange={(e) => { if (!readOnly) onChange(e.target.value); }}
+        className={`min-h-9 ${width} border border-[var(--border)] bg-[var(--surface-2)] px-2 text-sm ${LOCKED}`}
       />
     </label>
   );

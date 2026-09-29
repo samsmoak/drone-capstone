@@ -1,7 +1,9 @@
 ================================================================================
 CONTROL IN AUTO — plan a mission, check the drone, fly it
-Last verified: 2026-09-29 (second pass: Save gating, heights) against
-claude/awesome-carson-eqkt8w — pnpm build, and
+Last verified: 2026-09-29 (third pass: object cards, nothing selected, the
+map/form divider, the dollhouse walls) against claude/awesome-carson-eqkt8w —
+pnpm build, the divider dragged and the selection driven in headless
+Chromium, and
 the harness measured at 720/900/1024/1280/1600 in both themes and both map
 views (20 runs, all PASS, the self-test failing as it must); the editor driven
 in headless Chromium (right-click menu, reverse, room selection, typed sizes).
@@ -58,6 +60,9 @@ desktop/src/pages/control/auto/plan/path.ts        what is flown: legs, end
                                                    point, reverse (mirrors
                                                    Mission.legs/flown_points)
 desktop/src/pages/control/auto/plan/shapeFields.tsx  the numbers, in words
+                                                   (`locked`: read-only)
+desktop/src/pages/control/auto/plan/ObjectCard.tsx   an object's card; select
+                                                     first, then edit
 desktop/src/pages/control/auto/plan/geometry.ts    shapes, clamping, the words
 desktop/src/pages/control/auto/plan/fields.tsx     number fields
 desktop/src/pages/control/DataPipeline.tsx         the DPP switch, the results
@@ -100,9 +105,34 @@ desktop/src/lib/agent.ts                           the calls and types
   Rendered on demand, never 60 fps beside the flight loop. No WebGL → 2-D with
   the reason said.
 • SELECTING ONE THING FADES THE REST — the room (its geofence) or one obstacle
-  — whether it was clicked on the map (either view) or its panel was clicked in
-  the form. Its numbers appear over the map (the inspector) and its panel
-  scrolls into view. Points and the start select too, and fade nothing.
+  — whether it was clicked on the map (either view) or its card was clicked in
+  the form. Its numbers appear UNDER the map (never over it: the panel covered
+  the 3-D view's lower half until 2026-09-29) and its card scrolls into view.
+  Points and the start select too, and fade nothing.
+• NOTHING SELECTED IS A STATE (2026-09-29, the owner's ask): a click on empty
+  floor (2-D or 3-D) or anywhere in the form outside a card selects nothing —
+  every object shown equally, and NONE of them changeable. ONLY THE SELECTED
+  OBJECT'S NUMBERS CHANGE: every other card shows its fields read-only
+  (dashed); touching a card selects it, and that first click does only that —
+  a checkbox does not toggle, Remove does not remove (ObjectCard). A field
+  clicked or tabbed into selects its object and is editable at once.
+• EACH OBJECT IS A CARD (ObjectCard): framed on all four sides, 1 px --muted;
+  selected, 2 px --primary on all four sides (measured: 7.27 / 8.03 and
+  6.07 / 3.95 : 1 on --surface-2, light / dark). The room, each obstacle, each
+  point and the start are cards.
+• A DIVIDER BETWEEN THE MAP AND THE FORM (cropwatcher.split.editor), inline
+  and in full screen, from 600 px of EDITOR width (its own, measured — not the
+  window's); stacked below that. Its bounds are pixels (map ≥ 300, form ≥
+  280) turned into fractions of the live width, and SplitPane now clamps to
+  bounds that move. Measured in the harness: a divider at 720, 900, 1024 and
+  1600 px windows; stacked at 1280, where the app shows the monitor beside the
+  flow and the editor is 585 px — drag the page's own divider to widen it.
+• THE 3-D ROOM IS A DOLLHOUSE: its walls face inward and are drawn one-sided,
+  so the walls between the camera and the room vanish and cannot be clicked.
+  Double-sided, the near wall caught every click aimed at the floor inside the
+  room and selected the room — empty floor could never select nothing. The far
+  walls still select the room. The camera re-fits its preset to the view's
+  new shape on a resize, unless the operator has turned it since.
 • PLAIN WORDS, FIXED TO THE AXES (geometry.ts): LENGTH left→right, WIDTH
   front→back, HEIGHT up; positions are FROM LEFT and FROM FRONT of the room
   map's front-left corner, which never moves while shapes are edited. The owner
@@ -166,6 +196,11 @@ desktop/src/lib/agent.ts                           the calls and types
   and the inspector (WCAG 2.2, 2.5.7). The camera presets are buttons.
 • The point menu is a real menu: focus moves in, arrow keys move, Escape and a
   click elsewhere close it; it opens inward at the window's edge.
+• The 3-D view's frame and every column around it are min-w-0 (and the frame
+  overflow-hidden): a <canvas> is as wide as its pixels, and dragged narrower
+  by the divider the view stayed full width and slid under the form.
+• A SplitPane row must let its panes STRETCH: `items-start` collapsed the
+  divider itself to 0 px tall, and nothing could grab it (2026-09-29).
 • A <select> in the editor must be w-full min-w-0: a select is as wide as its
   longest option, and "P3 · Compressor manifold… — lands there" pushed the
   form past the window's right edge in full screen (harness, 2026-09-29).

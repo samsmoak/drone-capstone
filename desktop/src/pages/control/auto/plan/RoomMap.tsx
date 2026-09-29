@@ -38,7 +38,7 @@ export type MapEditing = Editing & Omit<Edit3D, keyof Editing | "onSelect" | "se
 
 export function RoomMap({
   outer, fence, obstacles, path, takeoffHeight = 0.4, problems = [], drone = null, droneHeight, droneYaw,
-  progress, editing, label, overlay, heightClass = "h-[clamp(18rem,52vh,34rem)]",
+  progress, editing, label, below, heightClass = "h-[clamp(18rem,52vh,34rem)]",
 }: {
   outer: OuterBound;
   fence: Geofence | null;
@@ -52,8 +52,10 @@ export function RoomMap({
   progress?: Record<string, PointState>;
   editing?: MapEditing;
   label: string;
-  /** Drawn over the map's lower-left corner: the selected object's numbers. */
-  overlay?: ReactNode;
+  /** Under the map, never over it: the selected object's numbers (or a line
+   *  saying nothing is selected). It covered the 3-D view's lower half until
+   *  2026-09-29 — the owner: "this should not cover the map". */
+  below?: ReactNode;
   /** The map's height; "h-full" in full screen. */
   heightClass?: string;
 }) {
@@ -71,8 +73,13 @@ export function RoomMap({
   const aim = (preset: CameraPreset) => setCamera((c) => ({ preset, n: c.n + 1 }));
 
   return (
+    // min-w-0 all the way down: a <canvas> is as wide as its pixels, and a
+    // grid or flex item will not shrink below its content — dragged narrower
+    // by the editor's divider, the 3-D view stayed full width and slid under
+    // the form (2026-09-29). overflow-hidden on the frame for the frame between
+    // a resize and the renderer catching up.
     <div
-      className="grid gap-0"
+      className="grid min-w-0 gap-0"
       onKeyDown={(e) => {
         const typing = (e.target as HTMLElement).closest("input, textarea, select");
         if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -99,7 +106,7 @@ export function RoomMap({
         )}
       </div>
 
-      <div className={`relative min-h-0 border border-[var(--border)] ${heightClass}`}>
+      <div className={`relative min-h-0 min-w-0 overflow-hidden border border-[var(--border)] ${heightClass}`}>
         {shown === "2d" ? (
           <PlanCanvas
             outer={outer} fence={fence} obstacles={obstacles} path={path} takeoffHeight={takeoffHeight}
@@ -124,14 +131,8 @@ export function RoomMap({
             />
           </Suspense>
         )}
-        {overlay && (
-          <div className="pointer-events-none absolute inset-x-2 bottom-2 flex justify-start">
-            <div className="pointer-events-auto max-h-[70%] max-w-full overflow-auto border border-[var(--border)] bg-[var(--surface)] shadow-sm">
-              {overlay}
-            </div>
-          </div>
-        )}
       </div>
+      {below && <div className="border border-t-0 border-[var(--border)] bg-[var(--surface)]">{below}</div>}
 
       <p className="pt-1.5 text-xs leading-relaxed text-[var(--muted)]">
         {shown === "3d"
