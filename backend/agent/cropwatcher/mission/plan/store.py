@@ -118,7 +118,17 @@ class PlanStore:
         return Mission.from_dict(self._read(path))
 
     def save_mission(self, mission: Mission) -> Mission:
-        """Save, keeping history honest: a flown revision is never overwritten."""
+        """Save, keeping history honest: a flown revision is never overwritten.
+
+        A mission is saved only once it is COMPLETE — its room saved and at
+        least one inspection point — not once it is safe: a half-finished plan
+        with a problem can be saved and fixed later, and the safety checks
+        gate "use" and Start instead (validate.py, Session.run_mission). The
+        desktop greys Save out on the same rule; this is the authority.
+        """
+        if not mission.points:
+            raise PlanError("Add at least one inspection point before saving — a mission "
+                            "with no points has nothing to fly to.")
         if not self._room_path(mission.room_id).exists():
             raise PlanError(f"No room {mission.room_id} on this computer — save the room "
                             f"first.")

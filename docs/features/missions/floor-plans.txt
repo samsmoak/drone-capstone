@@ -1,7 +1,8 @@
 ================================================================================
 FLOOR PLANS AND MISSIONS — what the drone flies, checked before it can fly
-Last verified: 2026-09-28 against feat/missions-and-pipeline — tests/mission/
-(107 tests: plan, store, API, session, stamping) and the harness.
+Last verified: 2026-09-29 against claude/awesome-carson-eqkt8w — tests/mission/
+(134 tests: plan, end point, from_start, heights, store, API, session,
+stamping) and the harness.
 SOURCE: backend/agent/cropwatcher/mission/plan/validate.py
 ================================================================================
 
@@ -18,11 +19,14 @@ STATUS  (Last verified: 2026-09-28)
 1. WHAT IT IS
 --------------------------------------------------------------------------------
 A ROOM is the floor plan of one real space: a closed GEOFENCE, the OBSTACLES
-inside it, and (once measured) the Lighthouse COVERAGE around it. A MISSION is a
-plan in a room: a HOME mark where the drone sits before takeoff, an ordered list
-of INSPECTION POINTS (x, y, height, hold time, a stable id), a cruise height,
-and whether to fly back over home. Both are data, checked by the agent and
-saved as JSON on the laptop. Nothing here flies — see mission-controller.txt.
+inside it (each with an optional height, for the room map), and (once
+measured) the Lighthouse COVERAGE around it. A MISSION is a plan in a room: a
+PLANNED START ("home" in the data), an ordered list of INSPECTION POINTS (x, y,
+height, hold time, a stable id), an optional END POINT where the flight lands,
+a cruise (takeoff) height, and whether to fly back over the start. Both are
+data, checked by the agent and saved as JSON on the laptop. Nothing here flies
+— see mission-controller.txt; a flight starts from wherever the drone really
+is (Mission.from_start).
 
 --------------------------------------------------------------------------------
 2. WHERE IT LIVES
@@ -62,13 +66,30 @@ desktop/src/pages/control/auto/plan/                  the editor
 • LEGS ARE CHECKED, NOT JUST POINTS: home → P1 → … → last (→ home). Two points
   can sit in clear floor with a bench between them, and in an L-shaped room a
   leg leaves the fence with both ends inside (tests/mission/test_geofence.py).
-• A HOME MARK on every mission: legs are checked from it, and the session
-  refuses to start when the drone is more than 0.30 m (the leash) from it.
+• A PLANNED START on every mission (`home`): the plan is drawn and checked
+  from it while it is edited. At Start the drone's own position replaces it
+  (Mission.from_start) and the mission is checked again from there — the
+  0.30 m "on the home mark or refused" rule was retired 2026-09-29.
+• THE END POINT (end_point_id, optional): the flight flies the points up to
+  it and lands there; later points stay in the plan, are not flown, and are
+  NOT held to the flying rules (validate checks flown_points only). It must
+  name one of the mission's points ("end_point" error otherwise), and it wins
+  over return_to_start (Mission.returns_home). Older missions read as None.
+• OBSTACLE HEIGHT IS DRAWN, NOT FLOWN OVER (height_m, optional; None = floor
+  to ceiling, which every room saved before 2026-09-29 reads as). Every check
+  still treats every obstacle as floor to ceiling — the drone never plans a
+  leg over one. With the 1.00 m ceiling and 0.25 m clearance, anything taller
+  than ~0.7 m could never be cleared anyway, and a plan leaning on a height
+  measured by eye is a plan that clips it.
 • Holds are at least 5 s — story 3.4's "5 seconds of readings".
 • VALIDATION RETURNS PROBLEMS, NOT AN EXCEPTION — every one, with where it is
   (a point id, "home", a leg "P1 → P2"). Errors block flying; warnings
   ("coverage not measured") are said and do not. The editor asks the agent
   (POST /missions/validate) instead of keeping a copy of the rules.
+• A MISSION IS SAVED ONLY WHEN COMPLETE (2026-09-29): at least one
+  inspection point, and its room saved first — not only when safe. A plan
+  with a problem is saved and fixed later; validation gates flying, not
+  saving. The desktop greys Save out on the same rule (auto-control.txt).
 • REVISIONS: saving a change to a mission whose current revision has flown
   makes a new revision; the flight keeps a copy of the plan it flew. Saving an
   unchanged mission changes nothing.

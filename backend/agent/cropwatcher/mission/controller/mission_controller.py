@@ -1,11 +1,14 @@
 """The mission controller: takes a saved mission and flies it.
 
 WHAT IT RECEIVES
-    A Mission (mission/plan/mission.py) that has already passed validation:
-    every inspection point and every leg inside the room's geofence and clear
-    of its obstacles. The session also checked, before arming, that the drone
-    is on its home mark, the battery covers the whole mission, and the checks
-    passed.
+    A Mission (mission/plan/mission.py) that has already passed validation
+    AS IT WILL BE FLOWN (Mission.from_start): `home` is where the drone really
+    is at Start, `points` are only the points to fly (an end point has already
+    been applied — points after it are gone), and `return_to_start` already
+    says whether to come back. Every point and every leg is inside the room's
+    geofence and clear of its obstacles, from that real start. The session
+    also checked the battery covers it and the checks passed. Fly `points`
+    in order and honour `return_to_start` — nothing else to interpret.
 
 WHAT IT FLIES WITH
     The manual flight system (flight/manual.py ManualController), already armed
@@ -20,7 +23,7 @@ WHAT IT DOES
         wait for the drone to settle on it     ARRIVING
         hold for the point's hold_s            HOLDING  (current_point_id set)
         report the point complete              POINT_COMPLETE
-    fly back over home if the mission says so  RETURNING
+    fly back over home (the real start) if the mission says so  RETURNING
     land                                       LANDING → DONE
 
 THE BODY IS HANNAH'S (docs/handoffs/mission-controller.txt). Until it is built,

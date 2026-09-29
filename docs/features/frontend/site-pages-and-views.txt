@@ -317,6 +317,8 @@ RELATED
 
 shares-data-with  ../development/releases.txt
                   the setup guide's terminal steps (install.mjs)
+depends-on        ../../design/layout.txt
+                  the standing rule: 390 / 768 / 1024 / 1440, both themes
 
 
 LAST VERIFIED  2026-09-28: the home page and the setup guide rendered from a local

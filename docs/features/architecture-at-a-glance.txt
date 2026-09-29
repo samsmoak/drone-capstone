@@ -96,7 +96,9 @@ DESIGNED BUT NOT WIRED
                           the points is Hannah's and refuses to fly until it
                           lands (missions/mission-controller.txt)
   Pipeline stages         clean, enhance, classify are stubs until Kevin's and
-                          Reagan's land; no live runner yet
+                          Reagan's land; no live runner yet. The TRIGGER is
+                          wired: with DPP on, each flight is processed when
+                          it lands and its verdicts show on the desktop
                           (pipeline/data-pipeline.txt)
 
   Web-queued missions     queued_missions() / claim_mission() exist and are

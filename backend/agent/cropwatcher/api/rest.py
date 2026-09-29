@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import os
 import threading
@@ -64,7 +65,8 @@ from cropwatcher.mission.plan.validate import (
     validate_mission,
     validate_room,
 )
-from cropwatcher.paths import data_dir
+from cropwatcher.paths import data_dir, results_dir
+from cropwatcher.processing import FLIGHT_ID
 from cropwatcher.session import Mode, Session, SessionError, State
 from cropwatcher.sync.cloud import SupabaseCloud
 from cropwatcher.sync.outbox import Outbox
@@ -147,6 +149,11 @@ class DeckWifiRequest(BaseModel):
 class MissionRunRequest(BaseModel):
     mission_id: str = Field(..., min_length=1, max_length=64)
     ambient: str = Field("22C", description="room temperature, e.g. 74F or 22C")
+
+
+class ProcessingRequest(BaseModel):
+    #: Process this session's flights through the data pipeline when they land.
+    on: bool
 
 
 class ConfirmRequest(BaseModel):
@@ -334,6 +341,7 @@ async def lifespan(_app: FastAPI):
     except Exception:
         log.exception("could not end the session cleanly")
     agent.syncer.stop()
+    agent.session.processing.close()
 
 
 app = FastAPI(title="CropWatcher Agent", version="0.2.0", lifespan=lifespan)
@@ -685,7 +693,53 @@ def read_samples(
         raise HTTPException(status_code=404, detail="No such session on this computer.") from None
 
 
+# ── the data pipeline's results ──────────────────────────────────────────
+#
+# results/<flight id>/result.json, written by `cropwatcher process` — started
+# by the agent when a flight flown with DPP on lands (processing.py), or by
+# hand. Token-gated: a verdict is about someone's equipment.
+
+
+@app.get("/flights/{flight_id}/result", dependencies=[Command])
+def flight_result(flight_id: str) -> dict:
+    """The pipeline's result for one flight, with where its job stands. 404 in
+    words while there is no result yet — the page shows that as a state."""
+    if not FLIGHT_ID.match(flight_id):
+        raise HTTPException(status_code=404, detail="That is not a flight id.")
+    job = agent.session.processing.job(flight_id)
+    path = results_dir() / flight_id / "result.json"
+    if not path.exists():
+        if job is not None and job.state in ("queued", "running"):
+            detail = "This flight is being processed. Its result will be here shortly."
+        elif job is not None and job.state == "failed":
+            detail = f"Processing this flight failed: {job.error}"
+        else:
+            detail = "This flight has not been processed on this computer."
+        raise HTTPException(status_code=404, detail=detail)
+    try:
+        result = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise HTTPException(status_code=500,
+                            detail="The result file could not be read.") from None
+    return {"flight_id": flight_id, "job": job.to_dict() if job else None, "result": result}
+
+
+@app.post("/flights/{flight_id}/process", dependencies=[Command])
+def process_flight(flight_id: str) -> dict:
+    """Process a recorded flight now — one flown with DPP off, or again."""
+    try:
+        return agent.session.process_flight(flight_id)
+    except SessionError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from None
+
+
 # ── session ──────────────────────────────────────────────────────────────
+
+
+@app.post("/session/processing", dependencies=[Command])
+def set_processing(request: ProcessingRequest) -> dict:
+    """The DPP switch: process this session's flights when they land."""
+    return _run(lambda: agent.session.set_processing(request.on))
 
 
 @app.post("/session/mode", dependencies=[Command])
@@ -892,6 +946,21 @@ def validate_draft(body: dict = Body(...)) -> dict:  # noqa: B008
     except (NotFound, PlanError) as e:
         raise _plan_refusal(e) from None
     return _mission_view(mission, room)
+
+
+@app.get("/missions/{mission_id}/from-drone", dependencies=[Command])
+def mission_from_drone(mission_id: str) -> dict:
+    """The mission checked FROM WHERE THE DRONE IS NOW — its position is the
+    start, the points stay where they are, points after an end point are
+    dropped. What Start will be checked against (Session.run_mission), for the
+    Check step to show first. `position` is null with no drone reporting one;
+    the mission then comes back as saved."""
+    try:
+        mission, room, here = agent.session.mission_from_drone(mission_id)
+    except SessionError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from None
+    return {"position": None if here is None else [round(here[0], 4), round(here[1], 4)],
+            "mission": _mission_view(mission, room)}
 
 
 @app.post("/missions/{mission_id}/delete", dependencies=[Command])

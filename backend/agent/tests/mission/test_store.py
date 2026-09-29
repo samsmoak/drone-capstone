@@ -97,3 +97,13 @@ def test_writes_leave_no_temporary_files(store, tmp_path):
     store.save_room(room())
     assert [p.name for p in (tmp_path / "rooms").iterdir()] == ["lab.json"]
     assert json.loads((tmp_path / "rooms" / "lab.json").read_text())["id"] == "lab"
+
+
+def test_a_mission_with_no_points_is_not_saved(store):
+    """Complete, not safe: no points means nothing to fly to, so it is refused;
+    a plan with a problem is still saved (the checks gate use and Start)."""
+    store.save_room(room())
+    with pytest.raises(PlanError, match="at least one inspection point"):
+        store.save_mission(mission(points=()))
+    unsafe = mission(points=(InspectionPoint("P1", 0.0, 0.0, 0.4),))     # on the table
+    assert store.save_mission(unsafe).points == unsafe.points

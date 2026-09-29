@@ -57,6 +57,49 @@ export type Session = {
   /** The mission being flown, or the last one flown this session; null when
    *  none has run. From the agent's session snapshot (session.py). */
   mission: MissionProgress | null;
+  /** The DPP switch (cropwatcher/processing.py): whether the next flight is
+   *  processed when it lands, whether that is the operator's choice or still
+   *  the mode's default (on in Auto, off in Manual), and recent jobs. */
+  processing: Processing;
+};
+
+export type ProcessingJob = {
+  flight_id: string;
+  state: "queued" | "running" | "done" | "failed";
+  queued_at: string;
+  finished_at: string | null;
+  error: string | null;
+};
+
+export type Processing = {
+  on: boolean;
+  chosen: boolean;
+  jobs: ProcessingJob[];
+  /** The session's most recent flight to land — processed or not. */
+  last_flight_id: string | null;
+};
+
+/** One inspection point's verdict (pipeline/contracts.py PointResult). */
+export type PointVerdict = {
+  point_id: string;
+  verdict: "normal" | "anomaly" | "insufficient_data";
+  reasons: string[];
+  alerts: { severity: "info" | "warning" | "critical"; message?: string; [key: string]: unknown }[];
+};
+
+/** results/<flight id>/result.json, as the pipeline wrote it. */
+export type FlightResult = {
+  flight_id: string;
+  job: ProcessingJob | null;
+  result: {
+    flight_id: string;
+    pipeline_version: string;
+    stages: Record<string, string>;
+    created_at: string;
+    points: PointVerdict[];
+    failures: { point_id: string; stage: string; reason: string }[];
+    summary: Record<string, { readings?: number; frames?: number; flags?: number }>;
+  };
 };
 
 /** What the mission controller reports while a mission flies. */
@@ -106,6 +149,9 @@ export type Obstacle = {
   /** line: two ends · rectangle: two opposite corners · circle: the centre. */
   points: XY[];
   radius?: number;
+  /** Height above the floor, for the room map; null = floor to ceiling. The
+   *  agent's checks treat every obstacle as floor to ceiling regardless. */
+  height_m?: number | null;
 };
 
 /** The largest area anything in a room may occupy: its measured Lighthouse
@@ -141,10 +187,14 @@ export type Mission = {
   id: string;
   name: string;
   room_id: string;
+  /** The PLANNED start. A flight starts from wherever the drone really is;
+   *  this is what the plan is drawn and checked from until then. */
   home: XY;
   points: InspectionPoint[];
   cruise_height_m: number;
   return_to_start: boolean;
+  /** The point the flight ends and lands at; later points are not flown. */
+  end_point_id?: string | null;
   revision: number;
   flown_revision: number | null;
   created_at: string;
@@ -396,6 +446,17 @@ export const api = {
   /** Check a draft the agent has not saved — the agent's own validation. */
   validateMission: (mission: Mission, room: Room | null) =>
     command<MissionView>("/missions/validate", { mission, room }),
+  /** The mission checked from where the drone is now (its position is the
+   *  start) — what Start will be checked against. */
+  missionFromDrone: (id: string) =>
+    command<{ position: XY | null; mission: MissionView }>(
+      `/missions/${encodeURIComponent(id)}/from-drone`, undefined, "GET"),
+  /** The DPP switch for this session. */
+  setProcessing: (on: boolean) => command<Session>("/session/processing", { on }),
+  flightResult: (flightId: string) =>
+    command<FlightResult>(`/flights/${encodeURIComponent(flightId)}/result`, undefined, "GET"),
+  processFlight: (flightId: string) =>
+    command<ProcessingJob>(`/flights/${encodeURIComponent(flightId)}/process`),
   runMission: (missionId: string, ambient: string) =>
     command<Session>("/session/mission", { mission_id: missionId, ambient }),
   readSamples: (id: string, variables: readonly string[], mode?: Mode) =>
@@ -413,6 +474,10 @@ export type FlightRecord = {
   ended_at: string | null;
   outcome: string | null;
   abort_reason: string | null;
+  /** The data pipeline for this flight: null when DPP was off as it began,
+   *  "pending" until it lands, then queued / running / done / failed. */
+  processing?: "pending" | ProcessingJob["state"] | null;
+  processing_error?: string | null;
 };
 
 export type SessionRecord = {

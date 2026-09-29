@@ -36,6 +36,8 @@ class Action(StrEnum):
     LAND = "land"
     EMERGENCY_STOP = "emergency_stop"
     GUARD_ABORT = "guard_abort"
+    PROCESSING_SET = "processing_set"       # the DPP switch, on or off
+    PROCESSING_RUN = "processing_run"       # a flight asked for by hand
 
 
 class Result(StrEnum):

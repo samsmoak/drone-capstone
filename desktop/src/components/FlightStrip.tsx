@@ -118,11 +118,12 @@ function SyncBadge({ sync, connected }: { sync: SyncStatus | null; connected: bo
  * and has no keyboard shortcut. Land is the normal way to come down.
  *
  * Moved here verbatim from App.tsx — the timing, the pointer handling and the
- * keyboard refusal are unchanged.
+ * keyboard refusal are unchanged. Exported for the Auto flow's full screen,
+ * which covers this strip and so must carry the same control, not a copy.
  */
 const HOLD_MS = 1000;
 
-function HoldToStop({ onStop }: { onStop: () => void }) {
+export function HoldToStop({ onStop }: { onStop: () => void }) {
   const [progress, setProgress] = useState(0);
   const timer = useRef<number | null>(null);
 

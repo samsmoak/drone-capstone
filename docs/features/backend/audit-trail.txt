@@ -30,6 +30,8 @@ THE EVENTS
   program_run           auto: Hover test
   mission_run
   manual_arm, manual_flight
+  processing_set        the DPP switch, on or off, and the mode it was set in
+  processing_run        a recorded flight processed by hand
   land
   emergency_stop
   guard_abort           with the guard's reason (see flight-safety.txt)

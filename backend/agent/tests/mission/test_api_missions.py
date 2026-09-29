@@ -103,3 +103,36 @@ def test_the_limits_the_editor_clamps_to(api):
     assert limits["min_hold_s"] == 5.0
     assert limits["z_max_m"] == 1.0
     assert limits["default_clearance_m"] == 0.25
+
+
+def test_from_drone_needs_the_token(api):
+    assert api.get("/missions/m1/from-drone").status_code == 401
+
+
+def test_from_drone_with_no_drone_is_the_mission_as_saved(api):
+    api.post("/rooms", json=room().to_dict(), headers=token())
+    api.post("/missions", json=mission(end_point_id="P2").to_dict(), headers=token())
+    body = api.get("/missions/m1/from-drone", headers=token()).json()
+    assert body["position"] is None
+    assert body["mission"]["home"] == [-1.0, -1.0] and body["mission"]["valid"] is True
+
+
+def test_from_drone_checks_the_path_from_the_drones_own_position(api, monkeypatch):
+    api.post("/rooms", json=room().to_dict(), headers=token())
+    api.post("/missions", json=mission().to_dict(), headers=token())
+    monkeypatch.setattr(rest.agent.session, "position", lambda: (0.8, -1.0, 0.0))
+    body = api.get("/missions/m1/from-drone", headers=token()).json()
+    assert body["position"] == [0.8, -1.0]
+    assert body["mission"]["valid"] is False
+    assert any(p["where"] == "home → P1" for p in body["mission"]["problems"])
+
+
+def test_from_drone_for_an_unknown_mission_is_a_404(api):
+    assert api.get("/missions/nope/from-drone", headers=token()).status_code == 404
+
+
+def test_saving_a_mission_with_no_points_is_a_422_in_words(api):
+    api.post("/rooms", json=room().to_dict(), headers=token())
+    response = api.post("/missions", json=mission(points=()).to_dict(), headers=token())
+    assert response.status_code == 422
+    assert "at least one inspection point" in response.json()["detail"]

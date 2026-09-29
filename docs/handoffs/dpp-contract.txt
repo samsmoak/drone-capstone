@@ -68,6 +68,38 @@ flight loop — CPU work there competes for Python's one interpreter lock, and a
 late setpoint drops the drone. That is why every stage must be self-contained.
 
 
+HOW THE AGENT RUNS THE PIPELINE (built 2026-09-29)
+───────────────────────────────────────────────────
+
+Nobody has to type the command any more. The operator has a DPP switch per
+session — on by default in Auto, off in Manual — and every flight that began
+with it on is processed WHEN IT LANDS (backend/agent/cropwatcher/processing.py):
+
+  - the agent starts `cropwatcher process --flight <id>` as a CHILD PROCESS,
+    at lower priority, after the flight's CSV is closed;
+  - ONE FLIGHT AT A TIME; 15 MINUTES for the whole flight, every point and
+    every stage — then it is stopped and marked failed. Rule 12's per-point
+    targets keep a 20-point mission far inside that;
+  - EXIT CODE 0 is success. Anything else is a failure, and the LAST LINE the
+    command printed is the reason the operator reads. The runner already
+    turns stage failures into results, so a non-zero exit means the whole
+    command could not run — say why in words;
+  - the result is shown on the desktop: the Fly step's Results panel (Auto)
+    and the Data processing panel (Manual), point by point, with each
+    PointResult's reasons printed VERBATIM. Write them for an operator.
+
+WHAT A FLIGHT LOOKS LIKE NOW (also 2026-09-29):
+  - THE PLAN FLOWN (sessions/<id>/missions/<flight>.json) is the mission AS
+    FLOWN: its `home` is where the drone really took off (a flight starts
+    wherever the drone is), and points after the operator's END POINT are
+    not in it. Only the points in it were flown; read nothing else.
+  - A MANUAL flight is one point, "flight", as before — and it is now
+    processed whenever the operator turns DPP on in Manual.
+  - Heights are above the floor where the drone took off (CLAUDE.md
+    invariant 4). The Auto confirmation now tells the operator to take off
+    from the floor.
+
+
 WHERE THE FILES ARE
 ───────────────────
 

@@ -171,7 +171,8 @@ export function ConsolePane({
               type="button"
               onClick={() => setFull(true)}
               title="Show this view full screen"
-              className="mono min-h-8 px-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)] hover:text-[var(--foreground)]"
+              aria-label="Show this view full screen"
+              className="mono min-h-8 min-w-8 whitespace-nowrap px-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)] hover:text-[var(--foreground)]"
             >
               Full screen ⤢
             </button>

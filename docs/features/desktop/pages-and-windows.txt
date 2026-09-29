@@ -453,6 +453,35 @@ when the window widens.
   is known.
 
 
+NARROW COLUMNS, 2026-09-29 (the owner: "make the right side very responsive —
+the tabs are getting squeezed"). Measured in the harness at a 1024 px window,
+the Auto monitor was 294 px wide and three things collided. Each is fixed
+where it lives, so Manual gets the same fixes and nothing else in it moved:
+
+  Tabs (components/Tabs.tsx)   the strip WRAPS: the action (10 Hz, Full
+                               screen) drops under the tabs instead of
+                               crushing them; tabs never shrink, and scroll
+                               sideways if even they do not fit (was 97 px of
+                               list for 177 px of tabs, Camera over "10 Hz")
+  AttitudeIndicator readouts   at least 9 rem, columns of at least 7.5 rem —
+                               they wrap under the instrument, never overlap
+                               ("Roll 1.2 Pitch", "Gyro / y")
+  HealthTestPanel              two columns by the PANEL's width (@container,
+                               @md), not the window's (sm:) — "M1 passed" ran
+                               into "M2 failed" in Manual's right column
+
+Auto also moved its side-by-side breakpoint to 1280 px (auto-control.txt).
+
+A MISSION IS FLYING TOO (App.tsx `flying`, 2026-09-29): it counted Manual and
+the Hover demo only, so during a mission the flight strip offered End session
+instead of Land and Emergency stop. Found while giving the Auto full screen
+the strip's controls; no mission had flown yet, so nobody met it.
+
+Manual's right column also carries the DATA PROCESSING panel (DataPipeline.tsx:
+the DPP switch, off by default in Manual, and the last flight's verdict) at
+its foot, below everything that was there.
+
+
 DELIBERATE DIVERGENCES FROM web/
 
 styles.css and components/ui.tsx were copied from web/app/globals.css and
@@ -468,15 +497,22 @@ should stay that way.
 
 RELATED
 
+depends-on        ../../design/layout.txt
+                  the standing rule: 720–1600 px, both themes, by container
 shares-data-with  drone-wifi.txt
                   the Drone Wi-Fi page and its sidebar badge
 depends-on        ../backend/sessions-and-modes.txt
                   Home's standby row, vitals with no session
 consumed-by       auto-control.txt
                   Auto reuses FlightDeck, Checklist, RetryPanel, HealthTestPanel,
-                  Field, the ConsolePane (`views`) and SceneView (`plan`)
+                  Field, Tabs and the ConsolePane (`views`). SceneView's `plan`
+                  is no longer used by anyone (Fly draws the room with
+                  RoomMap since 2026-09-29) — dead code, left so Manual's
+                  Scene tab was not touched; remove when SceneView is next
+                  edited
 
 
-LAST VERIFIED  2026-09-28, against desktop/src and a headless measurement pass
-of the whole harness — Auto sections included — at 720/900/1024/1280/1600 in
-both themes, all PASS, the self-test failing as it must.
+LAST VERIFIED  2026-09-29, against desktop/src and a headless measurement pass
+of the harness's Auto sections at 720/900/1024/1280/1600 in both themes and
+both map views, all PASS, the self-test failing as it must; Manual looked at
+at 1024 (screenshots) for the three fixes above.

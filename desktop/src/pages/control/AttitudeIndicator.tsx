@@ -159,7 +159,10 @@ export function AttitudeIndicator({ telemetry }: { telemetry: Telemetry | null }
         {/* Attitude and rates only. Thrust and Height moved to the vitals
             strip above, which is always on screen — showing them here as well
             would be two places for one number. */}
-        <dl className="mono grid min-w-0 flex-1 grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+        {/* At least 9 rem, or the two columns overlapped beside the instrument
+            in a narrow monitor ("Roll 1.2 Pitch", 1024 px, 2026-09-29): short
+            of that the readouts wrap underneath it instead. */}
+        <dl className="mono grid min-w-[9rem] flex-1 grid-cols-[repeat(auto-fit,minmax(7.5rem,1fr))] gap-x-4 gap-y-1.5 text-xs">
           <Readout label="Roll" value={roll} unit="°" digits={1} />
           <Readout label="Pitch" value={pitch} unit="°" digits={1} />
           <Readout label="Yaw" value={yaw} unit="°" digits={1} />

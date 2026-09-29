@@ -87,6 +87,7 @@ Committed so a Claude Code cloud session starts where a local one stopped.
 | [GRAPH_STATE.txt](GRAPH_STATE.txt) | Which docs can be trusted right now — `python3 docs/graph_check.py` regenerates the findings |
 | [design/PREFERENCES.txt](design/PREFERENCES.txt) | What the owner asked for more than once, and the rules that became standing |
 | [design/components.txt](design/components.txt) | The shared building blocks to reach for first (not filled in yet) |
+| [design/layout.txt](design/layout.txt) | **Standing rule**: every screen at 720–1600 px (desktop) / 390–1440 px (web), both themes, laid out by container width |
 
 ## The lab
 

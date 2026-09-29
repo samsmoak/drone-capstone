@@ -135,10 +135,13 @@ DECISIONS
       DroneDeck.app (then CropWatcher)   50 MB
       CropWatcher_0.1.0_aarch64.dmg      48 MB
 
-  The growth is the AGENT, not the window: the frontend bundle is 647 KB
-  (194 KB gzipped). Re-measure after adding a Python dependency — this is the
-  number that decides whether a library is affordable, so a stale one argues
-  the wrong way.
+  The growth is the AGENT, not the window: the frontend bundle was 647 KB
+  (194 KB gzipped) then; 738 KB / 218 KB gz on main on 2026-09-29, and
+  767 KB / 226 KB gz after the Auto room map — plus three.js as a SEPARATE
+  chunk (972 KB / 259 KB gz) fetched only when the 3-D view first opens
+  (auto-control.txt). Re-measure after adding a Python dependency or a
+  frontend library — this is the number that decides whether a library is
+  affordable, so a stale one argues the wrong way.
 - The whole CLI is frozen, not just `serve`, so `cropwatcher-agent check` is
   available on a machine with no Python when a drone will not connect.
 - Installed from a terminal, never downloaded (2026-09-25): each machine
@@ -310,6 +313,8 @@ shares-data-with  drone-wifi.txt
                   the secure store and the drone_wifi_* commands
 depends-on        ../backend/agent-api.txt
                   /health (the no-cors probe), CORS for the window
+consumed-by       auto-control.txt
+                  the bundle measurement the three.js chunk is argued from
 depends-on        ../development/releases.txt
                   CI runs install.mjs, the same path people use
 shares-data-with  ../backend/running-from-source.txt

@@ -19,8 +19,10 @@ import {
 import { formatDateTime, formatDuration, formatMetres } from "@/lib/format";
 import { Button, Message, Panel, SkeletonPanel, StatusDot } from "@/components/ui";
 import { SmallButton } from "./fields";
+import { mapBox, placeOf } from "./geometry";
 import { blankMission, blankRoom, MissionEditor, outerOf, ProblemList, type Draft } from "./MissionEditor";
-import { PlanCanvas } from "./PlanCanvas";
+import { landsAt, returnsHome, unflownIds } from "./path";
+import { RoomMap } from "./RoomMap";
 
 type View = { kind: "list" } | { kind: "view"; id: string } | { kind: "edit"; draft: Draft };
 
@@ -32,13 +34,15 @@ export function dronePosition(telemetry: Telemetry | null): XY | null {
   return x === undefined || y === undefined ? null : [x, y];
 }
 
-export function MissionStep({ run, telemetry, selectedId, onUse, openEditor }: {
+export function MissionStep({ run, telemetry, selectedId, onUse, openEditor, heightClass }: {
   run: Run;
   telemetry: Telemetry | null;
   selectedId: string | null;
   onUse: (mission: MissionView) => void;
   /** Harness only: open this mission's editor once loaded. */
   openEditor?: string;
+  /** The room map's height — taller in full screen. */
+  heightClass?: string;
 }) {
   const [view, setView] = useState<View>({ kind: "list" });
   const [loaded, setLoaded] = useState<Loaded | null>(null);
@@ -86,7 +90,7 @@ export function MissionStep({ run, telemetry, selectedId, onUse, openEditor }: {
     const others = missions.filter((m) => m.room_id === view.draft.room.id && m.id !== view.draft.mission.id).length;
     return (
       <MissionEditor
-        draft={view.draft} limits={limits} run={run} drone={drone} missionsInRoom={others}
+        draft={view.draft} limits={limits} run={run} drone={drone} missionsInRoom={others} heightClass={heightClass}
         onCancel={() => setView(view.draft.missionIsNew ? { kind: "list" } : { kind: "view", id: view.draft.mission.id })}
         onSaved={(saved) => { void load(); setView({ kind: "view", id: saved.id }); }}
       />
@@ -107,7 +111,7 @@ export function MissionStep({ run, telemetry, selectedId, onUse, openEditor }: {
     }
     return (
       <MissionDetail
-        mission={mission} room={roomOf(mission.room_id)} limits={limits} drone={drone} run={run}
+        mission={mission} room={roomOf(mission.room_id)} limits={limits} drone={drone} run={run} heightClass={heightClass}
         selected={selectedId === mission.id}
         onBack={() => setView({ kind: "list" })}
         onEdit={(room) => setView({ kind: "edit", draft: { room, mission, roomIsNew: false, missionIsNew: false } })}
@@ -124,7 +128,7 @@ export function MissionStep({ run, telemetry, selectedId, onUse, openEditor }: {
       onNew={(room) => {
         const fresh = room ?? blankRoom(limits);
         setView({ kind: "edit", draft: {
-          room: fresh, mission: blankMission(fresh, limits), roomIsNew: room === null, missionIsNew: true,
+          room: fresh, mission: blankMission(fresh, limits, drone), roomIsNew: room === null, missionIsNew: true,
         } });
       }}
     />
@@ -206,7 +210,8 @@ function MissionList({ missions, rooms, limits, selectedId, onView, onNew }: {
   );
 }
 
-function MissionDetail({ mission, room, limits, drone, run, selected, onBack, onEdit, onDeleted, onUse }: {
+function MissionDetail({ mission, room, limits, drone, run, selected, onBack, onEdit, onDeleted, onUse, heightClass }: {
+  heightClass?: string;
   mission: MissionView;
   room: RoomView | null;
   limits: PlanLimits;
@@ -220,6 +225,10 @@ function MissionDetail({ mission, room, limits, drone, run, selected, onBack, on
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const outer = room ? outerOf(room, limits) : limits.outer;
+  const box = mapBox(outer);
+  const unflown = unflownIds(mission);
+  const lands = landsAt(mission);
+  const [startLeft, startFront] = placeOf(mission.home, box);
   const blocking = mission.problems.filter((p) => p.severity === "error");
 
   return (
@@ -263,13 +272,14 @@ function MissionDetail({ mission, room, limits, drone, run, selected, onBack, on
         <Message tone="critical" text={`This mission cannot fly until ${blocking.length === 1 ? "one problem is" : `${blocking.length} problems are`} fixed. Edit it, or pick another.`} />
       )}
 
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.3fr)_minmax(18rem,1fr)]">
-        <div className="border border-[var(--border)]">
-          <PlanCanvas
+      <div className="@container">
+      <div className="grid gap-3 @4xl:grid-cols-[minmax(0,1.3fr)_minmax(18rem,1fr)]">
+        <div className="min-w-0">
+          <RoomMap
             outer={outer} fence={room?.geofence ?? null} obstacles={room?.obstacles ?? []}
-            home={mission.home} points={mission.points} returnToStart={mission.return_to_start}
-            problems={mission.problems} drone={drone}
-            label={`The plan of ${mission.name}`}
+            path={mission} takeoffHeight={mission.cruise_height_m}
+            problems={mission.problems} drone={drone} heightClass={heightClass}
+            label={`The room map of ${mission.name}`}
           />
         </div>
         <div className="grid content-start gap-3">
@@ -277,16 +287,18 @@ function MissionDetail({ mission, room, limits, drone, run, selected, onBack, on
             <table className="w-full text-xs">
               <thead className="text-left">
                 <tr className="border-b border-[var(--border)]">
-                  {["Point", "Where (m)", "Height", "Hold"].map((h) => (
+                  {["Point", "From left, front", "Height", "Hold"].map((h) => (
                     <th key={h} scope="col" className="eyebrow px-3 py-2 font-semibold">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="mono">
                 {mission.points.map((p) => (
-                  <tr key={p.id} className="border-b border-[var(--border)] last:border-0">
-                    <td className="px-3 py-1.5 font-semibold">{p.id}{p.label ? ` · ${p.label}` : ""}</td>
-                    <td className="px-3 py-1.5">{p.x_m.toFixed(2)}, {p.y_m.toFixed(2)}</td>
+                  <tr key={p.id} className={`border-b border-[var(--border)] last:border-0 ${unflown.has(p.id) ? "opacity-60" : ""}`}>
+                    <td className="px-3 py-1.5 font-semibold">
+                      {p.id}{p.label ? ` · ${p.label}` : ""}{lands === p.id ? " · END" : ""}{unflown.has(p.id) ? " · not flown" : ""}
+                    </td>
+                    <td className="px-3 py-1.5">{placeOf([p.x_m, p.y_m], box).map((v) => v.toFixed(2)).join(", ")} m</td>
                     <td className="px-3 py-1.5">{p.z_m.toFixed(2)} m</td>
                     <td className="px-3 py-1.5">{p.hold_s.toFixed(0)} s</td>
                   </tr>
@@ -294,11 +306,12 @@ function MissionDetail({ mission, room, limits, drone, run, selected, onBack, on
               </tbody>
             </table>
             <p className="mono px-3 py-2 text-xs text-[var(--muted)]">
-              Home {mission.home[0].toFixed(2)}, {mission.home[1].toFixed(2)} · cruise {formatMetres(mission.cruise_height_m)} · {mission.return_to_start ? "returns home" : "lands at the last point"}
+              Planned start {startLeft.toFixed(2)}, {startFront.toFixed(2)} m · takeoff {formatMetres(mission.cruise_height_m)} · {returnsHome(mission) ? "returns to the start" : lands ? `lands at ${lands}` : "no points"} · the flight starts from wherever the drone is
             </p>
           </Panel>
           <ProblemList problems={mission.problems} error={null} checking={false} summary={mission} />
         </div>
+      </div>
       </div>
     </div>
   );

@@ -30,6 +30,11 @@ THE STATES
   busy                  -> land / emergency_stop
   ending                -> land if needed, close the flight, flush the upload
 
+THE DPP SWITCH (2026-09-29) is part of the session: Snapshot.processing says
+whether the next flight will be processed (on by default in Auto, off in
+Manual — the operator's choice wins and lasts until the session ends), the
+recent jobs, and the last flight to land. See ../pipeline/data-pipeline.txt.
+
 MODE is auto or manual, chosen in the desktop app's SIDEBAR, and DEFAULTS TO
 MANUAL (Snapshot.mode). It cannot change while busy: swapping controller mid-air
 would hand the drone to a different command source with no warning. (It sat in a
@@ -172,7 +177,10 @@ mission controller (../missions/mission-controller.txt). The snapshot's
 RELATED
 
 consumed-by       ../missions/mission-controller.txt
-                  run_mission arms the manual system and hands it over
+                  run_mission arms the manual system and hands it over, from
+                  where the drone is (Mission.from_start)
+consumed-by       ../pipeline/data-pipeline.txt
+                  the DPP switch: processing_on is read as each flight begins
 
 consumed-by       ../desktop/pages-and-windows.txt
                   Home's standby row, vitals with no session

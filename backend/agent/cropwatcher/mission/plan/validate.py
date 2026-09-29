@@ -16,9 +16,14 @@ The result is a list of Problems, not an exception: the editor shows every one
 at once, beside the point it concerns. `errors` block flying; `warnings` are
 said out loud and do not.
 
-THE EDITOR RUNS ITS OWN COPY of these checks for instant feedback
-(desktop/src/pages/control/auto/plan/shapes.ts). This one is the authority: it
-runs when a mission is saved and again before anything arms.
+THE EDITOR KEEPS NO COPY of these checks: it posts every draft to
+/missions/validate and shows what comes back. This is the one authority — it
+runs as the plan is edited, when it is saved, at the Check step from the
+drone's own position, and again before anything arms.
+
+WHAT IS FLOWN IS WHAT IS CHECKED: the points up to the end point (if one is
+set) and the legs between them. Points after the end point are kept in the
+plan but not flown, so they are not held to the flying rules.
 """
 
 from __future__ import annotations
@@ -43,7 +48,7 @@ class Problem:
     code: str
     message: str
     severity: Severity = Severity.ERROR
-    #: The inspection point, "home", or a leg ("P1 → P2") it concerns; None for
+    #: The inspection point, "home" (the start), or a leg ("P1 → P2") it concerns; None for
     #: the mission or the room as a whole.
     where: str | None = None
 
@@ -111,6 +116,12 @@ def validate_mission(mission: Mission, room: Room, *, outer: Geofence) -> list[P
     if not mission.points:
         problems.append(Problem("no_points", "Add at least one inspection point."))
 
+    if mission.end_point_id is not None and mission.end_point_id not in mission.point_ids:
+        problems.append(Problem(
+            "end_point", f"The end point {mission.end_point_id} is not one of this "
+            f"mission's points. Choose another end point, or clear it.",
+            where=mission.end_point_id))
+
     duplicates = [pid for pid, n in Counter(mission.point_ids).items() if n > 1]
     for pid in duplicates:
         problems.append(Problem("duplicate_point_id",
@@ -126,9 +137,9 @@ def validate_mission(mission: Mission, room: Room, *, outer: Geofence) -> list[P
     # Home and every point: inside, clear of the fence edge, clear of obstacles.
     stops: list[tuple[str, tuple[float, float], float | None, float | None]] = [
         ("home", mission.home, None, None)]
-    stops += [(p.id, p.xy, p.z_m, p.hold_s) for p in mission.points]
+    stops += [(p.id, p.xy, p.z_m, p.hold_s) for p in mission.flown_points]
     for where, (x, y), z, hold in stops:
-        label = "Home" if where == "home" else f"Point {where}"
+        label = "The start" if where == "home" else f"Point {where}"
         if not fence.contains(x, y):
             problems.append(Problem("outside_fence", f"{label} at ({x:+.2f}, {y:+.2f}) m is "
                                                      f"outside the geofence.", where=where))

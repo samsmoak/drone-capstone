@@ -48,9 +48,9 @@ from cropwatcher.flight.checks import CheckResult, ChecksFailed, ReadyReport, co
 from cropwatcher.flight.control import GuardedFlight, PhaseEvent
 from cropwatcher.flight.core import DEFAULT_URI
 from cropwatcher.flight.link import DEFAULT_FENCE_M, DEFAULT_MAX_HEIGHT_M, DroneLink, LinkError
-from cropwatcher.flight.manual import CLIMB_RATE_M_S, LEASH_M, MOVE_SPEED_M_S
+from cropwatcher.flight.manual import CLIMB_RATE_M_S, MOVE_SPEED_M_S
 from cropwatcher.flight.programs import HoverTest, Outcome, run_hover_test
-from cropwatcher.history import SessionLog, SessionMeta, sessions_dir
+from cropwatcher.history import SessionLog, SessionMeta, sessions_dir, set_flight_processing
 from cropwatcher.mission.controller import (
     TERMINAL_STATES,
     MissionController,
@@ -62,6 +62,7 @@ from cropwatcher.mission.plan.mission import Mission
 from cropwatcher.mission.plan.store import NotFound, PlanStore
 from cropwatcher.mission.plan.validate import errors, outer_bound, validate_mission
 from cropwatcher.paths import flights_dir
+from cropwatcher.processing import Job, ProcessingQueue
 from cropwatcher.safety.flight_guard import Action as GuardAction
 from cropwatcher.safety.flight_guard import Reason as GuardReason
 from cropwatcher.sync import auth_store
@@ -87,13 +88,6 @@ STANDBY_SOON_S = 2.0
 #: (measured 2026-09-24: power-cycle at 1.0 s, link back at 4.6 s). Looking
 #: sooner starts a connect that blocks for its full timeout.
 RESTART_SETTLE_S = 4.0
-#: How far the drone may sit from a mission's home mark and still start it:
-#: the manual flight system's leash. Further than that, the first thing the
-#: flight did would be a lurch towards home — and home is where every leg out
-#: was checked from.
-HOME_TOLERANCE_M = LEASH_M
-
-
 def _power_cycle(uri: str) -> None:
     """Restart the drone's electronics through its radio chip (cflib)."""
     from cflib.utils.power_switch import PowerSwitch
@@ -181,6 +175,13 @@ class Snapshot:
     #: name, revision, the mission controller's state, the point being held,
     #: the points completed, and the last event. None when no mission has run.
     mission: dict[str, Any] | None = None
+    #: The DPP switch and the flights being processed (processing.py). `on` is
+    #: what the next flight will get; `chosen` is False while it is still the
+    #: mode's default (on in Auto, off in Manual); `jobs` newest first;
+    #: `last_flight_id` the session's most recent flight to land, so a flight
+    #: flown with DPP off can still be processed from the page.
+    processing: dict[str, Any] = field(default_factory=lambda: {
+        "on": False, "chosen": False, "jobs": [], "last_flight_id": None})
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -193,6 +194,7 @@ class Snapshot:
             "radio": self.radio,
             "retry_required": self.retry_required,
             "mission": self.mission,
+            "processing": self.processing,
         }
 
 
@@ -215,8 +217,19 @@ class Session:
         power_cycle: Callable[[str], None] = _power_cycle,
         plans: PlanStore | None = None,
         mission_controller: Callable[..., Any] = MissionController,
+        processing: ProcessingQueue | None = None,
     ) -> None:
         self._cloud = cloud
+        #: Flights waiting for the data pipeline, run in a process of their own.
+        self.processing = processing or ProcessingQueue()
+        #: The operator's DPP choice for this session, or None for the mode's
+        #: default. Reset when a session ends: the choice is per session.
+        self._processing_choice: bool | None = None
+        #: Whether the flight recording now is to be processed when it ends —
+        #: read as it began, so a switch flipped mid-flight is for the next one.
+        self._flight_process = False
+        #: The session's most recent flight to land (Snapshot.processing).
+        self._last_flight_id: str | None = None
         #: Rooms and missions on this laptop (mission/plan/store.py).
         self.plans = plans or PlanStore()
         #: Builds the mission controller for a flight. A parameter so tests can
@@ -423,11 +436,63 @@ class Session:
         if previous is mode:
             return
         self._set(mode=mode)
+        self._refresh_processing()
         if self.history is not None:
             self.history.set_mode(str(mode))
         if self.audit is not None:
             self.audit.record(Action.MODE_CHANGED, detail={"from": str(previous), "to": str(mode)},
                               session_id=self._snapshot.session_id)
+
+    # ── the data pipeline (the DPP switch) ───────────────────────────────
+
+    def processing_on(self) -> bool:
+        """Whether the next flight is processed: the operator's choice for this
+        session, else the mode's default — on in Auto, off in Manual."""
+        if self._processing_choice is not None:
+            return self._processing_choice
+        return self._snapshot.mode is Mode.AUTO
+
+    def _refresh_processing(self) -> None:
+        self._set(processing={"on": self.processing_on(),
+                              "chosen": self._processing_choice is not None,
+                              "jobs": self.processing.jobs(),
+                              "last_flight_id": self._last_flight_id})
+
+    def set_processing(self, on: bool) -> None:
+        """Turn the DPP on or off for this session. Takes effect from the next
+        flight to begin; a flight in the air keeps what it began with."""
+        _, audit = self._require_operator()
+        self._processing_choice = bool(on)
+        self._refresh_processing()
+        audit.record(Action.PROCESSING_SET, session_id=self._snapshot.session_id,
+                     detail={"on": bool(on), "mode": str(self._snapshot.mode)})
+
+    def process_flight(self, flight_id: str) -> dict[str, Any]:
+        """Process one recorded flight now, whatever the switch said when it
+        flew — "Process this flight" on a flight recorded with DPP off."""
+        _, audit = self._require_operator()
+        if self._flight_id == flight_id:
+            raise SessionError("That flight is still recording. Process it once it lands.")
+        try:
+            job = self.processing.submit(flight_id, on_change=self._processing_changed)
+        except (ValueError, RuntimeError) as e:
+            raise SessionError(str(e)) from None
+        audit.record(Action.PROCESSING_RUN, session_id=self._snapshot.session_id,
+                     flight_id=flight_id)
+        return job.to_dict()
+
+    def _processing_changed(self, job: Job) -> None:
+        """A job moved: the flight's line in its session history, the app."""
+        history = self.history
+        try:
+            if history is not None and history.has_flight(job.flight_id):
+                history.flight_processing(job.flight_id, job.state, job.error)
+            else:
+                set_flight_processing(job.flight_id, job.state, job.error)
+        except OSError:
+            log.exception("could not record the processing state of %s", job.flight_id)
+        self._refresh_processing()
+        self._emit("processing", job.to_dict())
 
     # ── worker ───────────────────────────────────────────────────────────
 
@@ -827,13 +892,38 @@ class Session:
         coverage is measured (mission/plan/validate.py outer_bound)."""
         return self._fence
 
+    def mission_from_drone(self, mission_id: str) -> tuple[Mission, Room,
+                                                           tuple[float, float] | None]:
+        """A saved mission as it would fly from where the drone is right now —
+        what the Check step shows before Start. Returns the mission (from the
+        drone's position when one is reported, else as saved), its room, and
+        the position used. The same from_start run_mission applies, so the
+        page shows exactly what Start will be checked against."""
+        try:
+            mission = self.plans.mission(mission_id)
+            room = self.plans.room(mission.room_id)
+        except NotFound as e:
+            raise SessionError(str(e)) from None
+        except PlanError as e:
+            raise SessionError(f"The mission could not be read: {e}") from None
+        here = self.position()
+        if here is None:
+            return mission, room, None
+        return mission.from_start((here[0], here[1])), room, (here[0], here[1])
+
     def run_mission(self, mission_id: str, ambient: str = "22C") -> None:
         """Fly a saved mission.
 
         Every refusal happens HERE, before anything arms: the checks and the
         confirmed area, Auto, a position estimate, a mission that validates in
-        its room, a battery that covers it, the drone on its home mark, and a
-        mission controller that is built. Only then are the props started.
+        its room — and again FROM WHERE THE DRONE IS (Mission.from_start: the
+        drone's position is the start, the points stay put, points after an
+        end point are dropped) — a battery that covers that path, and a mission
+        controller that is built. Only then are the props started.
+
+        What is armed and handed to the mission controller is that from-start
+        mission, so the controller, the plan kept with the flight and the
+        pipeline all see exactly what was flown.
 
         The mission is flown by the mission controller through the manual
         flight system — the same 50 Hz loop, leash, guards and dead-man as
@@ -862,24 +952,30 @@ class Session:
             more = f" ({len(problems) - 1} more in the plan.)" if len(problems) > 1 else ""
             raise SessionError(f"This mission is not safe to fly: {problems[0].message}{more}")
 
+        here = self.position()
+        if here is None:
+            raise SessionError("The drone's position is not being reported, so the mission "
+                               "cannot be checked from where the drone is.")
+        # THE FLIGHT STARTS FROM THE DRONE. The planned start is where the plan
+        # was drawn from; the drone may have been set down anywhere since. The
+        # points never move (they mark equipment) — the legs out of and back to
+        # the drone's real spot are checked again, and the battery against them.
+        mission = mission.from_start((here[0], here[1]))
+        problems = errors(validate_mission(
+            mission, room, outer=outer_bound(room, default_half_extent_m=self._fence)))
+        if problems:
+            more = f" ({len(problems) - 1} more.)" if len(problems) > 1 else ""
+            raise SessionError(f"From where the drone is now, this mission is not safe to "
+                               f"fly: {problems[0].message}{more} Move the drone, or the "
+                               f"plan.")
+
         needed = mission.estimated_duration_s(move_speed_m_s=MOVE_SPEED_M_S,
                                               climb_rate_m_s=CLIMB_RATE_M_S)
         if needed > report.budget_s():
             raise SessionError(
                 f"This battery has about {report.budget_s():.0f} s of flying left, and the "
-                f"mission needs about {needed:.0f} s. Charge the battery or shorten the "
-                f"mission.")
-
-        here = self.position()
-        if here is None:
-            raise SessionError("The drone's position is not being reported, so it cannot be "
-                               "checked against the mission's home mark.")
-        off = ((here[0] - mission.home[0]) ** 2 + (here[1] - mission.home[1]) ** 2) ** 0.5
-        if off > HOME_TOLERANCE_M:
-            raise SessionError(
-                f"The drone is {off:.2f} m from this mission's home mark at "
-                f"({mission.home[0]:+.2f}, {mission.home[1]:+.2f}) m. Place it within "
-                f"{HOME_TOLERANCE_M:.2f} m of home — every leg was checked from there.")
+                f"mission, from where the drone is, needs about {needed:.0f} s. Charge the "
+                f"battery or shorten the mission.")
 
         if not getattr(self._mission_controller, "BUILT", False):
             raise SessionError(
@@ -1266,6 +1362,9 @@ class Session:
                   retry_required=False,
                   radio=self._radio_idle(),
                   message="Session ended. Data is uploading in the background.")
+        self._processing_choice = None
+        self._last_flight_id = None
+        self._refresh_processing()
 
     def position(self) -> tuple[float, float, float] | None:
         """The drone's position estimate now, or None — for tagging frames."""
@@ -1472,8 +1571,10 @@ class Session:
             "csv_path": str(csv_sink.path), "csv_object": f"{flight_id}.csv.gz",
             "rows_written": None, "csv_uploaded": False,
         })
+        self._flight_process = self.processing_on()
         if self.history is not None:
-            self.history.flight_started(flight_id, str(mode), program)
+            self.history.flight_started(flight_id, str(mode), program,
+                                        processing=self._flight_process)
         self._set(flight={"id": flight_id, "phase": "starting", "detail": ""})
         return flight_id
 
@@ -1497,6 +1598,16 @@ class Session:
         }))
         if self._syncer is not None:
             self._syncer.trigger()
+        self._last_flight_id = flight_id
+        self._refresh_processing()
+        # After the CSV is closed and the flight recorded — never before: the
+        # pipeline reads the file this just finished writing.
+        if self._flight_process:
+            self._flight_process = False
+            try:
+                self.processing.submit(flight_id, on_change=self._processing_changed)
+            except (ValueError, RuntimeError):
+                log.exception("flight %s could not be queued for processing", flight_id)
 
     # ── helpers ──────────────────────────────────────────────────────────
 

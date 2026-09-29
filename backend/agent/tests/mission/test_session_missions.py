@@ -15,6 +15,7 @@ from types import MappingProxyType, SimpleNamespace
 import pytest
 
 from cropwatcher.mission.controller import EventKind, MissionEvent, MissionState
+from cropwatcher.mission.plan.mission import InspectionPoint
 from cropwatcher.mission.plan.store import PlanStore
 from cropwatcher.session import Mode, Session, SessionError, State
 from cropwatcher.sync.cloud import Operator
@@ -120,14 +121,29 @@ class TestRefusedBeforeAnythingArms:
         self.assert_nothing_armed(rig)
 
     def test_an_unsafe_mission(self, rig):
-        rig.plans.save_mission(mission(id="bad", points=()))
+        # Saved (a plan with a problem can be saved), but P1 sits on the table.
+        rig.plans.save_mission(mission(id="bad", points=(InspectionPoint("P1", 0.0, 0.0, 0.4),)))
         with pytest.raises(SessionError, match="not safe to fly"):
             rig.session.run_mission("bad")
         self.assert_nothing_armed(rig)
 
-    def test_off_the_home_mark(self, tmp_path, monkeypatch):
+    def test_a_path_that_is_unsafe_from_where_the_drone_is(self, tmp_path, monkeypatch):
+        # (0.8, -1.0): the leg from there to P1 (-1.0, 0.9) crosses the table.
         rig = make_rig(tmp_path, monkeypatch, at=(0.8, -1.0))
-        with pytest.raises(SessionError, match=r"1\.80 m from this mission's home"):
+        with pytest.raises(SessionError, match=r"From where the drone is now.*crosses "
+                                               r"obstacle Table"):
+            rig.session.run_mission("m1")
+        self.assert_nothing_armed(rig)
+
+    def test_a_drone_outside_the_fence(self, tmp_path, monkeypatch):
+        rig = make_rig(tmp_path, monkeypatch, at=(1.8, 0.0))
+        with pytest.raises(SessionError, match="The start .* is outside the geofence"):
+            rig.session.run_mission("m1")
+        self.assert_nothing_armed(rig)
+
+    def test_a_drone_hugging_an_obstacle(self, tmp_path, monkeypatch):
+        rig = make_rig(tmp_path, monkeypatch, at=(-0.4, -0.4))
+        with pytest.raises(SessionError, match="from obstacle Table"):
             rig.session.run_mission("m1")
         self.assert_nothing_armed(rig)
 
@@ -149,6 +165,41 @@ class TestRefusedBeforeAnythingArms:
             rig.session.run_mission("m1")
         self.assert_nothing_armed(rig)
         assert STARTED == []
+
+
+class TestStartsFromTheDrone:
+    """The drone's position is the start: set down anywhere safe, it flies
+    from there — the points never move with it."""
+
+    def fly(self, rig, mission_id="m1"):
+        rig.session.run_mission(mission_id, ambient="22C")
+        assert wait_for(lambda: STARTED and STARTED[0].state is MissionState.HOLDING)
+        return STARTED[0]
+
+    def test_off_the_planned_start_it_flies_from_where_it_is(self, tmp_path, monkeypatch):
+        rig = make_rig(tmp_path, monkeypatch, at=(-1.0, -0.4))   # 0.60 m off: once refused
+        flying = self.fly(rig)
+        assert flying.plan.home == (-1.0, -0.4)
+        assert [p.xy for p in flying.plan.points] == [(-1.0, 0.9), (0.9, 0.9), (0.9, -1.0)]
+
+    def test_the_plan_kept_with_the_flight_has_the_real_start(self, tmp_path, monkeypatch):
+        rig = make_rig(tmp_path, monkeypatch, at=(-1.0, -0.4))
+        self.fly(rig)
+        flight_id = rig.session.snapshot().flight["id"]
+        kept = rig.session.history.folder / "missions" / f"{flight_id}.json"
+        assert json.loads(kept.read_text())["mission"]["home"] == [-1.0, -0.4]
+
+    def test_an_end_point_trims_what_is_flown_and_lands_there(self, rig):
+        rig.plans.save_mission(mission(id="short", end_point_id="P2"))
+        flying = self.fly(rig, "short")
+        assert flying.plan.point_ids == ("P1", "P2")
+        assert flying.plan.returns_home is False and flying.plan.end_point_id is None
+        assert rig.session.snapshot().mission["points"] == ["P1", "P2"]
+
+    def test_the_check_step_sees_what_start_will_check(self, tmp_path, monkeypatch):
+        rig = make_rig(tmp_path, monkeypatch, at=(0.8, -1.0))
+        planned, _, here = rig.session.mission_from_drone("m1")
+        assert here == (0.8, -1.0) and planned.home == (0.8, -1.0)
 
 
 class TestFlying:
