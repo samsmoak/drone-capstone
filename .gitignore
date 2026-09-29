@@ -43,7 +43,7 @@ desktop/src-tauri/bin/
 organized_flights/
 mission_paths/
 *.csv
-!tests/**/*.csv
+!**/tests/**/*.csv
 
 # ── OS ────────────────────────────────────────────────────
 .DS_Store
