@@ -1,7 +1,8 @@
 ================================================================================
 CONTROL IN AUTO — plan a mission, check the drone, fly it
-Last verified: 2026-09-29 (third pass: object cards, nothing selected, the
-map/form divider, the dollhouse walls) against claude/awesome-carson-eqkt8w —
+Last verified: 2026-09-29 (fourth pass: the list is home — Close, ← All
+missions, Edit on every row, Save back to the list; no page jump when a point
+is added) against claude/awesome-carson-eqkt8w —
 pnpm build, the divider dragged and the selection driven in headless
 Chromium, and
 the harness measured at 720/900/1024/1280/1600 in both themes and both map
@@ -16,7 +17,8 @@ STATUS  (Last verified: 2026-09-29)
   layout     BUILT — the flow left, the monitor right (side by side from
              1280 px, stacked below), its own divider; FULL SCREEN for the flow
   room map   BUILT — 2D and 3D (RoomMap), one switch, one selection
-  ① Mission  BUILT — list, view, edit (room and path), save, delete, use; end
+  ① Mission  BUILT — list (home: Edit on every row, New mission), view, edit
+             (room and path), Close, save back to the list, delete, use; end
              point, reverse direction, start at the drone
   ② Check    BUILT — the session flow, Manual's own panels, the DPP switch, and
              the mission checked FROM WHERE THE DRONE IS
@@ -104,10 +106,22 @@ desktop/src/lib/agent.ts                           the calls and types
   (a React root per label, which React 19 warned about unmounting mid-render).
   Rendered on demand, never 60 fps beside the flight loop. No WebGL → 2-D with
   the reason said.
+• THE LIST IS HOME (2026-09-29, the owner's ask). ① opens on the saved
+  missions with New mission above them and Edit on every row; Edit opens the
+  same editor a new mission uses. The editor is closed with Close or
+  "← All missions" (both ask "Leave without saving?" when there are unsaved
+  changes). Save returns to the list — not to the mission's view — with
+  "Saved “name” (revision n)" and the saved row framed in --status-good, so the
+  next thing (edit it again, plan another, pick one to fly) is one click. The
+  message clears when the list is left.
 • SELECTING ONE THING FADES THE REST — the room (its geofence) or one obstacle
   — whether it was clicked on the map (either view) or its card was clicked in
   the form. Its numbers appear UNDER the map (never over it: the panel covered
-  the 3-D view's lower half until 2026-09-29) and its card scrolls into view.
+  the 3-D view's lower half until 2026-09-29). Its card is highlighted but is
+  NOT scrolled into view: scrollIntoView scrolls every scrolling ancestor, and
+  adding a point by clicking the map (the new point is selected as it is
+  made) jumped the page away from the map to the Path list (the owner,
+  2026-09-29). The numbers under the map make the scroll unnecessary.
   Points and the start select too, and fade nothing.
 • NOTHING SELECTED IS A STATE (2026-09-29, the owner's ask): a click on empty
   floor (2-D or 3-D) or anywhere in the form outside a card selects nothing —
@@ -199,6 +213,9 @@ desktop/src/lib/agent.ts                           the calls and types
 • The 3-D view's frame and every column around it are min-w-0 (and the frame
   overflow-hidden): a <canvas> is as wide as its pixels, and dragged narrower
   by the divider the view stayed full width and slid under the form.
+• Nothing selected from the map may scroll the page: no scrollIntoView (or
+  focus() on an off-screen element) in answer to a map click — the operator
+  is looking at the map. It moved the page on every point added (2026-09-29).
 • A SplitPane row must let its panes STRETCH: `items-start` collapsed the
   divider itself to 0 px tall, and nothing could grab it (2026-09-29).
 • A <select> in the editor must be w-full min-w-0: a select is as wide as its
@@ -209,7 +226,9 @@ desktop/src/lib/agent.ts                           the calls and types
 • Measure with the harness before and after any change here: sections
   "Auto · ① Mission list", "① Mission editor", "② Check", "③ Fly, flying",
   "③ Fly, landed", "full screen editor" (?only=auto, ?map=2d|3d); the harness
-  serves sample plans, a from-drone answer and a result when no agent is given.
+  serves sample plans, a from-drone answer and a result when no agent is given,
+  and keeps what is saved for the page's life (Save → the list can be driven:
+  its Control page actions really run, against that fake).
 
 --------------------------------------------------------------------------------
 5. RELATED

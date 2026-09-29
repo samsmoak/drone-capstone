@@ -132,6 +132,9 @@ export function MissionEditor({ draft, limits, run, drone, missionsInRoom, onSav
   const [leaving, setLeaving] = useState(false);
 
   const dirty = room !== draft.room || mission !== draft.mission;
+  /** Close / ← All missions: straight back to the list, or ask first when
+   *  there are unsaved changes. */
+  const leave = () => (dirty ? setLeaving(true) : onCancel());
   const layout = useRef<HTMLDivElement>(null);
   const width = useWidth(layout);
   const sideBySide = width >= SPLIT_AT_PX;
@@ -322,7 +325,10 @@ export function MissionEditor({ draft, limits, run, drone, missionsInRoom, onSav
     <div className="grid gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="eyebrow">{draft.missionIsNew ? "New mission" : `Editing · revision ${mission.revision}`}</p>
+          {/* Back to the saved missions, and New mission — the same guarded
+              leave as Close: unsaved changes are asked about first. */}
+          <SmallButton onClick={leave} title="Back to the list of saved missions">← All missions</SmallButton>
+          <p className="eyebrow pt-2">{draft.missionIsNew ? "New mission" : `Editing · revision ${mission.revision}`}</p>
           <h2 className="wrap-anywhere text-lg font-bold text-[var(--heading)]">{mission.name || "Untitled"}</h2>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -333,7 +339,9 @@ export function MissionEditor({ draft, limits, run, drone, missionsInRoom, onSav
               <SmallButton onClick={() => setLeaving(false)}>Keep editing</SmallButton>
             </>
           ) : (
-            <SmallButton onClick={() => (dirty ? setLeaving(true) : onCancel())}>Cancel</SmallButton>
+            <SmallButton onClick={leave} title="Close the editor and go back to the saved missions">
+              Close
+            </SmallButton>
           )}
           <Button variant="primary" onClick={() => void save()} disabled={saving || !complete}
                   title={complete ? undefined : "Set up the room and the path first — see the list below."}>

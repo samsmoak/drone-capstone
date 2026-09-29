@@ -14,6 +14,7 @@ import { createRoot } from "react-dom/client";
 import { HomePage } from "@/pages/home/HomePage";
 import { ControlPage } from "@/pages/control/ControlPage";
 import type { FlowStart } from "@/pages/control/auto/MissionFlow";
+import type { Run } from "@/App";
 import { SensorWindow, WINDOWS } from "@/pages/windows/SensorWindow";
 import { WindowLog } from "@/pages/sessions/WindowLog";
 import { SessionsPage } from "@/pages/sessions/SessionsPage";
@@ -88,6 +89,14 @@ const history: History = Array.from({ length: 120 }, (_, i) => ({
 }));
 
 const noop = async () => {};
+/**
+ * The Control page's actions really run, against the fake fetch below — so
+ * Save in the mission editor saves and goes back to the list. Anything the
+ * fake does not answer fails quietly, as a refused command would.
+ */
+const runHere: Run = async (action, label) => {
+  try { await action(); } catch (e) { console.warn(`harness: ${label ?? "action"} failed`, e); }
+};
 
 /**
  * `?agent=<token>` measures the session views against the agent already running
@@ -171,12 +180,30 @@ const sampleMissions: MissionView[] = [
 if (!agentToken) {
   const realFetch = window.fetch.bind(window);
   const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
+  // Saving is kept for the page's life, so Save → the list can be checked:
+  // the saved mission comes back with its revision bumped, as the agent does.
+  const rooms: RoomView[] = [sampleRoom];
+  const missions: MissionView[] = [...sampleMissions];
+  const upsert = <T extends { id: string }>(list: T[], item: T) => {
+    const at = list.findIndex((x) => x.id === item.id);
+    if (at < 0) list.push(item); else list[at] = item;
+    return item;
+  };
   window.fetch = async (input, init) => {
     const path = new URL(String(input), location.href).pathname;
+    const post = init?.method === "POST";
+    const body = post && typeof init?.body === "string" ? JSON.parse(init.body) : null;
     if (path === "/plan/limits") return json(sampleLimits);
-    if (path === "/rooms") return json([sampleRoom]);
-    if (path.startsWith("/rooms/")) return json(sampleRoom);
-    if (path === "/missions") return json(sampleMissions);
+    if (path === "/rooms" && body) return json(upsert(rooms, { ...sampleRoom, ...body }));
+    if (path === "/rooms") return json(rooms);
+    if (path.startsWith("/rooms/")) return json(rooms.find((r) => path.endsWith(r.id)) ?? sampleRoom);
+    if (path === "/missions" && body) {
+      const before = missions.find((m) => m.id === body.id);
+      return json(upsert(missions, { ...sampleMission, problems: [], valid: true, ...body,
+        revision: (before?.revision ?? 0) + 1, flown_revision: before?.flown_revision ?? null,
+        updated_at: new Date().toISOString() }));
+    }
+    if (path === "/missions") return json(missions);
     if (path === "/missions/validate") return json(sampleMission);
     if (path.endsWith("/from-drone")) {
       return json({ position: [values["stateEstimate.x"], values["stateEstimate.y"]],
@@ -194,7 +221,7 @@ if (!agentToken) {
         },
       });
     }
-    if (path.startsWith("/missions/")) return json(sampleMissions.find((m) => path.endsWith(m.id)) ?? sampleMission);
+    if (path.startsWith("/missions/")) return json(missions.find((m) => path.endsWith(m.id)) ?? sampleMission);
     return realFetch(input, init);
   };
 }
@@ -278,7 +305,7 @@ const control = (label: string, override: Partial<Session>, autoStart?: FlowStar
       history={history}
       intent={{ ...EMPTY_INTENT, up: true, yaw_left: true }}
       flying={false}
-      run={noop}
+      run={runHere}
       logLines={logLines}
       onClearLog={() => {}}
       onOpenSessions={() => {}}

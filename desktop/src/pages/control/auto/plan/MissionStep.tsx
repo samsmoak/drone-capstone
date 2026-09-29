@@ -2,9 +2,17 @@
  * Step ① of the Auto flow: choose the mission to fly.
  *
  *   list     every mission saved on this laptop — ready to fly, or what to fix
+ *            — with New mission, and Edit on every row
  *   view     one mission: its plan drawn, its points, the agent's check;
  *            Edit, Delete, or Use this mission
- *   edit     the room and the path (MissionEditor)
+ *   edit     the room and the path (MissionEditor) — a new mission and a saved
+ *            one open the same editor
+ *
+ * THE LIST IS HOME (2026-09-29, the owner's ask). Leaving the editor — "← All
+ * missions", Close, or Save — always comes back to the list, never to one
+ * mission's page: Save lands on the list with "Saved …" and the mission
+ * highlighted, so the next thing (New mission, Edit another) is one click.
+ * Leaving with unsaved changes asks first, in the editor.
  *
  * "Use this mission" is what completes the step; the flow then moves to ②.
  * Every list has its four states: loading, empty, an error with a retry, and
@@ -47,6 +55,8 @@ export function MissionStep({ run, telemetry, selectedId, onUse, openEditor, hei
   const [view, setView] = useState<View>({ kind: "list" });
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** The mission just saved: said on the list, and its row highlighted. */
+  const [justSaved, setJustSaved] = useState<{ id: string; name: string; revision: number } | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -91,11 +101,22 @@ export function MissionStep({ run, telemetry, selectedId, onUse, openEditor, hei
     return (
       <MissionEditor
         draft={view.draft} limits={limits} run={run} drone={drone} missionsInRoom={others} heightClass={heightClass}
-        onCancel={() => setView(view.draft.missionIsNew ? { kind: "list" } : { kind: "view", id: view.draft.mission.id })}
-        onSaved={(saved) => { void load(); setView({ kind: "view", id: saved.id }); }}
+        onCancel={() => { setJustSaved(null); setView({ kind: "list" }); }}
+        onSaved={(saved) => {
+          void load();
+          setJustSaved({ id: saved.id, name: saved.name, revision: saved.revision });
+          setView({ kind: "list" });
+        }}
       />
     );
   }
+
+  const edit = (mission: MissionView) => {
+    const room = roomOf(mission.room_id);
+    if (!room) return;
+    setJustSaved(null);
+    setView({ kind: "edit", draft: { room, mission, roomIsNew: false, missionIsNew: false } });
+  };
 
   if (view.kind === "view") {
     const mission = missions.find((m) => m.id === view.id);
@@ -123,9 +144,11 @@ export function MissionStep({ run, telemetry, selectedId, onUse, openEditor, hei
 
   return (
     <MissionList
-      missions={missions} rooms={rooms} limits={limits} selectedId={selectedId}
-      onView={(id) => setView({ kind: "view", id })}
+      missions={missions} rooms={rooms} limits={limits} selectedId={selectedId} justSaved={justSaved}
+      onView={(id) => { setJustSaved(null); setView({ kind: "view", id }); }}
+      onEdit={edit}
       onNew={(room) => {
+        setJustSaved(null);
         const fresh = room ?? blankRoom(limits);
         setView({ kind: "edit", draft: {
           room: fresh, mission: blankMission(fresh, limits, drone), roomIsNew: room === null, missionIsNew: true,
@@ -135,14 +158,17 @@ export function MissionStep({ run, telemetry, selectedId, onUse, openEditor, hei
   );
 }
 
-function MissionList({ missions, rooms, limits, selectedId, onView, onNew }: {
+function MissionList({ missions, rooms, limits, selectedId, justSaved, onView, onEdit, onNew }: {
   missions: MissionView[];
   rooms: RoomView[];
   limits: PlanLimits;
   selectedId: string | null;
+  justSaved: { id: string; name: string; revision: number } | null;
   onView: (id: string) => void;
+  onEdit: (mission: MissionView) => void;
   onNew: (room: RoomView | null) => void;
 }) {
+  const hasRoom = (id: string) => rooms.some((r) => r.id === id);
   const [roomChoice, setRoomChoice] = useState<string>(rooms[0]?.id ?? "");
   const roomName = (id: string) => rooms.find((r) => r.id === id)?.name ?? "a missing room";
 
@@ -173,19 +199,27 @@ function MissionList({ missions, rooms, limits, selectedId, onView, onNew }: {
         </p>
       </div>
 
+      {justSaved && (
+        <Message tone="good" text={`Saved “${justSaved.name}” (revision ${justSaved.revision}). Edit it again, plan a new one, or pick one to fly.`} />
+      )}
+
       {missions.length === 0 ? (
         <p className="text-sm">No missions yet. Plan the first one above: draw the room, then place the points.</p>
       ) : (
         <ul className="grid gap-2">
           {missions.map((m) => {
             const errors = m.problems.filter((p) => p.severity === "error").length;
+            const saved = justSaved?.id === m.id;
             return (
-              <li key={m.id}>
+              <li key={m.id} className={`flex items-stretch border border-l-4 bg-[var(--surface)] ${
+                saved ? "border-[var(--status-good)]"
+                : selectedId === m.id ? "border-[var(--border)] border-l-[var(--primary)]"
+                : "border-[var(--border)] border-l-[var(--border)]"}`}>
                 <button
                   type="button"
                   onClick={() => onView(m.id)}
-                  className={`grid w-full gap-1 border border-l-4 bg-[var(--surface)] px-3 py-2 text-left hover:bg-[var(--surface-2)] ${
-                    selectedId === m.id ? "border-l-[var(--primary)]" : "border-l-[var(--border)]"} border-[var(--border)]`}
+                  title="Open this mission: its plan, Use it, or Delete it"
+                  className="grid min-w-0 flex-1 gap-1 px-3 py-2 text-left hover:bg-[var(--surface-2)]"
                 >
                   <span className="flex flex-wrap items-baseline justify-between gap-2">
                     <span className="wrap-anywhere text-sm font-semibold">{m.name}</span>
@@ -199,8 +233,17 @@ function MissionList({ missions, rooms, limits, selectedId, onView, onNew }: {
                     {roomName(m.room_id)} · {m.points.length} point{m.points.length === 1 ? "" : "s"} · about {formatDuration(m.estimated_duration_s)} · revision {m.revision}
                     {m.flown_revision !== null ? ` · flown r${m.flown_revision}` : " · not flown"}
                     {selectedId === m.id ? " · selected" : ""}
+                    {saved ? " · just saved" : ""}
                   </span>
                 </button>
+                {/* Edit straight from the list — the same editor a new
+                    mission opens in; saving brings you back here. */}
+                <div className="flex shrink-0 items-center border-l border-[var(--border)] px-2">
+                  <SmallButton onClick={() => onEdit(m)} disabled={!hasRoom(m.room_id)}
+                               title={hasRoom(m.room_id) ? `Edit ${m.name}` : "Its room is missing, so there is nothing to draw it in."}>
+                    Edit
+                  </SmallButton>
+                </div>
               </li>
             );
           })}
