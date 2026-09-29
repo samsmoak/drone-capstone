@@ -1,7 +1,7 @@
 MISSIONS AND THE DATA PIPELINE — the 100 stages
 ===============================================
 
-STATUS (2026-09-28, commit on feat/missions-and-pipeline, pushed; NOT merged):
+STATUS (2026-09-29, merged into main as PR #72):
 
   DONE      stages 1–4, 7–98 — everything the agent and desktop can do without
             a drone or the team. Gates: ruff, mypy (74 files), pytest 787
@@ -12,8 +12,11 @@ STATUS (2026-09-28, commit on feat/missions-and-pipeline, pushed; NOT merged):
             PUT/DELETE — the window's CORS allows GET and POST only.
             stage 91: the editor asks the agent (POST /missions/validate)
             instead of keeping its own copy of the rules (no shapes.ts rules).
-  NEXT      stage 99: open the pull request and merge (CLAUDE.md "Git":
-            `gh pr merge <n> --squash --admin`).
+  DONE      stage 99: PR #72, squash-merged 2026-09-29 (main merged in first;
+            the RELATED conflicts with #71 kept both sides). Gates on its
+            head: ruff, mypy (74 files), pytest 785 passed + 1 failing only as
+            root (test_a_disk_that_refuses_a_frame_…: root ignores chmod
+            0o500); desktop build. The fixture CSVs landed in e4ed374.
   OWED BY THE OWNER  stage 5 (geometry + ladder), stage 6 (coverage survey),
             stage 100: `cd backend && supabase db push` for migration
             20260928000012 — before any mission flies; and find the

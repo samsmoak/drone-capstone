@@ -3,7 +3,7 @@ GRAPH STATE — WHAT IS OUT OF SYNC, AND WHAT THAT STOPS
 Read this BEFORE starting a feature. It is the one file that says whether the
 docs can be trusted for the area you are about to work in.
 Generated from `python3 graph_check.py` plus what passes noticed by hand.
-Last run: 2026-09-27 — first run, 31 docs · 77 findings, 0 in a blocking class
+Last run: 2026-09-29 — 36 docs · 61 findings, 0 in a blocking class
 (DANGLING 0 · ONE-WAY 0 · STALE 0; the UNMERGED BRANCH entries are false
 positives, see WATCH).
 ================================================================================
@@ -37,11 +37,13 @@ None recorded.
 --------------------------------------------------------------------------------
 WARN  (1)
 --------------------------------------------------------------------------------
-2026-09-27  No doc declares a typed edge (ORPHAN 30). Every doc has a prose
-            RELATED section, but none in the `depends-on <doc>` form the
-            checker reads — so "ONE-WAY 0" means nothing was checkable, NOT
-            that the edges are two-way. Walk neighbours by reading RELATED
-            sections by hand until they are converted.
+2026-09-29  15 docs declare no typed edge (ORPHAN 15, was 30): architecture,
+            architecture-at-a-glance, audit-trail, flight-status,
+            flight-tuning, offline-sync, skills, gallery, operator-dashboard,
+            portfolio, the four supabase/ docs, design/components.txt. Their
+            RELATED sections are prose the checker cannot read, so "ONE-WAY 0"
+            says nothing about them. Walk their neighbours by hand until they
+            are converted. (The 21 others are typed and two-way: #71, #72.)
 
 --------------------------------------------------------------------------------
 DEBT  (4)
@@ -82,3 +84,5 @@ and why it did not apply)
 RESOLVED
 --------------------------------------------------------------------------------
 2026-09-27  Docs tree, checker and this file created by the feature-kit.
+2026-09-29  Indented RELATED edges in ten docs rewritten at column 0 (#71), so
+            the checker reads them; ORPHAN 30 -> 20, then 15 with #72.
