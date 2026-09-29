@@ -134,8 +134,22 @@ ROOMS, MISSIONS AND FLYING ONE (2026-09-28)
   GET  /missions, /missions/{id}     with problems, valid, path length, time
   POST /missions, /missions/{id}/delete
   POST /missions/validate            a draft {mission, room?} — the agent's check
-  POST /session/mission              {mission_id, ambient}: fly it; every
-                                     refusal a 409, before anything arms
+  GET  /missions/{id}/from-drone     the mission checked from the drone's own
+                                     position (its start), for ② Check —
+                                     {position | null, mission view}
+  POST /session/mission              {mission_id, ambient}: fly it, from where
+                                     the drone is; every refusal a 409,
+                                     before anything arms
+
+THE DATA PIPELINE (2026-09-29)
+
+  POST /session/processing           {on}: the DPP switch for this session
+  GET  /flights/{id}/result          results/<id>/result.json and its job; a
+                                     404 in words while there is none yet
+  POST /flights/{id}/process         process a recorded flight now
+
+A flight id goes into a path and onto a command line: 1–64 of [A-Za-z0-9_-]
+(processing.FLIGHT_ID), anything else a 404.
 
 Writes are POST, not PUT or DELETE: LocalCORS allows the window GET and POST
 only, and widening that for a verb name is not worth it. A plan that cannot be
@@ -145,6 +159,8 @@ RELATED
 
 consumed-by       ../missions/floor-plans.txt
                   the plan routes; the token and the CORS method list shape them
+consumed-by       ../pipeline/data-pipeline.txt
+                  the processing switch and the result routes
 consumed-by       ../desktop/drone-wifi.txt
                   /camera/wifi carries the drone's network
 consumed-by       ../desktop/desktop-app.txt

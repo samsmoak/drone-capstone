@@ -1,7 +1,8 @@
 ================================================================================
 THE DATA PIPELINE — a recorded flight in, a verdict per inspection point out
-Last verified: 2026-09-28 against feat/missions-and-pipeline — tests/pipeline/
-(27), `cropwatcher process --fixture`, and flight 372bbdc4 from the lab.
+Last verified: 2026-09-29 against claude/awesome-carson-eqkt8w — tests/pipeline/
+(27), tests/test_processing.py (30), `python -m cropwatcher.cli process
+--fixture`, and flight 372bbdc4 from the lab.
 SOURCE: backend/agent/cropwatcher/pipeline/runner.py
 ================================================================================
 
@@ -10,11 +11,15 @@ STATUS  (Last verified: 2026-09-28)
 --------------------------------------------------------------------------------
   skeleton  BUILT — contracts, sources, sinks, runner, compose, the command
   interpret BUILT — labels → verdicts; no threshold until one is measured
+  trigger   BUILT — the DPP switch: a session's flights are processed when they
+            land, in a child process (cropwatcher/processing.py); results on
+            the desktop's Fly step and Manual's Data processing panel
   clean     STUB — Kevin (../../handoffs/dpp-clean.txt)
   enhance   STUB — Kevin (../../handoffs/dpp-enhance.txt)
   classify  STUB — Reagan (../../handoffs/dpp-classify.txt)
-  NOT BUILT the live runner (story 4.9); verdicts on the Fly step; results in
-            Supabase and alerts on the dashboard
+  NOT BUILT the live runner (story 4.9 — verdicts arrive after landing, not
+            per point in the air); results in Supabase and alerts on the
+            dashboard
 
 --------------------------------------------------------------------------------
 1. WHAT IT IS
@@ -39,6 +44,14 @@ backend/agent/cropwatcher/pipeline/compose.py      which implementation per stag
 backend/agent/cropwatcher/pipeline/stages/         clean, enhance, classify
                                                    (stubs), interpret/labels.py
 backend/agent/cropwatcher/cli.py                   `cropwatcher process`
+backend/agent/cropwatcher/processing.py            the queue: one flight at a
+                                                   time, in a child process
+backend/agent/cropwatcher/session.py               processing_on, set_processing,
+                                                   process_flight
+backend/agent/cropwatcher/api/rest.py              POST /session/processing,
+                                                   GET /flights/{id}/result,
+                                                   POST /flights/{id}/process
+desktop/src/pages/control/DataPipeline.tsx         the switch, the results
 backend/agent/tests/pipeline/                      fixture, conformance, tests
 ../../handoffs/dpp-contract.txt                    the contract, for the team
 
@@ -72,6 +85,19 @@ backend/agent/tests/pipeline/                      fixture, conformance, tests
 • The batch runner runs in the command's own process. The live runner must run
   in a process of its own: CPU work beside the 50 Hz flight loop competes for
   Python's one interpreter lock.
+• THE DPP SWITCH (2026-09-29, the owner's ask): processing is chosen PER
+  SESSION — on by default in Auto (a mission's point is its verdicts), off by
+  default in Manual, flippable either way, audited (processing_set). The
+  choice is READ AS A FLIGHT BEGINS and written on its line in meta.json, so a
+  flip mid-flight is for the next flight. Reset when the session ends.
+• THE AGENT STARTS `cropwatcher process --flight <id>` AS A CHILD PROCESS
+  (processing.py), after the flight's CSV is closed (CLAUDE.md invariant 6),
+  one flight at a time, at lower priority, 15 minutes at most. Not in the
+  agent's process — the interpreter lock above, and a stage that hangs must
+  never take the radio with it. The frozen sidecar is the whole CLI with
+  freeze_support() first, so the same command works installed.
+• MANUAL FLIGHTS are processed too: a flight with no mission is one point,
+  "flight" (sources.py) — the verdict is for the flight as a whole.
 
 --------------------------------------------------------------------------------
 4. INVARIANTS
@@ -94,4 +120,11 @@ depends-on        ../backend/telemetry-stream.txt
 depends-on        ../desktop/camera.txt
                   frames.csv and the frames folder of a session
 shares-data-with  ../backend/session-history.txt
-                  sessions/<id>/meta.json names each session's flights
+                  sessions/<id>/meta.json names each session's flights, and
+                  now carries each one's processing state
+depends-on        ../backend/sessions-and-modes.txt
+                  the session decides per flight whether it is processed
+consumed-by       ../desktop/auto-control.txt
+                  the DPP switch and the results on ② and ③
+depends-on        ../backend/agent-api.txt
+                  POST /session/processing, GET /flights/{id}/result

@@ -3,9 +3,11 @@ GRAPH STATE — WHAT IS OUT OF SYNC, AND WHAT THAT STOPS
 Read this BEFORE starting a feature. It is the one file that says whether the
 docs can be trusted for the area you are about to work in.
 Generated from `python3 graph_check.py` plus what passes noticed by hand.
-Last run: 2026-09-29 — 36 docs · 61 findings, 0 in a blocking class
-(DANGLING 0 · ONE-WAY 0 · STALE 0; the UNMERGED BRANCH entries are false
-positives, see WATCH).
+Last run: 2026-09-29 (after the Auto room map, DPP switch and start-from-drone
+work) — 36 docs · 71 findings, 0 in a blocking class (DANGLING 0 · ONE-WAY 0 ·
+STALE 0). 13 UNCOMMITTED clear with that work's commit: every doc they name
+was re-verified in the same pass (flight-safety, manual-control, camera,
+desktop-app and drone-wifi cite changed files but no changed behaviour).
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -50,9 +52,18 @@ DEBT  (4)
 --------------------------------------------------------------------------------
 2026-09-27  NO MARKER (29): the docs predate docs/_templates/feature.txt and
             have no STATUS block. Add one when a doc is next touched.
-2026-09-27  OVERSIZED (3): architecture.txt 363, backend/flight-status.txt 543,
-            desktop/pages-and-windows.txt 457 lines — past the 350 split line.
-            Split into a folder with an index when next edited.
+2026-09-27  OVERSIZED (3): architecture.txt 363, backend/flight-status.txt 545,
+            desktop/pages-and-windows.txt 516 lines (was 457; +59 on
+            2026-09-29 for the narrow-column fixes) — past the 350 split line.
+            Split into a folder with an index when next edited; this pass
+            added to it rather than splitting, to keep the change reviewable.
+2026-09-29  SceneView's `plan` prop and drawPlan() have no caller since the
+            Fly step moved to RoomMap. Left in place so Manual's Scene tab was
+            not touched; delete when SceneView is next edited
+            (pages-and-windows.txt RELATED).
+2026-09-29  `cargo test` (desktop/src-tauri) cannot run in a Claude Code cloud
+            container: the gdk-3.0 system library is missing. Run it on a
+            machine set up by `node scripts/setup.mjs --dev`.
 2026-09-27  PARITY (2): web/app/admin/error.tsx and web/app/(public)/error.tsx
             say `PARITY: app/app/error.tsx`. The source EXISTS
             (web/app/app/error.tsx); the marker is written relative to web/,

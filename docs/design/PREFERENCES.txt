@@ -27,6 +27,15 @@ LOG  (asked twice — watching for a third)
             side menus fold (components/site/Collapsible.tsx), the desktop
             rail folds below 960 px. Asked twice in one request; a third makes
             "phone-first, measured at 390 / 768 / 1024 / 1440" a design rule.
+2026-09-29 · THIRD: "make the right side very responsive too — the tabs are
+            getting squeezed", and "the mission planning part … properly
+            responsive" · Tabs wrap, readouts and the motor test reflow by
+            their own width (@container), Auto splits from 1280 px, the
+            mission flow goes full screen (pages-and-windows.txt,
+            auto-control.txt). Third time: asked the owner (2026-09-29)
+            whether to make "every screen measured at 720 / 900 / 1024 /
+            1280 / 1600 in both themes, layout by container width" STANDING.
+            Awaiting the answer — do not promote it without one.
 
 --------------------------------------------------------------------------------
 STANDING  (made a rule — lives in the doc named)

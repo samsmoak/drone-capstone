@@ -83,21 +83,33 @@ A mission is DATA — a plan, never code. It arrives already validated.
 
   Mission
     id, name, room_id             which room's geofence and obstacles apply
-    home: (x, y)                  where the drone sits before takeoff
-    points: tuple[InspectionPoint, ...]   at least one, IN FLYING ORDER
+    home: (x, y)                  WHERE THE DRONE IS at Start (see below)
+    points: tuple[InspectionPoint, ...]   at least one, IN FLYING ORDER —
+                                  exactly the points to fly
     cruise_height_m: float        the height to take off to
-    return_to_start: bool         fly back over home before landing
+    return_to_start: bool         fly back over home (the real start) first
+    end_point_id: None            always None by the time you see it
     revision: int                 which version of the plan this is
+
+  CHANGED 2026-09-29 — THE MISSION YOU ARE HANDED IS THE MISSION AS FLOWN
+  (Mission.from_start). The session replaces the saved plan's planned start
+  with the drone's own position, drops any points after the operator's END
+  POINT (and turns return_to_start off when there is one), and re-validates
+  that. So: fly `points` in order, honour `return_to_start`, and read
+  nothing else — no end point or planned start to interpret. Nothing in your
+  interface (__init__, start, abort, state, completed_point_ids,
+  current_point_id) changed.
 
 BY THE TIME A MISSION REACHES YOU, THE SESSION HAS ALREADY CHECKED
 (session.py run_mission, before anything arms):
-  - every inspection point and home are inside the room's geofence, clear of
-    its edge and of every obstacle by the room's clearance (0.25 m default);
+  - every inspection point and home (the drone's spot) are inside the room's
+    geofence, clear of its edge and of every obstacle by the room's
+    clearance (0.25 m default);
   - every leg — home → P1 → … → last point (→ home) — stays inside the fence
-    and clear of every obstacle, even in an L-shaped room;
+    and clear of every obstacle, even in an L-shaped room, FROM WHERE THE
+    DRONE ACTUALLY IS;
   - every height is inside the room's height band, every hold ≥ 5 s;
-  - the battery covers the whole mission's estimated time;
-  - the drone is within 0.30 m of home;
+  - the battery covers that path's estimated time;
   - the checks passed and the operator confirmed the area; Auto; assisted.
 Do not re-validate the plan. Do keep the in-flight rules below: a valid plan
 can still meet a room that changed.

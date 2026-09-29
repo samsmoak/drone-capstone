@@ -1,7 +1,7 @@
 ================================================================================
 THE MISSION CONTROLLER — how a saved mission is flown
-Last verified: 2026-09-28 against feat/missions-and-pipeline — test_manual.py
-TestFlyTo (13), tests/mission/test_session_missions.py (16), test_stamping.py.
+Last verified: 2026-09-29 against claude/awesome-carson-eqkt8w — test_manual.py
+TestFlyTo (13), tests/mission/test_session_missions.py (22), test_stamping.py.
 SOURCE: backend/agent/cropwatcher/mission/controller/mission_controller.py
 ================================================================================
 
@@ -60,13 +60,28 @@ backend/supabase/migrations/20260928000012_telemetry_point_id.sql
 • THE HEARTBEAT STAYS WITH THE APP. The controller never calls heartbeat(): if
   the window goes quiet the drone lands, mission or not.
 • EVERY REFUSAL BEFORE ANYTHING ARMS: Auto, assisted, checks passed, the
-  mission valid in its room, the battery budget, the drone within 0.30 m of
-  home, and the controller BUILT. tests/mission/test_session_missions.py proves
-  each leaves the motors untouched.
+  mission valid in its room, the mission valid AGAIN FROM WHERE THE DRONE IS,
+  the battery budget for that path, and the controller BUILT.
+  tests/mission/test_session_missions.py proves each leaves the motors
+  untouched.
+• THE FLIGHT STARTS FROM THE DRONE (2026-09-29; it was "within 0.30 m of
+  home, or refused"). The owner's ask: a saved mission is flown later, from
+  wherever the drone was set down, and the drone is the start. The session
+  applies Mission.from_start(position): the start moves to the drone, the
+  POINTS DO NOT (they mark equipment — shifting them would put P2 beside the
+  wrong pump), points after an END POINT are dropped, and the result is
+  validated like any mission: the drone inside the fence and clear of
+  obstacles, the leg to P1 and back clear. That from-start mission is what is
+  handed to the controller, kept with the flight and read by the pipeline.
+  GET /missions/{id}/from-drone runs the same function for ② Check.
 • THE ROOM'S FENCE FLIES WITH IT: the in-flight guard lands the drone outside
   the room's own polygon, not the ±2 m square Manual uses.
-• The flight is named "mission:<id>@r<revision>" and the exact plan flown is
-  copied to sessions/<id>/missions/<flight id>.json — the pipeline reads it.
+• The flight is named "mission:<id>@r<revision>" and the exact plan flown —
+  from its real start, end point applied — is copied to
+  sessions/<id>/missions/<flight id>.json; the pipeline reads it.
+• The base-station geometry is NOT re-checked at Start: if the stations moved
+  since the room was drawn, absolute positions mean something else. That
+  needs the room's geometry fingerprint (floor-plans.txt, NOT BUILT).
 • POINT_ID UPLOAD FALLBACK: a batch with no point id sends no point_id key, and
   a batch the database refuses over the column is re-sent without it (the CSV
   keeps it). One mission flight before the migration can never stall the

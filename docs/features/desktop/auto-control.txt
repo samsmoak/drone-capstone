@@ -1,21 +1,29 @@
 ================================================================================
 CONTROL IN AUTO — plan a mission, check the drone, fly it
-Last verified: 2026-09-28 against feat/missions-and-pipeline — pnpm build, and
-the harness measured at 720/900/1024/1280/1600 in both themes, all PASS, with
-the self-test failing as it must.
+Last verified: 2026-09-29 against claude/awesome-carson-eqkt8w — pnpm build, and
+the harness measured at 720/900/1024/1280/1600 in both themes and both map
+views (20 runs, all PASS, the self-test failing as it must); the editor driven
+in headless Chromium (right-click menu, reverse, room selection, typed sizes).
 SOURCE: desktop/src/pages/control/auto/AutoControl.tsx
 ================================================================================
 
 --------------------------------------------------------------------------------
-STATUS  (Last verified: 2026-09-28)
+STATUS  (Last verified: 2026-09-29)
 --------------------------------------------------------------------------------
-  layout     BUILT — the flow left, the monitor right, its own divider
-  ① Mission  BUILT — list, view, edit (room and path), save, delete, use
-  ② Check    BUILT — the session flow, Manual's own panels
-  ③ Fly      BUILT — Start mission at the top, the scene with the mission,
-             progress. Starting is refused until the mission controller is
+  layout     BUILT — the flow left, the monitor right (side by side from
+             1280 px, stacked below), its own divider; FULL SCREEN for the flow
+  room map   BUILT — 2D and 3D (RoomMap), one switch, one selection
+  ① Mission  BUILT — list, view, edit (room and path), save, delete, use; end
+             point, reverse direction, start at the drone
+  ② Check    BUILT — the session flow, Manual's own panels, the DPP switch, and
+             the mission checked FROM WHERE THE DRONE IS
+  ③ Fly      BUILT — Start mission at the top, the DPP switch, the room map
+             with the path from the drone, progress, and the RESULTS after
+             landing. Starting is refused until the mission controller is
              built (../missions/mission-controller.txt) — the agent says so
-  NOT BUILT  per-point verdicts on the Fly step (the live pipeline)
+  NOT BUILT  live per-point verdicts while flying (story 4.9 — results arrive
+             after landing); resizing obstacles by dragging in 2-D (3-D and
+             the numbers do it)
 
 --------------------------------------------------------------------------------
 1. WHAT IT IS
@@ -23,82 +31,149 @@ STATUS  (Last verified: 2026-09-28)
 In Auto the Control page is for missions. The left column is a three-step flow,
 adapted from the Zoomaa booking flow: ① Mission — pick a saved mission, view
 it, edit its room and path, or plan a new one; ② Check — start the session, run
-the checks, confirm the area; ③ Fly — Start mission at the top, the mission
-drawn in the scene, the points ticking off. The right column is the monitor:
-the vitals, keys and actions (FlightDeck), then the Vitals and Camera tabs.
-Manual is unchanged.
+the checks, confirm the area, and see the mission checked from where the drone
+actually is; ③ Fly — Start mission, the mission drawn on the room map, the
+points ticking off, and each point's verdict once it lands. The whole left
+section can go full screen. The right column is the monitor: the vitals, keys
+and actions (FlightDeck), then the Vitals and Camera tabs. Manual is unchanged
+except for the shared fixes in pages-and-windows.txt and its own DPP panel.
 
 --------------------------------------------------------------------------------
 2. WHERE IT LIVES
 --------------------------------------------------------------------------------
-desktop/src/pages/control/auto/AutoControl.tsx     the two columns
+desktop/src/pages/control/auto/AutoControl.tsx     the two columns, full screen
 desktop/src/pages/control/auto/MissionFlow.tsx     the steps and their rules
 desktop/src/pages/control/auto/StepBar.tsx         the step bar
-desktop/src/pages/control/auto/CheckStep.tsx       ②
-desktop/src/pages/control/auto/FlyStep.tsx         ③, planFor
+desktop/src/pages/control/auto/CheckStep.tsx       ②, StartCheck (from the drone)
+desktop/src/pages/control/auto/FlyStep.tsx         ③, fromStart, progressOf
 desktop/src/pages/control/auto/plan/MissionStep.tsx     ① list and view
-desktop/src/pages/control/auto/plan/MissionEditor.tsx   ① room and path
-desktop/src/pages/control/auto/plan/PlanCanvas.tsx      the plan, in metres
-desktop/src/pages/control/auto/plan/geometry.ts         shapes, clamping
-desktop/src/pages/control/auto/plan/fields.tsx          number fields
-desktop/src/pages/control/SceneView.tsx            ScenePlan: the mission drawn
-desktop/src/pages/control/ConsolePane.tsx          `views`: which tabs to show
-desktop/src/lib/agent.ts                           the rooms/missions calls, types
+desktop/src/pages/control/auto/plan/MissionEditor.tsx   ① room and path,
+                                                        the point menu
+desktop/src/pages/control/auto/plan/RoomMap.tsx    the 2D | 3D switch
+desktop/src/pages/control/auto/plan/PlanCanvas.tsx 2-D: the plan, in metres
+desktop/src/pages/control/auto/plan/Room3D.tsx     3-D: three.js, lazy-loaded
+desktop/src/pages/control/auto/plan/webgl.ts       can this machine draw 3-D
+desktop/src/pages/control/auto/plan/path.ts        what is flown: legs, end
+                                                   point, reverse (mirrors
+                                                   Mission.legs/flown_points)
+desktop/src/pages/control/auto/plan/shapeFields.tsx  the numbers, in words
+desktop/src/pages/control/auto/plan/geometry.ts    shapes, clamping, the words
+desktop/src/pages/control/auto/plan/fields.tsx     number fields
+desktop/src/pages/control/DataPipeline.tsx         the DPP switch, the results
+desktop/src/lib/agent.ts                           the calls and types
 
 --------------------------------------------------------------------------------
 3. DECISIONS
 --------------------------------------------------------------------------------
-• THREE STEPS, NOT TWO. The session's checks lived in the right column; with
-  the right column now the monitor they needed a home, and they are a sequence
-  by nature. Each step's completion is READ FROM THE AGENT (a valid mission;
-  state "ready" with no retry owed) — the page cannot claim a step the agent
-  would refuse.
+• THREE STEPS, NOT TWO. Each step's completion is READ FROM THE AGENT (a valid
+  mission; state "ready" with no retry owed) — the page cannot claim a step the
+  agent would refuse.
 • THE FLOW LOCKS ON FLY WHILE A MISSION FLIES: no plan changes in the air.
 • THE VITALS AND KEYS STAY ABOVE THE TABS (FlightDeck), and the action rail
   keeps its place in both modes — pages-and-windows.txt: they "must not be
-  behind a tab or below a fold". The Scene moved into ③, where the mission it
-  draws lives; the monitor's console shows Vitals and Camera.
-• ITS OWN DIVIDER POSITION (cropwatcher.split.control.auto), starting 58/42 in
-  the flow's favour: dragging in one mode must not move the other.
-• EVERY SHAPE HAS ITS DIMENSIONS AS NUMBERS — the fence's width, depth or
-  radius or each corner; each obstacle's centre and size or ends; each point's
-  x, y, height, hold. Typing resizes the drawing and dragging updates the
-  numbers. Every value is clamped to the ROOM'S MAP (measured coverage, or the
-  default area) — nothing can be bigger than the space the drone can fly.
+  behind a tab or below a fold".
+• SIDE BY SIDE FROM 1280 px, STACKED BELOW (2026-09-29; it was 1024). At a
+  1024 px window the monitor was 294 px wide: its tab list got 97 px for
+  177 px of tabs and Camera ran into "10 Hz". The divider's own position
+  (cropwatcher.split.control.auto, 58/42) now stops at 45–70 %.
+• FULL SCREEN IS THE SAME FLOW, RESTYLED IN PLACE (AutoControl
+  FullScreenFrame), not a copy in an overlay: the same elements with other
+  classes, so the step, the chosen mission and an unsaved plan survive going in
+  and out. Escape leaves it (not while a menu or a field has it). It covers the
+  flight strip, so it carries LAND and the strip's own HOLD-TO-STOP emergency
+  stop (exported from FlightStrip, not copied) whenever the drone is airborne.
+• ONE ROOM MAP, TWO VIEWS (RoomMap). 2-D is the exact top-down plan; 3-D is the
+  room's flying space, obstacles at their height, the path at its heights, the
+  drone at its height and heading — orbit, pan, zoom, camera presets (3/4, Top,
+  Front, Side, Fit), double-click to swing round one object. The choice is
+  remembered (cropwatcher.auto.mapView) and V toggles it. Both views take the
+  same editing callbacks, so every edit goes through the same clamping.
+• THREE.JS, REVERSED ON PURPOSE. SceneView.tsx avoided it (~170 KB gz) and said
+  to reach for it "if this ever needs an orbitable camera" — orbiting, picking
+  and dragging are that. React Three Fiber 9 + drei 10 + three 0.186, loaded
+  with React.lazy: a separate chunk (259 KB gz) fetched the first time 3-D is
+  opened; the start-up bundle grew 218 → 226 KB gz for the new 2-D/editor code
+  only (measured 2026-09-29 against main). The window's content policy is
+  unchanged: labels are canvas sprites, not a downloaded font or drei <Html>
+  (a React root per label, which React 19 warned about unmounting mid-render).
+  Rendered on demand, never 60 fps beside the flight loop. No WebGL → 2-D with
+  the reason said.
+• SELECTING ONE THING FADES THE REST — the room (its geofence) or one obstacle
+  — whether it was clicked on the map (either view) or its panel was clicked in
+  the form. Its numbers appear over the map (the inspector) and its panel
+  scrolls into view. Points and the start select too, and fade nothing.
+• PLAIN WORDS, FIXED TO THE AXES (geometry.ts): LENGTH left→right, WIDTH
+  front→back, HEIGHT up; positions are FROM LEFT and FROM FRONT of the room
+  map's front-left corner, which never moves while shapes are edited. The owner
+  found "left edge (x)", "bottom edge (y)", "depth" beside "width" confusing
+  (2026-09-29). Only the labels changed: the data is absolute Lighthouse metres.
+  A circle is set by its diameter. The room's top is its "Height"; its floor
+  margin is "Lowest flying height".
+• THE DRONE IS THE START. It is drawn by default as D (a green ring, the letter
+  on --surface in --foreground); a new mission's planned start (S) is put where
+  the drone is; "Put the start where the drone is" does it on demand. ② Check
+  asks the agent to check the mission FROM THE DRONE'S POSITION every 2 s
+  (GET /missions/{id}/from-drone) and ③ draws the path from it. The points
+  never move with the drone — they mark equipment (floor-plans.txt).
+• THE END POINT: right-click a point (or its menu key / Shift+F10, or "End
+  here" in its row, or the Ends-at list) and the flight lands there; later
+  points stay in the plan, faded, "not flown". Making the LAST point the end is
+  simply "not returning", so a point added later is still flown.
+• DIRECTION IS THE ORDER. Every leg carries an arrow; "Reverse direction"
+  reverses the order — with an end point set, the drone approaches it from the
+  other side. No stored direction field.
 • THE AGENT CHECKS THE PLAN, 300 ms after each change (POST /missions/validate);
   its problems turn a point or a leg red. No copy of the rules in the window.
-• The plan canvas is SVG whose units ARE metres — no pixel conversion to get
-  wrong. No drawing library (the SceneView precedent: bundle size).
 • Leaving an edited plan asks first, inline — not window.confirm, which a
   WebKit webview may not show.
 • Start mission sits AT THE TOP of ③, disabled with its reason; the agent's own
-  refusals (home, battery, controller not built) arrive as the page message.
-• The Auto hover demo stays in the action rail until it becomes a one-point
-  mission.
+  refusals (unsafe from the drone's position, battery, controller not built)
+  arrive as the page message.
+• THE DPP SWITCH is on ② (before the session) and ③ (beside Start): on by
+  default in Auto (../pipeline/data-pipeline.txt). The RESULTS panel under
+  Progress shows the last flight's verdicts, "Process again", and the honest
+  placeholder until the classify stage lands.
 
 --------------------------------------------------------------------------------
 4. INVARIANTS
 --------------------------------------------------------------------------------
-• Every async surface has its four states: the mission list (skeleton, empty,
-  error with Try again, content), the room on Fly (spinner, error with Try
-  again, the scene).
-• Plan handles are real controls: focusable, named with their position, moved
+• Every async surface has its four states: the mission list; the room on Fly;
+  the from-the-drone check (checking, no position yet, error with Try again,
+  the answer); the results (processing, failed with the reason, not processed
+  with Process this flight, the verdicts).
+• Plan handles are real controls: focusable, named with where they are, moved
   5 cm per arrow key, focus visible (.plan-handle:focus-visible). The shape
   handle props must never carry `style` — spread after a shape's own style it
   replaced the fill (obstacles drew black; fixed 2026-09-28).
-• Field (ControlPage.tsx) inputs are w-full: an input's intrinsic ~20
-  characters ran under the Start button in ③ (harness, 2026-09-28).
+• 3-D drags always have a single-pointer alternative: the numbers in the form
+  and the inspector (WCAG 2.2, 2.5.7). The camera presets are buttons.
+• The point menu is a real menu: focus moves in, arrow keys move, Escape and a
+  click elsewhere close it; it opens inward at the window's edge.
+• A <select> in the editor must be w-full min-w-0: a select is as wide as its
+  longest option, and "P3 · Compressor manifold… — lands there" pushed the
+  form past the window's right edge in full screen (harness, 2026-09-29).
+• Full screen's key handler reads onExit through a ref and depends on `full`
+  only: re-running it on the 10 Hz render pulled focus to Exit every frame.
 • Measure with the harness before and after any change here: sections
-  "Auto · ① Mission list", "① Mission editor", "② Check", "③ Fly, flying"
-  (?only=auto); the harness serves sample plans when no agent is given.
+  "Auto · ① Mission list", "① Mission editor", "② Check", "③ Fly, flying",
+  "③ Fly, landed", "full screen editor" (?only=auto, ?map=2d|3d); the harness
+  serves sample plans, a from-drone answer and a result when no agent is given.
 
 --------------------------------------------------------------------------------
 5. RELATED
 --------------------------------------------------------------------------------
 depends-on        ../missions/floor-plans.txt
-                  rooms, missions, validation, the plan routes
+                  rooms, missions, validation, the plan routes, the end point,
+                  obstacle heights
 depends-on        ../missions/mission-controller.txt
-                  POST /session/mission; the session's `mission` progress
+                  POST /session/mission; the session's `mission` progress;
+                  GET /missions/{id}/from-drone
 depends-on        pages-and-windows.txt
                   FlightDeck, Checklist, RetryPanel, HealthTestPanel, Field,
-                  ConsolePane and SceneView are Manual's, reused — not copied
+                  ConsolePane, Tabs and SceneView are Manual's, reused — not
+                  copied
+depends-on        ../pipeline/data-pipeline.txt
+                  the DPP switch (Session.processing), POST /session/processing,
+                  GET /flights/{id}/result
+depends-on        desktop-app.txt
+                  the bundle measurement the three.js decision is argued from

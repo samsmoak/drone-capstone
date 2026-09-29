@@ -54,7 +54,16 @@ INVARIANTS
 
 - A mission flight keeps the plan it flew in the session folder:
   sessions/<id>/missions/<flight id>.json (mission and room). An edit to the
-  mission later makes a new revision; this copy is what the flight flew.
+  mission later makes a new revision; this copy is what the flight flew — AS
+  FLOWN: its start is where the drone really was, and points after an end
+  point are gone (Mission.from_start, 2026-09-29).
+- Each flight's line in meta.json carries `processing` (null = DPP was off as
+  it began; "pending" until it lands; then queued / running / done / failed)
+  and `processing_error`. An OPEN session's meta is written only through its
+  SessionLog, which keeps it in memory — writing the file under it would be
+  overwritten on the next save; a CLOSED one is updated in place
+  (history.set_flight_processing). Older meta.json files without the fields
+  read as null.
 
 RELATED
 
