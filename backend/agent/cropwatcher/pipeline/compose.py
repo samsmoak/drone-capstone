@@ -2,7 +2,7 @@
 
 THIS IS THE LINE A STAGE OWNER CHANGES TO PLUG IN: replace a stub with your
 class, add your class to tests/pipeline/conformance.py, and every contract
-check runs against it (docs/handoffs/dpp-contract.txt, "How you plug in").
+check runs against it (docs/handoffs/sprint-1/done/dpp-contract.txt, "How you plug in").
 """
 
 from __future__ import annotations
@@ -34,8 +34,8 @@ class Stages:
 
 def default_stages() -> Stages:
     return Stages(
-        cleaner=StubCleaner(),            # Kevin: docs/handoffs/dpp-clean.txt
-        enhancer=StubEnhancer(),          # Kevin: docs/handoffs/dpp-enhance.txt
-        classifier=StubClassifier(),      # Reagan: docs/handoffs/dpp-classify.txt
+        cleaner=StubCleaner(),            # Kevin: docs/handoffs/sprint-1/undone/dpp-clean.txt
+        enhancer=StubEnhancer(),          # Kevin: docs/handoffs/sprint-1/undone/dpp-enhance.txt
+        classifier=StubClassifier(),      # Reagan: docs/handoffs/sprint-1/undone/dpp-classify.txt
         interpreter=LabelInterpreter(),   # Samuel
     )

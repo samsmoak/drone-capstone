@@ -3,8 +3,8 @@ TICKET — Starting a mission from where the drone is (② Check, ③ Fly)
 
 STATUS: BUILT (on main: #74, 2026-09-29). What is left is the FOLLOW-UPS
 list at the end. What shipped is described in
-../features/missions/mission-controller.txt and
-../features/desktop/auto-control.txt — those are the authority; where this
+../../../features/missions/mission-controller.txt and
+../../../features/desktop/auto-control.txt — those are the authority; where this
 ticket and the code disagree, the code wins.
 
   Owner           Samuel
@@ -21,7 +21,7 @@ ticket and the code disagree, the code wins.
                   desktop/src/pages/control/auto/FlyStep.tsx
                   desktop/src/pages/control/auto/AutoControl.tsx (full screen)
                   backend/agent/tests/mission/test_session_missions.py
-  Not in scope    the mission controller body (mission-controller.txt,
+  Not in scope    the mission controller body (../undone/mission-controller.txt,
                   Hannah); the planner (mission-planner.txt)
 
 
@@ -86,13 +86,13 @@ FOLLOW-UPS — OPEN
 ─────────────────
 
   [ ] Fly a real mission in the lab once the controller lands
-      (mission-controller.txt): from a spot off the planned start, with an
-      end point. Log it in ../flight-log.txt.
+      (../undone/mission-controller.txt): from a spot off the planned start, with an
+      end point. Log it in ../../../flight-log.txt.
   [ ] Check the base stations have not moved since the room was drawn — a
       geometry fingerprint per room (floor-plans.txt, NOT BUILT; needs a
       reader in the agent and the lab).
   [ ] Remove SceneView's unused mission drawing (`plan`, drawPlan) — dead
-      since ③ Fly moved to the room map (../GRAPH_STATE.txt, DEBT).
+      since ③ Fly moved to the room map (../../../GRAPH_STATE.txt, DEBT).
 
 When these are done, write what shipped into the feature docs above and
-delete this ticket (README.txt, "HANDOFFS ARE NOT FEATURE DOCS").
+delete this ticket (../../README.txt, "HANDOFFS ARE NOT FEATURE DOCS").

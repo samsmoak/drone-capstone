@@ -110,7 +110,7 @@ are the only thing that survives a session.
 
 ## Handoffs — work orders given to teammates
 
-[handoffs/](handoffs/README.txt) — one ticket per piece of work handed to someone else: the mission controller (Hannah), and the data pipeline's clean and enhance (Kevin) and classify (Reagan) stages with the contract they share. Not feature docs: each is deleted once its owner writes what shipped into `features/`.
+[handoffs/](handoffs/README.txt) — one ticket per piece of work, filed by sprint: `sprint-1/done/` (built — the mission planner, mission start, the DPP switch, the Control layout, the pipeline contract; only follow-ups left) and `sprint-1/undone/` (the mission controller (Hannah), and the data pipeline's clean and enhance (Kevin) and classify (Reagan) stages). We are in sprint 1. Not feature docs: a ticket moves to `done/` when its work is on main, and is deleted once its follow-ups are closed and what shipped is written into `features/`.
 
 ## Platform — not written yet
 

@@ -3,7 +3,7 @@
 Never "normal": a stub that called everything normal would write confident
 nonsense into every result — the failure that retired the greenhouse model
 (docs/features/architecture.txt, crop-health predictions). Replaced by
-Reagan's classifier (docs/handoffs/dpp-classify.txt).
+Reagan's classifier (docs/handoffs/sprint-1/undone/dpp-classify.txt).
 """
 
 from __future__ import annotations

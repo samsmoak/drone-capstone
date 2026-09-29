@@ -47,6 +47,6 @@ def test_the_skeleton_refuses_to_start_and_says_where_the_work_is():
                               clock=FakeClock())
     controller = MissionController(mission(), flight, on_event=lambda e: None)
     assert MissionController.BUILT is False
-    with pytest.raises(MissionError, match="handoffs/mission-controller.txt"):
+    with pytest.raises(MissionError, match="handoffs/sprint-1/undone/mission-controller.txt"):
         controller.start()
     assert controller.current_point_id is None

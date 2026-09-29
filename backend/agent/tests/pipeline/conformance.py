@@ -4,7 +4,7 @@ To plug a stage in, add your class to the list for its stage below. Every check
 in tests/pipeline/test_conformance.py then runs against it on the fixture — a
 real flight's readings and a set of frames — plus an empty point.
 
-These are the rules marked [checked] in docs/handoffs/dpp-contract.txt:
+These are the rules marked [checked] in docs/handoffs/sprint-1/done/dpp-contract.txt:
   1  self-contained (no flight, session, api, sync or camera imports)
   2  one output per input, in order
   3  the input is never changed

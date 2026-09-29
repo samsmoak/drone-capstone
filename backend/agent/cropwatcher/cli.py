@@ -418,7 +418,7 @@ def cmd_mission(args: argparse.Namespace) -> int:
         print("\n  checked; nothing connected")
         return 0
     if not MissionController.BUILT:
-        print("\n  The mission controller is not built yet (docs/handoffs/"
+        print("\n  The mission controller is not built yet (docs/handoffs/sprint-1/undone/"
               "mission-controller.txt). Nothing was armed.")
         return 2
 

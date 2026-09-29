@@ -1,7 +1,7 @@
 """The placeholder enhancer: every frame passes through as it was taken.
 
 path=None means "not enhanced — use the original", which is exactly true.
-Replaced by Kevin's enhancer (docs/handoffs/dpp-enhance.txt).
+Replaced by Kevin's enhancer (docs/handoffs/sprint-1/undone/dpp-enhance.txt).
 """
 
 from __future__ import annotations

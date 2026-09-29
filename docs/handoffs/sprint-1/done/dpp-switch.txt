@@ -3,8 +3,8 @@ TICKET — The DPP switch: processing flights when they land
 
 STATUS: BUILT (on main: #74, 2026-09-29). What is left is the FOLLOW-UPS
 list at the end. What shipped is described in
-../features/pipeline/data-pipeline.txt and
-../features/backend/sessions-and-modes.txt — those are the authority; where
+../../../features/pipeline/data-pipeline.txt and
+../../../features/backend/sessions-and-modes.txt — those are the authority; where
 this ticket and the code disagree, the code wins. How the team's stages are
 run is in dpp-contract.txt, "HOW THE AGENT RUNS THE PIPELINE".
 
@@ -93,4 +93,4 @@ FOLLOW-UPS — OPEN
   [ ] Results to Supabase and alerts on the web dashboard.
 
 When these are done, write what shipped into the feature docs above and
-delete this ticket (README.txt, "HANDOFFS ARE NOT FEATURE DOCS").
+delete this ticket (../../README.txt, "HANDOFFS ARE NOT FEATURE DOCS").

@@ -26,7 +26,7 @@ WHAT IT DOES
     fly back over home (the real start) if the mission says so  RETURNING
     land                                       LANDING → DONE
 
-THE BODY IS HANNAH'S (docs/handoffs/mission-controller.txt). Until it is built,
+THE BODY IS HANNAH'S (docs/handoffs/sprint-1/undone/mission-controller.txt). Until it is built,
 BUILT is False and start() refuses — and the session checks BUILT before it
 arms anything, so no motor turns for a mission this cannot fly.
 """
@@ -72,7 +72,7 @@ class MissionController:
     def start(self) -> None:
         """Run tick() on the controller's own thread, 10 times a second."""
         raise MissionError(
-            "The mission controller is not built yet (docs/handoffs/"
+            "The mission controller is not built yet (docs/handoffs/sprint-1/undone/"
             "mission-controller.txt), so this mission cannot fly. Nothing was armed.")
 
     def tick(self) -> None:

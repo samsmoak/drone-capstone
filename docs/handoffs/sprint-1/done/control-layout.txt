@@ -3,8 +3,8 @@ TICKET — The Control page fits every width (responsive layout)
 
 STATUS: BUILT (on main: #74, #75, 2026-09-29). What is left is the
 FOLLOW-UPS list at the end. What shipped is described in
-../design/layout.txt (the STANDING rule) and
-../features/desktop/pages-and-windows.txt — those are the authority; where
+../../../design/layout.txt (the STANDING rule) and
+../../../features/desktop/pages-and-windows.txt — those are the authority; where
 this ticket and the code disagree, the code wins.
 
   Owner           Samuel
@@ -24,7 +24,7 @@ WHAT IT IS
 
 Nothing on the Control page is squeezed, overlapping or clipped at any window
 width, in either theme — and that is now a STANDING rule every screen is
-measured against (../design/layout.txt).
+measured against (../../../design/layout.txt).
 
 
 SCOPE — DELIVERED
@@ -42,7 +42,7 @@ SCOPE — DELIVERED
   [x] SplitPane clamps to bounds that move with the container.
   [x] The standing rule: desktop measured at 720 / 900 / 1024 / 1280 /
       1600 px and the website at 390 / 768 / 1024 / 1440, both themes,
-      layout by container width (../design/layout.txt, PREFERENCES.txt).
+      layout by container width (../../../design/layout.txt, PREFERENCES.txt).
   [x] The harness: ?only=, ?theme=, ?map=2d|3d, and sections for ③ Fly
       landed and full screen.
 
@@ -61,10 +61,10 @@ FOLLOW-UPS — OPEN
 
   [ ] A measuring tool for the website, like the desktop harness — today
       web/ is checked by eye at its four widths (layout.txt).
-  [ ] Split ../features/desktop/pages-and-windows.txt (516 lines) into a
-      folder with an index (../GRAPH_STATE.txt, DEBT: OVERSIZED).
+  [ ] Split ../../../features/desktop/pages-and-windows.txt (516 lines) into a
+      folder with an index (../../../GRAPH_STATE.txt, DEBT: OVERSIZED).
   [ ] Run `cargo test` for the Tauri shell on a machine set up with
       `node scripts/setup.mjs --dev` — a cloud container lacks gdk-3.0.
 
 When these are done, write what shipped into the docs above and delete this
-ticket (README.txt, "HANDOFFS ARE NOT FEATURE DOCS").
+ticket (../../README.txt, "HANDOFFS ARE NOT FEATURE DOCS").
