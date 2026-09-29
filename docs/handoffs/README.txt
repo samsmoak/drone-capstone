@@ -22,6 +22,9 @@ THE TICKETS
 
   Ticket                   Owner    Stories (planning PDF)     Can start
   ──────────────────────────────────────────────────────────────────────────────
+  mission-planner.txt      Samuel   mission planning; 3.4      built — the
+                                    (holds ≥ 5 s)              follow-ups are
+                                                               open
   mission-controller.txt   Hannah   3.4, 3.5 (flying half),    now
                                     autonomous flight
   dpp-contract.txt         every    4.5                        — (the shared
