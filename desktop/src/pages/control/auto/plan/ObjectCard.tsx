@@ -15,7 +15,7 @@
  * here, and none of them can be changed until one is picked.
  */
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 
 /** Marks a card, so a click outside every card can clear the selection. */
 export const CARD_ATTR = "data-object-card";
@@ -31,23 +31,20 @@ export function ObjectCard({ selected, flagged = false, onSelect, label, as = "l
   children: ReactNode;
   className?: string;
 }) {
-  const ref = useRef<HTMLElement>(null);
   // The click that selected this card is the only thing it does.
   const swallow = useRef(false);
 
-  // Selected from the map: bring the card into view, unless the form itself
-  // did the selecting (focus is already in it).
-  useEffect(() => {
-    if (!selected || !ref.current) return;
-    if (ref.current.contains(document.activeElement)) return;
-    ref.current.scrollIntoView({ block: "nearest",
-      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
-  }, [selected]);
+  // NO SCROLL INTO VIEW (removed 2026-09-29). Selecting from the map used to
+  // scroll this card into view — and scrollIntoView scrolls EVERY scrolling
+  // ancestor, so adding a point by clicking the map (the new point is
+  // selected as it is made) jumped the whole page, or the full-screen view,
+  // away from the map to the Path list. The selected object's numbers are
+  // already under the map (MissionEditor, "below"), so the card never needs
+  // to come to you.
 
   const Tag = as;
   return (
     <Tag
-      ref={ref as never}
       {...{ [CARD_ATTR]: "" }}
       aria-label={`${label}${selected ? " — selected" : ""}`}
       aria-current={selected || undefined}
