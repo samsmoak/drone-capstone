@@ -222,12 +222,18 @@ KNOWN LIMITS
 
 RELATED
 
-  consumed-by       setup.txt                  step 3 of Set up; main installs drone_wifi
-  depends-on        camera.txt                 the stream this feeds an address to
-  depends-on        ../backend/agent-api.txt   /camera/wifi and its token
-  depends-on        ../backend/sessions-and-modes.txt  applied when a link opens
-  shares-data-with  desktop-app.txt            the secure store and Tauri commands
-  shares-data-with  pages-and-windows.txt      the Drone Wi-Fi page and badge
+consumed-by       setup.txt
+                  step 3 of Set up; main installs drone_wifi
+depends-on        camera.txt
+                  the stream this feeds an address to
+depends-on        ../backend/agent-api.txt
+                  /camera/wifi and its token
+depends-on        ../backend/sessions-and-modes.txt
+                  applied when a link opens
+shares-data-with  desktop-app.txt
+                  the secure store and Tauri commands
+shares-data-with  pages-and-windows.txt
+                  the Drone Wi-Fi page and badge
 
 
 LAST VERIFIED  2026-09-24 (standby and link_down: tests only — the drone's

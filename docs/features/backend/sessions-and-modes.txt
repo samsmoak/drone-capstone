@@ -160,8 +160,12 @@ INVARIANTS
 
 RELATED
 
-  consumed-by   ../desktop/pages-and-windows.txt  Home's standby row, vitals with no session
-  consumed-by   telemetry-stream.txt              published on standby, recorded only in a session
+consumed-by       ../desktop/pages-and-windows.txt
+                  Home's standby row, vitals with no session
+consumed-by       telemetry-stream.txt
+                  published on standby, recorded only in a session
 
-  consumed-by   ../desktop/drone-wifi.txt   a link that passes its checks sends the
-                                            deck its network (on_link_ready)
+consumed-by       ../desktop/drone-wifi.txt
+                  a link that passes its checks sends the deck its network (on_link_ready)
+shares-data-with  ../desktop/setup.txt
+                  pauses and resumes standby

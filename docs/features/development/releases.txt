@@ -108,8 +108,10 @@ KNOWN DIVERGENCE (2026-09-25)
 
 RELATED
 
-  consumed-by   ../desktop/desktop-app.txt   the same build path and install, run by CI
-  shares-data-with  ../frontend/site-pages-and-views.txt   the setup guide's terminal steps
+consumed-by       ../desktop/desktop-app.txt
+                  the same build path and install, run by CI
+shares-data-with  ../frontend/site-pages-and-views.txt
+                  the setup guide's terminal steps
 
 
 LAST VERIFIED  2026-09-25: install.mjs end to end on an M-series Mac (1 min 47
