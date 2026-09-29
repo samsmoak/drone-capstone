@@ -1,0 +1,111 @@
+TICKET — The mission planner
+============================
+
+STATUS: BUILT (on main: #72, #74, #75, 2026-09-28 → 29). What is left is the
+FOLLOW-UPS list at the end. What shipped is described in
+../features/desktop/auto-control.txt and ../features/missions/floor-plans.txt
+— those are the authority; where this ticket and the code disagree, the code
+wins.
+
+  Owner           Samuel
+  Stories         Mission planning (planning PDF: add the story numbers).
+                  3.4 "at least 10 frames and 5 seconds of readings … at every
+                  inspection point" — the planner enforces holds of 5 s or
+                  more.
+  Where           Auto › Control › ① Mission (the desktop app)
+  Your files      desktop/src/pages/control/auto/plan/        the planner
+                  backend/agent/cropwatcher/mission/plan/     rooms, missions,
+                                                              the checks, saving
+                  backend/agent/tests/mission/
+  Not in scope    the mission controller body (mission-controller.txt,
+                  Hannah); ② Check and ③ Fly; the data pipeline
+
+
+WHAT IT IS
+──────────
+
+The operator draws a ROOM and plans a MISSION in it, in 2-D or 3-D, and saves
+it on the laptop. The agent checks every change; nothing here flies.
+
+
+SCOPE — DELIVERED
+─────────────────
+
+THE ROOM
+  [x] Geofence: rectangle, circle, or free corners — always closed.
+  [x] Obstacles: wall, rectangle, circle. Optional height, for the map only
+      (every check treats an obstacle as floor to ceiling).
+  [x] Clearance from obstacles and the walls (0.25 m default).
+  [x] Every size held inside the room map (the default ±2 m area until the
+      coverage is measured).
+
+THE PATH
+  [x] Inspection points in flying order: position, height, hold (≥ 5 s), and
+      an id that never changes once saved.
+  [x] The planned start (S) and the takeoff height. A new mission starts
+      where the drone (D) is; "Put the start where the drone is" moves it.
+  [x] END POINT: right-click a point (Shift+F10, or "End here") — the flight
+      lands there; later points stay in the plan, faded, not flown.
+  [x] An arrow on every leg; Reverse direction flips the flying order.
+  [x] Each point labelled with its height, above the floor where the drone
+      takes off.
+
+THE MAP
+  [x] 2-D and 3-D, one switch (V), remembered per machine.
+  [x] 3-D: orbit, pan, zoom; Top / Front / Side / 3/4 / Fit; double-click to
+      orbit one object; drag handles for length, width and height; the walls
+      face inward, so the near ones never block a click.
+  [x] The words: Length (left→right), Width (front→back), Height; From left
+      and From front, from the room map's front-left corner.
+
+SELECTING AND EDITING
+  [x] The room, each obstacle, each point and the start are framed cards; the
+      selected one has a 2 px blue frame on all four sides and is highlighted
+      alone on the map.
+  [x] Only the selected object changes; the first click on another card only
+      selects it.
+  [x] A click on empty floor or outside every card selects nothing — every
+      object shown equally, none of them changeable.
+  [x] The selected object's numbers sit under the map, never over it.
+
+LAYOUT
+  [x] A draggable divider between the map and the Room/Path form, inline and
+      in full screen, from 600 px of editor width; stacked below that.
+  [x] The planner goes full screen without losing an unsaved plan.
+
+CHECKING AND SAVING
+  [x] The agent checks the draft 300 ms after each change
+      (POST /missions/validate); its problems turn a point or a leg red and
+      are listed.
+  [x] Save is grey until the room and the path are set up, with a line saying
+      what is missing; the agent refuses a mission with no points too.
+  [x] A plan with problems can be saved and fixed later; only a valid one can
+      be used.
+  [x] Editing a mission that has flown makes a new revision.
+
+
+ACCEPTANCE — VERIFIED 2026-09-29
+────────────────────────────────
+
+  - desktop: pnpm build; the layout harness at 720 / 900 / 1024 / 1280 /
+    1600 px, both themes, 2-D and 3-D — all PASS, the self-test FAIL as it
+    must (../design/layout.txt).
+  - agent: ruff, mypy, and tests/mission/ pass.
+  - Driven in headless Chromium: the point menu, reverse, select and
+    deselect, read-only until selected, the divider, 3-D floor and wall
+    clicks.
+  - desktop-install green on Linux, Windows, macOS Apple silicon and Intel.
+
+
+FOLLOW-UPS — OPEN
+─────────────────
+
+  [ ] Resize obstacles by dragging in 2-D (today: the numbers, or 3-D).
+  [ ] Measure the room's Lighthouse coverage in the lab, to replace the
+      default ±2 m room map (needs the drone and the base stations).
+  [ ] Sync rooms and missions to Supabase — today they live on the laptop
+      only, and the web planner still builds the old format
+      (../features/frontend/mission-planner.txt, KNOWN DIVERGENCE).
+
+When these are done, write what shipped into the feature docs above and
+delete this ticket (README.txt, "HANDOFFS ARE NOT FEATURE DOCS").
