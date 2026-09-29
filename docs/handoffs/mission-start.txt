@@ -1,0 +1,98 @@
+TICKET — Starting a mission from where the drone is (② Check, ③ Fly)
+=====================================================================
+
+STATUS: BUILT (on main: #74, 2026-09-29). What is left is the FOLLOW-UPS
+list at the end. What shipped is described in
+../features/missions/mission-controller.txt and
+../features/desktop/auto-control.txt — those are the authority; where this
+ticket and the code disagree, the code wins.
+
+  Owner           Samuel
+  Stories         Autonomous flight (the session's half); 3.4 (holds).
+  Where           Auto › Control › ② Check and ③ Fly (the desktop app);
+                  the session in the agent
+  Your files      backend/agent/cropwatcher/mission/plan/mission.py
+                    (from_start, flown_points, returns_home, end_point_id)
+                  backend/agent/cropwatcher/session.py
+                    (run_mission, mission_from_drone)
+                  backend/agent/cropwatcher/api/rest.py
+                    (GET /missions/{id}/from-drone)
+                  desktop/src/pages/control/auto/CheckStep.tsx   (StartCheck)
+                  desktop/src/pages/control/auto/FlyStep.tsx
+                  desktop/src/pages/control/auto/AutoControl.tsx (full screen)
+                  backend/agent/tests/mission/test_session_missions.py
+  Not in scope    the mission controller body (mission-controller.txt,
+                  Hannah); the planner (mission-planner.txt)
+
+
+WHAT IT IS
+──────────
+
+A saved mission is flown later, from wherever the drone has been set down.
+The drone's position IS the start: the mission is checked again from there
+before anything arms. The inspection points never move with the drone —
+they mark equipment.
+
+
+SCOPE — DELIVERED
+─────────────────
+
+THE AGENT
+  [x] Mission.from_start(position): the start moves to the drone, the points
+      stay, points after the END POINT are dropped, return-to-start is off
+      when there is an end point. The result is validated like any mission.
+  [x] run_mission refuses before anything arms: Auto, a position fix, the
+      plan valid, the plan valid AGAIN FROM THE DRONE (inside the fence,
+      clear of obstacles, the leg to P1 and back clear), the battery for
+      that path, the controller built. Replaces the old "within 0.30 m of
+      the home mark, or refused" rule.
+  [x] The from-start mission is what the controller is handed, what is kept
+      with the flight (sessions/<id>/missions/<flight>.json) and what the
+      pipeline reads.
+  [x] GET /missions/{id}/from-drone: the same check, for the page.
+
+② CHECK
+  [x] "From where the drone is": the agent's answer every 2 s — safe to start
+      here, or what to fix (the drone's spot, the leg from it) — with the room
+      map drawn from the drone. Moving the drone by hand updates it.
+  [x] The area confirmation in Auto reads "Drone on the floor and level…":
+      heights are measured from the floor where it takes off, and from a
+      bench every point would fly that much higher.
+
+③ FLY
+  [x] Start mission at the top, disabled with its reason; the agent's own
+      refusals arrive as the page message.
+  [x] The room map (2-D / 3-D) with the path from where the drone took off,
+      the drone live at its height and heading, points done / current /
+      ahead; progress beside it, only the points actually flown.
+  [x] The whole flow goes full screen; while airborne its bar carries Land
+      and the strip's own hold-to-stop emergency stop.
+  [x] A mission counts as flying in the app shell, so the top strip shows
+      Land and Emergency stop during one (it showed End session before).
+
+
+ACCEPTANCE — VERIFIED 2026-09-29
+────────────────────────────────
+
+  - agent: ruff, mypy, pytest — tests/mission/ incl. from_start, the end
+    point, the drone off its planned start, a drone outside the fence, one
+    hugging an obstacle, and the from-drone route.
+  - desktop: pnpm build; the harness sections "② Check", "③ Fly, flying",
+    "③ Fly, landed", "full screen editor" at 720–1600 px, both themes.
+  - desktop-install green on Linux, Windows, macOS Apple silicon and Intel.
+
+
+FOLLOW-UPS — OPEN
+─────────────────
+
+  [ ] Fly a real mission in the lab once the controller lands
+      (mission-controller.txt): from a spot off the planned start, with an
+      end point. Log it in ../flight-log.txt.
+  [ ] Check the base stations have not moved since the room was drawn — a
+      geometry fingerprint per room (floor-plans.txt, NOT BUILT; needs a
+      reader in the agent and the lab).
+  [ ] Remove SceneView's unused mission drawing (`plan`, drawPlan) — dead
+      since ③ Fly moved to the room map (../GRAPH_STATE.txt, DEBT).
+
+When these are done, write what shipped into the feature docs above and
+delete this ticket (README.txt, "HANDOFFS ARE NOT FEATURE DOCS").

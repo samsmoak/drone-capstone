@@ -1,0 +1,70 @@
+TICKET — The Control page fits every width (responsive layout)
+=============================================================
+
+STATUS: BUILT (on main: #74, #75, 2026-09-29). What is left is the
+FOLLOW-UPS list at the end. What shipped is described in
+../design/layout.txt (the STANDING rule) and
+../features/desktop/pages-and-windows.txt — those are the authority; where
+this ticket and the code disagree, the code wins.
+
+  Owner           Samuel
+  Stories         — (the owner's standing ask: "very responsive", three times)
+  Where           the desktop app's Control page, both modes
+  Your files      desktop/src/components/Tabs.tsx
+                  desktop/src/components/SplitPane.tsx
+                  desktop/src/pages/control/AttitudeIndicator.tsx
+                  desktop/src/pages/control/ControlPage.tsx (HealthTestPanel)
+                  desktop/src/pages/control/auto/AutoControl.tsx
+                  desktop/src/harness.tsx, desktop/src/measure.ts
+  Not in scope    the mission planner's own layout (mission-planner.txt)
+
+
+WHAT IT IS
+──────────
+
+Nothing on the Control page is squeezed, overlapping or clipped at any window
+width, in either theme — and that is now a STANDING rule every screen is
+measured against (../design/layout.txt).
+
+
+SCOPE — DELIVERED
+─────────────────
+
+  [x] Tab strips WRAP: the actions (10 Hz, Full screen) drop under the tabs
+      instead of crushing them; tabs never shrink and scroll sideways if
+      even they do not fit. (At a 1024 px window the console's tab list was
+      97 px wide holding 177 px of tabs.)
+  [x] The attitude readouts wrap under the instrument instead of overlapping
+      it; the battery & motor test splits in two by the PANEL's width, not
+      the window's.
+  [x] Auto shows the flow and the monitor side by side from 1280 px, stacked
+      below; its divider stops at 45–70 %.
+  [x] SplitPane clamps to bounds that move with the container.
+  [x] The standing rule: desktop measured at 720 / 900 / 1024 / 1280 /
+      1600 px and the website at 390 / 768 / 1024 / 1440, both themes,
+      layout by container width (../design/layout.txt, PREFERENCES.txt).
+  [x] The harness: ?only=, ?theme=, ?map=2d|3d, and sections for ③ Fly
+      landed and full screen.
+
+
+ACCEPTANCE — VERIFIED 2026-09-29
+────────────────────────────────
+
+  - The harness at all five widths, both themes, 2-D and 3-D: 20 PASS; the
+    self-test FAILs as it must.
+  - Manual at 1024 px checked by screenshot: tabs, readouts, motor test.
+  - desktop-install green on Linux, Windows, macOS Apple silicon and Intel.
+
+
+FOLLOW-UPS — OPEN
+─────────────────
+
+  [ ] A measuring tool for the website, like the desktop harness — today
+      web/ is checked by eye at its four widths (layout.txt).
+  [ ] Split ../features/desktop/pages-and-windows.txt (516 lines) into a
+      folder with an index (../GRAPH_STATE.txt, DEBT: OVERSIZED).
+  [ ] Run `cargo test` for the Tauri shell on a machine set up with
+      `node scripts/setup.mjs --dev` — a cloud container lacks gdk-3.0.
+
+When these are done, write what shipped into the docs above and delete this
+ticket (README.txt, "HANDOFFS ARE NOT FEATURE DOCS").

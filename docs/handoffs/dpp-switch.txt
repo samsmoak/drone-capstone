@@ -1,0 +1,96 @@
+TICKET — The DPP switch: processing flights when they land
+==========================================================
+
+STATUS: BUILT (on main: #74, 2026-09-29). What is left is the FOLLOW-UPS
+list at the end. What shipped is described in
+../features/pipeline/data-pipeline.txt and
+../features/backend/sessions-and-modes.txt — those are the authority; where
+this ticket and the code disagree, the code wins. How the team's stages are
+run is in dpp-contract.txt, "HOW THE AGENT RUNS THE PIPELINE".
+
+  Owner           Samuel
+  Stories         4.5 (a recorded flight becomes a verdict per point) — the
+                  trigger and the results on screen.
+  Where           the agent's session; ② Check and ③ Fly (Auto); the Data
+                  processing panel (Manual)
+  Your files      backend/agent/cropwatcher/processing.py       the queue
+                  backend/agent/cropwatcher/session.py
+                    (processing_on, set_processing, process_flight)
+                  backend/agent/cropwatcher/history.py  (per-flight state)
+                  backend/agent/cropwatcher/api/rest.py
+                    (POST /session/processing, GET /flights/{id}/result,
+                     POST /flights/{id}/process)
+                  desktop/src/pages/control/DataPipeline.tsx
+                  backend/agent/tests/test_processing.py
+  Not in scope    the stages themselves — clean, enhance (Kevin), classify
+                  (Reagan), dpp-*.txt
+
+
+WHAT IT IS
+──────────
+
+The operator chooses, per session, whether flights are processed. With it
+on, every flight is run through the data pipeline as soon as it lands, and
+its verdicts — one per inspection point, or one for a Manual flight — show
+on the Control page.
+
+
+SCOPE — DELIVERED
+─────────────────
+
+THE SWITCH
+  [x] Per session: on by default in Auto, off by default in Manual; the
+      operator's choice wins and lasts until the session ends. Audited
+      (processing_set).
+  [x] Read as a flight BEGINS and written on its line in meta.json, so a flip
+      mid-flight is for the next one.
+
+THE QUEUE (processing.py)
+  [x] After the flight's CSV is closed: `cropwatcher process --flight <id>`
+      in a CHILD PROCESS, at lower priority — never in the agent's process
+      (the 50 Hz flight loop and Python's interpreter lock).
+  [x] One flight at a time; 15 minutes at most; exit 0 is success, otherwise
+      the command's last line is the reason shown.
+  [x] Works installed: the frozen sidecar is the whole CLI, freeze_support()
+      first.
+  [x] Each flight's state (pending, queued, running, done, failed) in the
+      session's meta.json — through the open session's own log, or in the
+      file for a closed one.
+
+ON SCREEN
+  [x] The switch beside Start session (② Check) and Start mission (③ Fly),
+      and in Manual's Data processing panel.
+  [x] Results after landing: processing / failed with the reason and
+      Process again / not processed with Process this flight / the verdicts
+      with readings and frames per point, and an honest placeholder while
+      the classify stage is a stub.
+  [x] GET /flights/{id}/result, POST /flights/{id}/process — token-gated;
+      a flight id that could walk out of the folder is refused.
+
+
+ACCEPTANCE — VERIFIED 2026-09-29
+────────────────────────────────
+
+  - agent: ruff, mypy, pytest — tests/test_processing.py (30): the queue
+    (success, failure in the pipeline's words, a stuck pipeline stopped, a
+    command that cannot start, order, bad ids), the switch (defaults, read
+    at flight start, per session, audited, signed-out refused), processing
+    by hand, the routes.
+  - `python -m cropwatcher.cli process --fixture` runs end to end.
+  - desktop: pnpm build; the harness section "③ Fly, landed" shows the
+    results; both themes, 720–1600 px.
+
+
+FOLLOW-UPS — OPEN
+─────────────────
+
+  [ ] Show each flight's processing state on the Sessions page (it is in
+      meta.json; no page reads it yet), with Process this flight there.
+  [ ] Cancel a queued or running job from the page (today: only when the
+      agent shuts down).
+  [ ] Live verdicts per point while a mission flies — story 4.9, the live
+      runner (data-pipeline.txt).
+  [ ] Results to Supabase and alerts on the web dashboard.
+
+When these are done, write what shipped into the feature docs above and
+delete this ticket (README.txt, "HANDOFFS ARE NOT FEATURE DOCS").
