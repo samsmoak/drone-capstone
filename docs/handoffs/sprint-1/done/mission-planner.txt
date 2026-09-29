@@ -3,7 +3,7 @@ TICKET — The mission planner
 
 STATUS: BUILT (on main: #72, #74, #75, 2026-09-28 → 29). What is left is the
 FOLLOW-UPS list at the end. What shipped is described in
-../features/desktop/auto-control.txt and ../features/missions/floor-plans.txt
+../../../features/desktop/auto-control.txt and ../../../features/missions/floor-plans.txt
 — those are the authority; where this ticket and the code disagree, the code
 wins.
 
@@ -17,7 +17,7 @@ wins.
                   backend/agent/cropwatcher/mission/plan/     rooms, missions,
                                                               the checks, saving
                   backend/agent/tests/mission/
-  Not in scope    the mission controller body (mission-controller.txt,
+  Not in scope    the mission controller body (../undone/mission-controller.txt,
                   Hannah); ② Check and ③ Fly; the data pipeline
 
 
@@ -89,7 +89,7 @@ ACCEPTANCE — VERIFIED 2026-09-29
 
   - desktop: pnpm build; the layout harness at 720 / 900 / 1024 / 1280 /
     1600 px, both themes, 2-D and 3-D — all PASS, the self-test FAIL as it
-    must (../design/layout.txt).
+    must (../../../design/layout.txt).
   - agent: ruff, mypy, and tests/mission/ pass.
   - Driven in headless Chromium: the point menu, reverse, select and
     deselect, read-only until selected, the divider, 3-D floor and wall
@@ -105,7 +105,7 @@ FOLLOW-UPS — OPEN
       default ±2 m room map (needs the drone and the base stations).
   [ ] Sync rooms and missions to Supabase — today they live on the laptop
       only, and the web planner still builds the old format
-      (../features/frontend/mission-planner.txt, KNOWN DIVERGENCE).
+      (../../../features/frontend/mission-planner.txt, KNOWN DIVERGENCE).
 
 When these are done, write what shipped into the feature docs above and
-delete this ticket (README.txt, "HANDOFFS ARE NOT FEATURE DOCS").
+delete this ticket (../../README.txt, "HANDOFFS ARE NOT FEATURE DOCS").

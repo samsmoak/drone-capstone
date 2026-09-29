@@ -4,7 +4,7 @@
              (4.2)    (4.3)     (4.4, 4.6)    (4.6)
 
     contracts.py   the types and interfaces every stage builds against — THE
-                   agreement (docs/handoffs/dpp-contract.txt)
+                   agreement (docs/handoffs/sprint-1/done/dpp-contract.txt)
     sources.py     where a flight comes from   (a port; LocalFlightSource)
     sinks.py       where a result goes         (a port; LocalResultSink)
     compose.py     which implementation each stage uses — the one line a

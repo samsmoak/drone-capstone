@@ -45,7 +45,7 @@ classifier yet" — the stub's wording. Your stage replaces that wording, and
 the placeholder goes away by itself. Your reasons are shown to the operator
 word for word.
 
-How your stage is now run (read dpp-contract.txt, "HOW THE AGENT RUNS THE
+How your stage is now run (read ../done/dpp-contract.txt, "HOW THE AGENT RUNS THE
 PIPELINE"): the operator has a DPP switch; with it on
 (the default in Auto) every flight is processed as soon as it lands, by
 `cropwatcher process --flight <id>` in a CHILD PROCESS the agent starts, one
@@ -63,14 +63,14 @@ THE PIPELINE, AND WHERE YOUR PART FITS
     that stands in for its owner's work — yours replaces stages/classify/stub.py
     ("unknown" with a reason).
   - The unit of work is ONE INSPECTION POINT (its readings and frames).
-  - Your stage receives exactly the types in dpp-contract.txt, returns exactly
+  - Your stage receives exactly the types in ../done/dpp-contract.txt, returns exactly
     the types there, and nothing else. That is what lets it plug in without
     anyone changing the rest.
   - Interpret (Samuel) turns your labels into verdicts and alerts. You label;
     interpret decides what to alert on — and quotes your features in the alert,
     so name them with their units.
 
-Read dpp-contract.txt next. Then this ticket's details.
+Read ../done/dpp-contract.txt next. Then this ticket's details.
 
 
 THE JOB, IN ONE PARAGRAPH
@@ -87,7 +87,7 @@ TO ALERT ON.
 
 INPUTS AND OUTPUTS
 
-Exactly as dpp-contract.txt, "Stage 3":
+Exactly as ../done/dpp-contract.txt, "Stage 3":
 
   class YourClassifier:
       name = "faulty-v1"

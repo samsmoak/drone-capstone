@@ -1,7 +1,7 @@
 """The placeholder cleaner: flags nothing, so every reading is usable.
 
 Honest by construction — it claims no fault it did not look for. Replaced by
-Kevin's cleaner (docs/handoffs/dpp-clean.txt) with a one-line change in
+Kevin's cleaner (docs/handoffs/sprint-1/undone/dpp-clean.txt) with a one-line change in
 pipeline/compose.py.
 """
 

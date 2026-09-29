@@ -6,7 +6,7 @@ inspection point. It never commands the drone itself, so autonomous flight
 inherits everything tuned into manual flight — the easing, the leash, the
 guards, the heartbeat dead-man — and nothing else.
 
-Owned by Hannah: docs/handoffs/mission-controller.txt. The interface here is
+Owned by Hannah: docs/handoffs/sprint-1/undone/mission-controller.txt. The interface here is
 fixed; the body of MissionController is hers to build.
 """
 

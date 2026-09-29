@@ -33,7 +33,7 @@ records temperature, pressure and camera frames at each. It has three parts:
                  go through four stages, and the point gets a verdict.
                                                       Samuel, Kevin, Reagan
 
-UPDATED 2026-09-29 — how your stage is now run (read dpp-contract.txt,
+UPDATED 2026-09-29 — how your stage is now run (read ../done/dpp-contract.txt,
 "HOW THE AGENT RUNS THE PIPELINE"). The operator has a DPP switch; with it on
 (the default in Auto) every flight is processed as soon as it lands, by
 `cropwatcher process --flight <id>` in a CHILD PROCESS the agent starts, one
@@ -51,14 +51,14 @@ THE PIPELINE, AND WHERE YOUR PART FITS
     that stands in for its owner's work — yours replaces stages/clean/stub.py
     (flags nothing).
   - The unit of work is ONE INSPECTION POINT (its readings and frames).
-  - Your stage receives exactly the types in dpp-contract.txt, returns exactly
+  - Your stage receives exactly the types in ../done/dpp-contract.txt, returns exactly
     the types there, and nothing else. That is what lets it plug in without
     anyone changing the rest.
   - What you produce decides what everything after you may use: a reading you
     flag is skipped by classify and interpret, a reading you miss is analysed as
     if it were true.
 
-Read dpp-contract.txt next. Then this ticket's details.
+Read ../done/dpp-contract.txt next. Then this ticket's details.
 
 
 THE JOB, IN ONE PARAGRAPH
@@ -96,7 +96,7 @@ Your tests must prove both halves (see ACCEPTANCE).
 
 INPUTS AND OUTPUTS
 
-Exactly as dpp-contract.txt, "Stage 1":
+Exactly as ../done/dpp-contract.txt, "Stage 1":
 
   class YourCleaner:
       name = "hampel"            # your choice, short
@@ -178,7 +178,7 @@ STEP BY STEP
 
 3. WRITE THE CLEANER in stages/clean/, to the contract.
 
-4. TEST IT (below), plug it in (dpp-contract.txt, HOW YOU PLUG IN), and run it
+4. TEST IT (below), plug it in (../done/dpp-contract.txt, HOW YOU PLUG IN), and run it
    on a real flight. Open result.json: do the flags make sense?
 
 5. TIME IT per point on the lab laptop, and put the number in the PR.

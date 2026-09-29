@@ -979,7 +979,7 @@ class Session:
 
         if not getattr(self._mission_controller, "BUILT", False):
             raise SessionError(
-                "The mission controller is not built yet (docs/handoffs/"
+                "The mission controller is not built yet (docs/handoffs/sprint-1/undone/"
                 "mission-controller.txt), so this mission cannot fly. Nothing was armed.")
 
         self._set(state=State.BUSY, activity="mission", message=None,

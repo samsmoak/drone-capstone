@@ -1,6 +1,6 @@
 """The contract every pipeline stage builds against.
 
-The same types as docs/handoffs/dpp-contract.txt — this file is now the
+The same types as docs/handoffs/sprint-1/done/dpp-contract.txt — this file is now the
 authority. Change a type here and every stage owner's code is affected, so a
 change is agreed first and the contract doc updated in the same commit.
 

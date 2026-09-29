@@ -14,36 +14,65 @@ HANDOFFS ARE NOT FEATURE DOCS. docs/features/ describes what is built and
 verified, and a checker compares it with the code. A ticket describes what
 does not exist yet, so it would fail that check. When a ticket is done, its
 owner writes what actually shipped into docs/features/ (template:
-docs/_templates/feature.txt), then the ticket is deleted. Git keeps the
-history.
+docs/_templates/feature.txt) and the ticket moves to its sprint's done/
+(below). Once its FOLLOW-UPS are closed too, the ticket is deleted. Git
+keeps the history.
 
 
-THE TICKETS
+SPRINTS — WHERE A TICKET LIVES (2026-09-29, the owner's ask)
 
-  Ticket                   Owner    Stories (planning PDF)     Can start
+Tickets are filed by sprint, and inside each sprint by whether the work is
+done. WE ARE IN SPRINT 1.
+
+  sprint-1/
+    undone/   work not built yet — start here if a ticket is yours
+    done/     built and on main; what is left is each ticket's FOLLOW-UPS
+
+  - A ticket is written into the current sprint's undone/.
+  - It moves to done/ (git mv, same sprint) when its work is on main and
+    its STATUS line says BUILT with the PR numbers. Its open FOLLOW-UPS stay
+    listed in it.
+  - When a sprint ends, open follow-ups and unfinished tickets are carried
+    into the next sprint's undone/ (sprint-2/undone/ …); the old sprint's
+    folders are left as the record of what that sprint did.
+  - Moving a ticket moves its path: grep the repo for its file name and fix
+    every reference — the code's comments and messages name tickets too
+    (backend/agent/cropwatcher/, tests/). `python3 .claude/feature-kit/kit.py
+    check` finds the broken doc links; it cannot see Python strings.
+
+
+THE TICKETS — SPRINT 1
+
+  Ticket                          Owner    Stories (planning PDF)     State
   ──────────────────────────────────────────────────────────────────────────────
-  mission-planner.txt      Samuel   mission planning; 3.4      built — the
-                                    (holds ≥ 5 s)              follow-ups are
-                                                               open
-  mission-start.txt        Samuel   autonomous flight (the     built — the
-                                    session's half)            follow-ups are
-                                                               open
-  dpp-switch.txt           Samuel   4.5 (the trigger, the      built — the
-                                    results on screen)         follow-ups are
-                                                               open
-  control-layout.txt       Samuel   — (the standing layout     built — the
-                                    rule)                      follow-ups are
-                                                               open
-  mission-controller.txt   Hannah   3.4, 3.5 (flying half),    now
-                                    autonomous flight
-  dpp-contract.txt         every    4.5                        — (the shared
-                           pipeline                            agreement)
-                           owner
-  dpp-clean.txt            Kevin    4.2                        now
-  dpp-enhance.txt          Kevin    4.3 (and the colorize      now
-                                    stretch)
-  dpp-classify.txt         Reagan   4.4, 4.6 (the classifier   now
-                                    half)
+  undone/mission-controller.txt   Hannah   3.4, 3.5 (flying half),    can start
+                                           autonomous flight          now
+  undone/dpp-clean.txt            Kevin    4.2                        can start
+                                                                      now
+  undone/dpp-enhance.txt          Kevin    4.3 (and the colorize      can start
+                                           stretch)                   now
+  undone/dpp-classify.txt         Reagan   4.4, 4.6 (the classifier   can start
+                                           half)                      now
+  done/mission-planner.txt        Samuel   mission planning; 3.4      built —
+                                           (holds ≥ 5 s)              follow-ups
+                                                                      open
+  done/mission-start.txt          Samuel   autonomous flight (the     built —
+                                           session's half)            follow-ups
+                                                                      open
+  done/dpp-switch.txt             Samuel   4.5 (the trigger, the      built —
+                                           results on screen)         follow-ups
+                                                                      open
+  done/control-layout.txt         Samuel   — (the standing layout     built —
+                                           rule)                      follow-ups
+                                                                      open
+  done/dpp-contract.txt           every    4.5                        built —
+                                  pipeline                            the shared
+                                  owner                               agreement
+                                                                      every
+                                                                      undone/dpp-*
+                                                                      builds on
+
+All paths above are under sprint-1/.
 
 
 WHAT IS ALREADY BUILT — the skeleton everyone plugs into
@@ -64,18 +93,20 @@ Mission system (backend/agent/cropwatcher/mission/, docs/features/missions/)
   - 2026-09-29: THE FLIGHT STARTS FROM THE DRONE — Mission.from_start puts
     the start where the drone is, keeps the points, drops points after the
     operator's END POINT, and re-validates; that is what the controller is
-    handed (mission-controller.txt, "CHANGED 2026-09-29"). A mission needs at
-    least one point to be saved. The desktop draws rooms in 2-D or 3-D;
-    obstacles may carry a height (drawn only — never flown over).
+    handed (sprint-1/undone/mission-controller.txt, "CHANGED 2026-09-29").
+    A mission needs at least one point to be saved. The desktop draws rooms
+    in 2-D or 3-D; obstacles may carry a height (drawn only — never flown
+    over).
 
 Data pipeline (backend/agent/cropwatcher/pipeline/, docs/features/pipeline/)
-  - contracts.py — every type in dpp-contract.txt.
+  - contracts.py — every type in sprint-1/done/dpp-contract.txt.
   - A stub for clean, enhance and classify; interpret (labels → verdicts).
   - LocalFlightSource, LocalResultSink, the runner, compose.py.
   - `cropwatcher process --flight <id>` and `--fixture`.
   - 2026-09-29: THE DPP SWITCH — with it on, the agent runs that command for
     every flight when it lands, in a child process, and the desktop shows the
-    verdicts (dpp-contract.txt, "HOW THE AGENT RUNS THE PIPELINE").
+    verdicts (sprint-1/done/dpp-contract.txt, "HOW THE AGENT RUNS THE
+    PIPELINE").
   - tests/pipeline/: a real flight fixture, conformance.py and its checks.
 
 

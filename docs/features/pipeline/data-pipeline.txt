@@ -14,9 +14,9 @@ STATUS  (Last verified: 2026-09-28)
   trigger   BUILT — the DPP switch: a session's flights are processed when they
             land, in a child process (cropwatcher/processing.py); results on
             the desktop's Fly step and Manual's Data processing panel
-  clean     STUB — Kevin (../../handoffs/dpp-clean.txt)
-  enhance   STUB — Kevin (../../handoffs/dpp-enhance.txt)
-  classify  STUB — Reagan (../../handoffs/dpp-classify.txt)
+  clean     STUB — Kevin (../../handoffs/sprint-1/undone/dpp-clean.txt)
+  enhance   STUB — Kevin (../../handoffs/sprint-1/undone/dpp-enhance.txt)
+  classify  STUB — Reagan (../../handoffs/sprint-1/undone/dpp-classify.txt)
   NOT BUILT the live runner (story 4.9 — verdicts arrive after landing, not
             per point in the air); results in Supabase and alerts on the
             dashboard
@@ -53,7 +53,7 @@ backend/agent/cropwatcher/api/rest.py              POST /session/processing,
                                                    POST /flights/{id}/process
 desktop/src/pages/control/DataPipeline.tsx         the switch, the results
 backend/agent/tests/pipeline/                      fixture, conformance, tests
-../../handoffs/dpp-contract.txt                    the contract, for the team
+../../handoffs/sprint-1/done/dpp-contract.txt      the contract, for the team
 
 --------------------------------------------------------------------------------
 3. DECISIONS
