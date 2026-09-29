@@ -63,6 +63,11 @@ class FlightSummary:
     ended_at: str | None = None
     outcome: str | None = None
     abort_reason: str | None = None
+    #: The data pipeline for this flight (cropwatcher/processing.py): None when
+    #: processing was off as it began; "pending" until it lands; then
+    #: "queued", "running", "done" or "failed".
+    processing: str | None = None
+    processing_error: str | None = None
 
 
 @dataclass
@@ -148,10 +153,24 @@ class SessionLog:
         temp.write_text(json.dumps(self.meta.to_dict(), indent=2))
         os.replace(temp, target)
 
-    def flight_started(self, flight_id: str, mode: str, program: str | None) -> None:
+    def flight_started(self, flight_id: str, mode: str, program: str | None, *,
+                       processing: bool = False) -> None:
         with self._lock:
             self.meta.flights.append(
-                FlightSummary(id=flight_id, mode=mode, program=program, started_at=_now_iso()))
+                FlightSummary(id=flight_id, mode=mode, program=program, started_at=_now_iso(),
+                              processing="pending" if processing else None))
+            self._save()
+
+    def has_flight(self, flight_id: str) -> bool:
+        with self._lock:
+            return any(f.id == flight_id for f in self.meta.flights)
+
+    def flight_processing(self, flight_id: str, state: str, error: str | None = None) -> None:
+        with self._lock:
+            for flight in self.meta.flights:
+                if flight.id == flight_id:
+                    flight.processing = state
+                    flight.processing_error = error
             self._save()
 
     def flight_finished(self, flight_id: str, *, outcome: str | None,
@@ -298,6 +317,30 @@ def read_samples(
         step = len(rows) / limit
         rows = [rows[int(i * step)] for i in range(limit)]
     return rows
+
+
+def set_flight_processing(flight_id: str, state: str, error: str | None = None, *,
+                          root: Path | None = None) -> bool:
+    """Record a flight's processing state in whichever CLOSED session holds it.
+    An open session is written through its SessionLog instead — it keeps the
+    meta in memory and would overwrite a change made to the file under it.
+    False when no session on this laptop has the flight."""
+    for meta_file in (root or sessions_dir()).glob("*/meta.json"):
+        try:
+            raw = json.loads(meta_file.read_text())
+        except (OSError, ValueError):
+            continue
+        flights = raw.get("flights") or []
+        if not any(f.get("id") == flight_id for f in flights):
+            continue
+        for flight in flights:
+            if flight.get("id") == flight_id:
+                flight["processing"], flight["processing_error"] = state, error
+        temp = meta_file.with_suffix(".json.tmp")
+        temp.write_text(json.dumps(raw, indent=2))
+        os.replace(temp, meta_file)
+        return True
+    return False
 
 
 def _session_folder(session_id: str, root: Path | None) -> Path:

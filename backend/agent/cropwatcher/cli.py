@@ -384,7 +384,8 @@ def cmd_mission(args: argparse.Namespace) -> int:
     """Check a saved mission, and fly it the way the app does.
 
     The same path as Session.run_mission: validate in its room, the checks, the
-    battery budget, the home mark, a confirmation — then the manual flight
+    battery budget, the mission checked again from where the drone is (its
+    position is the start), a confirmation — then the manual flight
     system armed, the mission controller giving it goals, and the guard watching
     with the room's own geofence. This terminal is the operator's window: it
     keeps the heartbeat going, and Ctrl-C lands.
@@ -401,9 +402,11 @@ def cmd_mission(args: argparse.Namespace) -> int:
     needed = mission.estimated_duration_s(move_speed_m_s=MOVE_SPEED_M_S,
                                           climb_rate_m_s=CLIMB_RATE_M_S)
     print(f"\n  {mission.name}  (revision {mission.revision}, room {room.name})")
-    print(f"  {len(mission.points)} inspection points, {mission.path_length_m():.1f} m of "
-          f"path, about {needed:.0f} s")
-    for point in mission.points:
+    ends = f", ending at {mission.end_point_id}" if mission.end_point_id else ""
+    print(f"  {len(mission.flown_points)} inspection points{ends}, "
+          f"{mission.path_length_m():.1f} m of path from the planned start, about "
+          f"{needed:.0f} s")
+    for point in mission.flown_points:
         print(f"    {point.id:6} ({point.x_m:+.2f}, {point.y_m:+.2f}) m at {point.z_m:.2f} m, "
               f"hold {point.hold_s:.0f} s{f'  {point.label}' if point.label else ''}")
     for problem in problems:
@@ -431,10 +434,23 @@ def cmd_mission(args: argparse.Namespace) -> int:
             return 1
         snap = link.snapshot()
         x, y = snap.get("stateEstimate.x"), snap.get("stateEstimate.y")
-        if x is None or y is None or \
-                ((x - mission.home[0]) ** 2 + (y - mission.home[1]) ** 2) ** 0.5 > 0.30:
-            print(f"\n  place the drone on the home mark at ({mission.home[0]:+.2f}, "
-                  f"{mission.home[1]:+.2f}) m first")
+        if x is None or y is None:
+            print("\n  the drone's position is not being reported — the mission cannot "
+                  "be checked from where it is")
+            return 1
+        # The flight starts from the drone, as in the app (Session.run_mission).
+        mission = mission.from_start((float(x), float(y)))
+        from_here = errors(validate_mission(
+            mission, room, outer=outer_bound(room, default_half_extent_m=args.fence)))
+        if from_here:
+            print(f"\n  from where the drone is ({x:+.2f}, {y:+.2f}) m: "
+                  f"{from_here[0].message}")
+            return 1
+        needed = mission.estimated_duration_s(move_speed_m_s=MOVE_SPEED_M_S,
+                                              climb_rate_m_s=CLIMB_RATE_M_S)
+        if needed > report.budget_s():
+            print(f"\n  from where the drone is, the mission needs {needed:.0f}s; this "
+                  f"battery has about {report.budget_s():.0f}s")
             return 1
         if not _confirm_area():
             print("  cancelled")

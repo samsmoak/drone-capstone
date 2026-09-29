@@ -9,6 +9,15 @@ come to me? — and the validation compares the answer with the room's
 clearance. The drone is never allowed to touch an obstacle's outline, and not
 to come within the clearance of it either.
 
+HEIGHT IS DRAWN, NOT FLOWN OVER. An obstacle may carry its height above the
+floor (`height_m`), so the 3-D room map shows a knee-high pot and a
+ceiling-high shelf differently. None means floor to ceiling — every room saved
+before heights existed. The checks treat EVERY obstacle as floor to ceiling
+whatever its height: the drone never plans a leg over one. With the flight
+system's 1.00 m ceiling and 0.25 m clearance, anything taller than about
+0.7 m could never be cleared anyway, and a plan that relied on the height of a
+bench someone measured by eye is a plan that clips it.
+
 THIS IS A STATIC MAP. It knows what was drawn, not a person who walked in or a
 trolley someone left. The operator still looks at the room before flying.
 """
@@ -22,6 +31,9 @@ from typing import Any
 
 from cropwatcher.mission.plan import shapes
 from cropwatcher.mission.plan.shapes import Point
+
+#: The tallest obstacle height accepted: a room, not a warehouse.
+MAX_HEIGHT_M = 10.0
 
 
 class ObstacleError(ValueError):
@@ -48,8 +60,15 @@ class Obstacle:
     points: tuple[Point, ...]
     radius: float = 0.0
     label: str | None = None
+    #: Height above the floor, for the room map; None = floor to ceiling. Never
+    #: used to clear a leg — see the module docstring.
+    height_m: float | None = None
 
     def __post_init__(self) -> None:
+        if self.height_m is not None and not (math.isfinite(self.height_m)
+                                              and 0 < self.height_m <= MAX_HEIGHT_M):
+            raise ObstacleError(f"obstacle {self.name}: a height must be above 0 and at "
+                                f"most {MAX_HEIGHT_M:.0f} m")
         for x, y in self.points:
             if not shapes.is_finite(x, y):
                 raise ObstacleError(f"obstacle {self.name}: a corner is not a number")
@@ -127,6 +146,7 @@ class Obstacle:
         }
         if self.kind is ObstacleKind.CIRCLE:
             out["radius"] = round(self.radius, 4)
+        out["height_m"] = None if self.height_m is None else round(self.height_m, 4)
         return out
 
     @classmethod
@@ -138,6 +158,8 @@ class Obstacle:
                 points=tuple((float(p[0]), float(p[1])) for p in data["points"]),
                 radius=float(data.get("radius") or 0.0),
                 label=(str(data["label"]) if data.get("label") else None),
+                height_m=(float(data["height_m"]) if data.get("height_m") is not None
+                          else None),
             )
         except (KeyError, TypeError, ValueError, IndexError) as e:
             if isinstance(e, ObstacleError):

@@ -172,3 +172,92 @@ class TestDuration:
         travel = m.path_length_m() / 0.2
         assert seconds > holds + travel
         assert seconds < holds + travel + 30
+
+
+class TestEndPoint:
+    """An end point: the flight flies up to it and lands there. Points after it
+    stay in the plan and are not flown — or checked."""
+
+    def test_only_the_points_up_to_it_are_flown(self):
+        m = mission(end_point_id="P2")
+        assert [p.id for p in m.flown_points] == ["P1", "P2"]
+        assert [name for _, _, name in m.legs()] == ["home → P1", "P1 → P2"]
+
+    def test_it_lands_there_even_with_return_to_start_on(self):
+        m = mission(end_point_id="P2", return_to_start=True)
+        assert m.returns_home is False
+        assert m.path_length_m() < mission().path_length_m()
+
+    def test_the_last_point_as_the_end_point_just_lands_there(self):
+        assert mission(end_point_id="P3").legs()[-1][2] == "P2 → P3"
+
+    def test_points_after_it_are_not_held_to_the_flying_rules(self):
+        after = InspectionPoint("P4", 0.0, 0.0, 0.40, 5.0)          # on the table
+        m = mission(points=(*mission().points, after), end_point_id="P3")
+        assert not errors(validate_mission(m, room(), outer=OUTER))
+        assert "near_obstacle" in codes(validate_mission(m.edited(end_point_id=None), room(),
+                                                         outer=OUTER))
+
+    def test_an_end_point_that_names_no_point_is_an_error(self):
+        problems = validate_mission(mission(end_point_id="P9"), room(), outer=OUTER)
+        assert "end_point" in codes(errors(problems))
+
+    def test_the_duration_counts_only_what_is_flown(self):
+        full = mission().estimated_duration_s(move_speed_m_s=0.2, climb_rate_m_s=0.15)
+        short = mission(end_point_id="P1").estimated_duration_s(move_speed_m_s=0.2,
+                                                                 climb_rate_m_s=0.15)
+        assert short < full
+
+    def test_it_round_trips_and_old_missions_have_none(self):
+        m = mission(end_point_id="P2")
+        assert Mission.from_dict(m.to_dict()).end_point_id == "P2"
+        old = mission().to_dict()
+        del old["end_point_id"]
+        assert Mission.from_dict(old).end_point_id is None
+
+
+class TestFromStart:
+    """The drone's position is the start. The points never move with it."""
+
+    def test_the_start_moves_and_the_points_do_not(self):
+        m = mission().from_start((-1.0, -0.4))
+        assert m.home == (-1.0, -0.4)
+        assert [p.xy for p in m.points] == [p.xy for p in mission().points]
+
+    def test_it_returns_to_where_it_actually_started(self):
+        legs = mission().from_start((-1.0, -0.4)).legs()
+        assert legs[0][0] == (-1.0, -0.4) and legs[-1][1] == (-1.0, -0.4)
+
+    def test_an_end_point_is_applied_and_then_cleared(self):
+        m = mission(end_point_id="P2").from_start((-1.0, -0.4))
+        assert m.point_ids == ("P1", "P2")
+        assert m.end_point_id is None and m.return_to_start is False
+
+    def test_a_start_whose_first_leg_crosses_the_table_is_an_error(self):
+        m = mission().from_start((0.8, -1.0))
+        assert "leg_near_obstacle" in codes(validate_mission(m, room(), outer=OUTER))
+
+
+class TestObstacleHeight:
+    """Height is for the room map. The checks treat every obstacle as floor to
+    ceiling, whatever its height."""
+
+    def test_a_low_obstacle_still_blocks_a_leg_above_it(self):
+        low = Obstacle("pot", ObstacleKind.CIRCLE, ((0.0, 0.0),), radius=0.2, height_m=0.1)
+        # A 10 cm pot on the diagonal; the leg flies it at 0.9 m, well above.
+        m = mission(home=(0.9, 0.9), return_to_start=False,
+                    points=(InspectionPoint("P1", -1.0, -1.0, 0.9, 5.0),))
+        problems = validate_mission(m, room(obstacles=(low,)), outer=OUTER)
+        assert "leg_near_obstacle" in codes(problems)
+
+    def test_it_round_trips_and_old_rooms_are_floor_to_ceiling(self):
+        tall = Obstacle("shelf", ObstacleKind.RECTANGLE, ((0, 0), (1, 0.5)), height_m=1.8)
+        assert Obstacle.from_dict(tall.to_dict()).height_m == 1.8
+        old = tall.to_dict()
+        del old["height_m"]
+        assert Obstacle.from_dict(old).height_m is None
+
+    @pytest.mark.parametrize("height", [0.0, -1.0, float("nan"), 11.0])
+    def test_a_height_must_be_real(self, height):
+        with pytest.raises(ObstacleError, match="height"):
+            Obstacle("x", ObstacleKind.CIRCLE, ((0, 0),), radius=0.2, height_m=height)

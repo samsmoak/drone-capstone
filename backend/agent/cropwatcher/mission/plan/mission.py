@@ -1,10 +1,16 @@
 """A mission — the plan the mission controller flies.
 
     room               which floor plan it is flown in (by id)
-    home               where the drone sits before takeoff, and returns to
+    home               the PLANNED start: where the drone is expected to sit
+                       before takeoff. The flight itself starts from wherever
+                       the drone really is (from_start) — this mark is what
+                       the plan is drawn and checked from until then.
     points             the inspection points, in the order they are flown
+    end_point_id       optional: the point the flight ends and lands at. Points
+                       after it stay in the plan and are not flown.
     cruise_height_m    the height it takes off to
-    return_to_start    fly back over home before landing
+    return_to_start    fly back over the start before landing (ignored when an
+                       end point is set: the flight lands at the end point)
 
 An INSPECTION POINT is one place the drone must hold and record: x and y in
 absolute Lighthouse metres, a height above the floor captured at takeoff
@@ -91,6 +97,9 @@ class Mission:
     points: tuple[InspectionPoint, ...]
     cruise_height_m: float = 0.40
     return_to_start: bool = True
+    #: The inspection point the flight ends and lands at, or None to fly every
+    #: point. Must name a point of this mission (validate.py says so if not).
+    end_point_id: str | None = None
     revision: int = 1
     #: The revision that last flew, or None. Equal to `revision` means the
     #: current plan has flown, and the next edit makes a new revision.
@@ -114,12 +123,44 @@ class Mission:
     def point_ids(self) -> tuple[str, ...]:
         return tuple(p.id for p in self.points)
 
+    @property
+    def flown_points(self) -> tuple[InspectionPoint, ...]:
+        """The points actually flown, in order: every point up to and including
+        the end point, or all of them when there is none (or it names no point
+        — validate.py reports that as an error)."""
+        if self.end_point_id is None or self.end_point_id not in self.point_ids:
+            return self.points
+        last = self.point_ids.index(self.end_point_id)
+        return self.points[: last + 1]
+
+    @property
+    def returns_home(self) -> bool:
+        """Whether the flight flies back over its start before landing. An end
+        point means "land there", so it wins over return_to_start."""
+        return self.return_to_start and self.end_point_id is None
+
+    def from_start(self, start: Point) -> Mission:
+        """The mission as it will actually be flown from `start` — the drone's
+        own position when it is started.
+
+        The inspection points are NOT moved. They are absolute Lighthouse
+        positions tied to the equipment they inspect; shifting them with the
+        drone would put a point beside the wrong pump, or inside a bench. What
+        changes is the start: the first leg runs from where the drone really
+        is, the return leg (if any) comes back there, and the points after an
+        end point are dropped. The result is re-validated like any mission.
+        """
+        return replace(self, home=(float(start[0]), float(start[1])),
+                       points=self.flown_points, end_point_id=None,
+                       return_to_start=self.returns_home)
+
     def legs(self) -> list[tuple[Point, Point, str]]:
         """Every straight line flown, with a name for each: home → P1 → … and,
-        when returning, the last point → home."""
+        when returning, the last point → home. With an end point, the legs stop
+        there."""
         stops: list[tuple[Point, str]] = [(self.home, "home")]
-        stops += [(p.xy, p.id) for p in self.points]
-        if self.return_to_start:
+        stops += [(p.xy, p.id) for p in self.flown_points]
+        if self.returns_home:
             stops.append((self.home, "home"))
         return [(a, b, f"{na} → {nb}") for (a, na), (b, nb) in zip(stops, stops[1:], strict=False)]
 
@@ -138,15 +179,15 @@ class Mission:
         total = self.cruise_height_m / climb_rate_m_s          # takeoff
         height = self.cruise_height_m
         stops = [(self.home, self.cruise_height_m)]
-        stops += [(p.xy, p.z_m) for p in self.points]
-        if self.return_to_start:
+        stops += [(p.xy, p.z_m) for p in self.flown_points]
+        if self.returns_home:
             stops.append((self.home, self.cruise_height_m))
         for (a, _), (b, zb) in zip(stops, stops[1:], strict=False):
             horizontal = math.hypot(b[0] - a[0], b[1] - a[1]) / move_speed_m_s
             vertical = abs(zb - height) / climb_rate_m_s
             total += max(horizontal, vertical) + settle_s
             height = zb
-        total += sum(p.hold_s for p in self.points)
+        total += sum(p.hold_s for p in self.flown_points)
         total += height / climb_rate_m_s + 1.0                 # landing, and touchdown
         return total
 
@@ -160,6 +201,7 @@ class Mission:
             "points": [p.to_dict() for p in self.points],
             "cruise_height_m": self.cruise_height_m,
             "return_to_start": self.return_to_start,
+            "end_point_id": self.end_point_id,
             "revision": self.revision, "flown_revision": self.flown_revision,
             "created_at": self.created_at, "updated_at": self.updated_at,
         }
@@ -182,6 +224,7 @@ class Mission:
                 points=tuple(InspectionPoint.from_dict(p) for p in data.get("points") or []),
                 cruise_height_m=float(data.get("cruise_height_m", 0.40)),
                 return_to_start=bool(data.get("return_to_start", True)),
+                end_point_id=(str(data["end_point_id"]) if data.get("end_point_id") else None),
                 revision=int(data.get("revision", 1)),
                 flown_revision=int(flown) if flown is not None else None,
                 created_at=str(data.get("created_at") or now_iso()),
