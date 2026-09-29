@@ -83,6 +83,10 @@ export function SplitPane({
   }, [storageKey, fraction]);
 
   const sideBySide = orientation === "vertical";
+  // The bounds may move (the editor's are in pixels, turned into fractions of
+  // a container that resizes): the pane follows them without losing the
+  // operator's own position, which comes back when there is room again.
+  const shown = clampTo(fraction, min, max);
 
   const fromPointer = useCallback((event: PointerEvent | React.PointerEvent) => {
     const el = box.current;
@@ -133,7 +137,7 @@ export function SplitPane({
       ref={box}
       className={`flex min-h-0 min-w-0 ${sideBySide ? "flex-row" : "flex-col"} ${className}`}
     >
-      <div className="flex min-h-0 min-w-0" style={{ flex: `0 0 ${fraction * 100}%` }}>
+      <div className="flex min-h-0 min-w-0" style={{ flex: `0 0 ${shown * 100}%` }}>
         {first}
       </div>
 
@@ -141,7 +145,7 @@ export function SplitPane({
         role="separator"
         aria-orientation={orientation}
         aria-label={label}
-        aria-valuenow={Math.round(fraction * 100)}
+        aria-valuenow={Math.round(shown * 100)}
         aria-valuemin={Math.round(min * 100)}
         aria-valuemax={Math.round(max * 100)}
         tabIndex={0}

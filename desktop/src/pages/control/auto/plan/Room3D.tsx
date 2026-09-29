@@ -33,7 +33,7 @@ import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "
 import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
 import { Edges, GizmoHelper, GizmoViewport, Line, OrbitControls } from "@react-three/drei";
 import {
-  BufferGeometry, CanvasTexture, Color, DoubleSide, Float32BufferAttribute, Plane, Quaternion, Shape,
+  BufferGeometry, CanvasTexture, Color, Float32BufferAttribute, FrontSide, Plane, Quaternion, Shape,
   SRGBColorSpace, Vector3, type PerspectiveCamera,
 } from "three";
 import type { Geofence, InspectionPoint, Obstacle, OuterBound, Problem, XY } from "@/lib/agent";
@@ -137,7 +137,7 @@ export default function Room3D(props: Room3DProps) {
   return (
     <div
       ref={host}
-      className="relative h-full w-full touch-none select-none bg-[var(--surface-2)]"
+      className="relative h-full w-full min-w-0 touch-none select-none overflow-hidden bg-[var(--surface-2)]"
       onPointerDownCapture={(e) => { pressed.current = { x: e.clientX, y: e.clientY }; }}
       onContextMenu={(e) => e.preventDefault()}
     >
@@ -200,10 +200,13 @@ function Scene({
       <Floor box={box} outer={outer} palette={palette}
              onClick={(e) => {
                if (moved(e.nativeEvent)) return;
-               if (editing?.placing && editing.onPlace) {
-                 e.stopPropagation();
-                 editing.onPlace([e.point.x, e.point.y]);
-               }
+               e.stopPropagation();
+               // Placing: the click puts the thing here. Otherwise a click on
+               // empty floor selects NOTHING — every object shown equally.
+               // (The floor has a handler, so onPointerMissed never fires for
+               // it: without this, empty floor kept the last selection.)
+               if (editing?.placing && editing.onPlace) editing.onPlace([e.point.x, e.point.y]);
+               else select?.(null);
              }} />
 
       {fence && (
@@ -256,12 +259,36 @@ function Scene({
 
 /** The toolbar's views, and the start: a three-quarter view of the whole room. */
 function CameraRig({ box, ceiling, camera }: { box: Box; ceiling: number; camera: Room3DProps["camera"] }) {
-  const { camera: cam, controls, invalidate } = useThree();
+  const { camera: cam, controls, invalidate, size: viewport } = useThree();
+  // Has the operator turned the camera since the last preset? Then a resize
+  // leaves their view alone; otherwise the preset is re-fitted to the new
+  // shape — dragged narrower by the editor's divider, a view framed for a
+  // wide box cropped the room at both sides (2026-09-29).
+  const userMoved = useRef(false);
+  const lastAsked = useRef("");
   useEffect(() => {
+    const orbit = controls as unknown as (OrbitControlsImpl & {
+      addEventListener?: (type: string, fn: () => void) => void;
+      removeEventListener?: (type: string, fn: () => void) => void;
+    }) | null;
+    const moved = () => { userMoved.current = true; };
+    orbit?.addEventListener?.("start", moved);
+    return () => orbit?.removeEventListener?.("start", moved);
+  }, [controls]);
+  useEffect(() => {
+    const asked = `${camera.preset}:${camera.n}`;
+    const isNewRequest = asked !== lastAsked.current;
+    if (!isNewRequest && userMoved.current) return;     // a resize, and they have looked around
+    lastAsked.current = asked;
+    userMoved.current = false;
     const orbit = controls as unknown as OrbitControlsImpl | null;
     const cx = (box.xMin + box.xMax) / 2;
     const cy = (box.yMin + box.yMax) / 2;
-    const size = Math.max(box.xMax - box.xMin, box.yMax - box.yMin, 1);
+    const extent = Math.max(box.xMax - box.xMin, box.yMax - box.yMin, 1);
+    // The field of view is vertical: a tall, narrow view needs the camera
+    // further back to keep the room's width in frame.
+    const aspect = viewport.height > 0 ? viewport.width / viewport.height : 1;
+    const size = extent * Math.max(1, 1.1 / aspect);
     const target = new Vector3(cx, cy, Math.min(0.5, ceiling / 4));
     const at: Record<CameraPreset, [number, number, number]> = {
       "three-quarter": [cx - 0.5 * size, cy - 0.95 * size, 0.8 * size],
@@ -278,7 +305,8 @@ function CameraRig({ box, ceiling, camera }: { box: Box; ceiling: number; camera
       orbit.update();
     }
     invalidate();
-  }, [camera.preset, camera.n, box.xMin, box.xMax, box.yMin, box.yMax, ceiling, cam, controls, invalidate]);
+  }, [camera.preset, camera.n, box.xMin, box.xMax, box.yMin, box.yMax, ceiling, cam, controls, invalidate,
+      viewport.width, viewport.height]);
   return null;
 }
 
@@ -334,11 +362,27 @@ function Floor({ box, outer, palette, onClick }: {
   );
 }
 
+/**
+ * The room's walls, FACING INWARD — a dollhouse. Drawn one-sided, a wall is
+ * seen (and clickable) only from inside the room: the walls between the
+ * camera and the room vanish, the far ones remain. Double-sided, the near wall
+ * caught every click aimed at the floor inside the room and selected the room
+ * — you could not click empty floor to select nothing (2026-09-29).
+ *
+ * Which way a quad faces follows its winding: for a counter-clockwise outline
+ * (positive area) edge v1→v2 extruded upwards faces OUTWARD, so it is wound
+ * the other way; a clockwise outline is already inward.
+ */
 function wallGeometry(vertices: XY[], zMin: number, zMax: number): BufferGeometry {
-  const positions: number[] = [];
-  vertices.forEach(([x1, y1], i) => {
+  const area = vertices.reduce((sum, [x1, y1], i) => {
     const [x2, y2] = vertices[(i + 1) % vertices.length];
-    positions.push(x1, y1, zMin, x2, y2, zMin, x2, y2, zMax, x1, y1, zMin, x2, y2, zMax, x1, y1, zMax);
+    return sum + (x1 * y2 - x2 * y1);
+  }, 0);
+  const positions: number[] = [];
+  vertices.forEach((v1, i) => {
+    const v2 = vertices[(i + 1) % vertices.length];
+    const [[ax, ay], [bx, by]] = area > 0 ? [v2, v1] : [v1, v2];
+    positions.push(ax, ay, zMin, bx, by, zMin, bx, by, zMax, ax, ay, zMin, bx, by, zMax, ax, ay, zMax);
   });
   const geometry = new BufferGeometry();
   geometry.setAttribute("position", new Float32BufferAttribute(positions, 3));
@@ -366,7 +410,7 @@ function FenceWalls({ fence, palette, mine, faded, onClick, onDoubleClick }: {
     <group>
       <mesh geometry={walls} onClick={onClick} onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick(); }}>
         <meshBasicMaterial color={palette.primary} transparent opacity={(mine ? 0.2 : 0.09) * opacity}
-                           side={DoubleSide} depthWrite={false} />
+                           side={FrontSide} depthWrite={false} />
       </mesh>
       <mesh position={[0, 0, 0.003]}>
         <shapeGeometry args={[floorShape]} />

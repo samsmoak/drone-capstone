@@ -8,6 +8,10 @@
  *
  * (geometry.ts, "the words"). Every value is clamped to the room's map on
  * commit, and the field shows what was kept.
+ *
+ * `locked`: the object is not the selected one, so its numbers show but take
+ * no edit (read-only, dashed). Selecting it — on the map or its card — unlocks
+ * them (MissionEditor, ObjectCard).
  */
 
 import { useId } from "react";
@@ -21,7 +25,8 @@ import {
 
 // ── the room (geofence) ──────────────────────────────────────────────────
 
-export function FenceFields({ fence, box, limits, setFence, compact = false }: {
+export function FenceFields({ fence, box, limits, setFence, compact = false, locked = false }: {
+  locked?: boolean;
   fence: Geofence;
   box: Box;
   limits: PlanLimits;
@@ -41,25 +46,25 @@ export function FenceFields({ fence, box, limits, setFence, compact = false }: {
     <div className="grid gap-2">
       {fence.shape === "rectangle" && (
         <div className="flex flex-wrap gap-3">
-          <NumberField label="Length" value={rect.length} min={MIN_SIZE_M} max={cm(mapL - left)}
+          <NumberField readOnly={locked} label="Length" value={rect.length} min={MIN_SIZE_M} max={cm(mapL - left)}
                        onCommit={(v) => setFence(rectangleFence(rect.xMin, rect.yMin, v, rect.width, band))} />
-          <NumberField label="Width" value={rect.width} min={MIN_SIZE_M} max={cm(mapW - front)}
+          <NumberField readOnly={locked} label="Width" value={rect.width} min={MIN_SIZE_M} max={cm(mapW - front)}
                        onCommit={(v) => setFence(rectangleFence(rect.xMin, rect.yMin, rect.length, v, band))} />
-          <NumberField label="From left" value={left} min={0} max={cm(mapL - MIN_SIZE_M)}
+          <NumberField readOnly={locked} label="From left" value={left} min={0} max={cm(mapL - MIN_SIZE_M)}
                        onCommit={(v) => setFence(rectangleFence(box.xMin + v, rect.yMin, Math.min(rect.length, mapL - v), rect.width, band))} />
-          <NumberField label="From front" value={front} min={0} max={cm(mapW - MIN_SIZE_M)}
+          <NumberField readOnly={locked} label="From front" value={front} min={0} max={cm(mapW - MIN_SIZE_M)}
                        onCommit={(v) => setFence(rectangleFence(rect.xMin, box.yMin + v, rect.length, Math.min(rect.width, mapW - v), band))} />
         </div>
       )}
 
       {fence.shape === "circle" && (
         <div className="flex flex-wrap gap-3">
-          <NumberField label="Diameter" value={cm(circle.radius * 2)} min={MIN_SIZE_M * 2}
+          <NumberField readOnly={locked} label="Diameter" value={cm(circle.radius * 2)} min={MIN_SIZE_M * 2}
                        max={cm(2 * Math.min(circle.cx - box.xMin, box.xMax - circle.cx, circle.cy - box.yMin, box.yMax - circle.cy))}
                        onCommit={(v) => setFence(circleFence(circle.cx, circle.cy, v / 2, band))} />
-          <NumberField label="Centre from left" value={cLeft} min={circle.radius} max={cm(mapL - circle.radius)}
+          <NumberField readOnly={locked} label="Centre from left" value={cLeft} min={circle.radius} max={cm(mapL - circle.radius)}
                        onCommit={(v) => setFence(circleFence(box.xMin + v, circle.cy, circle.radius, band))} />
-          <NumberField label="Centre from front" value={cFront} min={circle.radius} max={cm(mapW - circle.radius)}
+          <NumberField readOnly={locked} label="Centre from front" value={cFront} min={circle.radius} max={cm(mapW - circle.radius)}
                        onCommit={(v) => setFence(circleFence(circle.cx, box.yMin + v, circle.radius, band))} />
         </div>
       )}
@@ -72,9 +77,9 @@ export function FenceFields({ fence, box, limits, setFence, compact = false }: {
             return (
               <li key={index} className="flex flex-wrap items-end gap-2">
                 <span className="mono w-14 pb-2 text-xs">Corner {index + 1}</span>
-                <NumberField label="From left" value={l} min={0} max={mapL} hint="" onCommit={(x) => set(fromPlace([x, f], box))} />
-                <NumberField label="From front" value={f} min={0} max={mapW} hint="" onCommit={(y) => set(fromPlace([l, y], box))} />
-                <SmallButton tone="danger" disabled={fence.vertices.length <= 3}
+                <NumberField readOnly={locked} label="From left" value={l} min={0} max={mapL} hint="" onCommit={(x) => set(fromPlace([x, f], box))} />
+                <NumberField readOnly={locked} label="From front" value={f} min={0} max={mapW} hint="" onCommit={(y) => set(fromPlace([l, y], box))} />
+                <SmallButton tone="danger" disabled={locked || fence.vertices.length <= 3}
                              title={fence.vertices.length <= 3 ? "A geofence needs at least 3 corners to enclose anything." : undefined}
                              onClick={() => setFence({ ...fence, vertices: fence.vertices.filter((_, i) => i !== index) })}>
                   Remove
@@ -89,10 +94,10 @@ export function FenceFields({ fence, box, limits, setFence, compact = false }: {
       )}
 
       <div className="flex flex-wrap gap-3">
-        <NumberField label="Height" value={fence.z_max} min={fence.z_min + 0.05} max={limits.z_max_m}
+        <NumberField readOnly={locked} label="Height" value={fence.z_max} min={fence.z_min + 0.05} max={limits.z_max_m}
                      hint={`At most ${limits.z_max_m.toFixed(2)} m — the flight system's ceiling`}
                      onCommit={(v) => setFence({ ...fence, z_max: cm(v) })} />
-        <NumberField label="Lowest flying height" value={fence.z_min} min={0.05} max={fence.z_max - 0.05}
+        <NumberField readOnly={locked} label="Lowest flying height" value={fence.z_min} min={0.05} max={fence.z_max - 0.05}
                      hint="Nothing is flown lower"
                      onCommit={(v) => setFence({ ...fence, z_min: cm(v) })} />
       </div>
@@ -103,7 +108,11 @@ export function FenceFields({ fence, box, limits, setFence, compact = false }: {
 // ── obstacles ────────────────────────────────────────────────────────────
 
 /** An obstacle's height: a number, or floor to ceiling (no height given). */
-export function HeightField({ value, onChange }: { value: number | null | undefined; onChange: (v: number | null) => void }) {
+export function HeightField({ value, onChange, locked = false }: {
+  value: number | null | undefined;
+  onChange: (v: number | null) => void;
+  locked?: boolean;
+}) {
   const id = useId();
   const full = value === null || value === undefined;
   return (
@@ -114,19 +123,22 @@ export function HeightField({ value, onChange }: { value: number | null | undefi
           <span className="flex min-h-9 items-center text-sm">Floor to ceiling</span>
         </>
       ) : (
-        <NumberField label="Height" value={value} min={0.05} max={10} hint={formatMetres(value)}
+        <NumberField readOnly={locked} label="Height" value={value} min={0.05} max={10} hint={formatMetres(value)}
                      onCommit={(v) => onChange(cm(v))} />
       )}
       <label htmlFor={id} className="flex items-center gap-1.5">
-        <input id={id} type="checkbox" className="h-4 w-4" checked={full}
-               onChange={(e) => onChange(e.target.checked ? null : 0.75)} />
+        {/* Not `disabled` when locked: a disabled box swallows the click that
+            selects its object. The change is simply not taken. */}
+        <input id={id} type="checkbox" className="h-4 w-4" checked={full} aria-readonly={locked || undefined}
+               onChange={(e) => { if (!locked) onChange(e.target.checked ? null : 0.75); }} />
         <span>Floor to ceiling</span>
       </label>
     </div>
   );
 }
 
-export function ObstacleFields({ obstacle, box, onChange }: {
+export function ObstacleFields({ obstacle, box, onChange, locked = false }: {
+  locked?: boolean;
   obstacle: Obstacle;
   box: Box;
   onChange: (next: Obstacle) => void;
@@ -136,20 +148,20 @@ export function ObstacleFields({ obstacle, box, onChange }: {
   const mapW = cm(box.yMax - box.yMin);
   const set = (change: Partial<ObstacleDimensions>) =>
     onChange(obstacleFrom(obstacle, { ...d, ...change } as ObstacleDimensions, box));
-  const height = <HeightField value={obstacle.height_m} onChange={(h) => onChange({ ...obstacle, height_m: h })} />;
+  const height = <HeightField value={obstacle.height_m} locked={locked} onChange={(h) => onChange({ ...obstacle, height_m: h })} />;
 
   if (d.kind === "rectangle") {
     const [left, front] = placeOf([d.cx - d.length / 2, d.cy - d.width / 2], box);
     return (
       <div className="flex flex-wrap gap-2">
-        <NumberField label="Length" value={d.length} min={MIN_SIZE_M} max={mapL}
+        <NumberField readOnly={locked} label="Length" value={d.length} min={MIN_SIZE_M} max={mapL}
                      onCommit={(v) => set({ length: v, cx: box.xMin + left + v / 2 })} />
-        <NumberField label="Width" value={d.width} min={MIN_SIZE_M} max={mapW}
+        <NumberField readOnly={locked} label="Width" value={d.width} min={MIN_SIZE_M} max={mapW}
                      onCommit={(v) => set({ width: v, cy: box.yMin + front + v / 2 })} />
         {height}
-        <NumberField label="From left" value={left} min={0} max={cm(mapL - d.length)} hint=""
+        <NumberField readOnly={locked} label="From left" value={left} min={0} max={cm(mapL - d.length)} hint=""
                      onCommit={(v) => set({ cx: box.xMin + v + d.length / 2 })} />
-        <NumberField label="From front" value={front} min={0} max={cm(mapW - d.width)} hint=""
+        <NumberField readOnly={locked} label="From front" value={front} min={0} max={cm(mapW - d.width)} hint=""
                      onCommit={(v) => set({ cy: box.yMin + v + d.width / 2 })} />
       </div>
     );
@@ -158,12 +170,12 @@ export function ObstacleFields({ obstacle, box, onChange }: {
     const [left, front] = placeOf([d.cx, d.cy], box);
     return (
       <div className="flex flex-wrap gap-2">
-        <NumberField label="Diameter" value={cm(d.radius * 2)} min={MIN_SIZE_M}
+        <NumberField readOnly={locked} label="Diameter" value={cm(d.radius * 2)} min={MIN_SIZE_M}
                      max={cm(Math.min(mapL, mapW))} onCommit={(v) => set({ radius: v / 2 })} />
         {height}
-        <NumberField label="Centre from left" value={left} min={0} max={mapL} hint=""
+        <NumberField readOnly={locked} label="Centre from left" value={left} min={0} max={mapL} hint=""
                      onCommit={(v) => set({ cx: box.xMin + v })} />
-        <NumberField label="Centre from front" value={front} min={0} max={mapW} hint=""
+        <NumberField readOnly={locked} label="Centre from front" value={front} min={0} max={mapW} hint=""
                      onCommit={(v) => set({ cy: box.yMin + v })} />
       </div>
     );
@@ -173,10 +185,10 @@ export function ObstacleFields({ obstacle, box, onChange }: {
   return (
     <div className="grid gap-2">
       <div className="flex flex-wrap gap-2">
-        <NumberField label="Start from left" value={l1} min={0} max={mapL} hint="" onCommit={(v) => set({ x1: box.xMin + v })} />
-        <NumberField label="Start from front" value={f1} min={0} max={mapW} hint="" onCommit={(v) => set({ y1: box.yMin + v })} />
-        <NumberField label="End from left" value={l2} min={0} max={mapL} hint="" onCommit={(v) => set({ x2: box.xMin + v })} />
-        <NumberField label="End from front" value={f2} min={0} max={mapW} hint="" onCommit={(v) => set({ y2: box.yMin + v })} />
+        <NumberField readOnly={locked} label="Start from left" value={l1} min={0} max={mapL} hint="" onCommit={(v) => set({ x1: box.xMin + v })} />
+        <NumberField readOnly={locked} label="Start from front" value={f1} min={0} max={mapW} hint="" onCommit={(v) => set({ y1: box.yMin + v })} />
+        <NumberField readOnly={locked} label="End from left" value={l2} min={0} max={mapL} hint="" onCommit={(v) => set({ x2: box.xMin + v })} />
+        <NumberField readOnly={locked} label="End from front" value={f2} min={0} max={mapW} hint="" onCommit={(v) => set({ y2: box.yMin + v })} />
         {height}
       </div>
       <p className="text-xs text-[var(--muted)]">Length {formatMetres(lengthOf([d.x1, d.y1], [d.x2, d.y2]))}</p>
@@ -186,7 +198,8 @@ export function ObstacleFields({ obstacle, box, onChange }: {
 
 // ── inspection points ────────────────────────────────────────────────────
 
-export function PointFields({ point: p, box, band, minHold, setPoint }: {
+export function PointFields({ point: p, box, band, minHold, setPoint, locked = false }: {
+  locked?: boolean;
   point: InspectionPoint;
   box: Box;
   band: { lo: number; hi: number };
@@ -196,13 +209,13 @@ export function PointFields({ point: p, box, band, minHold, setPoint }: {
   const [left, front] = placeOf([p.x_m, p.y_m], box);
   return (
     <div className="flex flex-wrap gap-2">
-      <NumberField label="From left" value={left} min={0} max={cm(box.xMax - box.xMin)} hint=""
+      <NumberField readOnly={locked} label="From left" value={left} min={0} max={cm(box.xMax - box.xMin)} hint=""
                    onCommit={(v) => setPoint({ x_m: cm(box.xMin + v) })} />
-      <NumberField label="From front" value={front} min={0} max={cm(box.yMax - box.yMin)} hint=""
+      <NumberField readOnly={locked} label="From front" value={front} min={0} max={cm(box.yMax - box.yMin)} hint=""
                    onCommit={(v) => setPoint({ y_m: cm(box.yMin + v) })} />
-      <NumberField label="Height" value={p.z_m} min={band.lo} max={band.hi} hint=""
+      <NumberField readOnly={locked} label="Height" value={p.z_m} min={band.lo} max={band.hi} hint=""
                    onCommit={(v) => setPoint({ z_m: cm(clamp(v, band.lo, band.hi)) })} />
-      <NumberField label="Hold" unit="s" step={1} value={p.hold_s} min={minHold} max={300}
+      <NumberField readOnly={locked} label="Hold" unit="s" step={1} value={p.hold_s} min={minHold} max={300}
                    hint={`At least ${minHold} s`} onCommit={(v) => setPoint({ hold_s: Math.round(v * 10) / 10 })} />
     </div>
   );

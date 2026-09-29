@@ -48,7 +48,29 @@ import {
 import { clearEnd, distance, endAt, flownPoints, landsAt, reversed, returnsHome, unflownIds } from "./path";
 import { isRoomObject, sameHandle, type Handle } from "./PlanCanvas";
 import { RoomMap } from "./RoomMap";
+import { SplitPane } from "@/components/SplitPane";
+import { CardState, CARD_ATTR, ObjectCard } from "./ObjectCard";
 import { FenceFields, ObstacleFields, PointFields } from "./shapeFields";
+
+/** Side by side, with a divider, from this editor width; stacked below it. */
+const SPLIT_AT_PX = 600;
+const MAP_MIN_PX = 300;
+const FORM_MIN_PX = 280;
+
+/** The element's own width, following it as it is resized — the split
+ *  decides by the editor's width, which full screen and the page's own
+ *  divider both change. */
+function useWidth(ref: React.RefObject<HTMLElement | null>): number {
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => setWidth(Math.round(entry.contentRect.width)));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [ref]);
+  return width;
+}
 
 export type Draft = { room: Room; mission: Mission; roomIsNew: boolean; missionIsNew: boolean };
 
@@ -110,6 +132,9 @@ export function MissionEditor({ draft, limits, run, drone, missionsInRoom, onSav
   const [leaving, setLeaving] = useState(false);
 
   const dirty = room !== draft.room || mission !== draft.mission;
+  const layout = useRef<HTMLDivElement>(null);
+  const width = useWidth(layout);
+  const sideBySide = width >= SPLIT_AT_PX;
   const outer = outerOf(room, limits);
   const box = mapBox(outer);
   const band = { lo: room.geofence.z_min, hi: room.geofence.z_max };
@@ -198,8 +223,8 @@ export function MissionEditor({ draft, limits, run, drone, missionsInRoom, onSav
   const ready = readiness(room, mission, problems, checkError);
   const complete = ready.every((item) => item.done);
 
-  // What is selected, drawn over the map with its numbers.
-  const overlay = (() => {
+  // What is selected, with its numbers — under the map, never over it.
+  const below = (() => {
     if (selected?.kind === "fence" || selected?.kind === "vertex") {
       return (
         <Inspector title={`The room · ${room.geofence.shape === "polygon" ? "corners" : room.geofence.shape}`} onClose={() => setSelectedRaw(null)}>
@@ -225,8 +250,73 @@ export function MissionEditor({ draft, limits, run, drone, missionsInRoom, onSav
         </Inspector>
       );
     }
-    return null;
+    return (
+      <p className="px-3 py-2 text-xs leading-relaxed">
+        <strong>Nothing selected</strong> — every object is shown equally. Click the room, an obstacle, a point or
+        the start (on the map, or its card at the right) to change its size and place.
+      </p>
+    );
   })();
+
+  // Click anywhere in the form that is not an object's card, and nothing is
+  // selected: every object equal, none of them changeable until one is picked.
+  const deselectOutsideCards = (event: React.PointerEvent) => {
+    if (!(event.target as Element).closest(`[${CARD_ATTR}]`)) setSelectedRaw(null);
+  };
+
+  const mapColumn = (
+    <div className="grid min-w-0 flex-1 content-start gap-2">
+      <RoomMap
+        outer={outer} fence={room.geofence} obstacles={room.obstacles} path={mission}
+        takeoffHeight={mission.cruise_height_m} problems={problems} drone={drone}
+        label={`Room map of ${room.name}: the geofence, ${room.obstacles.length} obstacles, the start and ${mission.points.length} inspection points`}
+        heightClass={heightClass}
+        below={below}
+        editing={{
+          selected, onSelect: setSelected, onDrag, onPlace, placing,
+          onPointMenu: (id, at) => setMenu({ id, ...at }),
+          onFence: setFence, onObstacle: setObstacle,
+          onPoint: (id, change) => setPoint(id, change), onHome: setHome,
+          zMax: limits.z_max_m,
+        }}
+      />
+      <p className="text-xs leading-relaxed text-[var(--muted)]">
+        {placing === "point" ? "Click the map to place inspection points, in flying order. Press Done when finished."
+          : placing === "vertex" ? "Click the map to add geofence corners, in order around the room."
+          : placing ? `Click the map to place the ${placing}.`
+          : "Drag any handle, or focus it and use the arrow keys (5 cm a press). Right-click a point to make it the end point. Click empty floor to select nothing. The dashed outline is the room's map — nothing can go beyond it."}
+      </p>
+      <ProblemList problems={problems} error={checkError} checking={check === null && !checkError}
+                   summary={check} />
+    </div>
+  );
+
+  const formColumn = (
+    <div className="grid min-w-0 flex-1 content-start" onPointerDown={deselectOutsideCards}>
+      <Tabs<EditorTab>
+        id="mission-editor"
+        label="What to edit"
+        tabs={[
+          { key: "room", label: "1 · Room", badge: room.obstacles.length ? <span className="mono text-[10px]">{room.obstacles.length}</span> : undefined },
+          { key: "path", label: "2 · Path", badge: mission.points.length ? <span className="mono text-[10px]">{mission.points.length}</span> : undefined },
+        ]}
+        active={tab}
+        onSelect={(next) => { setTab(next); setPlacing(null); }}
+      />
+      <TabPanel id="mission-editor" tabKey="room" active={tab === "room"} className="grid gap-4 border border-t-0 border-[var(--border)] p-3">
+        <RoomForm room={room} setRoom={setRoom} setFence={setFence} box={box} limits={limits}
+                  placing={placing} setPlacing={setPlacing}
+                  selected={selected} setSelected={setSelected} setObstacle={setObstacle}
+                  removeObstacle={removeObstacle} />
+      </TabPanel>
+      <TabPanel id="mission-editor" tabKey="path" active={tab === "path"} className="grid gap-4 border border-t-0 border-[var(--border)] p-3">
+        <PathForm mission={mission} setMission={setMission} setPoint={setPoint} removePoint={removePoint}
+                  box={box} band={band} limits={limits} placing={placing} setPlacing={setPlacing}
+                  selected={selected} setSelected={setSelected} problems={problems} drone={drone}
+                  setHome={setHome} />
+      </TabPanel>
+    </div>
+  );
 
   return (
     <div className="grid gap-3">
@@ -282,58 +372,31 @@ export function MissionEditor({ draft, limits, run, drone, missionsInRoom, onSav
         <Message tone="warning" text={`${missionsInRoom} other mission${missionsInRoom === 1 ? " uses" : "s use"} this room. Changing its geofence or obstacles changes ${missionsInRoom === 1 ? "that mission" : "those missions"} too — they are checked again when you save.`} />
       )}
 
-      <div className="@container grid gap-3">
-        <div className="grid gap-3 @4xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
-          <div className="grid min-w-0 content-start gap-2">
-            <RoomMap
-              outer={outer} fence={room.geofence} obstacles={room.obstacles} path={mission}
-              takeoffHeight={mission.cruise_height_m} problems={problems} drone={drone}
-              label={`Room map of ${room.name}: the geofence, ${room.obstacles.length} obstacles, the start and ${mission.points.length} inspection points`}
-              heightClass={heightClass}
-              overlay={overlay}
-              editing={{
-                selected, onSelect: setSelected, onDrag, onPlace, placing,
-                onPointMenu: (id, at) => setMenu({ id, ...at }),
-                onFence: setFence, onObstacle: setObstacle,
-                onPoint: (id, change) => setPoint(id, change), onHome: setHome,
-                zMax: limits.z_max_m,
-              }}
-            />
-            <p className="text-xs leading-relaxed text-[var(--muted)]">
-              {placing === "point" ? "Click the map to place inspection points, in flying order. Press Done when finished."
-                : placing === "vertex" ? "Click the map to add geofence corners, in order around the room."
-                : placing ? `Click the map to place the ${placing}.`
-                : "Drag any handle, or focus it and use the arrow keys (5 cm a press). Right-click a point to make it the end point. The dashed outline is the room's map — nothing can go beyond it."}
-            </p>
-            <ProblemList problems={problems} error={checkError} checking={check === null && !checkError}
-                         summary={check} />
+      {/* THE MAP AND THE FORM, WITH A DIVIDER YOU DRAG between them once
+          there is room for both (the editor's own width, not the window's —
+          design/layout.txt), inline and in full screen alike; stacked below
+          that. The bounds are pixels (the map never under 300 px, the form
+          never under 280 px) turned into fractions of the current width.
+          The panes stretch: an `items-start` row collapsed the divider itself
+          to 0 px tall, and nothing could grab it (2026-09-29). */}
+      <div ref={layout} className="min-w-0">
+        {sideBySide ? (
+          <SplitPane
+            orientation="vertical"
+            storageKey="cropwatcher.split.editor"
+            defaultFraction={0.6}
+            min={Math.max(0.3, MAP_MIN_PX / width)}
+            max={Math.min(0.78, 1 - FORM_MIN_PX / width)}
+            label="Room map and the room and path form"
+            first={<div className="flex min-w-0 flex-1 pr-2">{mapColumn}</div>}
+            second={<div className="flex min-w-0 flex-1 pl-2">{formColumn}</div>}
+          />
+        ) : (
+          <div className="grid gap-3">
+            {mapColumn}
+            {formColumn}
           </div>
-
-          <div className="grid min-w-0 content-start">
-            <Tabs<EditorTab>
-              id="mission-editor"
-              label="What to edit"
-              tabs={[
-                { key: "room", label: "1 · Room", badge: room.obstacles.length ? <span className="mono text-[10px]">{room.obstacles.length}</span> : undefined },
-                { key: "path", label: "2 · Path", badge: mission.points.length ? <span className="mono text-[10px]">{mission.points.length}</span> : undefined },
-              ]}
-              active={tab}
-              onSelect={(next) => { setTab(next); setPlacing(null); }}
-            />
-            <TabPanel id="mission-editor" tabKey="room" active={tab === "room"} className="grid gap-4 border border-t-0 border-[var(--border)] p-3">
-              <RoomForm room={room} setRoom={setRoom} setFence={setFence} box={box} limits={limits}
-                        placing={placing} setPlacing={setPlacing}
-                        selected={selected} setSelected={setSelected} setObstacle={setObstacle}
-                        removeObstacle={removeObstacle} />
-            </TabPanel>
-            <TabPanel id="mission-editor" tabKey="path" active={tab === "path"} className="grid gap-4 border border-t-0 border-[var(--border)] p-3">
-              <PathForm mission={mission} setMission={setMission} setPoint={setPoint} removePoint={removePoint}
-                        box={box} band={band} limits={limits} placing={placing} setPlacing={setPlacing}
-                        selected={selected} setSelected={setSelected} problems={problems} drone={drone}
-                        setHome={setHome} />
-            </TabPanel>
-          </div>
-        </div>
+        )}
       </div>
 
       {menu && (
@@ -469,7 +532,6 @@ function RoomForm({ room, setRoom, setFence, box, limits, placing, setPlacing, s
   const mapL = cm(box.xMax - box.xMin);
   const mapW = cm(box.yMax - box.yMin);
   const fenceSelected = selected?.kind === "fence" || selected?.kind === "vertex";
-  const fenceRef = useScrollIntoViewWhen(fenceSelected);
 
   const setShape = (shape: Geofence["shape"]) => {
     const b = mapBox({ vertices: fence.vertices, measured: false });
@@ -493,18 +555,12 @@ function RoomForm({ room, setRoom, setFence, box, limits, placing, setPlacing, s
                      onCommit={(v) => setRoom((r) => ({ ...r, clearance_m: cm(v) }))} />
       </div>
 
-      {/* The room's own panel: clicking or focusing anywhere in it selects
-          the room, which highlights it on the map and fades the rest. */}
-      <section
-        ref={fenceRef}
-        className={`grid gap-2 border-l-2 p-2 ${fenceSelected ? "border-[var(--primary)] bg-[var(--surface-2)]" : "border-transparent"}`}
-        aria-labelledby="fence-heading"
-        onFocus={() => { if (!fenceSelected) setSelected({ kind: "fence" }); }}
-        onClick={() => { if (!fenceSelected) setSelected({ kind: "fence" }); }}
-      >
+      {/* The room is an object like the others: its card selects it, which
+          highlights it alone on the map; only then do its numbers change. */}
+      <ObjectCard as="section" label="The room" selected={fenceSelected} onSelect={() => setSelected({ kind: "fence" })}>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 id="fence-heading" className="eyebrow">The room — its geofence, always closed</h3>
-          {fenceSelected && <span className="mono text-[10px] uppercase">Selected</span>}
+          <h3 className="eyebrow">The room — its geofence, always closed</h3>
+          <CardState selected={fenceSelected} />
         </div>
         <div className="flex flex-wrap gap-1" role="group" aria-label="Room shape">
           {(["rectangle", "circle", "polygon"] as const).map((shape) => (
@@ -516,7 +572,7 @@ function RoomForm({ room, setRoom, setFence, box, limits, placing, setPlacing, s
         <p className="text-xs text-[var(--muted)]">
           Room map: {formatMetres(mapL)} long × {formatMetres(mapW)} wide. Every size here is held inside it; "from left" and "from front" are measured from its front-left corner.
         </p>
-        <FenceFields fence={fence} box={box} limits={limits} setFence={setFence} />
+        <FenceFields fence={fence} box={box} limits={limits} setFence={setFence} locked={!fenceSelected} />
         {fence.shape === "polygon" && (
           <div className="grid gap-1">
             <div>
@@ -527,7 +583,7 @@ function RoomForm({ room, setRoom, setFence, box, limits, placing, setPlacing, s
             <p className="text-xs text-[var(--muted)]">At least 3 corners; the last joins the first. Edges may not cross.</p>
           </div>
         )}
-      </section>
+      </ObjectCard>
 
       <section className="grid gap-2" aria-labelledby="obstacles-heading">
         <h3 id="obstacles-heading" className="eyebrow">Obstacles</h3>
@@ -558,18 +614,6 @@ function RoomForm({ room, setRoom, setFence, box, limits, placing, setPlacing, s
   );
 }
 
-/** Scroll a panel into view when the map selects the thing it describes. */
-function useScrollIntoViewWhen<T extends HTMLElement>(when: boolean) {
-  const ref = useRef<T>(null);
-  useEffect(() => {
-    if (!when || !ref.current) return;
-    if (ref.current.contains(document.activeElement)) return;      // the form selected it
-    ref.current.scrollIntoView({ block: "nearest",
-      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
-  }, [when]);
-  return ref;
-}
-
 function ObstacleRow({ obstacle, box, selected, onSelect, onChange, onRemove }: {
   obstacle: Obstacle;
   box: Box;
@@ -578,21 +622,19 @@ function ObstacleRow({ obstacle, box, selected, onSelect, onChange, onRemove }: 
   onChange: (next: Obstacle) => void;
   onRemove: () => void;
 }) {
-  const ref = useScrollIntoViewWhen<HTMLLIElement>(selected);
   const kind = obstacle.kind === "line" ? "wall" : obstacle.kind;
   return (
-    <li ref={ref} onFocus={() => { if (!selected) onSelect(); }} onClick={() => { if (!selected) onSelect(); }}
-        className={`grid gap-2 border-l-2 bg-[var(--surface-2)] p-2 ${selected ? "border-[var(--status-warning)] outline outline-1 outline-[var(--status-warning)]" : "border-transparent"}`}>
+    <ObjectCard label={`Obstacle ${obstacle.label ?? kind}`} selected={selected} onSelect={onSelect}>
       <div className="flex flex-wrap items-end justify-between gap-2">
-        <TextField label={kind} value={obstacle.label ?? ""} placeholder="e.g. Bench"
+        <TextField label={kind} value={obstacle.label ?? ""} placeholder="e.g. Bench" readOnly={!selected}
                    onChange={(label) => onChange({ ...obstacle, label: label || null })} width="w-40" />
         <div className="flex items-center gap-2">
-          {selected && <span className="mono text-[10px] uppercase">Selected</span>}
+          <CardState selected={selected} />
           <SmallButton tone="danger" onClick={onRemove}>Remove</SmallButton>
         </div>
       </div>
-      <ObstacleFields obstacle={obstacle} box={box} onChange={onChange} />
-    </li>
+      <ObstacleFields obstacle={obstacle} box={box} onChange={onChange} locked={!selected} />
+    </ObjectCard>
   );
 }
 
@@ -626,6 +668,7 @@ function PathForm({ mission, setMission, setPoint, removePoint, box, band, limit
   const flown = flownPoints(mission);
   const [left, front] = placeOf(mission.home, box);
   const off = drone ? distance(drone, mission.home) : null;
+  const startSelected = selected?.kind === "home";
 
   // "Ends at": back at the start, the last point, or any earlier point.
   const endValue = returnsHome(mission) ? "__start" : mission.end_point_id ?? "__last";
@@ -639,17 +682,20 @@ function PathForm({ mission, setMission, setPoint, removePoint, box, band, limit
     <>
       <TextField label="Mission name" value={mission.name} onChange={(name) => setMission((m) => ({ ...m, name }))} />
 
-      <section className="grid gap-2" aria-labelledby="start-heading">
-        <h3 id="start-heading" className="eyebrow">Start</h3>
+      <ObjectCard as="section" label="The planned start" selected={startSelected} onSelect={() => setSelected({ kind: "home" })}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="eyebrow">Start</h3>
+          <CardState selected={startSelected} />
+        </div>
         <p className="text-xs leading-relaxed">
           Every flight starts from <strong>wherever the drone is</strong> (D on the map) when you press Start — ② Check tests the path from there. The planned start (S) is what the plan is drawn and checked from until then.
         </p>
         <div className="flex flex-wrap items-end gap-3">
-          <NumberField label="From left" value={left} min={0} max={cm(box.xMax - box.xMin)} hint=""
+          <NumberField label="From left" value={left} min={0} max={cm(box.xMax - box.xMin)} hint="" readOnly={!startSelected}
                        onCommit={(v) => setHome(fromPlace([v, front], box))} />
-          <NumberField label="From front" value={front} min={0} max={cm(box.yMax - box.yMin)} hint=""
+          <NumberField label="From front" value={front} min={0} max={cm(box.yMax - box.yMin)} hint="" readOnly={!startSelected}
                        onCommit={(v) => setHome(fromPlace([left, v], box))} />
-          <NumberField label="Takeoff height" value={mission.cruise_height_m} min={band.lo} max={band.hi}
+          <NumberField label="Takeoff height" value={mission.cruise_height_m} min={band.lo} max={band.hi} readOnly={!startSelected}
                        hint="The height it rises to first"
                        onCommit={(v) => setMission((m) => ({ ...m, cruise_height_m: cm(v) }))} />
         </div>
@@ -667,7 +713,7 @@ function PathForm({ mission, setMission, setPoint, removePoint, box, band, limit
             <span className="text-xs">The drone is {formatMetres(off)} from the planned start.</span>
           )}
         </div>
-      </section>
+      </ObjectCard>
 
       <section className="grid gap-2" aria-labelledby="finish-heading">
         <h3 id="finish-heading" className="eyebrow">How it ends, and which way round</h3>
@@ -719,6 +765,7 @@ function PathForm({ mission, setMission, setPoint, removePoint, box, band, limit
                       onEnd={() => setMission((m) => (m.end_point_id === p.id ? clearEnd(m) : endAt(m, p.id)))}
                       onRemove={() => removePoint(p.id)}
                       fields={<PointFields point={p} box={box} band={band} minHold={limits.min_hold_s}
+                                           locked={!sameHandle(selected, { kind: "point", id: p.id })}
                                            setPoint={(c) => setPoint(p.id, c)} />}
                       setLabel={(label) => setPoint(p.id, { label: label || null })} />
           ))}
@@ -744,20 +791,19 @@ function PointRow({ point: p, index, count, flagged, skipped, ends, explicitEnd,
   fields: React.ReactNode;
   setLabel: (label: string) => void;
 }) {
-  const ref = useScrollIntoViewWhen<HTMLLIElement>(selected);
   return (
-    <li ref={ref} onFocus={() => { if (!selected) onSelect(); }}
-        className={`grid gap-2 border-l-2 bg-[var(--surface-2)] p-2 ${skipped ? "opacity-60" : ""} ${
-          flagged ? "border-[var(--status-critical)]"
-          : selected ? "border-[var(--primary)]" : "border-transparent"}`}>
+    <ObjectCard label={`Inspection point ${p.id}`} selected={selected} flagged={flagged} onSelect={onSelect}
+                className={skipped ? "opacity-60" : ""}>
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div className="flex items-end gap-2">
           <span className="mono pb-2 text-sm font-bold">
             {p.id}{flagged && <span className="sr-only"> — has a problem</span>}
           </span>
-          <TextField label="Label" value={p.label ?? ""} placeholder="e.g. Pump 2" width="w-32" onChange={setLabel} />
+          <TextField label="Label" value={p.label ?? ""} placeholder="e.g. Pump 2" width="w-32" onChange={setLabel}
+                     readOnly={!selected} />
         </div>
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap items-center gap-1">
+          <CardState selected={selected} />
           <SmallButton disabled={index === 0} onClick={() => onMove(-1)} title="Fly this one earlier">↑</SmallButton>
           <SmallButton disabled={index === count - 1} onClick={() => onMove(1)} title="Fly this one later">↓</SmallButton>
           <SmallButton pressed={explicitEnd} onClick={onEnd}
@@ -771,7 +817,7 @@ function PointRow({ point: p, index, count, flagged, skipped, ends, explicitEnd,
         <p className="text-xs">{ends ? "The flight lands here." : "After the end point — not flown."}</p>
       )}
       {fields}
-    </li>
+    </ObjectCard>
   );
 }
 
