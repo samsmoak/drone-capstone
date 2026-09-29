@@ -43,7 +43,7 @@ Feature docs are plain `.txt`, grouped by the surface they describe.
 |---|---|
 | [features/missions/README.txt](features/missions/README.txt) | The index: what to fly, and how it is flown |
 | [features/missions/floor-plans.txt](features/missions/floor-plans.txt) | Rooms (closed geofence, obstacles, the room's map), missions, inspection points, the agent's checks, saving |
-| [features/missions/mission-controller.txt](features/missions/mission-controller.txt) | How a mission flies: fly_to in the manual system, run_mission, point_id stamping; the controller body is Hannah's |
+| [features/missions/mission-controller.txt](features/missions/mission-controller.txt) | How a mission flies: fly_to in the manual system, run_mission, point_id stamping; the controller body is Hannah's, its proof (simulated drone, mission report, lab flights) Yordi's |
 
 ## Pipeline — the data pipeline (`backend/agent/cropwatcher/pipeline/`)
 
@@ -110,7 +110,7 @@ are the only thing that survives a session.
 
 ## Handoffs — work orders given to teammates
 
-[handoffs/](handoffs/README.txt) — one ticket per piece of work, filed by sprint: `sprint-1/done/` (built — the mission planner, mission start, the DPP switch, the Control layout, the pipeline contract; only follow-ups left) and `sprint-1/undone/` (the mission controller (Hannah), and the data pipeline's clean and enhance (Kevin) and classify (Reagan) stages). We are in sprint 1. Not feature docs: a ticket moves to `done/` when its work is on main, and is deleted once its follow-ups are closed and what shipped is written into `features/`.
+[handoffs/](handoffs/README.txt) — one ticket per piece of work, filed by sprint: `sprint-1/done/` (built — the mission planner, mission start, the DPP switch, the Control layout, the pipeline contract; only follow-ups left) and `sprint-1/undone/` (the mission controller, split between Hannah (the controller) and Yordi (its proof), and the data pipeline's clean and enhance (Kevin) and classify (Reagan) stages). We are in sprint 1. Not feature docs: a ticket moves to `done/` when its work is on main, and is deleted once its follow-ups are closed and what shipped is written into `features/`.
 
 ## Platform — not written yet
 
