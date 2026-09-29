@@ -1,10 +1,24 @@
 MISSIONS AND THE DATA PIPELINE — the 100 stages
 ===============================================
 
-STATUS: IN PROGRESS (branch feat/missions-and-pipeline, off main at 733ba2a).
-Written from the planning sessions of 2026-09-28 and checked against the code.
-The handoff tickets for Hannah, Kevin and Reagan are in ../handoffs/ and build
-against the skeleton this plan lands.
+STATUS (2026-09-28, commit on feat/missions-and-pipeline, pushed; NOT merged):
+
+  DONE      stages 1–4, 7–98 — everything the agent and desktop can do without
+            a drone or the team. Gates: ruff, mypy (74 files), pytest 787
+            passed; desktop build; harness 720–1600 both themes PASS. What
+            shipped is in features/missions/, features/pipeline/ and
+            features/desktop/auto-control.txt.
+  CHANGED   stage 69: writes are POST (/rooms, /missions, …/delete), not
+            PUT/DELETE — the window's CORS allows GET and POST only.
+            stage 91: the editor asks the agent (POST /missions/validate)
+            instead of keeping its own copy of the rules (no shapes.ts rules).
+  NEXT      stage 99: open the pull request and merge (CLAUDE.md "Git":
+            `gh pr merge <n> --squash --admin`).
+  OWED BY THE OWNER  stage 5 (geometry + ladder), stage 6 (coverage survey),
+            stage 100: `cd backend && supabase db push` for migration
+            20260928000012 — before any mission flies; and find the
+            import-flight-log function's source.
+  THE TEAM  Hannah, Kevin, Reagan: ../handoffs/.
 
 Two things are being built:
 
