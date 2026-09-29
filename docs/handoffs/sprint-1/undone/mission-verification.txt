@@ -1,0 +1,377 @@
+TICKET — Proving the mission controller: the simulated drone, the mission
+report, the scenarios, the lab flights
+========================================================================
+
+STATUS: READY TO START. Everything this builds on is on main: the manual
+flight system (flight/manual.py), the controller's fixed interface
+(mission/controller/), the flight trace (telemetry/trace.py), FakeClock and
+FakeCommander (tests/fakes.py). Where this ticket and the code disagree, the
+code wins — tell Samuel so this is fixed.
+
+SPLIT 2026-09-29 from the mission controller ticket, which was Hannah's
+alone. It is now two, built side by side and joined at a fixed seam:
+
+  mission-controller.txt   Hannah   the controller — the state machine that
+                                    flies a mission, and its unit tests
+  this ticket              Yordi    the proof, in code — a simulated drone,
+                                    the mission report, the end-to-end
+                                    scenarios, the lab flights, the measured
+                                    constants
+
+READ mission-controller.txt FIRST. "THE WHOLE SYSTEM, IN ONE PAGE", "WHAT IT
+EXECUTES THE MISSION WITH" and THE SPEC there apply to you word for word:
+THE SPEC is what your scenarios check, and it lives only there so it cannot
+disagree with itself.
+
+  Owner           Yordi
+  Partner         Hannah (mission-controller.txt)
+  Stories         Autonomous flight (proven in simulation, then on the
+                  drone); 3.4 "holds at each inspection point" (measured).
+  Branch          feat/mission-verification, off main
+  Your files      backend/agent/tests/sim_drone.py                    (new)
+                  backend/agent/tests/test_sim_drone.py               (new)
+                  backend/agent/cropwatcher/mission/review.py         (new)
+                  backend/agent/tests/mission/test_review.py          (new)
+                  backend/agent/tests/mission/test_mission_sim.py     (new)
+                  backend/agent/cropwatcher/cli.py — ONE new subcommand,
+                    `mission-report`, and nothing else in that file
+                  docs/flight-log.txt — the rung entries
+                  after the lab: the constants block in
+                    mission/controller/mission_controller.py (Hannah reviews)
+  Hannah's files  mission/controller/mission_controller.py (its body),
+                  tests/mission/test_controller.py, test_boundaries.py
+  Not yours       flight/manual.py, telemetry/, mission/plan/, events.py,
+  (ask Samuel)    flight.py, session.py, api/, the desktop app
+
+
+HOW TO WORK THIS TICKET — WITH /feature
+──────────────────────────────────────
+
+(The same steps are in both halves of this ticket.)
+
+You build this with a Claude Code coding agent, opened in this repository.
+The repository carries the project's own /feature skill
+(.claude/commands/feature.md), so the agent already knows the project's
+rules. Work in four steps, and do not skip one.
+
+ 1. TELL IT ALL YOUR IDEAS FIRST. Before any planning, type /feature and
+    then everything in your head: how you understand this ticket, how you
+    would build it, what worries you, what you do not understand yet. Say
+    the half-formed ideas too — the plan can only use what you give it.
+
+      /feature I am Yordi, working on
+      docs/handoffs/sprint-1/undone/mission-verification.txt.
+      My ideas: <how I would build it>. My doubts: <what is unclear>.
+
+ 2. THE AGENT PLANS WITH /feature. It reads the repository (CLAUDE.md, the
+    docs, the code) and answers with a pre-flight: for each point, what
+    exists today, where it agrees with you, where it objects, the standard
+    that governs it, and what it recommends — then a short list of the
+    decisions it would lock in. Then it STOPS and waits. No code yet.
+
+ 3. WORK OUT EVERY DISAGREEMENT. Read the pre-flight properly. Where you
+    disagree, say so and why; where it disagrees with you, make it explain
+    and show the code. Go back and forth until no doubt and no confusion is
+    left, on either side. Then:
+      - a question about THE SPEC or the seam — settle it with Hannah as
+        well, and write the answer into THE SPEC (mission-controller.txt)
+        before either of you builds on it;
+      - a question about anything outside this ticket — ask Samuel.
+
+ 4. THEN CALL /feature AGAIN, TO BUILD. Only when everything is clear, start
+    the implementation with exactly this:
+
+      /feature plan and implement- aim for completeness , thoroughness , accuracy and precision
+
+    It re-plans with everything you settled, builds it, runs the gates, and
+    reports pass, fail or skipped for each. Read that report — a gate it did
+    not run is not a pass.
+
+Every new request to the agent starts again at step 1.
+
+Three things the agent must be told, because CLAUDE.md says otherwise for
+Samuel's own work:
+  - COMMIT UNDER YOUR OWN NAME AND EMAIL. The identity in CLAUDE.md is
+    Samuel's.
+  - OPEN A PULL REQUEST AND STOP. Do not merge: only Samuel can merge into
+    main (a repository rule), and a refused merge is that rule working.
+  - STAY IN YOUR FILES (the table above). Anything else, ask Samuel.
+
+
+HOW THE TWO HALVES MEET — the seam (the same text is in both tickets)
+─────────────────────────────────────────────────────────────────────
+
+Five things make the two halves fit the first time they are joined.
+
+ 1. THE INTERFACE IS FIXED, IN CODE. MissionController's public methods
+    (mission_controller.py), MissionFlight (flight.py), the states and
+    events (events.py). Neither of you changes them. If one must change,
+    both of you and Samuel agree first.
+
+ 2. THE SPEC (in mission-controller.txt) IS THE ONE DEFINITION OF
+    BEHAVIOUR. Hannah's code does what it says; Yordi's scenarios assert it.
+    When the code and a scenario disagree, the spec decides — and where the
+    spec is silent, you two settle it, write it into THE SPEC, and only then
+    change code or test.
+
+ 3. TESTS DRIVE THE CONTROLLER ON ONE CLOCK, WITH NO THREAD.
+      MissionController(mission, flight, on_event=..., clock=<the test's
+                        clock>, tick_s=0)
+    tick_s=0 means start() does its checks and the takeoff but starts NO
+    thread: the caller calls tick(). Yordi's simulated drone owns that clock
+    (a FakeClock) and calls tick() every 0.1 s of simulated time
+    (MISSION_TICK_S in tests/sim_drone.py) between the manual system's own
+    0.02 s ticks. Hannah's unit tests do the same with their own fake. A
+    controller that reads time.monotonic() anywhere but through `clock`
+    breaks every test — use `clock`, always.
+
+ 4. THE CONSTANTS ARE NAMED, NEVER COPIED. ARRIVE_M, SETTLE_S,
+    SETTLE_TIMEOUT_S and TRANSIT_MARGIN_S live once, in
+    mission_controller.py. Tests import them (and MOVE_SPEED_M_S from
+    flight/manual.py) — no test writes 0.10 or 1.0 itself — so when the lab
+    measures a new value, code and tests move together.
+
+ 5. THE ORDER THINGS LAND IN MAIN:
+      a) Yordi — the simulated drone and its own tests (sim_drone.py,
+         test_sim_drone.py). Needs nothing of Hannah's. Merge any time.
+      b) Hannah — the controller and its unit tests, BUILT = True,
+         test_boundaries.py updated — on feat/mission-controller.
+      c) Yordi — the end-to-end scenarios (test_mission_sim.py), written
+         against THE SPEC while b) is being built, then opened as a pull
+         request INTO feat/mission-controller. Hannah merges it into her
+         branch; every failure is fixed on that branch — a controller bug by
+         Hannah, a scenario or simulator bug by Yordi, a gap in THE SPEC by
+         both, in writing.
+      d) Samuel merges feat/mission-controller into main only when the unit
+         tests AND the scenarios pass on it. So BUILT = True never reaches
+         main without its end-to-end proof.
+      e) The lab flights (Yordi's ticket), both of you there, Samuel the
+         first time. Yordi measures the four constants and changes their
+         values in mission_controller.py — the constants block only, each
+         with its trace cited — and Hannah reviews that pull request.
+
+(The mission report, PART 2 below, needs nothing of Hannah's either: it
+reads files a flight writes. It merges on its own, any time after a).)
+
+
+PART 1 — THE SIMULATED DRONE  (tests/sim_drone.py; lands first, step a)
+───────────────────────────────────────────────────────────────────────
+
+A drone in software that the REAL manual flight system flies. Not a mock of
+ManualController — the real one, so every scenario proves the controller AND
+the tuned flight system together. tests/test_manual.py's Rig and
+TestFlyTo show the pattern it grows out of: a ManualController over a
+FakeCommander and a FakeClock, whose `position` callback is what the
+estimator "reports".
+
+WHAT IT MUST OFFER — the shape both of you rely on. Names may improve in
+your pre-flight; if they do, tell Hannah and write the change here.
+
+  MANUAL_TICK_S = flight.manual.TICK_S      # 0.02 — the 50 Hz loop
+  MISSION_TICK_S = 0.1                      # how often it ticks a mission
+
+  class SimDrone:
+      def __init__(self, *, start: Fix, ground_z: float = 1.0,
+                   assisted: bool = True, lag_s: float = 0.5,
+                   noise_m: float = 0.0, drift_m_s: tuple[float, float] = (0, 0),
+                   seed: int = 0) -> None
+      clock: FakeClock                      # the ONE clock of a scenario
+      cmd: FakeCommander                    # every command the drone got
+      ctl: ManualController                 # real; satisfies MissionFlight
+      position: Fix                         # what the estimator reports now
+      def arm(self) -> None                 # what the session does: arm + start
+      def step(self, seconds: float, mission=None) -> None
+          # advance the clock in MANUAL_TICK_S steps: heartbeat (unless the
+          # window has gone quiet), ctl.tick(), move the drone; and call
+          # mission.tick() every MISSION_TICK_S when a mission is given
+      def run_until(self, mission, done, *, limit_s: float) -> float
+          # step until done() is true; fail the test at limit_s — no
+          # scenario can hang
+      # the things that go wrong, each a real path the flight system has:
+      def stall(self) -> None               # stops following: a stuck drone
+      def push(self, dx: float, dy: float) -> None   # a gust, at a believable
+                                            # speed (the Rig's drift(): the
+                                            # loop rejects estimator jumps)
+      def hold_key(self, intent: Intent) -> None     # the operator takes over
+      def guard_lands(self) -> None         # what the in-flight guard does
+      def emergency_stop(self) -> None
+      def window_goes_quiet(self) -> None   # heartbeats stop: the dead-man
+      landed_at: tuple[float, float] | None # where it touched down
+
+HOW IT MOVES. The reported position follows the last POSITION setpoint the
+drone was sent with a first-order lag (time constant lag_s — about 0.5 s is
+a starting guess; after the lab, set it from the traces), plus optional
+Gaussian noise (seeded — every run the same) and a steady drift.
+
+ITS OWN TESTS (tests/test_sim_drone.py) — the simulator is code, and a
+simulator that is wrong makes every scenario lie:
+  [ ] it follows a fly_to() goal, and arrives within 1 cm with no noise;
+  [ ] the lag: after a step in the commanded point it covers ~63 % of it in
+      lag_s;
+  [ ] the same seed gives the same flight, byte for byte;
+  [ ] stall(): the commanded point moves on and the drone does not — the
+      30 cm leash holds the commanded point back (manual.py LEASH_M);
+  [ ] hold_key() cancels a goal and sets operator_override;
+  [ ] guard_lands(), emergency_stop(), window_goes_quiet() each put ctl in
+      the state the real system reaches (landing, stopped, landing).
+
+
+PART 2 — THE MISSION REPORT  (cropwatcher/mission/review.py + CLI)
+──────────────────────────────────────────────────────────────────
+
+Production code, for the operator and for the lab: after a mission flight,
+what actually happened at each point — and the numbers the four constants
+must be set from. Without it, "measure the constants from the trace" means
+reading thousands of CSV rows by hand, and nobody can repeat the reading.
+
+It READS what every mission flight already writes (find each in the code,
+do not assume the paths): the control trace (telemetry/trace.py — the
+commanded point target_x/target_y, the estimate stateEstimate.x/.y, drift_m,
+the keys held, at 10 Hz), the flight CSV (telemetry/row.py — point_id on
+every row taken while holding) and the plan flown (session.py
+_keep_plan_flown — the mission exactly as flown). It never needs a drone,
+and never changes a file.
+
+  cropwatcher mission-report --flight <flight id>       prints the report
+  cropwatcher mission-report --flight <id> --json       the same, as JSON
+
+FOR EACH INSPECTION POINT, IN FLYING ORDER
+  leg          the straight 3-D distance flown to it, m
+  planned      leg / MOVE_SPEED_M_S — what the planner and T8 assume, s
+  transit      from the commanded point leaving the last spot to reaching
+               this one, s
+  settle       from the commanded point reaching it to the drone within
+               ARRIVE_M and staying there, s
+  hold         how long point_id was set, s — and ≥ hold_s or not
+  hold drift   while holding: the estimate's distance from the point —
+               median, 95th percentile, worst, m
+  reached      yes / no (and what the flight did instead)
+
+FOR THE FLIGHT
+  flown time against the planner's estimate
+  (Mission.estimated_duration_s — the number the battery refusal uses: a
+  flight that takes longer than it says is a battery budget that is wrong,
+  so the report says so in words, and Samuel must hear of it).
+
+WHAT THE CONSTANTS SHOULD BE, from the flights given (one or several:
+--flight may be repeated) — every figure with the flights it came from, so
+it can be cited beside the constant:
+  ARRIVE_M          above the worst 95th-percentile hold drift, or holding
+                    still would never count as arrived
+  SETTLE_S          from the settle times measured
+  SETTLE_TIMEOUT_S  well above the slowest settle measured
+  TRANSIT_MARGIN_S  from the largest (transit − planned) measured
+It SUGGESTS. People decide, and write the measurement beside the constant
+(CLAUDE.md: never invent a threshold — measure it, and cite it).
+
+Write the calculation as plain functions over rows, not over files, so it
+is tested without a disk. A trace with a gap (the radio dropped samples), a
+point never reached, a flight that ended early: each is reported in words,
+never a crash and never a silent zero.
+
+ITS TESTS (tests/mission/test_review.py):
+  [ ] a hand-built trace and CSV for two points: every figure above,
+      exactly;
+  [ ] gaps, an unreached point, an aborted flight — each reported, none
+      crashes;
+  [ ] the estimate comparison flags a flight longer than its estimate;
+  [ ] `cropwatcher mission-report` on a missing flight says so and exits
+      non-zero; --json is valid JSON with the same numbers.
+  [ ] Once Hannah's controller is on your branch (step c): a simulated
+      mission (PART 1) writes a trace and CSV through the REAL FlightTrace,
+      and the report's figures agree with what the simulator did — the
+      settle time it reports matches the lag you gave the drone.
+
+
+PART 3 — THE END-TO-END SCENARIOS  (tests/mission/test_mission_sim.py)
+──────────────────────────────────────────────────────────────────────
+
+Hannah's controller, flying your simulated drone through the REAL manual
+flight system, one FakeClock, tick_s=0 (the seam, 3). Written against THE
+SPEC while Hannah builds, opened as a pull request INTO her branch (the
+seam, 5c). Each scenario names the rules it proves.
+
+  [ ] 3 points visited in order; the event sequence is EXACTLY THE SPEC's
+      (with and without return_to_start) — T6–T15, E1.
+  [ ] Each hold lasts at least hold_s by the simulated clock; sampled every
+      manual tick, current_point_id is set only while HOLDING, and only
+      while the drone is within ARRIVE_M of that point — C1, T11–T13.
+  [ ] return_to_start touches down within ARRIVE_M of the takeoff spot;
+      without it, at the last point — T14.
+  [ ] noise under ARRIVE_M still completes; a push() while ARRIVING
+      restarts the settle wait and the mission still completes — T9.
+  [ ] a stalled drone times out: ABORTED, land() called, no fly_to after —
+      T4, T8.
+  [ ] a key held mid-transit: INTERRUPTED; the drone holds where it is,
+      under manual control; no fly_to and no land() after — T2.
+  [ ] the guard lands it mid-mission: ABORTED, "landing" named — T3.
+  [ ] an emergency stop mid-mission: ABORTED, and land() never called — T3.
+  [ ] the window goes quiet: the dead-man lands it; ABORTED — T3.
+  [ ] a listener that raises: the mission still reaches DONE — E5.
+  [ ] exactly one terminal event, and nothing after it, in every scenario
+      — E1 (one helper, called by all).
+  [ ] the flown time, against Mission.estimated_duration_s — reported by
+      the test; a flight longer than its estimate is written down and
+      Samuel told (it is the battery budget), not asserted away.
+
+
+PART 4 — THE LAB  (after d; both of you there, Samuel the first time)
+─────────────────────────────────────────────────────────────────────
+
+Before any rung: `cropwatcher geometry --distance 1.0` has been run,
+`cropwatcher check` passes, the battery is charged, the area is clear, one
+hand is on Land. Make each mission in the app. Fly it from the app, or from a
+terminal with `cropwatcher mission --id <id>` (--dry-run checks it without
+connecting). After EVERY flight run `cropwatcher mission-report` on it.
+
+  Rung  Mission                              Passes when
+  ──────────────────────────────────────────────────────────────────────────────
+  1     1 point over the start, 0.3 m,      takes off, holds within ARRIVE_M,
+        hold 5 s                             lands, DONE
+  2     2 points 0.5 m apart                 travels straight, settles, holds,
+                                             both POINT_COMPLETE
+  3     a 1 m square, 4 points               all in order; hold drift reported
+  4     the square with return_to_start      lands within 10 cm of the start
+  5     press an arrow key mid-transit       INTERRUPTED; the drone holds where
+                                             it is, under manual control
+
+Log every rung in ../../../flight-log.txt, newest first: the rung, the
+mission, pass or fail, and the report's figures.
+
+THEN THE CONSTANTS. Run the report over every rung's flight together, and
+set the four constants from what it measures — in mission_controller.py,
+the constants block only, each with the flights and the figure cited beside
+it. Set the simulator's lag_s from the same traces, so the scenarios fly
+the drone you actually have. Hannah reviews that pull request.
+
+
+ACCEPTANCE
+──────────
+
+  [ ] Parts 1–3: every listed test passes; gates pass from backend/agent/:
+      ruff check . && mypy cropwatcher && pytest
+  [ ] The scenarios pass on feat/mission-controller before it merges (seam 5).
+  [ ] `cropwatcher mission-report` runs on a real mission flight.
+  [ ] Rungs 1–5 flown, each logged in docs/flight-log.txt with its report.
+  [ ] The four constants measured and set, each citing its flights; the
+      simulator's lag_s set from the same traces.
+  [ ] Anything you needed changed outside your files: asked, not done.
+
+
+OUT OF SCOPE
+
+- The controller's state machine (Hannah — mission-controller.txt).
+- Planning, validating and saving missions; the editor; the API (Samuel).
+- Showing the report in the desktop app — a follow-up once the CLI's
+  numbers are trusted.
+- Changing how the trace or the flight CSV is written (Samuel's): if the
+  report needs a column that is not there, ask.
+
+
+WHEN YOU SHIP
+
+Add to ../../../features/missions/mission-controller.txt: the measured
+constants and where they came from, what was flown, and the mission report
+(what it is, where it lives — so the next person finds it). When both
+halves are on main, move this ticket and mission-controller.txt to ../done/
+(../../README.txt, "SPRINTS").

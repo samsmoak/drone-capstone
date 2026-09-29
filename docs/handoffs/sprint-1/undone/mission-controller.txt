@@ -1,27 +1,101 @@
-TICKET — The mission controller
-===============================
+TICKET — The mission controller: the state machine
+==================================================
 
-STATUS: READY TO START (2026-09-28). The skeleton this builds on is on the
-branch feat/missions-and-pipeline: the interface, a controller that refuses to
-fly, the session wiring, and the tests' simulated flight system. Where this
+STATUS: READY TO START. The skeleton this builds on is on main: the
+interface, a controller that refuses to fly, the session wiring. Where this
 ticket and the code disagree, the code wins — tell Samuel so this is fixed.
 
+SPLIT 2026-09-29. This was one ticket, Hannah's. It is now two, built side
+by side and joined at a fixed seam:
+
+  this ticket              Hannah   the controller — the state machine that
+                                    flies a mission, and its unit tests
+  mission-verification.txt Yordi    the proof, in code — a simulated
+                                    drone, the mission report, the
+                                    end-to-end scenarios, the lab flights,
+                                    the measured constants
+
+THE SPEC below is the one both of you build to: Hannah's code does what it
+says, Yordi's tests check exactly that. It lives only here, so it cannot
+disagree with itself.
+
   Owner           Hannah
+  Partner         Yordi (mission-verification.txt)
   Stories         Autonomous flight.
                   3.4 "capture images and readings while it holds at each
                   inspection point".
                   3.5 "tagged with ... associated inspection point ID" (the
                   flying half).
-  Branch          feat/mission-controller, off main once the skeleton lands
+  Branch          feat/mission-controller, off main
   Your files      backend/agent/cropwatcher/mission/controller/mission_controller.py
                   backend/agent/tests/mission/test_controller.py      (new)
-                  backend/agent/tests/sim_drone.py                    (new)
+                  backend/agent/tests/mission/test_boundaries.py      (one test)
+  Yordi's files   tests/sim_drone.py, tests/test_sim_drone.py,
+                  cropwatcher/mission/review.py (the mission report) and its
+                  `mission-report` command, tests/mission/test_review.py,
+                  tests/mission/test_mission_sim.py, docs/flight-log.txt —
+                  and, after the lab, the constants block in your file
+                  (HOW THE TWO HALVES MEET, 5)
   Not yours       flight/manual.py, mission/plan/, mission/controller/events.py,
   (ask Samuel)    mission/controller/flight.py, session.py, api/, the desktop app
 
 
-THE WHOLE SYSTEM, IN ONE PAGE — read this first
-───────────────────────────────────────────────
+HOW TO WORK THIS TICKET — WITH /feature
+──────────────────────────────────────
+
+(The same steps are in both halves of this ticket.)
+
+You build this with a Claude Code coding agent, opened in this repository.
+The repository carries the project's own /feature skill
+(.claude/commands/feature.md), so the agent already knows the project's
+rules. Work in four steps, and do not skip one.
+
+ 1. TELL IT ALL YOUR IDEAS FIRST. Before any planning, type /feature and
+    then everything in your head: how you understand this ticket, how you
+    would build it, what worries you, what you do not understand yet. Say
+    the half-formed ideas too — the plan can only use what you give it.
+
+      /feature I am Hannah, working on
+      docs/handoffs/sprint-1/undone/mission-controller.txt.
+      My ideas: <how I would build it>. My doubts: <what is unclear>.
+
+ 2. THE AGENT PLANS WITH /feature. It reads the repository (CLAUDE.md, the
+    docs, the code) and answers with a pre-flight: for each point, what
+    exists today, where it agrees with you, where it objects, the standard
+    that governs it, and what it recommends — then a short list of the
+    decisions it would lock in. Then it STOPS and waits. No code yet.
+
+ 3. WORK OUT EVERY DISAGREEMENT. Read the pre-flight properly. Where you
+    disagree, say so and why; where it disagrees with you, make it explain
+    and show the code. Go back and forth until no doubt and no confusion is
+    left, on either side. Then:
+      - a question about THE SPEC or the seam — settle it with Yordi as well,
+        and write the answer into THE SPEC (below) before either of you
+        builds on it;
+      - a question about anything outside this ticket — ask Samuel.
+
+ 4. THEN CALL /feature AGAIN, TO BUILD. Only when everything is clear, start
+    the implementation with exactly this:
+
+      /feature plan and implement- aim for completeness , thoroughness , accuracy and precision
+
+    It re-plans with everything you settled, builds it, runs the gates, and
+    reports pass, fail or skipped for each. Read that report — a gate it did
+    not run is not a pass.
+
+Every new request to the agent starts again at step 1.
+
+Three things the agent must be told, because CLAUDE.md says otherwise for
+Samuel's own work:
+  - COMMIT UNDER YOUR OWN NAME AND EMAIL. The identity in CLAUDE.md is
+    Samuel's.
+  - OPEN A PULL REQUEST AND STOP. Do not merge: only Samuel can merge into
+    main (a repository rule), and a refused merge is that rule working.
+  - STAY IN YOUR FILES (the table above). Anything else, ask Samuel.
+
+
+THE WHOLE SYSTEM, IN ONE PAGE — read this first (Yordi too)
+───────────────────────────────────────────────────────────
 
 DroneDeck flies a Crazyflie around a room, stops at pieces of equipment, and
 records temperature, pressure and camera frames at each. It has three parts:
@@ -29,19 +103,19 @@ records temperature, pressure and camera frames at each. It has three parts:
   1  PLANNING — "what to fly"                           Samuel · built
      In the desktop app (Auto › Control › ① Mission) the operator draws a
      ROOM: a closed geofence and the obstacles inside it. Then a MISSION in
-     that room: a HOME mark where the drone sits before takeoff, and an
-     ordered list of INSPECTION POINTS, each an (x, y) position, a height and
-     a hold time. The agent checks every point and every straight line
-     between them against the fence and the obstacles, and saves the mission
-     as a JSON file on the laptop.
+     that room: an ordered list of INSPECTION POINTS, each an (x, y)
+     position, a height and a hold time. The agent checks every point and
+     every straight line between them against the fence and the obstacles,
+     and saves the mission as a JSON file on the laptop.
 
-  2  FLYING — "how it is flown"                         Hannah · YOUR PART
+  2  FLYING — "how it is flown"                         Hannah + Yordi
      The operator runs the checks (② Check) and presses Start mission
      (③ Fly). The session refuses anything unsafe BEFORE a motor turns, then
      arms the MANUAL FLIGHT SYSTEM — the tuned 50 Hz loop that flies Manual
      mode — and hands it, with the mission, to the MISSION CONTROLLER. The
      mission controller flies the mission by giving that system goals, one
-     inspection point at a time.
+     inspection point at a time. Hannah builds the controller; Yordi proves
+     it, in simulation and then on the drone.
 
   3  PROCESSING — "what the readings say"               Samuel, Kevin, Reagan
      Every reading and camera frame taken while the drone HOLDS at a point is
@@ -54,8 +128,8 @@ WHERE YOUR PART FITS
    saved mission ─▶ Session.run_mission() ─▶ MissionController ─▶ ManualController
    plan, checked    checks; the plan again    WHERE next and       HOW: the 50 Hz
                     FROM WHERE THE DRONE IS   WHEN to move on      loop, leash,
-                    (its start); battery;     — YOUR PART          guards ─▶ drone
-                    then arms the flight
+                    (its start); battery;     — Hannah builds it,  guards ─▶ drone
+                    then arms the flight      Yordi proves it
                     system
 
    MissionController ─▶ current_point_id ─▶ stamped on every reading and frame
@@ -63,6 +137,59 @@ WHERE YOUR PART FITS
 
 You own the middle box. Everything to its left is done before you are called;
 everything to its right already works and is not yours to change.
+
+
+HOW THE TWO HALVES MEET — the seam (the same text is in both tickets)
+─────────────────────────────────────────────────────────────────────
+
+Five things make the two halves fit the first time they are joined.
+
+ 1. THE INTERFACE IS FIXED, IN CODE. MissionController's public methods
+    (mission_controller.py), MissionFlight (flight.py), the states and
+    events (events.py). Neither of you changes them. If one must change,
+    both of you and Samuel agree first.
+
+ 2. THE SPEC (in mission-controller.txt) IS THE ONE DEFINITION OF
+    BEHAVIOUR. Hannah's code does what it says; Yordi's scenarios assert it.
+    When the code and a scenario disagree, the spec decides — and where the
+    spec is silent, you two settle it, write it into THE SPEC, and only then
+    change code or test.
+
+ 3. TESTS DRIVE THE CONTROLLER ON ONE CLOCK, WITH NO THREAD.
+      MissionController(mission, flight, on_event=..., clock=<the test's
+                        clock>, tick_s=0)
+    tick_s=0 means start() does its checks and the takeoff but starts NO
+    thread: the caller calls tick(). Yordi's simulated drone owns that clock
+    (a FakeClock) and calls tick() every 0.1 s of simulated time
+    (MISSION_TICK_S in tests/sim_drone.py) between the manual system's own
+    0.02 s ticks. Hannah's unit tests do the same with their own fake. A
+    controller that reads time.monotonic() anywhere but through `clock`
+    breaks every test — use `clock`, always.
+
+ 4. THE CONSTANTS ARE NAMED, NEVER COPIED. ARRIVE_M, SETTLE_S,
+    SETTLE_TIMEOUT_S and TRANSIT_MARGIN_S live once, in
+    mission_controller.py. Tests import them (and MOVE_SPEED_M_S from
+    flight/manual.py) — no test writes 0.10 or 1.0 itself — so when the lab
+    measures a new value, code and tests move together.
+
+ 5. THE ORDER THINGS LAND IN MAIN:
+      a) Yordi — the simulated drone and its own tests (sim_drone.py,
+         test_sim_drone.py). Needs nothing of Hannah's. Merge any time.
+      b) Hannah — the controller and its unit tests, BUILT = True,
+         test_boundaries.py updated — on feat/mission-controller.
+      c) Yordi — the end-to-end scenarios (test_mission_sim.py), written
+         against THE SPEC while b) is being built, then opened as a pull
+         request INTO feat/mission-controller. Hannah merges it into her
+         branch; every failure is fixed on that branch — a controller bug by
+         Hannah, a scenario or simulator bug by Yordi, a gap in THE SPEC by
+         both, in writing.
+      d) Samuel merges feat/mission-controller into main only when the unit
+         tests AND the scenarios pass on it. So BUILT = True never reaches
+         main without its end-to-end proof.
+      e) The lab flights (Yordi's ticket), both of you there, Samuel the
+         first time. Yordi measures the four constants and changes their
+         values in mission_controller.py — the constants block only, each
+         with its trace cited — and Hannah reviews that pull request.
 
 
 WHAT A MISSION IS
@@ -85,31 +212,29 @@ A mission is DATA — a plan, never code. It arrives already validated.
 
   Mission
     id, name, room_id             which room's geofence and obstacles apply
-    home: (x, y)                  WHERE THE DRONE IS at Start (see below)
+    home: (x, y)                  WHERE THE DRONE IS at Start
     points: tuple[InspectionPoint, ...]   at least one, IN FLYING ORDER —
                                   exactly the points to fly
     cruise_height_m: float        the height to take off to
-    return_to_start: bool         fly back over home (the real start) first
+    return_to_start: bool         fly back over the takeoff spot first
     end_point_id: None            always None by the time you see it
     revision: int                 which version of the plan this is
 
-  CHANGED 2026-09-29 — THE MISSION YOU ARE HANDED IS THE MISSION AS FLOWN
-  (Mission.from_start). The session replaces the saved plan's planned start
-  with the drone's own position, drops any points after the operator's END
-  POINT (and turns return_to_start off when there is one), and re-validates
-  that. So: fly `points` in order, honour `return_to_start`, and read
-  nothing else — no end point or planned start to interpret. Nothing in your
-  interface (__init__, start, abort, state, completed_point_ids,
-  current_point_id) changed.
+  THE MISSION YOU ARE HANDED IS THE MISSION AS FLOWN (Mission.from_start).
+  The session replaces the saved plan's planned start with the drone's own
+  position, drops any points after the operator's END POINT (and turns
+  return_to_start off when there is one), and re-validates that. So: fly
+  `points` in order, honour `return_to_start`, and read nothing else — no
+  end point or planned start to interpret.
 
 BY THE TIME A MISSION REACHES YOU, THE SESSION HAS ALREADY CHECKED
 (session.py run_mission, before anything arms):
-  - every inspection point and home (the drone's spot) are inside the room's
+  - every inspection point and the drone's spot are inside the room's
     geofence, clear of its edge and of every obstacle by the room's
     clearance (0.25 m default);
-  - every leg — home → P1 → … → last point (→ home) — stays inside the fence
-    and clear of every obstacle, even in an L-shaped room, FROM WHERE THE
-    DRONE ACTUALLY IS;
+  - every leg — start → P1 → … → last point (→ start) — stays inside the
+    fence and clear of every obstacle, even in an L-shaped room, FROM WHERE
+    THE DRONE ACTUALLY IS;
   - every height is inside the room's height band, every hold ≥ 5 s;
   - the battery covers that path's estimated time;
   - the checks passed and the operator confirmed the area; Auto; assisted.
@@ -134,6 +259,7 @@ row and frame, publishes your events to the app, and — when the flight comes
 down for any reason — calls your abort("the flight ended") if you are not
 already in a terminal state.
 
+
 WHAT IT EXECUTES THE MISSION WITH
 ─────────────────────────────────
 
@@ -156,10 +282,10 @@ that flies Manual mode, tuned and tested. You see it only through MissionFlight
 
 fly_to() ADDS NO CONTROL LAW (manual.py, its docstring). It moves the one
 commanded point the manual system always flies, at the arrow keys' eased speed
-(0.20 m/s), on the same 30 cm leash, slowing before the goal so it arrives
-instead of overshooting. Any held key cancels it and sets operator_override.
-That is why a mission inherits everything tuned into manual flight — and why
-YOUR CONTROLLER DECIDES WHERE NEXT AND WHEN, AND NEVER HOW.
+(MOVE_SPEED_M_S, 0.20 m/s), on the same 30 cm leash, slowing before the goal
+so it arrives instead of overshooting. Any held key cancels it and sets
+operator_override. That is why a mission inherits everything tuned into manual
+flight — and why YOUR CONTROLLER DECIDES WHERE NEXT AND WHEN, AND NEVER HOW.
 
 Do NOT call arm(), start(), stop(), emergency_stop() or heartbeat(). The session
 owns arming and stopping. THE HEARTBEAT STAYS WITH THE DESKTOP APP ON PURPOSE:
@@ -175,14 +301,14 @@ The body of mission/controller/mission_controller.py. Its interface is fixed
 placeholder and BUILT = False, which makes the session refuse to arm a mission.
 
   class MissionController:
-      BUILT = False                           # set True when your body lands
+      BUILT = False                           # True when your body lands
       def __init__(self, mission, flight: MissionFlight, *,
                    on_event: Callable[[MissionEvent], None],
                    clock: Callable[[], float] = time.monotonic,
                    tick_s: float = 0.1): ...
-      def start(self) -> None                 # run tick() on its own thread, 10 Hz
-      def tick(self) -> None                  # ONE step; tests drive it with a fake clock
-      def abort(self, reason: str) -> None    # land now; ABORTED. Safe to call twice
+      def start(self) -> None                 # checks, takeoff, then the thread
+      def tick(self) -> None                  # ONE step; tests call it directly
+      def abort(self, reason: str) -> None    # land now; ABORTED. Safe twice
       state -> MissionState
       current_point_id -> str | None
       completed_point_ids -> tuple[str, ...]
@@ -198,116 +324,157 @@ States and events are in mission/controller/events.py (fixed):
   MissionEvent   kind, at_s (your clock), point_id, detail (a sentence the
                  operator reads: "P2 reached, 4 cm off")
 
-current_point_id — THE CONTRACT WITH DATA COLLECTION
-  - Set ONLY while HOLDING; None in every other state (takeoff, transit,
-    arriving, returning, landing). Readings taken while moving must not carry
-    a point id — the pipeline would analyse them as the equipment.
-  - Read from other threads, at 10 Hz, at any moment: it must be safe to.
 
-EVENTS — THE CONTRACT WITH THE APP AND THE PIPELINE
-  - Call on_event OUTSIDE any lock. An exception it raises is logged and
-    swallowed: a broken listener must never stop a mission in the air.
-  - In order, and exactly one terminal event per mission.
-  - POINT_COMPLETE is what the live pipeline will listen for.
-
-
-THE RULES THE STATE MACHINE MUST FOLLOW
-───────────────────────────────────────
-
- 1. ASSISTED ONLY. start() raises MissionError when flight.assisted is False.
-
- 2. TAKEOFF: hold_at(mission.cruise_height_m), then wait until goal_active is
-    False and the state is "flying". Record the takeoff x, y (flight.target).
-
- 3. EACH POINT: fly_to(point.x_m, point.y_m, point.z_m), then
-    ARRIVAL = goal_active is False (the commanded point is there) AND
-    drift_m ≤ ARRIVE_M (the drone is there too), continuously for SETTLE_S.
-    Drift back over ARRIVE_M restarts the settle timer.
-    HOLD for point.hold_s, timed from when the hold starts.
-
- 4. TIMEOUTS LAND THE DRONE. Transit longer than
-    leg length / 0.20 m/s + TRANSIT_MARGIN_S, or arrival longer than
-    SETTLE_TIMEOUT_S: land(), ABORTED, the reason in the event. Never skip a
-    point and carry on.
-
- 5. WATCH THE FLIGHT EVERY TICK:
-    - operator_override becomes True: stop commanding at once, INTERRUPTED.
-      The operator has the drone, as in Manual. Do not land for them.
-    - state becomes landing, landed, stopped or idle when you did not ask:
-      a guard, the dead-man or an emergency stop ended it. ABORTED, with that
-      state in the reason. Never call land() after "stopped".
-
- 6. NO BATTERY THRESHOLD OF YOUR OWN. The guard lands on low battery; rule 5
-    turns that into ABORTED (CLAUDE.md invariant 1).
-
- 7. RETURN AND LAND: if return_to_start, fly_to the takeoff x, y at cruise
-    height, then land(). DONE once the state is "landed".
-
- 8. THREADING: your own thread at 10 Hz; ManualController keeps its own 50 Hz
-    loop, untouched. Never sleep while holding a lock. Public methods are
-    thread-safe. start() twice raises; abort() twice is harmless.
-
- 9. THE STARTING CONSTANTS ARE GUESSES until the lab measures them — each is
-    replaced by the measured value with the flight trace cited beside it:
-      ARRIVE_M = 0.10   SETTLE_S = 1.0   SETTLE_TIMEOUT_S = 10.0
-      TRANSIT_MARGIN_S = 5.0            (mission_controller.py)
-
-
-TESTING WITHOUT A DRONE FIRST
-─────────────────────────────
-
-tests/fakes.py already has FakeCommander and FakeClock (moved there for you).
-tests/test_manual.py's TestFlyTo shows the pattern: a drone that FOLLOWS the
-commanded point, driving the real ManualController tick by tick.
-
-BUILD tests/sim_drone.py: the real ManualController + FakeCommander + FakeClock,
-whose reported position follows the last position setpoint with a first-order
-lag (about 0.5 s), with options for noise, a steady drift and a stall. Your
-tests then drive THE REAL FLIGHT SYSTEM, not a mock — that is the point.
-
-tests/mission/test_session_missions.py shows the session's side with a
-stand-in controller; tests/mission/test_boundaries.py checks that the
-skeleton refuses to start — change that test when your body lands.
-
-REQUIRED TESTS (tests/mission/test_controller.py):
-  [ ] 3 points visited in order, one POINT_COMPLETE each, then DONE.
-  [ ] Each hold lasts at least hold_s; current_point_id is set only while
-      HOLDING.
-  [ ] return_to_start returns to the takeoff x, y before landing; without it,
-      the drone lands at the last point.
-  [ ] Drift over ARRIVE_M while settling restarts the settle timer.
-  [ ] A stalled drone times out: land() called, ABORTED.
-  [ ] operator_override gives INTERRUPTED; after it, no fly_to and no land().
-  [ ] A guard landing mid-mission gives ABORTED with the reason.
-  [ ] An emergency stop mid-mission gives ABORTED, and land() is not called.
-  [ ] An exception in on_event does not stop the mission.
-  [ ] Refuses to start unassisted; start() twice raises; abort() twice is fine.
-  [ ] Exactly one terminal event, in every scenario above.
-
-
-THEN ON THE DRONE (after the tests pass; Samuel present the first time)
+THE SPEC — what the controller does (Hannah builds it, Yordi checks it)
 ───────────────────────────────────────────────────────────────────────
 
-Before any rung: `cropwatcher geometry --distance 1.0` has been run,
-`cropwatcher check` passes, the battery is charged, the area is clear, one
-hand is on Land. Make each mission in the app. Fly it from the app, or from a
-terminal with `cropwatcher mission --id <id>` (--dry-run checks it without
-connecting). After every flight READ THE TRACE: target_x_m against
-stateEstimate.x, target_height_m against the height.
+Anything the two of you settle later is added HERE, dated, in the same pull
+request that relies on it.
 
-  Rung  Mission                              Passes when
-  ──────────────────────────────────────────────────────────────────────────────
-  1     1 point over home, 0.3 m, hold 5 s   takes off, holds within ARRIVE_M,
-                                             lands, DONE
-  2     2 points 0.5 m apart                 travels straight, settles, holds,
-                                             both POINT_COMPLETE
-  3     a 1 m square, 4 points               all in order; drift during holds
-                                             recorded
-  4     the square with return_to_start      lands within 10 cm of home
-  5     press an arrow key mid-transit       INTERRUPTED; the drone holds where
-                                             it is, under manual control
+STARTING
+ S1. start() raises MissionError, and commands nothing and emits nothing,
+     when flight.assisted is False, or when start() was already called.
+ S2. Otherwise start(), before it returns: emits STARTED, calls
+     hold_at(mission.cruise_height_m), and the state is TAKING_OFF. Then,
+     when tick_s > 0, it starts the controller's own thread, which calls
+     tick() every tick_s seconds; when tick_s == 0 it starts no thread and
+     the caller calls tick() (HOW THE TWO HALVES MEET, 3).
 
-Log every rung in docs/flight-log.txt, newest first, with the readings.
+ONE TICK — checked in this order, and the first that applies ends the tick
+ T1. In a terminal state: do nothing.
+ T2. flight.operator_override is True: stop commanding at once — no fly_to,
+     no hold_at, no land(), now or later. INTERRUPTED. The operator has the
+     drone, as in Manual; do not land for them.
+ T3. flight.state is landing, landed, stopped or idle and the controller
+     did not call land(): a guard, the dead-man or an emergency stop ended
+     the flight. ABORTED, with that state named in the detail. Do not call
+     land() — the flight is already coming down or stopped.
+ T4. A timeout (T8, T10) has run out: call land() (unless the state is
+     stopped), then ABORTED, with what timed out in the detail.
+ T5. Otherwise, the step for the current state (below).
+ Any exception raised inside tick(): call land() if the flight state is
+ flying, then FAILED with the exception's message. It never escapes the
+ thread and never stops the manual system's own loop.
+
+TAKEOFF
+ T6. TAKING_OFF ends when goal_active is False AND flight.state is flying.
+     Record the takeoff spot: flight.target's x, y. Emit TAKEOFF_DONE and
+     begin the first point.
+ T7. Takeoff has a timeout, like a leg: cruise_height_m / CLIMB_RATE_M_S +
+     TRANSIT_MARGIN_S, from start(). (Added in the split: without it a
+     drone that never rises waits forever.)
+
+EACH POINT, in order
+ T8. TRANSIT: call fly_to(point.x_m, point.y_m, point.z_m) once, on
+     entering. The leg is the straight 3-D distance from the commanded spot
+     it starts from (the takeoff spot at cruise height, or the last point)
+     to this point. Transit times out after
+     leg / MOVE_SPEED_M_S + TRANSIT_MARGIN_S, from the fly_to call.
+     Transit ends when goal_active is False: emit POINT_ARRIVED (point_id
+     set, detail "P2 reached, 4 cm off" with the drift then) → ARRIVING.
+ T9. ARRIVING: arrival is drift_m ≤ ARRIVE_M continuously for SETTLE_S.
+     Drift back over ARRIVE_M restarts that SETTLE_S wait.
+ T10. ARRIVING times out SETTLE_TIMEOUT_S after it began — a timeout that
+     drift does NOT restart.
+ T11. Settled: set current_point_id, THEN emit HOLD_STARTED → HOLDING.
+ T12. HOLDING lasts point.hold_s from HOLD_STARTED, by `clock`. Drift while
+     holding neither restarts nor ends the hold (the trace records it, the
+     guard handles anything dangerous).
+ T13. Hold done: clear current_point_id, add the id to
+     completed_point_ids, THEN emit POINT_COMPLETE — then the next point,
+     or the end. NEVER SKIP A POINT: a point that cannot be reached ends the
+     mission (T4); it is never left out while the rest are flown.
+
+THE END
+ T14. return_to_start: emit RETURNING → RETURNING, fly_to(the takeoff x, y,
+     cruise_height_m), with T8's timeout and T9–T10's settle; once settled,
+     land() → LANDING. Without return_to_start: land() right after the last
+     POINT_COMPLETE → LANDING (there is no RETURNING event).
+ T15. LANDING: flight.state landed → emit LANDED, then DONE. flight.state
+     stopped or idle before landed → ABORTED, the state in the detail.
+
+ABORT, CALLED FROM OUTSIDE (the session)
+ A1. abort(reason) in a terminal state: nothing — no command, no event.
+ A2. Otherwise: land() if flight.state is flying or armed, never when it is
+     stopped, landing or landed; then ABORTED with `reason` as the detail.
+
+EVENTS — the contract with the app and the pipeline
+ E1. Exactly ONE terminal event (DONE, ABORTED, INTERRUPTED, FAILED) per
+     mission, and it is the LAST event — nothing is emitted after it.
+ E2. The state becomes terminal in the same step its event is emitted.
+ E3. point_id is the point's id on POINT_ARRIVED, HOLD_STARTED,
+     POINT_COMPLETE, and on a terminal event that ends a point (transit,
+     arriving or holding); None on every other event.
+ E4. at_s is `clock()` at the moment of the step that emitted it.
+ E5. on_event is called OUTSIDE any lock. An exception it raises is logged
+     (logging.getLogger(__name__)) and swallowed: a broken listener must
+     never stop a mission in the air.
+ E6. Tests check an event's kind, point_id and order — and, in a detail,
+     only that it NAMES the cause (the state, "timed out", the reason). The
+     wording of a detail is Hannah's to choose; no test pins it.
+
+A 3-point mission with return_to_start emits exactly:
+    STARTED · TAKEOFF_DONE ·
+    POINT_ARRIVED P1 · HOLD_STARTED P1 · POINT_COMPLETE P1 ·
+    POINT_ARRIVED P2 · HOLD_STARTED P2 · POINT_COMPLETE P2 ·
+    POINT_ARRIVED P3 · HOLD_STARTED P3 · POINT_COMPLETE P3 ·
+    RETURNING · LANDED · DONE
+and, without return_to_start, the same with RETURNING left out.
+
+current_point_id — THE CONTRACT WITH DATA COLLECTION
+ C1. Set ONLY while HOLDING; None in every other state (takeoff, transit,
+     arriving, returning, landing, and every terminal state). A reading
+     taken while moving must not carry a point id — the pipeline would
+     analyse it as the equipment.
+ C2. Read from other threads, at 10 Hz, at any moment: it must be safe to.
+
+THREADING
+ R1. The controller's thread at tick_s; ManualController keeps its own
+     50 Hz loop, untouched. Never sleep while holding a lock. Public methods
+     are thread-safe; start() twice raises (S1); abort() twice is harmless.
+
+NO BATTERY THRESHOLD OF YOUR OWN
+ R2. The guard lands on low battery; T3 turns that into ABORTED (CLAUDE.md
+     flight invariant 1).
+
+THE STARTING CONSTANTS ARE GUESSES until the lab measures them (Yordi's
+ticket). Keep them as named module constants in mission_controller.py:
+      ARRIVE_M = 0.10   SETTLE_S = 1.0   SETTLE_TIMEOUT_S = 10.0
+      TRANSIT_MARGIN_S = 5.0
+
+
+YOUR TESTS — the unit level
+───────────────────────────
+
+tests/mission/test_controller.py, with a SCRIPTED stand-in for the flight
+system, written in that file: an object that satisfies MissionFlight, whose
+state, goal_active, drift_m and operator_override the test sets by hand, and
+which records every hold_at / fly_to / land call. It makes each rule of THE
+SPEC testable in isolation, in milliseconds. (Yordi's scenarios then prove
+the same rules against the REAL manual flight system.)
+
+tests/fakes.py has FakeClock. Build the controller with clock=FakeClock()
+and tick_s=0.
+
+REQUIRED — one test at least per rule of THE SPEC, named after it:
+  [ ] S1, S2 — refuses unassisted; start() twice raises; STARTED + hold_at.
+  [ ] T2 — override in every non-terminal state gives INTERRUPTED, and no
+      command follows it.
+  [ ] T3 — each of landing, landed, stopped, idle mid-mission gives ABORTED
+      naming it; land() is not called.
+  [ ] T4, T7, T8, T10 — each timeout calls land() and gives ABORTED.
+  [ ] T9 — drift over ARRIVE_M restarts the settle wait; T10 does not reset.
+  [ ] T11–T13 — current_point_id set exactly between HOLD_STARTED and
+      POINT_COMPLETE; the hold lasts hold_s; completed_point_ids in order.
+  [ ] T14, T15 — the two endings, and the event sequences above, exactly.
+  [ ] A1, A2 — abort in every state; abort twice.
+  [ ] E1 — exactly one terminal event, in every test above (a helper that
+      every test calls).
+  [ ] E5 — a listener that raises does not stop the mission.
+  [ ] The exception path — an exception inside tick() gives FAILED.
+  [ ] R1 — with tick_s > 0 and the real clock, the thread runs a short
+      mission to DONE, and current_point_id is read from another thread
+      throughout without error.
 
 
 ACCEPTANCE
@@ -315,16 +482,19 @@ ACCEPTANCE
 
   [ ] Every required test passes; gates pass from backend/agent/:
       ruff check . && mypy cropwatcher && pytest
-  [ ] BUILT = True, and test_boundaries.py updated to match.
-  [ ] Rungs 1–5 flown and logged in docs/flight-log.txt.
-  [ ] The rule-9 constants measured, the trace cited beside each.
-  [ ] No change to flight/manual.py beyond what Samuel made — anything you
-      need from it, ask.
+  [ ] BUILT = True, and test_boundaries.py's "refuses to start" test
+      replaced by one that checks the session now arms a mission.
+  [ ] Yordi's scenarios (test_mission_sim.py) pass on feat/mission-controller
+      before it is merged (HOW THE TWO HALVES MEET, 5).
+  [ ] With Yordi: rungs 1–5 flown and logged (mission-verification.txt).
+  [ ] No change to flight/manual.py — anything you need from it, ask Samuel.
 
 
 OUT OF SCOPE
 
 - Planning, validating and saving missions; the editor; the API (Samuel).
+- The simulated drone, the mission report, the end-to-end scenarios, the
+  lab rungs and the measured constants (Yordi — mission-verification.txt).
 - Revisiting a flagged point (stretch 4.10) — your events and states are what
   will make it possible.
 - Turning to face the equipment at a point. Keep the takeoff heading.
@@ -332,6 +502,8 @@ OUT OF SCOPE
 
 WHEN YOU SHIP
 
-Update docs/features/missions/mission-controller.txt
-with what shipped: the states as built, the measured constants, what was
-flown. Delete this ticket in the same pull request.
+Update ../../../features/missions/mission-controller.txt with what shipped:
+the states as built, and THE SPEC as the code now keeps it — Yordi adds the
+measured constants and what was flown. When both halves are on main, move
+this ticket and mission-verification.txt to ../done/ (../../README.txt,
+"SPRINTS").

@@ -46,7 +46,12 @@ THE TICKETS — SPRINT 1
   Ticket                          Owner    Stories (planning PDF)     State
   ──────────────────────────────────────────────────────────────────────────────
   undone/mission-controller.txt   Hannah   3.4, 3.5 (flying half),    can start
-                                           autonomous flight          now
+                                           autonomous flight — the    now
+                                           controller
+  undone/mission-verification.txt Yordi    autonomous flight — the    can start
+                                           proof: simulated drone,    now
+                                           mission report, lab
+                                           flights, constants
   undone/dpp-clean.txt            Kevin    4.2                        can start
                                                                       now
   undone/dpp-enhance.txt          Kevin    4.3 (and the colorize      can start
@@ -74,6 +79,12 @@ THE TICKETS — SPRINT 1
 
 All paths above are under sprint-1/.
 
+sprint-1/undone/mission-controller.txt and
+sprint-1/undone/mission-verification.txt are ONE piece of work split
+between two people (2026-09-29): Hannah builds the controller, Yordi proves
+it. They meet at "HOW THE TWO HALVES MEET" and THE SPEC — both in the
+controller ticket — and land in the order written there.
+
 
 WHAT IS ALREADY BUILT — the skeleton everyone plugs into
 
@@ -93,7 +104,8 @@ Mission system (backend/agent/cropwatcher/mission/, docs/features/missions/)
   - 2026-09-29: THE FLIGHT STARTS FROM THE DRONE — Mission.from_start puts
     the start where the drone is, keeps the points, drops points after the
     operator's END POINT, and re-validates; that is what the controller is
-    handed (sprint-1/undone/mission-controller.txt, "CHANGED 2026-09-29").
+    handed (sprint-1/undone/mission-controller.txt, "THE MISSION YOU ARE
+    HANDED IS THE MISSION AS FLOWN").
     A mission needs at least one point to be saved. The desktop draws rooms
     in 2-D or 3-D; obstacles may carry a height (drawn only — never flown
     over).
@@ -111,6 +123,12 @@ Data pipeline (backend/agent/cropwatcher/pipeline/, docs/features/pipeline/)
 
 
 RULES THAT APPLY TO EVERY TICKET
+
+- WORK WITH /feature, IN FOUR STEPS: tell the coding agent all your ideas
+  first; it plans (/feature) and waits; you settle every disagreement until
+  no doubt is left; then `/feature plan and implement- aim for
+  completeness , thoroughness , accuracy and precision`. Written out in full
+  in sprint-1/undone/mission-controller.txt, "HOW TO WORK THIS TICKET".
 
 - READ CLAUDE.md AT THE REPO ROOT FIRST. It outranks these tickets. The
   flight invariants are there, and each cost real debugging time.
