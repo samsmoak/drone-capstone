@@ -306,7 +306,11 @@ bind-failure line captured and matched by lib.rs's tests.
 
 RELATED
 
-  shares-data-with  drone-wifi.txt   the secure store and the drone_wifi_* commands
-  depends-on        ../backend/agent-api.txt   /health (the no-cors probe), CORS for the window
-  depends-on        ../development/releases.txt   CI runs install.mjs, the same path people use
-  shares-data-with  ../backend/running-from-source.txt   the same venv, set up by setup.mjs
+shares-data-with  drone-wifi.txt
+                  the secure store and the drone_wifi_* commands
+depends-on        ../backend/agent-api.txt
+                  /health (the no-cors probe), CORS for the window
+depends-on        ../development/releases.txt
+                  CI runs install.mjs, the same path people use
+shares-data-with  ../backend/running-from-source.txt
+                  the same venv, set up by setup.mjs

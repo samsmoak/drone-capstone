@@ -467,7 +467,10 @@ should stay that way.
 
 RELATED
 
-  shares-data-with  drone-wifi.txt   the Drone Wi-Fi page and its sidebar badge
+shares-data-with  drone-wifi.txt
+                  the Drone Wi-Fi page and its sidebar badge
+depends-on        ../backend/sessions-and-modes.txt
+                  Home's standby row, vitals with no session
 
 
 LAST VERIFIED  2026-09-22, against desktop/src and a headless measurement pass

@@ -74,3 +74,8 @@ INVARIANTS
 - z in a frame is already ground-relative (ground captured at takeoff). Do not
   subtract the ground reference again downstream — the web dashboard did, and
   showed heights that were wrong by the floor offset.
+
+RELATED
+
+depends-on        sessions-and-modes.txt
+                  published on standby, recorded only in a session
