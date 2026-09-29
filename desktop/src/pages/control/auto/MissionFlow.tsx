@@ -39,9 +39,14 @@ function remember(id: string | null): void {
 
 /** Where the flow opens. The app never sets it (it opens on ①, or ③ while a
  *  mission flies); the layout harness does, to measure every step. */
-export type FlowStart = { step?: FlowStep; missionId?: string; view?: "edit" };
+export type FlowStart = { step?: FlowStep; missionId?: string; view?: "edit"; full?: boolean };
 
-export function MissionFlow({ session, run, telemetry, history, ambient, setAmbient, start }: {
+export function MissionFlow({ session, run, telemetry, history, ambient, setAmbient, start, full = false, onFullScreen, heightClass }: {
+  /** Whether the flow is filling the window (AutoControl's FullScreenFrame). */
+  full?: boolean;
+  onFullScreen?: () => void;
+  /** The room maps' height — taller in full screen. */
+  heightClass?: string;
   session: Session;
   run: Run;
   telemetry: Telemetry | null;
@@ -86,18 +91,26 @@ export function MissionFlow({ session, run, telemetry, history, ambient, setAmbi
 
   return (
     <section aria-label="Mission" className="grid content-start gap-3">
-      <StepBar steps={steps} current={step} onSelect={setStep} />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="min-w-0 flex-1"><StepBar steps={steps} current={step} onSelect={setStep} /></div>
+        {!full && onFullScreen && (
+          <button type="button" onClick={onFullScreen} title="Plan with the whole window"
+                  className="mono min-h-9 shrink-0 border border-[var(--border)] px-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--foreground)]">
+            Full screen ⤢
+          </button>
+        )}
+      </div>
 
       {step === 1 && (
         <MissionStep run={run} telemetry={telemetry} selectedId={chosen?.id ?? null} onUse={choose}
-                     openEditor={start?.view === "edit" ? start.missionId : undefined} />
+                     openEditor={start?.view === "edit" ? start.missionId : undefined} heightClass={heightClass} />
       )}
       {step === 2 && (
         <CheckStep session={session} run={run} mission={chosen} onContinue={() => setStep(3)} />
       )}
       {step === 3 && chosen && (
         <FlyStep session={session} run={run} telemetry={telemetry} history={history} mission={chosen}
-                 ambient={ambient} setAmbient={setAmbient} onPlanAnother={() => setStep(1)} />
+                 ambient={ambient} setAmbient={setAmbient} onPlanAnother={() => setStep(1)} heightClass={heightClass} />
       )}
     </section>
   );

@@ -54,6 +54,11 @@ const session: Session = {
   retry_required: false,
   radio: { state: "connected", hardware_id: "cf-002f002a3334471239333335", message: null },
   mission: null,
+  processing: {
+    on: true, chosen: false, last_flight_id: "f1c2d3e4-flight",
+    jobs: [{ flight_id: "f1c2d3e4-flight", state: "done", queued_at: "2026-09-29T10:00:00+00:00",
+             finished_at: "2026-09-29T10:00:02+00:00", error: null }],
+  },
   flight: null,
   message: "The checks did not pass, so the drone will not arm.",
   can_fly: false,
@@ -96,6 +101,11 @@ const agentToken = query.get("agent");
 // `?theme=dark|light` pins the tokens, so both themes get measured rather than
 // whichever one this machine happens to be set to.
 const theme = query.get("theme");
+// `?map=2d|3d` pins the room map's view (RoomMap remembers it per machine).
+const mapView = query.get("map");
+if (mapView === "2d" || mapView === "3d") {
+  try { localStorage.setItem("cropwatcher.auto.mapView", mapView); } catch { /* private window */ }
+}
 if (theme === "dark" || theme === "light") document.documentElement.dataset.theme = theme;
 if (agentToken) {
   (window as unknown as { __TAURI_INTERNALS__: unknown }).__TAURI_INTERNALS__ = {
@@ -124,9 +134,9 @@ const sampleRoom: RoomView = {
   format: 1, id: "lab", name: "Engineering lab, north bay (bench row B and the pump skid)",
   geofence: { shape: "rectangle", vertices: [[-1.7, -1.5], [1.7, -1.5], [1.7, 1.5], [-1.7, 1.5]], z_min: 0.1, z_max: 1.0 },
   obstacles: [
-    { id: "bench", kind: "rectangle", label: "Bench", points: [[-0.4, -0.3], [0.4, 0.3]] },
-    { id: "pillar", kind: "circle", label: "Pillar", points: [[1.1, -0.9]], radius: 0.2 },
-    { id: "rail", kind: "line", label: "Guard rail", points: [[-1.4, 1.1], [-0.4, 1.1]] },
+    { id: "bench", kind: "rectangle", label: "Bench", points: [[-0.4, -0.3], [0.4, 0.3]], height_m: 0.9 },
+    { id: "pillar", kind: "circle", label: "Pillar", points: [[1.1, -0.9]], radius: 0.2, height_m: null },
+    { id: "rail", kind: "line", label: "Guard rail", points: [[-1.4, 1.1], [-0.4, 1.1]], height_m: 1.1 },
   ],
   coverage: null, clearance_m: 0.25, revision: 3,
   created_at: "2026-09-28T10:00:00+00:00", updated_at: "2026-09-28T11:30:00+00:00",
@@ -144,7 +154,7 @@ const sampleMission: MissionView = {
     { id: "P3", label: "Compressor manifold, upper flange", x_m: 1.2, y_m: 0.0, z_m: 0.6, hold_s: 8 },
     { id: "P4", label: null, x_m: 0.0, y_m: -1.0, z_m: 0.4, hold_s: 5 },
   ],
-  cruise_height_m: 0.4, return_to_start: true, revision: 2, flown_revision: 1,
+  cruise_height_m: 0.4, return_to_start: false, end_point_id: "P3", revision: 2, flown_revision: 1,
   created_at: "2026-09-27T09:00:00+00:00", updated_at: "2026-09-28T11:31:00+00:00",
   problems: [
     sampleRoom.problems[0],
@@ -152,6 +162,7 @@ const sampleMission: MissionView = {
   ],
   valid: false, path_length_m: 8.4, estimated_duration_s: 96,
 };
+const sessionShown = session;
 const sampleMissions: MissionView[] = [
   sampleMission,
   { ...sampleMission, id: "m-ok", name: "Pump check", points: sampleMission.points.slice(0, 2),
@@ -167,6 +178,22 @@ if (!agentToken) {
     if (path.startsWith("/rooms/")) return json(sampleRoom);
     if (path === "/missions") return json(sampleMissions);
     if (path === "/missions/validate") return json(sampleMission);
+    if (path.endsWith("/from-drone")) {
+      return json({ position: [values["stateEstimate.x"], values["stateEstimate.y"]],
+                    mission: { ...sampleMission, home: [values["stateEstimate.x"], values["stateEstimate.y"]] } });
+    }
+    if (path.startsWith("/flights/") && path.endsWith("/result")) {
+      return json({
+        flight_id: "f1c2d3e4-flight", job: sessionShown.processing.jobs[0],
+        result: {
+          flight_id: "f1c2d3e4-flight", pipeline_version: "0.1.0", stages: { clean: "stub", classify: "stub" },
+          created_at: "2026-09-29T10:00:02+00:00", failures: [],
+          points: ["P1", "P2", "P3"].map((id) => ({ point_id: id, verdict: "insufficient_data",
+            reasons: ["No model gave a verdict: no classifier yet."], alerts: [] })),
+          summary: { P1: { readings: 60, frames: 22 }, P2: { readings: 52, frames: 18 }, P3: { readings: 81, frames: 30 } },
+        },
+      });
+    }
     if (path.startsWith("/missions/")) return json(sampleMissions.find((m) => path.endsWith(m.id)) ?? sampleMission);
     return realFetch(input, init);
   };
@@ -284,6 +311,16 @@ createRoot(document.getElementById("root")!).render(
         last_event: { kind: "hold_started", at_s: 31.2, point_id: "P2", detail: "Holding at P2 for 5 s — 4 cm off the point" },
       },
     }, { step: 3, missionId: "m-long" })}
+    {control("Auto · ③ Fly, landed", {
+      state: "ready", mode: "auto", activity: null, assisted: true, message: null,
+      mission: {
+        id: "m-long", name: sampleMission.name, revision: 2, room_id: "lab", points: ["P1", "P2", "P3"],
+        state: "done", current_point_id: null, completed_point_ids: ["P1", "P2", "P3"],
+        last_event: { kind: "done", at_s: 88.0, point_id: null, detail: "Mission complete" },
+      },
+    }, { step: 3, missionId: "m-long" })}
+    {control("Auto · full screen editor", { state: "idle", mode: "auto", assisted: true, message: null, checks: [], health_test: null },
+             { step: 1, missionId: "m-long", view: "edit", full: true })}
     {control("Control · Manual, armed", {
       state: "busy", mode: "manual", activity: "manual", assisted: true, message: null,
     })}

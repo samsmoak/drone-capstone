@@ -5,6 +5,12 @@
  * one tab in the tab order, arrow keys move between them, Home and End jump to
  * the ends. Automatic rather than manual activation because every panel here is
  * already mounted and cheap to show — there is nothing to wait for.
+ *
+ * NARROW, NOTHING IS SQUEEZED (2026-09-29): the strip wraps, so the action
+ * (a live badge, a Full screen button) drops under the tabs instead of
+ * crushing them — measured at a 1024 px window, the console's tab list was
+ * 97 px wide holding 177 px of tabs, and Camera ran into "10 Hz". Tabs never
+ * shrink; if even they do not fit, they scroll sideways.
  */
 
 import { useRef, type ReactNode } from "react";
@@ -44,12 +50,12 @@ export function Tabs<K extends string>({
   };
 
   return (
-    <div className="flex items-stretch justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface)]">
+    <div className="flex flex-wrap items-stretch justify-between gap-x-3 border-b border-[var(--border)] bg-[var(--surface)]">
       <div
         ref={strip}
         role="tablist"
         aria-label={label}
-        className="flex min-w-0 items-stretch"
+        className="flex min-w-0 max-w-full items-stretch overflow-x-auto"
         onKeyDown={(event) => {
           const key = event.key;
           if (key === "ArrowRight") { event.preventDefault(); move(1); }
@@ -70,7 +76,7 @@ export function Tabs<K extends string>({
               aria-controls={`${id}-panel-${tab.key}`}
               tabIndex={current ? 0 : -1}
               onClick={() => onSelect(tab.key)}
-              className={`flex min-h-10 items-center gap-2 px-4 text-xs font-semibold uppercase tracking-[0.07em] transition-colors ${
+              className={`flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap px-4 text-xs font-semibold uppercase tracking-[0.07em] transition-colors ${
                 current
                   ? "bg-[var(--surface-2)] text-[var(--heading)] shadow-[inset_0_-2px_0_var(--primary)]"
                   : "text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--foreground)]"
@@ -82,7 +88,7 @@ export function Tabs<K extends string>({
           );
         })}
       </div>
-      {action && <div className="flex shrink-0 items-center gap-2 px-3">{action}</div>}
+      {action && <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2 px-3">{action}</div>}
     </div>
   );
 }

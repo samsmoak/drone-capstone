@@ -39,6 +39,7 @@ import { Button, Message, PageHeader, Panel, Spinner, Stat, StatusDot } from "@/
 import { SplitPane } from "@/components/SplitPane";
 import { useMediaQuery, WIDE } from "@/lib/useMediaQuery";
 import { AutoControl } from "./auto/AutoControl";
+import { DataPipelinePanel } from "./DataPipeline";
 import type { FlowStart } from "./auto/MissionFlow";
 import { ConsolePane } from "./ConsolePane";
 import { VitalsNow } from "./VitalsNow";
@@ -245,6 +246,9 @@ function ControlColumn({ session, telemetry, run, height, setHeight, hold, setHo
         </Panel>
       )}
 
+      {/* The DPP switch (off by default in Manual) and the last flight's
+          result — a Manual flight is processed as one point, "flight". */}
+      {session.state !== "signed_out" && <DataPipelinePanel session={session} run={run} />}
     </>
   );
 }
@@ -622,10 +626,14 @@ export function HealthTestPanel({ result }: { result: HealthTest }) {
         </StatusDot>
       }
     >
-      <div className="grid gap-3 sm:grid-cols-2">
+      {/* Two columns by the PANEL's width, not the window's (2026-09-29): in
+          Manual's right column at a 1024 px window, `sm:` split a 250 px panel
+          in two and "M1 passed" ran into "M2 failed". */}
+      <div className="@container">
+      <div className="grid gap-3 @md:grid-cols-2">
         <div className="border border-[var(--border)] bg-[var(--surface-2)] p-3">
           <h3 className="eyebrow">Motors</h3>
-          <ul className="mono mt-2 grid grid-cols-2 gap-1.5 text-xs">
+          <ul className="mono mt-2 grid grid-cols-[repeat(auto-fit,minmax(6.5rem,1fr))] gap-1.5 text-xs">
             {[1, 2, 3, 4].map((motor) => (
               <li key={motor}>
                 <StatusDot tone={failed.has(motor) ? "critical" : "good"}>
@@ -660,6 +668,7 @@ export function HealthTestPanel({ result }: { result: HealthTest }) {
             drone does not take off — keep hands clear.
           </p>
         </div>
+      </div>
       </div>
     </Panel>
   );

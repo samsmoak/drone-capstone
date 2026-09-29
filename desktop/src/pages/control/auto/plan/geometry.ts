@@ -13,6 +13,17 @@
  * position can be trusted: the room's measured coverage, or the agent's default
  * area until that is measured (OuterBound). Every dimension typed or dragged is
  * clamped to it, so no shape can be made bigger than the space the drone can fly.
+ *
+ * THE WORDS, fixed to the axes so they never swap when a shape is resized:
+ *
+ *   LENGTH   left to right  (the room frame's x)
+ *   WIDTH    front to back  (the room frame's y; the front is the bottom of
+ *            the 2-D plan and the side the 3-D view opens facing)
+ *   HEIGHT   up from the floor
+ *
+ * and a position is "from left" and "from front" — measured from the room
+ * map's front-left corner (placeOf), which never moves while shapes are
+ * edited. The numbers underneath stay absolute Lighthouse metres.
  */
 
 import type { Geofence, InspectionPoint, Obstacle, OuterBound, XY } from "@/lib/agent";
@@ -50,11 +61,11 @@ export function cm(value: number): number {
 
 // ── the geofence ─────────────────────────────────────────────────────────
 
-export function rectangleFence(xMin: number, yMin: number, width: number, depth: number,
+export function rectangleFence(xMin: number, yMin: number, length: number, width: number,
                                band: Pick<Geofence, "z_min" | "z_max">): Geofence {
   return {
     shape: "rectangle", ...band,
-    vertices: [[xMin, yMin], [xMin + width, yMin], [xMin + width, yMin + depth], [xMin, yMin + depth]]
+    vertices: [[xMin, yMin], [xMin + length, yMin], [xMin + length, yMin + width], [xMin, yMin + width]]
       .map(([x, y]) => [cm(x), cm(y)] as XY),
   };
 }
@@ -70,9 +81,9 @@ export function circleFence(cx: number, cy: number, radius: number,
 }
 
 /** A rectangle's dimensions, read back from its corners. */
-export function rectangleOf(fence: Geofence): { xMin: number; yMin: number; width: number; depth: number } {
+export function rectangleOf(fence: Geofence): { xMin: number; yMin: number; length: number; width: number } {
   const b = boxOf(fence.vertices);
-  return { xMin: b.xMin, yMin: b.yMin, width: cm(b.xMax - b.xMin), depth: cm(b.yMax - b.yMin) };
+  return { xMin: b.xMin, yMin: b.yMin, length: cm(b.xMax - b.xMin), width: cm(b.yMax - b.yMin) };
 }
 
 /** A circle's centre and radius, read back from its 32 corners. */
@@ -100,7 +111,7 @@ export function fitFence(fence: Geofence, box: Box): Geofence {
 
 export type ObstacleDimensions =
   | { kind: "line"; x1: number; y1: number; x2: number; y2: number }
-  | { kind: "rectangle"; cx: number; cy: number; width: number; depth: number }
+  | { kind: "rectangle"; cx: number; cy: number; length: number; width: number }
   | { kind: "circle"; cx: number; cy: number; radius: number };
 
 export function dimensionsOf(o: Obstacle): ObstacleDimensions {
@@ -112,7 +123,7 @@ export function dimensionsOf(o: Obstacle): ObstacleDimensions {
   if (o.kind === "line") return { kind: "line", x1, y1, x2, y2 };
   return {
     kind: "rectangle", cx: cm((x1 + x2) / 2), cy: cm((y1 + y2) / 2),
-    width: cm(Math.abs(x2 - x1)), depth: cm(Math.abs(y2 - y1)),
+    length: cm(Math.abs(x2 - x1)), width: cm(Math.abs(y2 - y1)),
   };
 }
 
@@ -127,12 +138,12 @@ export function obstacleFrom(o: Obstacle, d: ObstacleDimensions, box: Box): Obst
     return { ...o, kind: "circle", points: [[cm(cx), cm(cy)]], radius: cm(radius) };
   }
   if (d.kind === "rectangle") {
-    const width = clamp(d.width, MIN_SIZE_M, mapW);
-    const depth = clamp(d.depth, MIN_SIZE_M, mapD);
-    const cx = clamp(d.cx, box.xMin + width / 2, box.xMax - width / 2);
-    const cy = clamp(d.cy, box.yMin + depth / 2, box.yMax - depth / 2);
+    const length = clamp(d.length, MIN_SIZE_M, mapW);
+    const width = clamp(d.width, MIN_SIZE_M, mapD);
+    const cx = clamp(d.cx, box.xMin + length / 2, box.xMax - length / 2);
+    const cy = clamp(d.cy, box.yMin + width / 2, box.yMax - width / 2);
     return { ...o, kind: "rectangle", radius: undefined, points: [
-      [cm(cx - width / 2), cm(cy - depth / 2)], [cm(cx + width / 2), cm(cy + depth / 2)],
+      [cm(cx - length / 2), cm(cy - width / 2)], [cm(cx + length / 2), cm(cy + width / 2)],
     ] };
   }
   const a = clampXY([d.x1, d.y1], box);
@@ -150,10 +161,12 @@ export function moveObstacle(o: Obstacle, dx: number, dy: number, box: Box): Obs
 }
 
 export function newObstacle(kind: Obstacle["kind"], at: XY, box: Box, id: string): Obstacle {
-  const base: Obstacle = { id, kind, label: null, points: [] };
+  // No height: floor to ceiling until the operator says otherwise — the room
+  // map then draws it at full height, which is how every check treats it.
+  const base: Obstacle = { id, kind, label: null, points: [], height_m: null };
   if (kind === "circle") return obstacleFrom(base, { kind, cx: at[0], cy: at[1], radius: 0.2 }, box);
   if (kind === "rectangle") {
-    return obstacleFrom(base, { kind, cx: at[0], cy: at[1], width: 0.6, depth: 0.4 }, box);
+    return obstacleFrom(base, { kind, cx: at[0], cy: at[1], length: 0.6, width: 0.4 }, box);
   }
   return obstacleFrom(base, { kind, x1: at[0] - 0.4, y1: at[1], x2: at[0] + 0.4, y2: at[1] }, box);
 }
@@ -176,4 +189,32 @@ export function newId(): string {
 
 export function lengthOf([x1, y1]: XY, [x2, y2]: XY): number {
   return Math.hypot(x2 - x1, y2 - y1);
+}
+
+// ── positions, in the words the editor uses ──────────────────────────────
+
+/** The room map's front-left corner: where "from left" and "from front" are
+ *  measured from. Fixed while shapes are edited, so a number never jumps
+ *  because something else moved. */
+export function placeOf([x, y]: XY, box: Box): XY {
+  return [cm(x - box.xMin), cm(y - box.yMin)];
+}
+
+/** Back from "from left, from front" to the room frame. */
+export function fromPlace([left, front]: XY, box: Box): XY {
+  return [cm(box.xMin + left), cm(box.yMin + front)];
+}
+
+/** Resize a whole-rectangle obstacle by one side, keeping the opposite side
+ *  where it is — what dragging a side handle in the 3-D view does. */
+export function resizeRectangle(o: Obstacle, side: "left" | "right" | "front" | "back",
+                                to: number, box: Box): Obstacle {
+  const [[x1, y1], [x2, y2]] = o.points;
+  let [xa, xb] = [Math.min(x1, x2), Math.max(x1, x2)];
+  let [ya, yb] = [Math.min(y1, y2), Math.max(y1, y2)];
+  if (side === "left") xa = clamp(to, box.xMin, xb - MIN_SIZE_M);
+  if (side === "right") xb = clamp(to, xa + MIN_SIZE_M, box.xMax);
+  if (side === "front") ya = clamp(to, box.yMin, yb - MIN_SIZE_M);
+  if (side === "back") yb = clamp(to, ya + MIN_SIZE_M, box.yMax);
+  return { ...o, points: [[cm(xa), cm(ya)], [cm(xb), cm(yb)]] };
 }

@@ -7,24 +7,32 @@
  * built yet), and those words land in the page's message — this button never
  * pretends to know more than the agent.
  *
- * Below it: the scene with the mission loaded — the room's geofence and
- * obstacles on the floor, the path at its heights, each point done, current or
- * ahead — and the mission controller's progress. While the mission flies, the
- * flow is locked here: a plan cannot be edited in the air. Land and Emergency
- * stop stay in the strip at the top, as always.
+ * Below it: the room map (2-D or 3-D, RoomMap) with the mission loaded — the
+ * room, its obstacles, the path FROM WHERE THE DRONE IS (the flight's real
+ * start: the points never move, the first leg does), each point done,
+ * current or ahead, the drone live at its height and heading — and the mission
+ * controller's progress. While the mission flies the start stays where it took
+ * off. The flow is locked here while it flies: a plan cannot be edited in the
+ * air. Land and Emergency stop stay in the strip at the top, as always.
+ *
+ * THE DPP SWITCH sits beside Start (on by default in Auto), and when the
+ * mission has landed its verdicts appear under the progress (DataPipeline).
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { History, Run } from "@/App";
 import {
   api, AgentError, type MissionProgress, type MissionView, type RoomView, type Session,
-  type Telemetry,
+  type Telemetry, type XY,
 } from "@/lib/agent";
 import { formatDuration } from "@/lib/format";
 import { Button, Message, Panel, Spinner, StatusDot, type Tone } from "@/components/ui";
 import { Field } from "../ControlPage";
-import { SceneView, type ScenePlan } from "../SceneView";
+import { FlightResults, ProcessingSwitch } from "../DataPipeline";
 import { checkComplete } from "./CheckStep";
+import { dronePosition } from "./plan/MissionStep";
+import { flownPoints, landsAt, returnsHome, type PathSource } from "./plan/path";
+import { RoomMap, type PointState } from "./plan/RoomMap";
 
 const TERMINAL: MissionProgress["state"][] = ["done", "aborted", "interrupted", "failed"];
 
@@ -35,25 +43,28 @@ const OUTCOME: Record<string, { tone: Tone; text: string }> = {
   failed: { tone: "critical", text: "The mission controller hit an error and the flight was ended. The agent's log has the details." },
 };
 
-export function planFor(mission: MissionView, room: RoomView, progress: MissionProgress | null): ScenePlan {
+/** Each point's state while this mission flies, for the room map. */
+export function progressOf(mission: MissionView, progress: MissionProgress | null): Record<string, PointState> {
   const done = new Set(progress?.id === mission.id ? progress.completed_point_ids : []);
   const current = progress?.id === mission.id ? progress.current_point_id : null;
-  return {
-    fence: room.geofence.vertices,
-    obstacles: room.obstacles.map((o) => ({ kind: o.kind, points: o.points, radius: o.radius })),
-    home: mission.home,
-    points: mission.points.map((p) => ({
-      id: p.id, x: p.x_m, y: p.y_m, z: p.z_m,
-      state: done.has(p.id) ? "done" : p.id === current ? "current" : "pending",
-    })),
-  };
+  return Object.fromEntries(mission.points.map((p) => [
+    p.id, done.has(p.id) ? "done" : p.id === current ? "current" : "pending",
+  ]));
 }
 
-export function FlyStep({ session, run, telemetry, history, mission, ambient, setAmbient, onPlanAnother }: {
+/** The mission as it will fly from `start` — Mission.from_start, drawn: the
+ *  start moved, the points kept, the end point applied. */
+export function fromStart(mission: MissionView, start: XY): PathSource {
+  return { home: start, points: flownPoints(mission), return_to_start: returnsHome(mission), end_point_id: null };
+}
+
+export function FlyStep({ session, run, telemetry, mission, ambient, setAmbient, onPlanAnother, heightClass }: {
+  heightClass?: string;
   session: Session;
   run: Run;
   telemetry: Telemetry | null;
-  history: History;
+  /** Kept for the flow's signature; the room map reads the telemetry itself. */
+  history?: History;
   mission: MissionView;
   ambient: string;
   setAmbient: (value: string) => void;
@@ -75,6 +86,18 @@ export function FlyStep({ session, run, telemetry, history, mission, ambient, se
   const progress = session.mission?.id === mission.id ? session.mission : null;
   const flying = session.activity === "mission";
   const finished = progress !== null && TERMINAL.includes(progress.state) && !flying;
+  const drone = dronePosition(telemetry);
+  // Where this flight took off: fixed for the flight, so the start does not
+  // follow the drone round the room.
+  const [tookOff, setTookOff] = useState<XY | null>(null);
+  const wasFlying = useRef(false);
+  useEffect(() => {
+    if (flying && !wasFlying.current) setTookOff(drone);
+    wasFlying.current = flying;
+  }, [flying, drone]);
+  const start = (flying || finished) ? tookOff ?? drone : drone;
+  const path = start ? fromStart(mission, start) : mission;
+  const lands = landsAt(mission);
 
   const reason = (): string | null => {
     if (flying) return "The mission is flying.";
@@ -98,7 +121,7 @@ export function FlyStep({ session, run, telemetry, history, mission, ambient, se
           <p className="eyebrow">Mission · revision {mission.revision}</p>
           <h2 className="wrap-anywhere text-lg font-bold text-[var(--heading)]">{mission.name}</h2>
           <p className="mono text-xs text-[var(--muted)]">
-            {mission.points.length} point{mission.points.length === 1 ? "" : "s"} · about {formatDuration(mission.estimated_duration_s)} · {mission.return_to_start ? "returns home" : "lands at the last point"}
+            {flownPoints(mission).length} point{flownPoints(mission).length === 1 ? "" : "s"} · about {formatDuration(mission.estimated_duration_s)} · {returnsHome(mission) ? "returns to where it took off" : lands ? `lands at ${lands}` : "no points"}
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-3">
@@ -117,6 +140,9 @@ export function FlyStep({ session, run, telemetry, history, mission, ambient, se
           </div>
         </div>
         {why && !flying && <p className="w-full text-xs text-[var(--muted)]">{why}</p>}
+        <div className="w-full border-t border-[var(--border)] pt-2">
+          <ProcessingSwitch session={session} run={run} />
+        </div>
         {flying && (
           <p className="w-full text-xs">
             Use <strong>Land</strong> at the top (or <kbd>L</kbd>) to bring it down now. Any movement key takes the drone back from the mission.
@@ -131,17 +157,28 @@ export function FlyStep({ session, run, telemetry, history, mission, ambient, se
         </div>
       )}
 
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(14rem,1fr)]">
-        <div className="flex h-[26rem] min-w-0 flex-col border border-[var(--border)]">
+      <div className="@container">
+      <div className="grid gap-3 @3xl:grid-cols-[minmax(0,1.6fr)_minmax(14rem,1fr)]">
+        <div className="min-w-0">
           {error ? (
-            <div className="grid gap-3 p-4">
+            <div className="grid gap-3 border border-[var(--border)] p-4">
               <Message tone="critical" text={error} />
               <div><Button onClick={() => setAttempt((n) => n + 1)}>Try again</Button></div>
             </div>
           ) : room ? (
-            <SceneView telemetry={telemetry} history={history} active plan={planFor(mission, room, progress)} />
+            <RoomMap
+              outer={room.outer} fence={room.geofence} obstacles={room.obstacles}
+              path={path} takeoffHeight={mission.cruise_height_m}
+              drone={drone} droneHeight={telemetry?.height_m ?? null}
+              droneYaw={telemetry?.values["stabilizer.yaw"] ?? null}
+              progress={progressOf(mission, progress)} heightClass={heightClass}
+              label={`${mission.name}, from where the drone is: the room, the path and the drone`}
+            />
           ) : (
-            <div className="p-4"><Spinner label="Loading the room…" /></div>
+            <div className="border border-[var(--border)] p-4"><Spinner label="Loading the room…" /></div>
+          )}
+          {!flying && start && (
+            <p className="pt-1 text-xs">The path starts from where the drone is (D) — the points stay where they were planned.</p>
           )}
         </div>
 
@@ -153,7 +190,7 @@ export function FlyStep({ session, run, telemetry, history, mission, ambient, se
           bodyClassName="grid gap-2 px-4 py-3"
         >
           <ol className="grid gap-1">
-            {mission.points.map((p) => {
+            {flownPoints(mission).map((p) => {
               const done = progress?.completed_point_ids.includes(p.id) ?? false;
               const current = progress?.current_point_id === p.id;
               return (
@@ -174,6 +211,13 @@ export function FlyStep({ session, run, telemetry, history, mission, ambient, se
           )}
         </Panel>
       </div>
+      </div>
+
+      {(finished || session.processing?.last_flight_id) && !flying && (
+        <Panel title="Results" note="The data pipeline's verdict for each inspection point of the last flight." bodyClassName="grid gap-2 px-4 py-3">
+          <FlightResults session={session} run={run} />
+        </Panel>
+      )}
     </div>
   );
 }

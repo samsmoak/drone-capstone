@@ -232,7 +232,10 @@ export default function App() {
     }
   }, [pushLog]);
 
-  const flying = session?.activity === "manual" || session?.activity === "program";
+  // A mission is flying too (2026-09-29): without it the strip offered End
+  // session, not Land and Emergency stop, while a mission was in the air.
+  const flying = session?.activity === "manual" || session?.activity === "program"
+    || session?.activity === "mission";
   const manualFlying = session?.activity === "manual";
 
   // ── keyboard: key *state*, not the OS repeat stream ────────────────
