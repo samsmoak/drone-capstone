@@ -9,10 +9,13 @@ saved and what will upload.
     <session folder>/frames/000001.png      one file per frame, as received
     <session folder>/frames.csv             one row per frame (the index)
 
-    seq, recorded_at, t_s, file, width, height, bytes, x_m, y_m, z_m, upload
+    seq, recorded_at, t_s, file, width, height, bytes, x_m, y_m, z_m, upload,
+    point_id
 
 x/y/z are the drone's estimate at the moment the frame arrived, so every image
-says where it was taken. `upload` is 1 for the frames chosen to go to Supabase:
+says where it was taken. point_id is the inspection point the mission
+controller was HOLDING at that moment, and empty otherwise (story 3.5).
+`upload` is 1 for the frames chosen to go to Supabase:
 EVERY frame is kept on the laptop; UPLOAD_FPS of them a second go up (decided
 2026-09-24: 2 a second — about 27-55 MB per 10 minutes at ~45 KB a frame,
 instead of ~100 MB for all ~3.7 a second).
@@ -48,11 +51,17 @@ UPLOAD_FPS = 2.0
 INDEX_NAME = "frames.csv"
 FRAMES_DIR = "frames"
 COLUMNS = ["seq", "recorded_at", "t_s", "file", "width", "height", "bytes",
-           "x_m", "y_m", "z_m", "upload"]
+           "x_m", "y_m", "z_m", "upload", "point_id"]
 
 _EXT = {"image/png": "png", "image/jpeg": "jpg"}
 
 Position = Callable[[], tuple[float, float, float] | None]
+#: Which inspection point is being held, if any (story 3.5) — see session.py.
+PointId = Callable[[], str | None]
+
+
+def _no_point() -> str | None:
+    return None
 
 
 @dataclass(frozen=True)
@@ -79,6 +88,7 @@ class FrameRecording:
         folder: Path,
         *,
         position: Position = lambda: None,
+        point_id: PointId = _no_point,
         upload_fps: float = UPLOAD_FPS,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -88,6 +98,7 @@ class FrameRecording:
         self.frames_dir.mkdir(parents=True, exist_ok=True)
         self.index_path = folder / INDEX_NAME
         self._position = position
+        self._point_id = point_id
         self._upload_every = 1.0 / upload_fps
         self._clock = clock
         self._started = clock()
@@ -115,12 +126,16 @@ class FrameRecording:
             at = datetime.now(UTC).isoformat()
             pos = self._position()
             try:
+                point = self._point_id() or ""
+            except Exception:
+                point = ""
+            try:
                 (self.frames_dir / name).write_bytes(data)
                 with self.index_path.open("a", newline="", encoding="utf-8") as f:
                     csv.writer(f).writerow([
                         seq, at, f"{t:.3f}", f"{FRAMES_DIR}/{name}", width, height, len(data),
                         *(("", "", "") if pos is None else (f"{p:.3f}" for p in pos)),
-                        int(upload),
+                        int(upload), point,
                     ])
             except OSError:
                 self.write_errors += 1
@@ -169,16 +184,18 @@ class Recorder:
     """The agent-level switch: which session, if any, frames go to."""
 
     def __init__(self, outbox: Outbox, position: Position = lambda: None,
-                 clock: Callable[[], float] = time.monotonic) -> None:
+                 clock: Callable[[], float] = time.monotonic,
+                 point_id: PointId = _no_point) -> None:
         self._outbox = outbox
         self._position = position
+        self._point_id = point_id
         self._clock = clock
         self._lock = threading.Lock()
         self.current: FrameRecording | None = None
 
     def start(self, session_id: str, folder: Path) -> FrameRecording:
         recording = FrameRecording(session_id, folder, position=self._position,
-                                   clock=self._clock)
+                                   point_id=self._point_id, clock=self._clock)
         self._outbox.put(Kind.FRAMES, session_id, {
             "session_id": session_id, "folder": str(folder),
             "started_at": datetime.now(UTC).isoformat(),

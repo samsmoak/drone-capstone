@@ -1,0 +1,97 @@
+================================================================================
+THE DATA PIPELINE — a recorded flight in, a verdict per inspection point out
+Last verified: 2026-09-28 against feat/missions-and-pipeline — tests/pipeline/
+(27), `cropwatcher process --fixture`, and flight 372bbdc4 from the lab.
+SOURCE: backend/agent/cropwatcher/pipeline/runner.py
+================================================================================
+
+--------------------------------------------------------------------------------
+STATUS  (Last verified: 2026-09-28)
+--------------------------------------------------------------------------------
+  skeleton  BUILT — contracts, sources, sinks, runner, compose, the command
+  interpret BUILT — labels → verdicts; no threshold until one is measured
+  clean     STUB — Kevin (../../handoffs/dpp-clean.txt)
+  enhance   STUB — Kevin (../../handoffs/dpp-enhance.txt)
+  classify  STUB — Reagan (../../handoffs/dpp-classify.txt)
+  NOT BUILT the live runner (story 4.9); verdicts on the Fly step; results in
+            Supabase and alerts on the dashboard
+
+--------------------------------------------------------------------------------
+1. WHAT IT IS
+--------------------------------------------------------------------------------
+Story 4.5: "A single command turns a recorded flight into a result with a
+verdict for each inspection point." `cropwatcher process --flight <id>` loads
+the flight's readings, its session's frames and the plan it flew, runs each
+inspection point through clean → enhance → classify → interpret, and writes
+<data folder>/results/<flight id>/result.json. Today every point says
+insufficient_data — "no classifier yet" — which is the honest answer until the
+team's stages land. On flight 372bbdc4 it found 1 314 readings and the 22 of
+the session's 34 frames taken inside the flight.
+
+--------------------------------------------------------------------------------
+2. WHERE IT LIVES
+--------------------------------------------------------------------------------
+backend/agent/cropwatcher/pipeline/contracts.py    the types — the agreement
+backend/agent/cropwatcher/pipeline/sources.py      LocalFlightSource
+backend/agent/cropwatcher/pipeline/sinks.py        LocalResultSink, to_jsonable
+backend/agent/cropwatcher/pipeline/runner.py       run_point, run_flight
+backend/agent/cropwatcher/pipeline/compose.py      which implementation per stage
+backend/agent/cropwatcher/pipeline/stages/         clean, enhance, classify
+                                                   (stubs), interpret/labels.py
+backend/agent/cropwatcher/cli.py                   `cropwatcher process`
+backend/agent/tests/pipeline/                      fixture, conformance, tests
+../../handoffs/dpp-contract.txt                    the contract, for the team
+
+--------------------------------------------------------------------------------
+3. DECISIONS
+--------------------------------------------------------------------------------
+• ON THE LAPTOP, IN THE AGENT — not Supabase. Edge Functions are Deno only with
+  2 s of CPU a request; the laptop has every frame the moment the drone lands
+  (the cloud gets 2 a second); only the laptop can steer the drone, which
+  stories 4.9 and 4.10 need. Built as PORTS AND ADAPTERS (FlightSource,
+  ResultSink) with the stages chosen in one composition root, so a cloud
+  worker later is two new adapters, not a rewrite.
+• THE UNIT OF WORK IS ONE INSPECTION POINT. The same stage code serves the
+  batch run (built) and the live run as each point completes (later). A flight
+  with no mission is one point, "flight".
+• FRAMES ARE PER SESSION, so a flight's frames are the session's frames taken
+  between its first and last reading. Readings and frames group by the
+  point_id the mission controller stamped; readings in transit belong to no
+  point and are counted, not analysed.
+• A STAGE THAT FAILS OR BREAKS THE CONTRACT never takes the flight with it:
+  clean failing stops that point (insufficient_data — unchecked readings are
+  not analysed); enhance failing falls back to originals; classify failing
+  labels everything unknown; each failure is recorded with its reason.
+• NO INVENTED THRESHOLD in interpret. Verdicts come from the labels until the
+  equipment's normal limits are measured (story 4.6), and a label of
+  "unknown" must say why — a stub that said "normal" would write confident
+  nonsense, as the greenhouse model would have (../architecture.txt).
+• Runtime models are ONNX run by onnxruntime; the runtime dependencies are
+  numpy, Pillow, opencv-contrib-python-headless, onnxruntime. None is added
+  yet — the stubs need none.
+• The batch runner runs in the command's own process. The live runner must run
+  in a process of its own: CPU work beside the 50 Hz flight loop competes for
+  Python's one interpreter lock.
+
+--------------------------------------------------------------------------------
+4. INVARIANTS
+--------------------------------------------------------------------------------
+• The pipeline imports nothing from flight, session, api, sync or camera —
+  tests/pipeline/test_conformance.py rule 1, per implementation.
+• Every implementation in tests/pipeline/conformance.py passes the contract's
+  checked rules: one output per input in order, input unchanged, files only in
+  workdir, originals byte-identical, deterministic, empty points handled.
+• Temperatures arrive in the flight's own unit (temp_unit); a stage converts.
+• Re-running a flight replaces its result.json (atomic write).
+
+--------------------------------------------------------------------------------
+5. RELATED
+--------------------------------------------------------------------------------
+depends-on        ../missions/mission-controller.txt
+                  point_id on readings and frames; the plan flown
+depends-on        ../backend/telemetry-stream.txt
+                  the flight CSV's columns are TelemetryRow's fields
+depends-on        ../desktop/camera.txt
+                  frames.csv and the frames folder of a session
+shares-data-with  ../backend/session-history.txt
+                  sessions/<id>/meta.json names each session's flights

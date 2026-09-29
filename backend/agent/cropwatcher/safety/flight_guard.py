@@ -28,6 +28,7 @@ verdict (``pm.state`` low power, the supervisor's tumble flag) that is used.
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -304,6 +305,10 @@ class GuardContext:
     #: operator flying by eye is the guard. What still runs: tumble, battery,
     #: stale telemetry — and the heartbeat, which lands on a quiet window.
     assisted: bool = True
+    #: A mission's room: whether (x, y) is inside its closed geofence
+    #: (mission/plan/geofence.py). None keeps the square of
+    #: `fence_half_extent_m`, which is what Manual and the hover demo fly in.
+    fence: Callable[[float, float], bool] | None = None
 
 
 class FlightGuard:
@@ -431,7 +436,9 @@ class FlightGuard:
         if not battery.ok:
             return battery
 
-        if abs(x) > ctx.fence_half_extent_m or abs(y) > ctx.fence_half_extent_m:
+        outside = (not ctx.fence(x, y) if ctx.fence is not None else
+                   abs(x) > ctx.fence_half_extent_m or abs(y) > ctx.fence_half_extent_m)
+        if outside:
             return Verdict(
                 Action.LAND, Reason.OUTSIDE_FENCE,
                 f"Outside the geofence at ({x:+.2f}, {y:+.2f}) m — landing.",

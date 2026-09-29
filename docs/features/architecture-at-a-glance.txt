@@ -32,7 +32,9 @@ COMPONENTS AND TECH
 WHAT EACH ONE DOES
 
   Flight agent    Owns the radio. Checks, guards, flight control, recording,
-                  upload. The only thing that can move the drone.
+                  upload. The only thing that can move the drone. Also holds
+                  the missions (rooms, inspection points) and runs the data
+                  pipeline over recorded flights.
   Desktop app     The operator's window. Starts the agent, shows the checks and
                   the live sensors, sends held keys. Touches no hardware.
   Database        Stores flights, sessions, audit trail, website content.
@@ -88,6 +90,14 @@ THE RULES THAT MATTER MOST
 
 
 DESIGNED BUT NOT WIRED
+
+  Mission controller body  the interface, the goal (fly_to), the session and
+                          the Auto page are built; the controller that walks
+                          the points is Hannah's and refuses to fly until it
+                          lands (missions/mission-controller.txt)
+  Pipeline stages         clean, enhance, classify are stubs until Kevin's and
+                          Reagan's land; no live runner yet
+                          (pipeline/data-pipeline.txt)
 
   Web-queued missions     queued_missions() / claim_mission() exist and are
                           never called; Auto runs from the desktop app only

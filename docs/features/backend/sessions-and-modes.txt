@@ -158,7 +158,21 @@ INVARIANTS
   two drones on different days.
 
 
+AUTO: A MISSION (2026-09-28)
+
+run_mission(mission_id, ambient) is Auto's second activity beside the hover
+demo ("mission"). Every refusal comes before anything arms — Auto, assisted,
+checks passed, the mission valid in its room, the battery budget, the drone
+within 0.30 m of home, and the mission controller built — then the manual
+flight system is armed with the room's fence as the guard's, and handed to the
+mission controller (../missions/mission-controller.txt). The snapshot's
+`mission` carries its progress to the app.
+
+
 RELATED
+
+consumed-by       ../missions/mission-controller.txt
+                  run_mission arms the manual system and hands it over
 
   consumed-by   ../desktop/pages-and-windows.txt  Home's standby row, vitals with no session
   consumed-by   telemetry-stream.txt              published on standby, recorded only in a session

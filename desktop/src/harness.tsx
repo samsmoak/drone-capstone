@@ -13,11 +13,15 @@
 import { createRoot } from "react-dom/client";
 import { HomePage } from "@/pages/home/HomePage";
 import { ControlPage } from "@/pages/control/ControlPage";
+import type { FlowStart } from "@/pages/control/auto/MissionFlow";
 import { SensorWindow, WINDOWS } from "@/pages/windows/SensorWindow";
 import { WindowLog } from "@/pages/sessions/WindowLog";
 import { SessionsPage } from "@/pages/sessions/SessionsPage";
 import { StartupPage } from "@/pages/startup/StartupPage";
-import { EMPTY_INTENT, connectToShell, type Session, type Telemetry } from "@/lib/agent";
+import {
+  EMPTY_INTENT, connectToShell,
+  type MissionView, type PlanLimits, type RoomView, type Session, type Telemetry,
+} from "@/lib/agent";
 import type { LogLine } from "@/lib/commandLog";
 import { FlightStrip } from "@/components/FlightStrip";
 import { Sidebar } from "@/components/Sidebar";
@@ -49,6 +53,7 @@ const session: Session = {
   },
   retry_required: false,
   radio: { state: "connected", hardware_id: "cf-002f002a3334471239333335", message: null },
+  mission: null,
   flight: null,
   message: "The checks did not pass, so the drone will not arm.",
   can_fly: false,
@@ -100,6 +105,71 @@ if (agentToken) {
           : null,
   };
   await connectToShell();
+}
+
+/**
+ * The Auto page's plans, served in place of the agent when no agent is given.
+ *
+ * Worst case on purpose: a long room and mission name, every obstacle kind, a
+ * label that wraps, and one leg the agent flags — so the editor, the list and
+ * the problem panel are measured with the most they will ever show. Only the
+ * plan routes are answered here; everything else goes to the real fetch.
+ */
+const sampleLimits: PlanLimits = {
+  outer: { vertices: [[-2, -2], [2, -2], [2, 2], [-2, 2]], measured: false },
+  default_clearance_m: 0.25, min_hold_s: 5, z_min_m: 0.1, z_max_m: 1.0,
+  move_speed_m_s: 0.2, climb_rate_m_s: 0.15,
+};
+const sampleRoom: RoomView = {
+  format: 1, id: "lab", name: "Engineering lab, north bay (bench row B and the pump skid)",
+  geofence: { shape: "rectangle", vertices: [[-1.7, -1.5], [1.7, -1.5], [1.7, 1.5], [-1.7, 1.5]], z_min: 0.1, z_max: 1.0 },
+  obstacles: [
+    { id: "bench", kind: "rectangle", label: "Bench", points: [[-0.4, -0.3], [0.4, 0.3]] },
+    { id: "pillar", kind: "circle", label: "Pillar", points: [[1.1, -0.9]], radius: 0.2 },
+    { id: "rail", kind: "line", label: "Guard rail", points: [[-1.4, 1.1], [-0.4, 1.1]] },
+  ],
+  coverage: null, clearance_m: 0.25, revision: 3,
+  created_at: "2026-09-28T10:00:00+00:00", updated_at: "2026-09-28T11:30:00+00:00",
+  outer: sampleLimits.outer,
+  problems: [{ code: "coverage_not_measured", severity: "warning", where: null,
+    message: "This room's Lighthouse coverage has not been measured, so the fence is checked against the agent's default flying area instead. Measure it before trusting the edges of the room." }],
+  valid: true,
+};
+const sampleMission: MissionView = {
+  format: 1, id: "m-long", name: "Weekly thermal sweep of pumps, valves and the compressor manifold",
+  room_id: "lab", home: [-1.2, -1.0],
+  points: [
+    { id: "P1", label: "Pump 1 bearing housing", x_m: -1.2, y_m: 0.6, z_m: 0.4, hold_s: 6 },
+    { id: "P2", label: "Pump 2", x_m: 0.9, y_m: 0.7, z_m: 0.5, hold_s: 5 },
+    { id: "P3", label: "Compressor manifold, upper flange", x_m: 1.2, y_m: 0.0, z_m: 0.6, hold_s: 8 },
+    { id: "P4", label: null, x_m: 0.0, y_m: -1.0, z_m: 0.4, hold_s: 5 },
+  ],
+  cruise_height_m: 0.4, return_to_start: true, revision: 2, flown_revision: 1,
+  created_at: "2026-09-27T09:00:00+00:00", updated_at: "2026-09-28T11:31:00+00:00",
+  problems: [
+    sampleRoom.problems[0],
+    { code: "leg_near_obstacle", severity: "error", where: "P2 → P3", message: "The leg P2 → P3 passes 0.12 m from obstacle Pillar; it needs 0.25 m." },
+  ],
+  valid: false, path_length_m: 8.4, estimated_duration_s: 96,
+};
+const sampleMissions: MissionView[] = [
+  sampleMission,
+  { ...sampleMission, id: "m-ok", name: "Pump check", points: sampleMission.points.slice(0, 2),
+    problems: [sampleRoom.problems[0]], valid: true, flown_revision: null, estimated_duration_s: 41 },
+];
+if (!agentToken) {
+  const realFetch = window.fetch.bind(window);
+  const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
+  window.fetch = async (input, init) => {
+    const path = new URL(String(input), location.href).pathname;
+    if (path === "/plan/limits") return json(sampleLimits);
+    if (path === "/rooms") return json([sampleRoom]);
+    if (path.startsWith("/rooms/")) return json(sampleRoom);
+    if (path === "/missions") return json(sampleMissions);
+    if (path === "/missions/validate") return json(sampleMission);
+    if (path.startsWith("/missions/")) return json(sampleMissions.find((m) => path.endsWith(m.id)) ?? sampleMission);
+    return realFetch(input, init);
+  };
 }
 
 /**
@@ -172,9 +242,10 @@ function Shell({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-const control = (label: string, override: Partial<Session>) => (
+const control = (label: string, override: Partial<Session>, autoStart?: FlowStart) => (
   <Shell label={label}>
     <ControlPage
+      autoStart={autoStart}
       session={{ ...session, ...override }}
       telemetry={telemetry}
       history={history}
@@ -200,6 +271,19 @@ createRoot(document.getElementById("root")!).render(
       message: "The drone reports it has tumbled — motors stopped. The flight ended early — press Retry to check the drone again before flying.",
     })}
     {control("Control · Auto, ready", { state: "ready", mode: "manual", assisted: true, message: null })}
+    {control("Auto · ① Mission list", { state: "idle", mode: "auto", assisted: true, message: null, checks: [], health_test: null })}
+    {control("Auto · ① Mission editor", { state: "idle", mode: "auto", assisted: true, message: null, checks: [], health_test: null },
+             { step: 1, missionId: "m-long", view: "edit" })}
+    {control("Auto · ② Check", { state: "awaiting_confirmation", mode: "auto", assisted: true, message: null },
+             { step: 2, missionId: "m-long" })}
+    {control("Auto · ③ Fly, flying", {
+      state: "busy", mode: "auto", activity: "mission", assisted: true, message: "Holding at P2",
+      mission: {
+        id: "m-long", name: sampleMission.name, revision: 2, room_id: "lab", points: ["P1", "P2", "P3", "P4"],
+        state: "holding", current_point_id: "P2", completed_point_ids: ["P1"],
+        last_event: { kind: "hold_started", at_s: 31.2, point_id: "P2", detail: "Holding at P2 for 5 s — 4 cm off the point" },
+      },
+    }, { step: 3, missionId: "m-long" })}
     {control("Control · Manual, armed", {
       state: "busy", mode: "manual", activity: "manual", assisted: true, message: null,
     })}

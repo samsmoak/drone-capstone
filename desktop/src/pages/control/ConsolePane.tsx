@@ -33,7 +33,7 @@ import { CommandLog } from "./CommandLog";
 import { SceneView } from "./SceneView";
 import { VitalsTail } from "./VitalsTail";
 
-type ConsoleTab = "vitals" | "camera" | "scene";
+export type ConsoleTab = "vitals" | "camera" | "scene";
 
 const TABS: readonly TabDef<ConsoleTab>[] = [
   { key: "vitals", label: "Vitals" },
@@ -54,13 +54,16 @@ const TAB_LABEL: Record<ConsoleTab, string> = {
  * that a headless browser cannot easily make, and the Scene canvas does not
  * draw at all while its tab is inactive.
  */
-function initialTab(): ConsoleTab {
+function initialTab(views: readonly ConsoleTab[]): ConsoleTab {
   const wanted = new URLSearchParams(window.location.search).get("tab");
-  return wanted === "camera" || wanted === "scene" ? wanted : "vitals";
+  const asked = wanted === "camera" || wanted === "scene" ? wanted : "vitals";
+  return views.includes(asked) ? asked : views[0];
 }
 
+const ALL_VIEWS: readonly ConsoleTab[] = ["vitals", "camera", "scene"];
+
 export function ConsolePane({
-  telemetry, history, logLines, onClearLog, fill = false,
+  telemetry, history, logLines, onClearLog, fill = false, views = ALL_VIEWS,
 }: {
   telemetry: Telemetry | null;
   history: History;
@@ -69,8 +72,12 @@ export function ConsolePane({
   /** Fill the height a parent gives it (the split) instead of setting its own.
    *  Stacked, there is no parent height to fill, so it sets one. */
   fill?: boolean;
+  /** Which tabs to offer. Auto hosts the Scene in its Fly step instead, so its
+   *  monitor shows Vitals and Camera only (auto/AutoControl.tsx). */
+  views?: readonly ConsoleTab[];
 }) {
-  const [tab, setTab] = useState<ConsoleTab>(initialTab);
+  const [tab, setTab] = useState<ConsoleTab>(() => initialTab(views));
+  const tabs = TABS.filter((t) => views.includes(t.key));
   const [full, setFull] = useState(false);
 
   /** `fullScreen` suppresses the controls that would be meaningless inside the
@@ -135,11 +142,13 @@ export function ConsolePane({
         <CameraPane active={tab === "camera"} />
       </TabPanel>
 
-      <TabPanel id="console" tabKey="scene" active={tab === "scene"} className="flex min-h-0 flex-1 flex-col">
-        {/* `active` stops the canvas repainting behind a hidden tab — the panel
-            stays mounted so the trail survives, but the loop does not run. */}
-        <SceneView telemetry={telemetry} history={history} active={tab === "scene"} />
-      </TabPanel>
+      {views.includes("scene") && (
+        <TabPanel id="console" tabKey="scene" active={tab === "scene"} className="flex min-h-0 flex-1 flex-col">
+          {/* `active` stops the canvas repainting behind a hidden tab — the panel
+              stays mounted so the trail survives, but the loop does not run. */}
+          <SceneView telemetry={telemetry} history={history} active={tab === "scene"} />
+        </TabPanel>
+      )}
     </>
   );
 
@@ -147,7 +156,7 @@ export function ConsolePane({
     <Tabs
       id="console"
       label="Drone console view"
-      tabs={TABS}
+      tabs={tabs}
       active={tab}
       onSelect={setTab}
       action={

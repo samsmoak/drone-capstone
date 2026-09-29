@@ -51,3 +51,13 @@ INVARIANTS
   a height.
 - History endpoints need the control token like every command: they name people
   and carry their flight data.
+
+- A mission flight keeps the plan it flew in the session folder:
+  sessions/<id>/missions/<flight id>.json (mission and room). An edit to the
+  mission later makes a new revision; this copy is what the flight flew.
+
+RELATED
+
+shares-data-with  ../pipeline/data-pipeline.txt
+                  meta.json names each session's flights; the pipeline finds a
+                  flight's frames and plan by it

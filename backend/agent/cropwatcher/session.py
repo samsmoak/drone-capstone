@@ -8,6 +8,8 @@ This is what the desktop app drives, and the only thing that flies a drone.
     health_test        the firmware's motor and battery tests (motors spin, briefly)
     retry              after an abnormal end: every check again, same session
     run_program        Auto: a preset flight, e.g. the hover test
+    run_mission        Auto: a saved mission, flown by the mission controller
+                       through the manual flight system
     arm_manual         Manual: props idle, then assisted flight from the keys
     land / stop        graceful landing, or the deliberate emergency stop
     end                land if flying, close the flight, upload what is left
@@ -30,6 +32,7 @@ Rules this file exists to hold in one place:
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import time
@@ -45,8 +48,19 @@ from cropwatcher.flight.checks import CheckResult, ChecksFailed, ReadyReport, co
 from cropwatcher.flight.control import GuardedFlight, PhaseEvent
 from cropwatcher.flight.core import DEFAULT_URI
 from cropwatcher.flight.link import DEFAULT_FENCE_M, DEFAULT_MAX_HEIGHT_M, DroneLink, LinkError
+from cropwatcher.flight.manual import CLIMB_RATE_M_S, LEASH_M, MOVE_SPEED_M_S
 from cropwatcher.flight.programs import HoverTest, Outcome, run_hover_test
 from cropwatcher.history import SessionLog, SessionMeta, sessions_dir
+from cropwatcher.mission.controller import (
+    TERMINAL_STATES,
+    MissionController,
+    MissionEvent,
+    MissionState,
+)
+from cropwatcher.mission.plan.floorplan import PlanError, Room
+from cropwatcher.mission.plan.mission import Mission
+from cropwatcher.mission.plan.store import NotFound, PlanStore
+from cropwatcher.mission.plan.validate import errors, outer_bound, validate_mission
 from cropwatcher.paths import flights_dir
 from cropwatcher.safety.flight_guard import Action as GuardAction
 from cropwatcher.safety.flight_guard import Reason as GuardReason
@@ -73,6 +87,11 @@ STANDBY_SOON_S = 2.0
 #: (measured 2026-09-24: power-cycle at 1.0 s, link back at 4.6 s). Looking
 #: sooner starts a connect that blocks for its full timeout.
 RESTART_SETTLE_S = 4.0
+#: How far the drone may sit from a mission's home mark and still start it:
+#: the manual flight system's leash. Further than that, the first thing the
+#: flight did would be a lurch towards home — and home is where every leg out
+#: was checked from.
+HOME_TOLERANCE_M = LEASH_M
 
 
 def _power_cycle(uri: str) -> None:
@@ -158,6 +177,10 @@ class Snapshot:
     #: after a tumble the firmware holds the motors at zero, and a flight armed
     #: into that reports "flying" with nothing turning (2026-09-17).
     retry_required: bool = False
+    #: The mission being flown, or the last one flown this session: its id,
+    #: name, revision, the mission controller's state, the point being held,
+    #: the points completed, and the last event. None when no mission has run.
+    mission: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -169,6 +192,7 @@ class Snapshot:
             "ai_deck": self.ai_deck,
             "radio": self.radio,
             "retry_required": self.retry_required,
+            "mission": self.mission,
         }
 
 
@@ -189,8 +213,15 @@ class Session:
         on_session_open: Callable[[str, Path], object] | None = None,
         on_session_close: Callable[[], object] | None = None,
         power_cycle: Callable[[str], None] = _power_cycle,
+        plans: PlanStore | None = None,
+        mission_controller: Callable[..., Any] = MissionController,
     ) -> None:
         self._cloud = cloud
+        #: Rooms and missions on this laptop (mission/plan/store.py).
+        self.plans = plans or PlanStore()
+        #: Builds the mission controller for a flight. A parameter so tests can
+        #: fly the session's mission wiring with a controller of their own.
+        self._mission_controller = mission_controller
         #: Called with the Crazyflie once a link has passed its checks and the
         #: AI deck is fitted — how the deck is put on the operator's Wi-Fi. It
         #: runs on its own thread: joining a network takes seconds and must
@@ -226,6 +257,9 @@ class Session:
         self.report: ReadyReport | None = None
         self.flight: GuardedFlight | None = None
         self.manual: Any = None
+        #: The mission controller while a mission flies; None otherwise.
+        self.mission: Any = None
+        self._mission_plan: Mission | None = None
         self._manual_guard_stop: threading.Event | None = None
         self._recorder: FlightRecorder | None = None
         self._flight_id: str | None = None
@@ -785,6 +819,172 @@ class Session:
                   message=result.message if completed else
                   f"{result.message} Press Retry to check the drone again before flying.")
 
+    # ── auto: missions ───────────────────────────────────────────────────
+
+    @property
+    def fence_half_extent_m(self) -> float:
+        """The agent's default flying area — a room's outer bound until its
+        coverage is measured (mission/plan/validate.py outer_bound)."""
+        return self._fence
+
+    def run_mission(self, mission_id: str, ambient: str = "22C") -> None:
+        """Fly a saved mission.
+
+        Every refusal happens HERE, before anything arms: the checks and the
+        confirmed area, Auto, a position estimate, a mission that validates in
+        its room, a battery that covers it, the drone on its home mark, and a
+        mission controller that is built. Only then are the props started.
+
+        The mission is flown by the mission controller through the manual
+        flight system — the same 50 Hz loop, leash, guards and dead-man as
+        Manual — with the room's own geofence as the guard's fence.
+        """
+        self._require_ready("a mission")
+        if self.snapshot().mode is not Mode.AUTO:
+            raise SessionError("Switch to Auto to fly a mission.")
+        report = self._require_report()
+        if not report.assisted:
+            raise SessionError(
+                "A mission needs the drone to know where it is, and it does not right now "
+                "— it would fly blind. Get the base stations seen and run the checks "
+                "again, or switch to Manual to fly it by hand.")
+        try:
+            mission = self.plans.mission(mission_id)
+            room = self.plans.room(mission.room_id)
+        except NotFound as e:
+            raise SessionError(str(e)) from None
+        except PlanError as e:
+            raise SessionError(f"The mission could not be read: {e}") from None
+
+        problems = errors(validate_mission(
+            mission, room, outer=outer_bound(room, default_half_extent_m=self._fence)))
+        if problems:
+            more = f" ({len(problems) - 1} more in the plan.)" if len(problems) > 1 else ""
+            raise SessionError(f"This mission is not safe to fly: {problems[0].message}{more}")
+
+        needed = mission.estimated_duration_s(move_speed_m_s=MOVE_SPEED_M_S,
+                                              climb_rate_m_s=CLIMB_RATE_M_S)
+        if needed > report.budget_s():
+            raise SessionError(
+                f"This battery has about {report.budget_s():.0f} s of flying left, and the "
+                f"mission needs about {needed:.0f} s. Charge the battery or shorten the "
+                f"mission.")
+
+        here = self.position()
+        if here is None:
+            raise SessionError("The drone's position is not being reported, so it cannot be "
+                               "checked against the mission's home mark.")
+        off = ((here[0] - mission.home[0]) ** 2 + (here[1] - mission.home[1]) ** 2) ** 0.5
+        if off > HOME_TOLERANCE_M:
+            raise SessionError(
+                f"The drone is {off:.2f} m from this mission's home mark at "
+                f"({mission.home[0]:+.2f}, {mission.home[1]:+.2f}) m. Place it within "
+                f"{HOME_TOLERANCE_M:.2f} m of home — every leg was checked from there.")
+
+        if not getattr(self._mission_controller, "BUILT", False):
+            raise SessionError(
+                "The mission controller is not built yet (docs/handoffs/"
+                "mission-controller.txt), so this mission cannot fly. Nothing was armed.")
+
+        self._set(state=State.BUSY, activity="mission", message=None,
+                  mission=self._mission_summary(mission, MissionState.IDLE, None, (), None))
+        self._start_worker("mission", lambda: self._do_mission(mission, room, ambient))
+
+    def _do_mission(self, mission: Mission, room: Room, ambient: str) -> None:
+        _, audit = self._require_operator()
+        link, report = self._require_link(), self._require_report()
+        flight_id = self._begin_flight(
+            mode=Mode.AUTO, program=f"mission:{mission.id}@r{mission.revision}",
+            ambient=ambient)
+        self._keep_plan_flown(flight_id, mission, room)
+
+        controller = link.manual(report)
+        self._height_reference = controller.ground_z
+        applied = [a.to_dict() for a in getattr(link, "tuning_applied", [])]
+        self._start_trace(link, controller, flight_id, applied)
+        controller.arm()
+        controller.start()
+        self.manual = controller
+        self._mission_plan = mission
+        audit.record(Action.MISSION_RUN, session_id=self._snapshot.session_id,
+                     flight_id=flight_id,
+                     detail={"stage": "start", "mission_id": mission.id,
+                             "revision": mission.revision, "name": mission.name,
+                             "room_id": room.id, "points": list(mission.point_ids),
+                             "tuning": applied})
+        self._start_manual_guard(fence=room.geofence.contains)
+
+        flying = self._mission_controller(mission, controller, on_event=self._on_mission_event)
+        self.mission = flying
+        try:
+            flying.start()
+        except Exception as e:
+            # Nothing has left the ground: the controller refused to begin.
+            # Disarm, and let the guard's watch close the flight as it would.
+            log.exception("the mission controller did not start")
+            self.mission = None
+            controller.land()
+            self._set(message=f"The mission did not start: {e}")
+        self.plans.mark_flown(mission.id, mission.revision)
+
+    def _keep_plan_flown(self, flight_id: str, mission: Mission, room: Room) -> None:
+        """Copy the exact plan this flight flies into the session's folder. A
+        mission edited later makes a new revision, but the result of THIS flight
+        must always point at what actually flew."""
+        if self.history is None:
+            return
+        try:
+            folder = self.history.folder / "missions"
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / f"{flight_id}.json").write_text(json.dumps(
+                {"flight_id": flight_id, "mission": mission.to_dict(), "room": room.to_dict()},
+                indent=2), encoding="utf-8")
+        except OSError:
+            log.exception("could not keep the plan flown with the session")
+
+    def current_point_id(self) -> str | None:
+        """The inspection point being held right now, or None. Asked on every
+        telemetry row and every camera frame (story 3.5)."""
+        flying = self.mission
+        if flying is None:
+            return None
+        try:
+            point = flying.current_point_id
+        except Exception:
+            return None
+        return point if isinstance(point, str) and point else None
+
+    def _mission_summary(self, mission: Mission, state: MissionState, current: str | None,
+                         completed: tuple[str, ...],
+                         event: MissionEvent | None) -> dict[str, Any]:
+        return {
+            "id": mission.id, "name": mission.name, "revision": mission.revision,
+            "room_id": mission.room_id, "points": list(mission.point_ids),
+            "state": str(state), "current_point_id": current,
+            "completed_point_ids": list(completed),
+            "last_event": event.to_dict() if event is not None else None,
+        }
+
+    def _on_mission_event(self, event: MissionEvent) -> None:
+        """The mission controller's events → the app, and the audit trail."""
+        mission, flying = self._mission_plan, self.mission
+        if mission is None:
+            return
+        state = flying.state if flying is not None else MissionState.IDLE
+        summary = self._mission_summary(
+            mission, state, self.current_point_id(),
+            tuple(flying.completed_point_ids) if flying is not None else (), event)
+        self._set(mission=summary, message=event.detail)
+        self._emit("mission", summary)
+        if state in TERMINAL_STATES and self.audit is not None:
+            self.audit.record(
+                Action.MISSION_RUN,
+                Result.OK if state is MissionState.DONE else Result.ABORTED,
+                session_id=self._snapshot.session_id, flight_id=self._flight_id,
+                detail={"stage": "end", "mission_id": mission.id,
+                        "revision": mission.revision, "state": str(state),
+                        "completed": summary["completed_point_ids"], "detail": event.detail})
+
     # ── manual ───────────────────────────────────────────────────────────
 
     def arm_manual(self, ambient: str = "22C") -> None:
@@ -873,12 +1073,16 @@ class Session:
         if self.manual is not None:
             self.manual.heartbeat()
 
-    def _start_manual_guard(self) -> None:
+    def _start_manual_guard(self, fence: Callable[[float, float], bool] | None = None) -> None:
         """Manual flight is watched too — the operator steers, the guard still
-        ends the flight on low battery, lost positioning or the geofence."""
+        ends the flight on low battery, lost positioning or the geofence.
+
+        A mission passes its room's geofence as `fence`; Manual keeps the
+        square of the agent's default fence."""
         link, report = self._require_link(), self._require_report()
         guard = link.manual_guard(
-            report, fence_half_extent_m=self._fence, max_height_m=self._max_height
+            report, fence_half_extent_m=self._fence, max_height_m=self._max_height,
+            fence=fence,
         )
         stop = threading.Event()
         self._manual_guard_stop = stop
@@ -923,6 +1127,16 @@ class Session:
             if self.manual is not controller:
                 return                      # End session got there first
             self.manual = None
+        flying, self.mission = self.mission, None
+        self._mission_plan = None
+        if flying is not None and flying.state not in TERMINAL_STATES:
+            # The flight came down under the mission — a guard, the dead-man,
+            # Land or an emergency stop. The controller sees that on its next
+            # tick; this makes sure it is not left commanding a landed drone.
+            try:
+                flying.abort("the flight ended")
+            except Exception:
+                log.exception("the mission controller did not stop cleanly")
         try:
             controller.stop()
         except Exception:
@@ -1241,6 +1455,7 @@ class Session:
         recorder = FlightRecorder(
             stream, FanOutSink(sinks), ambient_c=ambient_c, unit=unit,
             ground_z=report.ground_z_m, flight_id=flight_id,
+            point_id=self.current_point_id,
         )
         recorder.start()
         self._recorder, self._flight_id = recorder, flight_id

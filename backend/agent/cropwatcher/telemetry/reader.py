@@ -106,6 +106,7 @@ class FlightRecorder:
         temp_var: str = "baro.temp",
         press_var: str = "baro.pressure",
         on_row: Callable[[TelemetryRow], None] | None = None,
+        point_id: Callable[[], str | None] | None = None,
     ) -> None:
         self._stream = stream
         self._sink = sink
@@ -115,6 +116,8 @@ class FlightRecorder:
         self._temp_var = temp_var
         self._press_var = press_var
         self._on_row = on_row
+        #: Asked on every row: which inspection point is being held, if any.
+        self._point_id = point_id
 
         seed = stream.snapshot().get(temp_var)
         if seed is None:
@@ -194,4 +197,15 @@ class FlightRecorder:
             position=(x, y, z - self._ground_z),
             unit=self._unit,
             sensors=snap.values,
+            point_id=self._current_point(),
         )
+
+    def _current_point(self) -> str | None:
+        if self._point_id is None:
+            return None
+        try:
+            return self._point_id()
+        except Exception:
+            # A row is worth more than its tag: never lose one to this.
+            log.exception("could not read the inspection point; row recorded without it")
+            return None

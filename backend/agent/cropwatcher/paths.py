@@ -46,6 +46,27 @@ def flights_dir() -> Path:
     return path
 
 
+def rooms_dir() -> Path:
+    """Floor plans: one JSON file per room (mission/plan/store.py)."""
+    path = data_dir() / "rooms"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def missions_dir() -> Path:
+    """Missions: one JSON file per mission, inspection points inside it."""
+    path = data_dir() / "missions"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def results_dir() -> Path:
+    """The data pipeline's verdicts: results/<flight id>/result.json."""
+    path = data_dir() / "results"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def log_file() -> Path:
     """Where the agent writes its log.
 

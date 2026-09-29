@@ -444,11 +444,17 @@ class DroneLink:
         *,
         fence_half_extent_m: float = DEFAULT_FENCE_M,
         max_height_m: float = DEFAULT_MAX_HEIGHT_M,
+        fence: Callable[[float, float], bool] | None = None,
     ) -> FlightGuard:
-        """Manual flight moves on purpose, so no drift or height-error checks."""
+        """Manual flight moves on purpose, so no drift or height-error checks.
+
+        `fence` is a mission's room geofence (whether a point is inside it);
+        without one the guard keeps the square of `fence_half_extent_m`.
+        """
         return FlightGuard(GuardContext(
             ground_z=report.ground_z_m,
             fence_half_extent_m=fence_half_extent_m,
             max_height_m=max_height_m,
             assisted=report.assisted,
+            fence=fence,
         ))

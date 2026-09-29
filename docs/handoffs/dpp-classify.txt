@@ -1,0 +1,215 @@
+TICKET — Data pipeline stage 3: classify images and sensor readings
+===================================================================
+
+STATUS: READY TO START (2026-09-28). The skeleton your stage plugs into is on
+the branch feat/missions-and-pipeline; the code is the authority.
+
+  Owner           Reagan
+  Stories         4.4: "a model that looks at an image and can define it as
+                  faulty or not."
+                  4.6: "train a machine learning classifier on sensor data ...
+                  that flags any deviations ... with the reason provided."
+  PDF acceptance  4.4: "Accuracy reported on a held-out test set, with the
+                  review of misclassified examples."
+                  4.6: "An anomaly is flagged ... (e.g., box heated with a
+                  hand warmer is flagged; while unheated box is not)."
+  Estimate (PDF)  4.4: 12 hours. 4.6: 14 hours (Reagan) + 4 hours (Kevin)
+  Branch          feat/dpp-classify
+  Your files      backend/agent/cropwatcher/pipeline/stages/classify/<yours>.py
+                  backend/agent/tests/pipeline/test_classify.py
+                  ml/image-classifier/
+                  ml/sensor-classifier/
+                  model files in backend/agent/cropwatcher/pipeline/models/
+
+
+THE WHOLE SYSTEM, IN ONE PAGE — read this first
+───────────────────────────────────────────────
+
+DroneDeck flies a Crazyflie around a room, stops at pieces of equipment, and
+records temperature, pressure and camera frames at each. It has three parts:
+
+  1  PLANNING    the operator draws a room (geofence, obstacles) and a mission
+                 in it: an ordered list of INSPECTION POINTS.     Samuel, built
+  2  FLYING      the mission controller flies the mission through the manual
+                 flight system. While the drone HOLDS at a point, every
+                 reading and camera frame is stamped with that point's id.
+                                                                  Hannah
+  3  PROCESSING  the data pipeline: each point's stamped readings and frames
+                 go through four stages, and the point gets a verdict.
+                                                      Samuel, Kevin, Reagan
+
+THE PIPELINE, AND WHERE YOUR PART FITS
+
+  readings ─▶ clean ─▶ enhance ─▶ classify ─▶ interpret ─▶ result.json
+  + frames    Kevin    Kevin      ▲ YOU       Samuel
+
+  - The skeleton is BUILT: `cropwatcher process --flight <id>` already runs a
+    real flight through all four stages. Every stage but interpret is a STUB
+    that stands in for its owner's work — yours replaces stages/classify/stub.py
+    ("unknown" with a reason).
+  - The unit of work is ONE INSPECTION POINT (its readings and frames).
+  - Your stage receives exactly the types in dpp-contract.txt, returns exactly
+    the types there, and nothing else. That is what lets it plug in without
+    anyone changing the rest.
+  - Interpret (Samuel) turns your labels into verdicts and alerts. You label;
+    interpret decides what to alert on — and quotes your features in the alert,
+    so name them with their units.
+
+Read dpp-contract.txt next. Then this ticket's details.
+
+
+THE JOB, IN ONE PARAGRAPH
+
+For one inspection point, give:
+  - EVERY FRAME a label: normal, faulty or unknown, with a probability;
+  - THE POINT'S SENSOR READINGS one label, with the features it was based on.
+
+Two small models, both trained offline in ml/, exported to ONNX, and run with
+ONNX Runtime inside the stage. Samuel's stage 4 (interpret) turns your labels
+plus the thresholds into verdicts and alerts. YOU LABEL; YOU DON'T DECIDE WHAT
+TO ALERT ON.
+
+
+INPUTS AND OUTPUTS
+
+Exactly as dpp-contract.txt, "Stage 3":
+
+  class YourClassifier:
+      name = "faulty-v1"
+      version = "2026-10-05"     # bump on every retrain
+      def classify(self, data: PointData, clean: CleanResult,
+                   enhanced: EnhanceResult, ctx: FlightContext) -> ClassifyResult: ...
+
+- USE ONLY USABLE READINGS: clean.usable(reading.index, column). A value the
+  cleaner flagged must not reach your features.
+- ONE ImageVerdict PER FRAME, IN ORDER. `source` says which image the model
+  saw: "original" (frame.path), or "enhanced" (enhanced.frames[i].path, which
+  falls back to the original when that is None).
+- "unknown" ALWAYS CARRIES A REASON: "no usable temperature readings",
+  "frame unreadable". An empty point gives empty `images` and an "unknown"
+  sensor label, never an exception.
+- A missing model file raises StageError.
+
+
+PART A — the image model (story 4.4)
+
+DATA. Story 4.1 (Hannah and Yordanos) photographs the test equipment in
+normal and faulty states, from several angles and positions. Keep the images
+out of git; commit only ml/image-classifier/manifest.csv
+(file, label, angle, position, session, date).
+
+MODEL: TRANSFER LEARNING FROM A SMALL PRETRAINED NETWORK. Free, downloadable,
+and small enough for a laptop CPU:
+
+  Backbone                     Size                Source
+  ──────────────────────────────────────────────────────────────────────────────
+  MobileNetV3-Small            ≈2.5 M parameters   torchvision.models, timm
+  (start here)
+  EfficientNet-B0              ≈5.3 M              torchvision.models, timm
+  ResNet-18                    ≈11.7 M             torchvision.models
+
+Freeze the backbone, train a new two-class head, then unfreeze the last
+blocks if accuracy calls for it. The frames are grayscale: repeat them to 3
+channels and use the backbone's own normalisation.
+
+IF FAULTY EXAMPLES ARE SCARCE: a one-class model trained on normal images
+only (PaDiM or PatchCore, from anomalib, Apache-2.0) fits that case, and also
+fits stretch story 4.7 (compare against a baseline image). Mention it to
+Samuel before switching.
+
+THE SPLIT IS WHERE MOST CAPSTONE CLASSIFIERS GO WRONG. Frames from one hold
+are near-duplicates. Split them randomly, and the test set is the training
+set with a different name, so accuracy looks perfect and means nothing. SPLIT
+BY SESSION OR BY POSITION/ANGLE. The held-out set must hold a session, or an
+angle, the model never saw.
+
+TRAIN ON WHAT IT WILL SEE. If the enhancer (Kevin) ships ×2 FSRCNN, decide
+TOGETHER whether the model sees original or enhanced frames. Train on exactly
+that, and set `source` to match. A model trained on originals and fed
+enhanced images gives meaningless numbers.
+
+REPORT (in ml/image-classifier/REPORT.txt, the PDF's criterion):
+  - accuracy, and precision and recall FOR THE FAULTY CLASS, on the held-out
+    set;
+  - the confusion matrix;
+  - EVERY MISCLASSIFIED EXAMPLE, with a sentence each on why;
+  - the chosen `threshold` on p(faulty), picked on the validation set (not
+    the test set), with the reason.
+
+EXPORT: ONNX (opset 17 or later). Check that ONNX Runtime's outputs match
+PyTorch's within 1e-4 on the test set, and commit that check.
+
+
+PART B — the sensor model (story 4.6, your half)
+
+FEATURES, PER POINT, from usable readings only. Convert temperatures to °C
+first (ctx.temp_unit says which unit arrived), and name every feature with
+its unit. For example:
+
+  temp_mean_c   temp_max_c   temp_slope_c_per_s   temp_minus_flight_baseline_c
+  pressure_delta_hpa   readings_used
+
+The flight baseline (from the first hold, or from the whole flight) is a
+choice to agree with Samuel, since interpret uses it too.
+
+LABELS: lab runs of the PDF's own test. The box heated with a hand warmer is
+"faulty", the unheated box is "normal". Plan these sessions with Hannah and
+Yordanos (PDF story 4.6, "hand warmer").
+
+MODEL: start small, because the data is:
+  - labelled         → logistic regression or a small random forest;
+  - mostly unlabelled → IsolationForest.
+Train with scikit-learn in ml/sensor-classifier/, and export with skl2onnx.
+scikit-learn itself is NOT a runtime dependency.
+
+DIVISION OF LABOUR WITH INTERPRET: fixed thresholds (e.g. "over 45 °C is
+critical") live in stage 4, Samuel's. Your model catches what a fixed
+threshold misses: an unusual pattern, a rise relative to the baseline. Return
+the features, so interpret can quote them in the alert reason.
+
+
+STEP BY STEP
+
+1. NOW, BEFORE THE SKELETON: agree the dataset manifest with Hannah and
+   Yordanos. Train Part A in ml/image-classifier/, and write REPORT.txt.
+2. AGREE WITH KEVIN whether the model sees original or enhanced frames, and
+   retrain if needed.
+3. Plan the hand-warmer sessions; build Part B's features and model in
+   ml/sensor-classifier/, and write its report.
+4. WRITE THE CLASSIFIER in stages/classify/. Add both ONNX files to
+   pipeline/models/, with complete MODELS.json entries including the
+   thresholds.
+5. Test it, plug it in, and run it on the fixture and a real flight.
+
+
+ACCEPTANCE
+
+  [ ] REPORT.txt for Part A: held-out accuracy, faulty-class precision and
+      recall, confusion matrix, and every misclassification reviewed. The
+      split is by session or angle, and the report says which.
+  [ ] Part B: on held-out hand-warmer runs, heated points are labelled
+      "faulty" and unheated ones "normal". Report the counts.
+  [ ] ONNX-versus-PyTorch (or scikit-learn) agreement check committed.
+  [ ] Flagged readings never reach a feature (tested: plant a flagged spike;
+      the features don't change).
+  [ ] A Fahrenheit flight and a Celsius flight give the same features in °C.
+  [ ] Every conformance check passes. An empty point gives empty `images` and
+      an "unknown" sensor label with a reason.
+  [ ] Time for 20 frames plus the sensor model is measured on the lab laptop
+      and reported. Target: under 2 s.
+  [ ] Each model file is under 20 MB, with a complete MODELS.json entry.
+  [ ] Gates pass: ruff check . && mypy cropwatcher && pytest
+
+
+OUT OF SCOPE
+
+- Alerts, severities and fixed thresholds (stage 4, Samuel).
+- Running during the flight (stretch 4.9). Keeping to the contract is what
+  makes that possible later.
+- Combining image, sensor and history into one model (stretch 4.8).
+
+
+WHEN YOU SHIP
+
+Add the models, their data, the split, the results and the known limits to
+docs/features/pipeline/, then delete this ticket in the same pull request.

@@ -32,6 +32,21 @@ FRAMES_BUCKET = "flight-frames"
 BACKFILL_FUNCTION = "import-flight-log"
 
 
+def without_empty_point_id(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop the point_id key from a batch in which no row carries one.
+
+    telemetry.point_id arrives with migration 20260928000012. A laptop agent
+    can run before that migration reaches the database, and PostgREST refuses a
+    whole batch over one unknown column — so a flight with no mission (every
+    flight until the mission controller lands) uploads exactly as it did
+    before. A batch that does carry an inspection point keeps the key on every
+    row, since PostgREST also needs one set of keys across a batch.
+    """
+    if any(row.get("point_id") for row in rows):
+        return rows
+    return [{k: v for k, v in row.items() if k != "point_id"} for row in rows]
+
+
 class CloudError(RuntimeError):
     """Talking to Supabase failed. Always recoverable: the record stays local."""
 
@@ -375,9 +390,26 @@ class SupabaseCloud:
     def insert_telemetry(self, rows: list[dict[str, Any]]) -> None:
         if not rows:
             return
+        rows = without_empty_point_id(rows)
         try:
             self._table("telemetry").upsert(
                 rows, on_conflict="flight_id,index", ignore_duplicates=True
+            ).execute()
+            return
+        except Exception as e:
+            # The database has not had migration 20260928000012 yet. A failed
+            # batch aborts the whole sync pass (syncer.sync_once), so refusing
+            # here would stall every later flight and every frame behind this
+            # one. Send the readings without the tag instead: the local CSV
+            # keeps point_id, and the pipeline reads the CSV.
+            if "point_id" not in str(e):
+                raise CloudError(f"could not upload telemetry: {type(e).__name__}") from e
+            log.warning("the database has no telemetry.point_id yet (apply migration "
+                        "20260928000012); uploading these rows without it")
+        try:
+            self._table("telemetry").upsert(
+                [{k: v for k, v in row.items() if k != "point_id"} for row in rows],
+                on_conflict="flight_id,index", ignore_duplicates=True,
             ).execute()
         except Exception as e:
             raise CloudError(f"could not upload telemetry: {type(e).__name__}") from e

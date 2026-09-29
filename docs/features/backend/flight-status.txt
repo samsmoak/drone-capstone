@@ -242,10 +242,11 @@ WHAT NEEDS REDIRECTION
 
 MANUAL IS THE FOUNDATION FOR AUTONOMOUS
 
-The commanded point is not a manual-flight trick: a waypoint mission IS the
-same machinery with a different source of intent. Manual moves the point with
-keys; autonomous moves it along a plan. Same seeding, same leash, same
-estimator gates, same guards, same trace.
+The commanded point is not a manual-flight trick: a mission flown by the
+mission controller IS the same machinery with a different source of intent.
+Manual moves the point with keys; the mission controller moves it along a plan
+with fly_to(). Same seeding, same leash, same estimator gates, same guards, same
+trace.
 
 So anything hacked in here to paper over a sensor or a frame fault is
 inherited by every autonomous flight, where nobody is watching to correct it.
@@ -391,9 +392,10 @@ inferred from how quadrotors usually behave; each cause is a measurement.
 MANUAL IS THE FOUNDATION FOR AUTONOMOUS
 
 This is why the architecture matters more than the symptom list. The
-commanded point is not a manual-flight trick: a waypoint mission IS the same
-machinery with a different source of intent. Manual moves the point with
-keys; autonomous moves it along a plan. Same seeding, same leash, same
+commanded point is not a manual-flight trick: a mission flown by the mission
+controller IS the same machinery with a different source of intent. Manual
+moves the point with keys; the mission controller moves it along a plan, with
+fly_to() (built 2026-09-28 — ../missions/mission-controller.txt). Same seeding, same leash, same
 estimator gates, same guards, same trace.
 
 Two consequences worth holding on to:

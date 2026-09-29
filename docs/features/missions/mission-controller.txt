@@ -1,0 +1,101 @@
+================================================================================
+THE MISSION CONTROLLER — how a saved mission is flown
+Last verified: 2026-09-28 against feat/missions-and-pipeline — test_manual.py
+TestFlyTo (13), tests/mission/test_session_missions.py (16), test_stamping.py.
+SOURCE: backend/agent/cropwatcher/mission/controller/mission_controller.py
+================================================================================
+
+--------------------------------------------------------------------------------
+STATUS  (Last verified: 2026-09-28)
+--------------------------------------------------------------------------------
+  goal       BUILT — ManualController.fly_to(), goal_active, operator_override
+  session    BUILT — Session.run_mission(), POST /session/mission, the room's
+             fence to the guard, the plan flown kept, events to the app
+  stamping   BUILT — point_id on every telemetry row and frames.csv row
+  controller INTERFACE BUILT, BODY NOT BUILT — Hannah
+             (../../handoffs/mission-controller.txt). BUILT = False, and the
+             session refuses to arm a mission until it is True.
+  flown      NEVER — no mission has flown.
+
+--------------------------------------------------------------------------------
+1. WHAT IT IS
+--------------------------------------------------------------------------------
+The session takes a saved mission (floor-plans.txt), refuses anything unsafe
+before a motor turns, arms the MANUAL FLIGHT SYSTEM (flight/manual.py — the
+tuned 50 Hz loop that flies Manual mode) and hands it, with the mission, to the
+MISSION CONTROLLER. The mission controller flies the mission by giving that
+system goals — hold_at() to take off, fly_to() for each inspection point,
+land() at the end — and holds at each point while the readings and frames are
+stamped with its id. It decides where next and when; never how.
+
+--------------------------------------------------------------------------------
+2. WHERE IT LIVES
+--------------------------------------------------------------------------------
+backend/agent/cropwatcher/flight/manual.py            fly_to, goal_active,
+                                                      operator_override
+backend/agent/cropwatcher/mission/controller/events.py       states, events
+backend/agent/cropwatcher/mission/controller/flight.py       MissionFlight
+backend/agent/cropwatcher/mission/controller/mission_controller.py
+backend/agent/cropwatcher/session.py                  run_mission, _do_mission,
+                                                      current_point_id
+backend/agent/cropwatcher/safety/flight_guard.py      GuardContext.fence
+backend/agent/cropwatcher/telemetry/row.py            TelemetryRow.point_id
+backend/agent/cropwatcher/camera/recording.py         frames.csv point_id
+backend/agent/cropwatcher/sync/cloud.py               without_empty_point_id
+backend/agent/cropwatcher/cli.py                      `cropwatcher mission`
+backend/supabase/migrations/20260928000012_telemetry_point_id.sql
+
+--------------------------------------------------------------------------------
+3. DECISIONS
+--------------------------------------------------------------------------------
+• ONE WAY OF FLYING. The old mission runner (flight/missions.py execute())
+  flew with the firmware's go_to — a second control path with none of manual
+  flight's tuning. It is deleted. A mission goes through fly_to(), which adds
+  no control law: it moves the one commanded point at the arrow keys' eased
+  speed (0.20 m/s), on the same 30 cm leash, slowing so it arrives without
+  overshoot — the approach profile the height goal uses.
+• KEYS ALWAYS WIN. Any held key cancels every goal at the top of the tick and
+  sets operator_override; the mission ends INTERRUPTED and the drone is the
+  operator's, as in Manual.
+• THE HEARTBEAT STAYS WITH THE APP. The controller never calls heartbeat(): if
+  the window goes quiet the drone lands, mission or not.
+• EVERY REFUSAL BEFORE ANYTHING ARMS: Auto, assisted, checks passed, the
+  mission valid in its room, the battery budget, the drone within 0.30 m of
+  home, and the controller BUILT. tests/mission/test_session_missions.py proves
+  each leaves the motors untouched.
+• THE ROOM'S FENCE FLIES WITH IT: the in-flight guard lands the drone outside
+  the room's own polygon, not the ±2 m square Manual uses.
+• The flight is named "mission:<id>@r<revision>" and the exact plan flown is
+  copied to sessions/<id>/missions/<flight id>.json — the pipeline reads it.
+• POINT_ID UPLOAD FALLBACK: a batch with no point id sends no point_id key, and
+  a batch the database refuses over the column is re-sent without it (the CSV
+  keeps it). One mission flight before the migration can never stall the
+  upload queue for every flight behind it (syncer aborts a pass on one error).
+
+--------------------------------------------------------------------------------
+4. INVARIANTS
+--------------------------------------------------------------------------------
+• current_point_id is set ONLY while HOLDING. A reading taken in transit must
+  never carry a point id, or the pipeline analyses travel as equipment.
+• The controller uses MissionFlight only — never arm, start, stop,
+  emergency_stop or heartbeat. tests/mission/test_boundaries.py checks the
+  manual system satisfies it.
+• Apply migration 20260928000012 before flying missions: until then the
+  inspection point reaches the CSV but not the database.
+
+--------------------------------------------------------------------------------
+5. RELATED
+--------------------------------------------------------------------------------
+depends-on        floor-plans.txt
+                  the validated Mission and Room it flies
+depends-on        ../backend/manual-control.txt
+                  fly_to, hold_at, the leash, the dead-man — how it flies
+depends-on        ../backend/sessions-and-modes.txt
+                  run_mission: the session arms the manual system and hands over
+depends-on        ../backend/flight-safety.txt
+                  the in-flight guard, now with the room's polygon fence
+consumed-by       ../desktop/auto-control.txt
+                  Start mission; progress from the session's `mission`
+consumed-by       ../pipeline/data-pipeline.txt
+                  point_id groups the readings; the plan flown names the points;
+                  POINT_COMPLETE will feed the live runner

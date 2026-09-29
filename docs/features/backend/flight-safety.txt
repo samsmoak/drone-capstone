@@ -248,3 +248,15 @@ INVARIANTS
 - Call send_notify_setpoint_stop() before the high-level commander. Any earlier
   low-level setpoint in the same power cycle holds priority and silently locks
   the high-level commander out: takeoff() returns success with motors at 0.
+
+A MISSION'S ROOM FENCE (2026-09-28)
+
+GuardContext.fence is an optional (x, y) → inside? test. A mission passes its
+room's closed geofence (mission/plan/geofence.py), and the guard lands the drone
+outside THAT polygon; Manual and the hover demo keep the ±2.0 m square. The
+square stays the default, so nothing Manual flies changed.
+
+RELATED
+
+consumed-by       ../missions/mission-controller.txt
+                  a mission's room fence becomes the guard's fence

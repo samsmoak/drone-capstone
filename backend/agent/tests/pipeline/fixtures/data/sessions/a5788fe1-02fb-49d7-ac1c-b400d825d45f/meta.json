@@ -1,0 +1,27 @@
+{
+  "id": "a5788fe1-02fb-49d7-ac1c-b400d825d45f",
+  "operator_id": "fixture",
+  "operator_email": "fixture@example.com",
+  "operator_name": null,
+  "drone_hardware_id": "cf-fixture",
+  "mode": "auto",
+  "assisted": true,
+  "started_at": "2026-09-24T08:18:10.387953+00:00",
+  "ended_at": null,
+  "end_reason": null,
+  "modes": [
+    "auto"
+  ],
+  "flights": [
+    {
+      "id": "372bbdc4-d323-42bb-9e6c-29ef02e3794c",
+      "mode": "auto",
+      "program": "mission:fixture@r1",
+      "started_at": "2026-09-24T08:18:20.387953+00:00",
+      "ended_at": "2026-09-24T08:19:00.299577+00:00",
+      "outcome": "landed",
+      "abort_reason": null
+    }
+  ],
+  "summary": {}
+}

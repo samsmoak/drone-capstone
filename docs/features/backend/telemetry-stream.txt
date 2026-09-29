@@ -74,3 +74,13 @@ INVARIANTS
 - z in a frame is already ground-relative (ground captured at takeoff). Do not
   subtract the ground reference again downstream — the web dashboard did, and
   showed heights that were wrong by the floor offset.
+
+- Every row carries point_id (TelemetryRow, since 2026-09-28): the inspection
+  point the mission controller was HOLDING when it was taken, empty otherwise.
+  The recorder asks the session on every row; a failure to ask records the row
+  without the tag, never drops it.
+
+RELATED
+
+consumed-by       ../pipeline/data-pipeline.txt
+                  the flight CSV is its input; point_id groups the readings

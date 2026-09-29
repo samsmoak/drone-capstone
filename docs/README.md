@@ -35,6 +35,21 @@ Feature docs are plain `.txt`, grouped by the surface they describe.
 | [features/desktop/setup.txt](features/desktop/setup.txt) | The Set up page: install the camera software on a new drone, then Wi-Fi, then a session |
 | [features/desktop/drone-wifi.txt](features/desktop/drone-wifi.txt) | The drone's camera joins the operator's Wi-Fi, set over the radio: the firmware addition, the flasher, the dialog |
 | [features/desktop/pages-and-windows.txt](features/desktop/pages-and-windows.txt) | The sidebar shell, Control's two columns and its console, the five live sensor windows, and how the layout is measured |
+| [features/desktop/auto-control.txt](features/desktop/auto-control.txt) | Control in Auto: ① Mission (plan, edit, pick) → ② Check → ③ Fly, the monitor on the right |
+
+## Missions — autonomous flight (`backend/agent/cropwatcher/mission/`)
+
+| Doc | What it covers |
+|---|---|
+| [features/missions/README.txt](features/missions/README.txt) | The index: what to fly, and how it is flown |
+| [features/missions/floor-plans.txt](features/missions/floor-plans.txt) | Rooms (closed geofence, obstacles, the room's map), missions, inspection points, the agent's checks, saving |
+| [features/missions/mission-controller.txt](features/missions/mission-controller.txt) | How a mission flies: fly_to in the manual system, run_mission, point_id stamping; the controller body is Hannah's |
+
+## Pipeline — the data pipeline (`backend/agent/cropwatcher/pipeline/`)
+
+| Doc | What it covers |
+|---|---|
+| [features/pipeline/data-pipeline.txt](features/pipeline/data-pipeline.txt) | `cropwatcher process`: clean → enhance → classify → interpret, a verdict per inspection point, laptop-first |
 
 ## Frontend — the web app (`web/`)
 
@@ -89,6 +104,12 @@ are the only thing that survives a session.
 [plans/2026-09-25-any-machine-desktop.txt](plans/2026-09-25-any-machine-desktop.txt) — the 50-stage plan that made the desktop app build, run and explain its failures on any Mac or Windows PC: one setup command, one build path, the Windows radio driver, the Intel installer.
 
 [plans/2026-09-25-linux.txt](plans/2026-09-25-linux.txt) — the 40-stage plan that brought the terminal install, a real sign-in check and the radio's USB permission to Linux.
+
+[plans/2026-09-28-missions-and-pipeline.txt](plans/2026-09-28-missions-and-pipeline.txt) — the 100-stage plan for autonomous missions (floor plans, the mission controller through the manual system), the data pipeline, and the Control page remodelled for Auto. What shipped is in features/missions/, features/pipeline/ and features/desktop/auto-control.txt.
+
+## Handoffs — work orders given to teammates
+
+[handoffs/](handoffs/README.txt) — one ticket per piece of work handed to someone else: the mission controller (Hannah), and the data pipeline's clean and enhance (Kevin) and classify (Reagan) stages with the contract they share. Not feature docs: each is deleted once its owner writes what shipped into `features/`.
 
 ## Platform — not written yet
 

@@ -83,3 +83,8 @@ INVARIANTS
   the annotations are strings, so `index + 1` concatenated instead of adding and
   every resumed upload was wrong.
 - Flight data never goes in git.
+
+- telemetry.point_id (migration 20260928000012) may not exist on the database
+  yet. A batch with no point id sends no point_id key; a batch refused over the
+  column is re-sent without it (sync/cloud.py). One failed batch aborts a whole
+  sync pass, so refusing would stall every flight and frame behind it.

@@ -67,3 +67,8 @@ INVARIANTS
   explicitly in migration 0006.
 - Never log the password or a raw provider error. Sign-in failures surface as
   plain, actionable words.
+
+- A mission records MISSION_RUN twice (since 2026-09-28): detail.stage "start"
+  (mission id, revision, name, room, points, tuning) when it arms, and "end"
+  (state, the points completed, the last event's words) with result ok for a
+  finished mission and aborted otherwise.

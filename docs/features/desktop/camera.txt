@@ -275,5 +275,8 @@ LAST VERIFIED  2026-09-23.
 
 RELATED
 
+consumed-by       ../pipeline/data-pipeline.txt
+                  frames.csv (now with point_id) and the frames in a flight's window
+
   consumed-by   setup.txt   installs the patched ESP32 and the GAP8 streamer
   consumed-by   drone-wifi.txt   sets the address DeckStream streams from
