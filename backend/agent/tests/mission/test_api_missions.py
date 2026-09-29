@@ -129,3 +129,10 @@ def test_from_drone_checks_the_path_from_the_drones_own_position(api, monkeypatc
 
 def test_from_drone_for_an_unknown_mission_is_a_404(api):
     assert api.get("/missions/nope/from-drone", headers=token()).status_code == 404
+
+
+def test_saving_a_mission_with_no_points_is_a_422_in_words(api):
+    api.post("/rooms", json=room().to_dict(), headers=token())
+    response = api.post("/missions", json=mission(points=()).to_dict(), headers=token())
+    assert response.status_code == 422
+    assert "at least one inspection point" in response.json()["detail"]

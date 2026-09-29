@@ -136,7 +136,7 @@ export function RoomMap({
       <p className="pt-1.5 text-xs leading-relaxed text-[var(--muted)]">
         {shown === "3d"
           ? "Drag to turn the room, scroll to zoom, right-drag to pan. Double-click anything to swing round it. Click the room's walls or an obstacle to select it."
-          : canDraw3d ? "From above, to scale. The bottom edge is the front."
+          : canDraw3d ? "From above, to scale. The bottom edge is the front. Heights are above the floor where the drone takes off."
           : "From above, to scale. This computer cannot draw the 3-D view (WebGL is unavailable), so the map stays in 2-D."}
       </p>
     </div>

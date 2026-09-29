@@ -1,10 +1,11 @@
 HANDOFFS — work orders for the team
 ===================================
 
-STATUS: READY (2026-09-28). The skeleton every ticket builds against is built
-on the branch feat/missions-and-pipeline (plan: ../plans/2026-09-28-missions-
-and-pipeline.txt). Start your branch from main once that lands. Where a ticket
-and the code disagree, the code wins — tell Samuel so the ticket is fixed.
+STATUS: READY. The skeleton every ticket builds against is on main (#72,
+2026-09-28; plan: ../plans/2026-09-28-missions-and-pipeline.txt) — start your
+branch from main. UPDATED 2026-09-29 for what landed after it (below, and a
+dated note at the top of each ticket it changes). Where a ticket and the code
+disagree, the code wins — tell Samuel so the ticket is fixed.
 
 A handoff is one piece of work given to one person, written so they can build
 it on their own and have it fit when it is plugged into the whole.
@@ -48,12 +49,21 @@ Mission system (backend/agent/cropwatcher/mission/, docs/features/missions/)
   - tests/fakes.py (FakeCommander, FakeClock); tests/mission/.
   - The desktop Auto page: ① Mission (list, view, edit, save) → ② Check →
     ③ Fly (Start mission, the scene with the mission loaded).
+  - 2026-09-29: THE FLIGHT STARTS FROM THE DRONE — Mission.from_start puts
+    the start where the drone is, keeps the points, drops points after the
+    operator's END POINT, and re-validates; that is what the controller is
+    handed (mission-controller.txt, "CHANGED 2026-09-29"). A mission needs at
+    least one point to be saved. The desktop draws rooms in 2-D or 3-D;
+    obstacles may carry a height (drawn only — never flown over).
 
 Data pipeline (backend/agent/cropwatcher/pipeline/, docs/features/pipeline/)
   - contracts.py — every type in dpp-contract.txt.
   - A stub for clean, enhance and classify; interpret (labels → verdicts).
   - LocalFlightSource, LocalResultSink, the runner, compose.py.
   - `cropwatcher process --flight <id>` and `--fixture`.
+  - 2026-09-29: THE DPP SWITCH — with it on, the agent runs that command for
+    every flight when it lands, in a child process, and the desktop shows the
+    verdicts (dpp-contract.txt, "HOW THE AGENT RUNS THE PIPELINE").
   - tests/pipeline/: a real flight fixture, conformance.py and its checks.
 
 

@@ -52,9 +52,11 @@ records temperature, pressure and camera frames at each. It has three parts:
 WHERE YOUR PART FITS
 
    saved mission ─▶ Session.run_mission() ─▶ MissionController ─▶ ManualController
-   plan, checked    checks, home, battery,    WHERE next and       HOW: the 50 Hz
-                    then arms the flight      WHEN to move on      loop, leash,
-                    system                    — YOUR PART          guards ─▶ drone
+   plan, checked    checks; the plan again    WHERE next and       HOW: the 50 Hz
+                    FROM WHERE THE DRONE IS   WHEN to move on      loop, leash,
+                    (its start); battery;     — YOUR PART          guards ─▶ drone
+                    then arms the flight
+                    system
 
    MissionController ─▶ current_point_id ─▶ stamped on every reading and frame
                     └─▶ events ─▶ the app's Fly step (later, the live pipeline)

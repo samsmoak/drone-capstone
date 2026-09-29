@@ -11,8 +11,9 @@
  *   blue outline     the geofence — the room; click its edge to select it
  *   amber shapes     obstacles
  *   dashed line      the path, an arrow on every leg in the flying direction
- *   dots             inspection points; red when the agent reports a problem,
- *                    faded when they come after the end point (not flown)
+ *   dots             inspection points, each with its HEIGHT (above the floor
+ *                    where the drone takes off); red when the agent reports a
+ *                    problem, faded when they come after the end point
  *   ring + END       the end point: the flight lands there
  *   square S         the planned start
  *   green D          the drone, where it is now — the real start of a flight
@@ -354,7 +355,7 @@ export function PlanCanvas({
                                strokeDasharray: skipped ? "2 2" : undefined }} />
               <text x={p.x_m + 0.1} y={-p.y_m + 0.04}
                     style={{ fill: wrong ? "var(--status-critical)" : "var(--foreground)", fontSize: 0.12, fontWeight: 700 }}>
-                {p.id}{wrong ? " !" : ""}{isEnd ? " · END" : ""}
+                {p.id} · {p.z_m.toFixed(2)} m{wrong ? " !" : ""}{isEnd ? " · END" : ""}
               </text>
             </g>
           );

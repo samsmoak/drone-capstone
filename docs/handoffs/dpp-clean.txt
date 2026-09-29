@@ -33,6 +33,14 @@ records temperature, pressure and camera frames at each. It has three parts:
                  go through four stages, and the point gets a verdict.
                                                       Samuel, Kevin, Reagan
 
+UPDATED 2026-09-29 — how your stage is now run (read dpp-contract.txt,
+"HOW THE AGENT RUNS THE PIPELINE"). The operator has a DPP switch; with it on
+(the default in Auto) every flight is processed as soon as it lands, by
+`cropwatcher process --flight <id>` in a CHILD PROCESS the agent starts, one
+flight at a time, with 15 MINUTES for the whole flight. What your stage
+decides is shown on the desktop's Fly step and Manual's Data processing panel.
+
+
 THE PIPELINE, AND WHERE YOUR PART FITS
 
   readings ─▶ clean ─▶ enhance ─▶ classify ─▶ interpret ─▶ result.json

@@ -764,7 +764,7 @@ function PointMarker({ point: p, palette, opacity, wrong, skipped, isEnd, state,
           <meshBasicMaterial color={palette.foreground} transparent opacity={alpha} />
         </mesh>
       )}
-      <TextLabel text={`${p.id}${isEnd ? " · END" : ""}${skipped ? " · not flown" : ""}${wrong ? " !" : ""}`}
+      <TextLabel text={`${p.id} · ${p.z_m.toFixed(2)} m${isEnd ? " · END" : ""}${skipped ? " · not flown" : ""}${wrong ? " !" : ""}`}
                  position={[p.x_m, p.y_m, p.z_m + 0.1]} palette={palette} strong={selected || isEnd}
                  opacity={Math.max(alpha, 0.35)} />
     </group>

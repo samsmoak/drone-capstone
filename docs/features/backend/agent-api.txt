@@ -132,7 +132,8 @@ ROOMS, MISSIONS AND FLYING ONE (2026-09-28)
   GET  /rooms, /rooms/{id}           with problems and valid
   POST /rooms, /rooms/{id}/delete    save; delete (409 while missions use it)
   GET  /missions, /missions/{id}     with problems, valid, path length, time
-  POST /missions, /missions/{id}/delete
+  POST /missions, /missions/{id}/delete   save (422 in words with no inspection
+                                     point, or before its room is saved)
   POST /missions/validate            a draft {mission, room?} — the agent's check
   GET  /missions/{id}/from-drone     the mission checked from the drone's own
                                      position (its start), for ② Check —

@@ -86,6 +86,10 @@ desktop/src/pages/control/auto/plan/                  the editor
   (a point id, "home", a leg "P1 → P2"). Errors block flying; warnings
   ("coverage not measured") are said and do not. The editor asks the agent
   (POST /missions/validate) instead of keeping a copy of the rules.
+• A MISSION IS SAVED ONLY WHEN COMPLETE (2026-09-29): at least one
+  inspection point, and its room saved first — not only when safe. A plan
+  with a problem is saved and fixed later; validation gates flying, not
+  saving. The desktop greys Save out on the same rule (auto-control.txt).
 • REVISIONS: saving a change to a mission whose current revision has flown
   makes a new revision; the flight keeps a copy of the plan it flew. Saving an
   unchanged mission changes nothing.

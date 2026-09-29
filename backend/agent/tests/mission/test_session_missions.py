@@ -15,6 +15,7 @@ from types import MappingProxyType, SimpleNamespace
 import pytest
 
 from cropwatcher.mission.controller import EventKind, MissionEvent, MissionState
+from cropwatcher.mission.plan.mission import InspectionPoint
 from cropwatcher.mission.plan.store import PlanStore
 from cropwatcher.session import Mode, Session, SessionError, State
 from cropwatcher.sync.cloud import Operator
@@ -120,7 +121,8 @@ class TestRefusedBeforeAnythingArms:
         self.assert_nothing_armed(rig)
 
     def test_an_unsafe_mission(self, rig):
-        rig.plans.save_mission(mission(id="bad", points=()))
+        # Saved (a plan with a problem can be saved), but P1 sits on the table.
+        rig.plans.save_mission(mission(id="bad", points=(InspectionPoint("P1", 0.0, 0.0, 0.4),)))
         with pytest.raises(SessionError, match="not safe to fly"):
             rig.session.run_mission("bad")
         self.assert_nothing_armed(rig)

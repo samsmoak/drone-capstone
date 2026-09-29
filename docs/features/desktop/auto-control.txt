@@ -1,6 +1,7 @@
 ================================================================================
 CONTROL IN AUTO — plan a mission, check the drone, fly it
-Last verified: 2026-09-29 against claude/awesome-carson-eqkt8w — pnpm build, and
+Last verified: 2026-09-29 (second pass: Save gating, heights) against
+claude/awesome-carson-eqkt8w — pnpm build, and
 the harness measured at 720/900/1024/1280/1600 in both themes and both map
 views (20 runs, all PASS, the self-test failing as it must); the editor driven
 in headless Chromium (right-click menu, reverse, room selection, typed sizes).
@@ -122,6 +123,22 @@ desktop/src/lib/agent.ts                           the calls and types
 • DIRECTION IS THE ORDER. Every leg carries an arrow; "Reverse direction"
   reverses the order — with an end point set, the drone approaches it from the
   other side. No stored direction field.
+• SAVE NEEDS A COMPLETE MISSION, NOT A SAFE ONE (2026-09-29, the owner's
+  ask). Save stays grey until the ROOM is set up (a name, and an outline the
+  agent accepts — 3+ corners, no crossing edges, inside the map) and the PATH
+  is (a name, at least one point); a line under it says what is missing and
+  jumps to that tab. Safety is not required: a half-finished plan with a
+  problem is saved and fixed later — the agent's check gates "Use this
+  mission" and Start instead. The agent refuses a pointless save too
+  (store.save_mission, 422 in words).
+• HEIGHTS HAVE ONE REFERENCE: the floor where the drone takes off (CLAUDE.md
+  invariant 4). Every point is labelled with its height in both views, the
+  Start section says so, and Auto's area confirmation reads "Drone on the
+  floor and level…": set down on a bench — possible since the flight starts
+  wherever the drone is — every point, and the ceiling guard's idea of the
+  ceiling, would ride up by the bench's height, and no stored floor can catch
+  it (the same room's floor read 0.85–1.40 m across sessions). Obstacle
+  heights stay drawing-only for the same reason.
 • THE AGENT CHECKS THE PLAN, 300 ms after each change (POST /missions/validate);
   its problems turn a point or a leg red. No copy of the rules in the window.
 • Leaving an edited plan asks first, inline — not window.confirm, which a
@@ -177,3 +194,5 @@ depends-on        ../pipeline/data-pipeline.txt
                   GET /flights/{id}/result
 depends-on        desktop-app.txt
                   the bundle measurement the three.js decision is argued from
+depends-on        ../../design/layout.txt
+                  the standing rule every change here is measured against

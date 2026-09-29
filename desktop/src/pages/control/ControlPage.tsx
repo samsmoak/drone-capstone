@@ -520,8 +520,22 @@ export function Checklist({ session, run }: { session: Session; run: Run }) {
         // as one list.
         <div className="mb-3 grid gap-2 border-l-2 border-[var(--status-warning)] bg-[var(--surface-2)] px-3 py-3">
           <p className="text-sm font-semibold leading-snug">
-            Drone level, area clear above and around, everyone nearby warned.
+            {session.mode === "auto"
+              ? "Drone on the floor and level, area clear above and around, everyone nearby warned."
+              : "Drone level, area clear above and around, everyone nearby warned."}
           </p>
+          {session.mode === "auto" && (
+            // A mission's heights are measured from where the drone takes off
+            // (CLAUDE.md invariant 4). Set down on a bench since the flight
+            // now starts wherever the drone is (auto-control.txt), every point
+            // — and the ceiling guard's idea of the ceiling — would ride up by
+            // the bench's height, and no stored floor can catch it: the same
+            // room's floor read 0.85–1.40 m across sessions.
+            <p className="text-xs leading-relaxed">
+              A mission's heights are measured from where the drone takes off. On a table or a bench,
+              every point would fly that much higher than planned.
+            </p>
+          )}
           {unassisted && (
             <p className="text-xs leading-relaxed">
               <strong>It cannot catch itself.</strong> No base stations: height from the

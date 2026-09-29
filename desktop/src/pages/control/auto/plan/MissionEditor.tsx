@@ -195,6 +195,8 @@ export function MissionEditor({ draft, limits, run, drone, missionsInRoom, onSav
 
   const errors = problems.filter((p) => p.severity === "error");
   const warnings = problems.filter((p) => p.severity === "warning");
+  const ready = readiness(room, mission, problems, checkError);
+  const complete = ready.every((item) => item.done);
 
   // What is selected, drawn over the map with its numbers.
   const overlay = (() => {
@@ -243,11 +245,35 @@ export function MissionEditor({ draft, limits, run, drone, missionsInRoom, onSav
           ) : (
             <SmallButton onClick={() => (dirty ? setLeaving(true) : onCancel())}>Cancel</SmallButton>
           )}
-          <Button variant="primary" onClick={() => void save()} disabled={saving}>
+          <Button variant="primary" onClick={() => void save()} disabled={saving || !complete}
+                  title={complete ? undefined : "Set up the room and the path first — see the list below."}>
             {saving ? "Saving…" : "Save mission"}
           </Button>
         </div>
       </div>
+
+      {/* SAVE NEEDS A COMPLETE MISSION, NOT A SAFE ONE. A half-finished plan
+          with a problem can be saved and fixed later; the agent's check
+          gates "Use this mission" and Start. The agent refuses a mission
+          with no points too (store.save_mission) — this list is the why. */}
+      <ul aria-label="Before this mission can be saved" className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+        {ready.map((item) => (
+          <li key={item.key} className="flex items-baseline gap-1.5">
+            <span aria-hidden="true" style={{ color: item.done ? "var(--status-good)" : "var(--status-critical)" }}>
+              {item.done ? "✓" : "✗"}
+            </span>
+            {item.done ? (
+              <span>{item.label}</span>
+            ) : (
+              <button type="button" className="underline decoration-dotted underline-offset-2"
+                      onClick={() => { setTab(item.key); setPlacing(null); }}>
+                {item.label} — {item.missing}
+              </button>
+            )}
+            <span className="sr-only">{item.done ? " — done" : " — not yet"}</span>
+          </li>
+        ))}
+      </ul>
 
       {mission.flown_revision !== null && mission.flown_revision >= mission.revision && dirty && (
         <Message tone="idle" text={`Revision ${mission.revision} has flown, so saving makes revision ${mission.revision + 1}. The flight keeps the plan it actually flew.`} />
@@ -327,6 +353,30 @@ export function MissionEditor({ draft, limits, run, drone, missionsInRoom, onSav
       )}
     </div>
   );
+}
+
+/**
+ * What Save needs: the room and the path SET UP — complete, not yet safe.
+ *
+ *   room   a name, and an outline the agent accepts: at least 3 corners, no
+ *          crossing edges (the agent refuses to read one), inside the map
+ *   path   a name, and at least one inspection point
+ */
+function readiness(room: Room, mission: Mission, problems: Problem[], checkError: string | null):
+  { key: EditorTab; label: string; done: boolean; missing: string }[] {
+  const outsideMap = problems.some((p) => p.code === "fence_outside_coverage");
+  const roomMissing = !room.name.trim() ? "give it a name"
+    : room.geofence.vertices.length < 3 ? "its outline needs at least 3 corners"
+    : checkError ? checkError
+    : outsideMap ? "pull its outline inside the room map"
+    : "";
+  const pathMissing = !mission.name.trim() ? "give the mission a name"
+    : mission.points.length === 0 ? "add at least one inspection point"
+    : "";
+  return [
+    { key: "room", label: "Room", done: roomMissing === "", missing: roomMissing },
+    { key: "path", label: "Path", done: pathMissing === "", missing: pathMissing },
+  ];
 }
 
 /** The selected thing's numbers, over the map. */
@@ -603,6 +653,11 @@ function PathForm({ mission, setMission, setPoint, removePoint, box, band, limit
                        hint="The height it rises to first"
                        onCommit={(v) => setMission((m) => ({ ...m, cruise_height_m: cm(v) }))} />
         </div>
+        <p className="text-xs leading-relaxed">
+          <strong>Every height here is above the floor where the drone takes off</strong> — it measures the
+          floor as it leaves the ground. Take off from the floor: from a 0.9 m bench, every point would fly
+          0.9 m higher than planned.
+        </p>
         <div className="flex flex-wrap items-center gap-2">
           <SmallButton disabled={!drone} onClick={() => drone && setHome(drone)}
                        title={drone ? undefined : "No drone is reporting a position."}>

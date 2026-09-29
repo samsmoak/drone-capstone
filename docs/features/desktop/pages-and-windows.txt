@@ -497,6 +497,8 @@ should stay that way.
 
 RELATED
 
+depends-on        ../../design/layout.txt
+                  the standing rule: 720–1600 px, both themes, by container
 shares-data-with  drone-wifi.txt
                   the Drone Wi-Fi page and its sidebar badge
 depends-on        ../backend/sessions-and-modes.txt

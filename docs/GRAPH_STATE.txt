@@ -3,11 +3,10 @@ GRAPH STATE — WHAT IS OUT OF SYNC, AND WHAT THAT STOPS
 Read this BEFORE starting a feature. It is the one file that says whether the
 docs can be trusted for the area you are about to work in.
 Generated from `python3 graph_check.py` plus what passes noticed by hand.
-Last run: 2026-09-29 (after the Auto room map, DPP switch and start-from-drone
-work) — 36 docs · 71 findings, 0 in a blocking class (DANGLING 0 · ONE-WAY 0 ·
-STALE 0). 13 UNCOMMITTED clear with that work's commit: every doc they name
-was re-verified in the same pass (flight-safety, manual-control, camera,
-desktop-app and drone-wifi cite changed files but no changed behaviour).
+Last run: 2026-09-29 (after the Save gating, the height reference, the
+standing layout rule and the handoff updates) — 37 docs · 60 findings, 0 in
+a blocking class (DANGLING 0 · ONE-WAY 0 · STALE 0). design/layout.txt is new
+and typed both ways with the three docs that consume it.
 ================================================================================
 
 --------------------------------------------------------------------------------
