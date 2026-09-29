@@ -468,7 +468,10 @@ should stay that way.
 
 RELATED
 
-  shares-data-with  drone-wifi.txt   the Drone Wi-Fi page and its sidebar badge
+shares-data-with  drone-wifi.txt
+                  the Drone Wi-Fi page and its sidebar badge
+depends-on        ../backend/sessions-and-modes.txt
+                  Home's standby row, vitals with no session
 consumed-by       auto-control.txt
                   Auto reuses FlightDeck, Checklist, RetryPanel, HealthTestPanel,
                   Field, the ConsolePane (`views`) and SceneView (`plan`)

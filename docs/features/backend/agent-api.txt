@@ -145,8 +145,10 @@ RELATED
 
 consumed-by       ../missions/floor-plans.txt
                   the plan routes; the token and the CORS method list shape them
-  consumed-by   ../desktop/drone-wifi.txt   /camera/wifi carries the drone's network
-  consumed-by   ../desktop/desktop-app.txt  /health probe after a failed command; CORS for the window
+consumed-by       ../desktop/drone-wifi.txt
+                  /camera/wifi carries the drone's network
+consumed-by       ../desktop/desktop-app.txt
+                  /health probe after a failed command; CORS for the window
 
 
 LAST VERIFIED  2026-09-25, against rest.py (LocalCORS, /health) and

@@ -84,3 +84,5 @@ RELATED
 
 consumed-by       ../pipeline/data-pipeline.txt
                   the flight CSV is its input; point_id groups the readings
+depends-on        sessions-and-modes.txt
+                  published on standby, recorded only in a session

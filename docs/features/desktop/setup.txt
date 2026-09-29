@@ -66,9 +66,12 @@ INVARIANTS
 
 RELATED
 
-  depends-on        drone-wifi.txt   step 3; drone_wifi is what "main" installs
-  depends-on        camera.txt       the patched ESP32 and the GAP8 streamer
-  shares-data-with  ../backend/sessions-and-modes.txt  pauses and resumes standby
+depends-on        drone-wifi.txt
+                  step 3; drone_wifi is what "main" installs
+depends-on        camera.txt
+                  the patched ESP32 and the GAP8 streamer
+shares-data-with  ../backend/sessions-and-modes.txt
+                  pauses and resumes standby
 
 
 LAST VERIFIED  2026-09-24: agent tests (16 for setup: parts chosen, order,

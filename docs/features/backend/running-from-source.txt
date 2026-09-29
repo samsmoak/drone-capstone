@@ -80,7 +80,8 @@ INVARIANTS
 
 RELATED
 
-  shares-data-with  ../desktop/desktop-app.txt   the same venv, created by scripts/setup.mjs
+shares-data-with  ../desktop/desktop-app.txt
+                  the same venv, created by scripts/setup.mjs
 
 
 LAST VERIFIED  2026-09-25: `node scripts/setup.mjs --check` and `--dev` on an
