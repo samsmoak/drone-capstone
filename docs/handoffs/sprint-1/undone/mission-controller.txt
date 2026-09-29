@@ -3,8 +3,7 @@ TICKET — The mission controller
 
 STATUS: READY TO START (2026-09-28). The skeleton this builds on is on the
 branch feat/missions-and-pipeline: the interface, a controller that refuses to
-fly, the session wiring, and the tests' simulated flight system. Where this
-ticket and the code disagree, the code wins — tell Samuel so this is fixed.
+fly, the session wiring, and the tests' simulated flight system. 
 
   Owner           Hannah
   Stories         Autonomous flight.

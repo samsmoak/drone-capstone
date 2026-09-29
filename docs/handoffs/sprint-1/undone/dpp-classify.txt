@@ -1,5 +1,6 @@
 TICKET — Data pipeline stage 3: classify images and sensor readings
 ===================================================================
+ddp = data processing pipeline
 
 STATUS: READY TO START (2026-09-28). The skeleton your stage plugs into is on
 the branch feat/missions-and-pipeline; the code is the authority.
@@ -61,7 +62,7 @@ THE PIPELINE, AND WHERE YOUR PART FITS
   - The skeleton is BUILT: `cropwatcher process --flight <id>` already runs a
     real flight through all four stages. Every stage but interpret is a STUB
     that stands in for its owner's work — yours replaces stages/classify/stub.py
-    ("unknown" with a reason).
+    (Samuel).
   - The unit of work is ONE INSPECTION POINT (its readings and frames).
   - Your stage receives exactly the types in ../done/dpp-contract.txt, returns exactly
     the types there, and nothing else. That is what lets it plug in without
