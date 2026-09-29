@@ -25,6 +25,15 @@ THE TICKETS
   mission-planner.txt      Samuel   mission planning; 3.4      built — the
                                     (holds ≥ 5 s)              follow-ups are
                                                                open
+  mission-start.txt        Samuel   autonomous flight (the     built — the
+                                    session's half)            follow-ups are
+                                                               open
+  dpp-switch.txt           Samuel   4.5 (the trigger, the      built — the
+                                    results on screen)         follow-ups are
+                                                               open
+  control-layout.txt       Samuel   — (the standing layout     built — the
+                                    rule)                      follow-ups are
+                                                               open
   mission-controller.txt   Hannah   3.4, 3.5 (flying half),    now
                                     autonomous flight
   dpp-contract.txt         every    4.5                        — (the shared
