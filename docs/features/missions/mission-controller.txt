@@ -13,8 +13,12 @@ STATUS  (Last verified: 2026-09-28)
              fence to the guard, the plan flown kept, events to the app
   stamping   BUILT — point_id on every telemetry row and frames.csv row
   controller INTERFACE BUILT, BODY NOT BUILT — Hannah
-             (../../handoffs/sprint-1/undone/mission-controller.txt). BUILT = False, and the
-             session refuses to arm a mission until it is True.
+             (../../handoffs/sprint-1/undone/mission-controller.txt).
+             BUILT = False, and the session refuses to arm a mission until
+             it is True.
+  proof      NOT BUILT — Yordi: a simulated drone, the mission report, the
+             end-to-end scenarios, the lab rungs, the measured constants
+             (../../handoffs/sprint-1/undone/mission-verification.txt).
   flown      NEVER — no mission has flown.
 
 --------------------------------------------------------------------------------
