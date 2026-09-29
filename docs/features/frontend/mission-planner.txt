@@ -14,7 +14,8 @@ WHERE IT LIVES
   lib/mutations.ts                 queuePlannedMission, cancelMission
   components/mission-planner.tsx   the planning surface
   components/mission-queue.tsx     recent missions, cancel
-  backend/agent/cropwatcher/flight/missions.py   the plan format (Mission.to_dict)
+  (backend/agent/cropwatcher/flight/missions.py — the plan format it builds —
+   was DELETED on 2026-09-28; see KNOWN DIVERGENCE below)
 
 
 DECISIONS
@@ -44,3 +45,19 @@ INVARIANTS
   Postgres. Without the count, a mission the agent had claimed a moment earlier
   was reported "cancelled" and then flew. Verified with a claim injected between
   page load and click: the row stays claimed and the operator is told so.
+
+
+KNOWN DIVERGENCE (2026-09-28)
+
+Autonomous missions are now planned and flown from the DESKTOP app
+(../missions/floor-plans.txt): rooms with closed geofences, inspection points
+with stable ids, a new plan format. This planner still builds the OLD format
+(zone centres as waypoints) into Supabase `missions`, and nothing claims or
+flies those rows. Left as it is — not a bug to fix in isolation — until plans
+sync to Supabase, when it is rebuilt on the new format.
+
+RELATED
+
+shares-data-with  ../missions/floor-plans.txt
+                  the same idea in the old format; see KNOWN DIVERGENCE
+

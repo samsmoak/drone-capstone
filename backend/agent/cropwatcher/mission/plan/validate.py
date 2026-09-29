@@ -1,0 +1,179 @@
+"""Every check a mission passes before it can fly.
+
+The layers nest, and each is checked against the one outside it:
+
+    Lighthouse coverage   where the position can be trusted (measured)
+      └ geofence          the room's hard boundary
+          └ obstacles     what the drone must keep clear of
+          └ home, the inspection points, and every LEG between them
+
+Legs matter as much as points: two points can both sit in clear floor with a
+bench between them, and in an L-shaped room a leg can leave the fence with
+both of its ends inside. Legs include home → first point and, when returning,
+last point → home — the leg out of the takeoff spot is the easiest to forget.
+
+The result is a list of Problems, not an exception: the editor shows every one
+at once, beside the point it concerns. `errors` block flying; `warnings` are
+said out loud and do not.
+
+THE EDITOR RUNS ITS OWN COPY of these checks for instant feedback
+(desktop/src/pages/control/auto/plan/shapes.ts). This one is the authority: it
+runs when a mission is saved and again before anything arms.
+"""
+
+from __future__ import annotations
+
+from collections import Counter
+from dataclasses import dataclass
+from enum import StrEnum
+from typing import Any
+
+from cropwatcher.mission.plan.floorplan import Room
+from cropwatcher.mission.plan.geofence import Geofence
+from cropwatcher.mission.plan.mission import MAX_HOLD_S, MIN_HOLD_S, Mission
+
+
+class Severity(StrEnum):
+    ERROR = "error"
+    WARNING = "warning"
+
+
+@dataclass(frozen=True)
+class Problem:
+    code: str
+    message: str
+    severity: Severity = Severity.ERROR
+    #: The inspection point, "home", or a leg ("P1 → P2") it concerns; None for
+    #: the mission or the room as a whole.
+    where: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"code": self.code, "message": self.message,
+                "severity": str(self.severity), "where": self.where}
+
+
+def errors(problems: list[Problem]) -> list[Problem]:
+    return [p for p in problems if p.severity is Severity.ERROR]
+
+
+def outer_bound(room: Room | None, *, default_half_extent_m: float) -> Geofence:
+    """The largest area anything in a room may occupy — THE ROOM'S MAP.
+
+    The drone and its Lighthouse deck do not see walls or objects (this drone
+    carries no distance sensor); what they establish is where the drone's
+    position can be trusted. That measured coverage is the map every fence,
+    obstacle and path must fit inside. Until it has been measured, the agent's
+    default flying area stands in, and validate_room says so.
+    """
+    if room is not None and room.coverage is not None:
+        return room.coverage
+    return Geofence.square(default_half_extent_m)
+
+
+def validate_room(room: Room, *, outer: Geofence) -> list[Problem]:
+    """The room on its own: the fence inside the outer bound, obstacles inside
+    the fence. `outer` is the room's measured coverage when it has one, and the
+    agent's default fence otherwise."""
+    problems: list[Problem] = []
+    if room.coverage is None:
+        problems.append(Problem(
+            "coverage_not_measured",
+            "This room's Lighthouse coverage has not been measured, so the fence is "
+            "checked against the agent's default flying area instead. Measure it before "
+            "trusting the edges of the room.",
+            Severity.WARNING))
+    if not outer.contains_fence(room.geofence):
+        problems.append(Problem(
+            "fence_outside_coverage",
+            "Part of the geofence is outside the area the drone's position can be "
+            "trusted in. Pull the fence in."))
+    for obstacle in room.obstacles:
+        if not all(room.geofence.contains(*p) for p in obstacle.reference_points()):
+            problems.append(Problem(
+                "obstacle_outside_fence",
+                f"Obstacle {obstacle.name} is partly outside the geofence — it cannot "
+                f"affect the flight there, so check it is where you meant.",
+                Severity.WARNING, where=obstacle.id))
+    return problems
+
+
+def validate_mission(mission: Mission, room: Room, *, outer: Geofence) -> list[Problem]:
+    """The mission in its room. Every problem found, in flying order."""
+    problems = validate_room(room, outer=outer)
+    fence = room.geofence
+    clearance = room.clearance_m
+
+    if mission.room_id != room.id:
+        problems.append(Problem("wrong_room", f"This mission belongs to room "
+                                              f"{mission.room_id}, not {room.id}."))
+        return problems
+
+    if not mission.points:
+        problems.append(Problem("no_points", "Add at least one inspection point."))
+
+    duplicates = [pid for pid, n in Counter(mission.point_ids).items() if n > 1]
+    for pid in duplicates:
+        problems.append(Problem("duplicate_point_id",
+                                f"Two inspection points share the id {pid}. Each needs its "
+                                f"own — every reading taken there is stamped with it.",
+                                where=pid))
+
+    if not fence.contains_height(mission.cruise_height_m):
+        problems.append(Problem(
+            "cruise_height", f"Cruise height {mission.cruise_height_m:.2f} m is outside the "
+            f"room's permitted {fence.z_min:.2f}–{fence.z_max:.2f} m."))
+
+    # Home and every point: inside, clear of the fence edge, clear of obstacles.
+    stops: list[tuple[str, tuple[float, float], float | None, float | None]] = [
+        ("home", mission.home, None, None)]
+    stops += [(p.id, p.xy, p.z_m, p.hold_s) for p in mission.points]
+    for where, (x, y), z, hold in stops:
+        label = "Home" if where == "home" else f"Point {where}"
+        if not fence.contains(x, y):
+            problems.append(Problem("outside_fence", f"{label} at ({x:+.2f}, {y:+.2f}) m is "
+                                                     f"outside the geofence.", where=where))
+            continue
+        edge = fence.edge_distance(x, y)
+        if edge < clearance:
+            problems.append(Problem(
+                "near_fence", f"{label} is {edge:.2f} m from the geofence's edge; it needs "
+                f"{clearance:.2f} m, or ordinary drift would trip the fence and land the "
+                f"drone.", where=where))
+        for obstacle in room.obstacles:
+            gap = obstacle.distance_to_point((x, y))
+            if gap < clearance:
+                problems.append(Problem(
+                    "near_obstacle", f"{label} is {gap:.2f} m from obstacle {obstacle.name}; "
+                    f"it needs {clearance:.2f} m.", where=where))
+        if z is not None and not fence.contains_height(z):
+            problems.append(Problem(
+                "height", f"{label} height {z:.2f} m is outside the room's permitted "
+                f"{fence.z_min:.2f}–{fence.z_max:.2f} m.", where=where))
+        if hold is not None and not MIN_HOLD_S <= hold <= MAX_HOLD_S:
+            problems.append(Problem(
+                "hold", f"{label} holds {hold:.1f} s; it must hold {MIN_HOLD_S:.0f}–"
+                f"{MAX_HOLD_S:.0f} s (at least 5 s of readings and 10 frames — story 3.4).",
+                where=where))
+
+    # Every leg: inside a fence that may not be convex, and clear all the way.
+    for a, b, name in mission.legs():
+        if a == b:
+            continue
+        if not fence.contains_leg(a, b):
+            problems.append(Problem("leg_outside_fence",
+                                    f"The leg {name} leaves the geofence.", where=name))
+            continue
+        edge = fence.leg_edge_distance(a, b)
+        if edge < clearance:
+            problems.append(Problem(
+                "leg_near_fence", f"The leg {name} passes {edge:.2f} m from the geofence's "
+                f"edge; it needs {clearance:.2f} m.", where=name))
+        for obstacle in room.obstacles:
+            gap = obstacle.distance_to_segment(a, b)
+            if gap < clearance:
+                problems.append(Problem(
+                    "leg_near_obstacle",
+                    (f"The leg {name} crosses obstacle {obstacle.name}." if gap == 0 else
+                     f"The leg {name} passes {gap:.2f} m from obstacle {obstacle.name}; it "
+                     f"needs {clearance:.2f} m."), where=name))
+    return problems

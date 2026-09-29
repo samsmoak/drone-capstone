@@ -23,6 +23,12 @@
  *
  * Auto shows the preset programs; Manual shows arming and the keys. Both run
  * the same checks and need the same confirmation, because the risk is the same.
+ *
+ * AUTO HAS ITS OWN LAYOUT (auto/AutoControl.tsx, since 2026-09-28): the Mission
+ * flow — ① Mission → ② Check → ③ Fly — on the left, where the operator works,
+ * and the monitor on the right. Everything below this comment is Manual's, and
+ * Auto reuses its panels (FlightDeck, Checklist, RetryPanel, HealthTestPanel,
+ * Field) rather than copying them.
  */
 
 import { useState, type FormEvent, type InputHTMLAttributes, type ReactNode } from "react";
@@ -32,10 +38,14 @@ import type { LogLine } from "@/lib/commandLog";
 import { Button, Message, PageHeader, Panel, Spinner, Stat, StatusDot } from "@/components/ui";
 import { SplitPane } from "@/components/SplitPane";
 import { useMediaQuery, WIDE } from "@/lib/useMediaQuery";
+import { AutoControl } from "./auto/AutoControl";
+import type { FlowStart } from "./auto/MissionFlow";
 import { ConsolePane } from "./ConsolePane";
 import { VitalsNow } from "./VitalsNow";
 
 type Props = {
+  /** Harness only: where the Auto flow opens (auto/MissionFlow.tsx). */
+  autoStart?: FlowStart;
   session: Session | null;
   telemetry: Telemetry | null;
   history: History;
@@ -49,7 +59,7 @@ type Props = {
 };
 
 export function ControlPage({
-  session, telemetry, history, intent, run, logLines, onClearLog, onOpenSessions,
+  session, telemetry, history, intent, run, logLines, onClearLog, onOpenSessions, autoStart,
 }: Props) {
   // Below `lg` the two columns stack, so there is no divider to drag and the
   // split would be splitting nothing.
@@ -93,6 +103,13 @@ export function ControlPage({
                   ambient={ambient} setAmbient={setAmbient}
                 />
         </div>
+      ) : session.mode === "auto" ? (
+        <AutoControl
+          session={session} telemetry={telemetry} history={history} intent={intent} run={run}
+          logLines={logLines} onClearLog={onClearLog} wide={wide}
+          height={height} hold={hold} ambient={ambient} setAmbient={setAmbient}
+          start={autoStart}
+        />
       ) : wide ? (
         // Side by side, with a divider the operator owns. The console starts
         // LARGER than the controls — it is the half that carries readings, and
@@ -461,7 +478,7 @@ export function SignIn({ run }: { run: Run }) {
   );
 }
 
-function Checklist({ session, run }: { session: Session; run: Run }) {
+export function Checklist({ session, run }: { session: Session; run: Run }) {
   const failed = session.state === "checks_failed";
   const awaiting = session.state === "awaiting_confirmation";
   // A positioning problem no longer blocks the flight — it costs the drone its
@@ -563,7 +580,7 @@ function Checklist({ session, run }: { session: Session; run: Run }) {
 
 // ── after an abnormal end ────────────────────────────────────────────
 
-function RetryPanel({ run }: { run: Run }) {
+export function RetryPanel({ run }: { run: Run }) {
   return (
     <Panel
       title="Check the drone again"
@@ -594,7 +611,7 @@ function RetryPanel({ run }: { run: Run }) {
  * call, so there is one button and TWO result tiles — the split the operator
  * wants is in the reading, not in the request.
  */
-function HealthTestPanel({ result }: { result: HealthTest }) {
+export function HealthTestPanel({ result }: { result: HealthTest }) {
   const failed = new Set(result.motors.failed);
   return (
     <Panel
@@ -696,7 +713,7 @@ function AutoControls({ session, height, setHeight, hold, setHold, ambient, setA
   );
 }
 
-function Field({
+export function Field({
   label, value, onChange, hint, ...input
 }: {
   label: string;
@@ -711,7 +728,10 @@ function Field({
         {...input}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="mono min-h-10 border border-[var(--border)] bg-[var(--surface-2)] px-2.5 text-sm"
+        // w-full: an input's intrinsic width is about 20 characters, wider
+        // than the narrow cells these sit in — at the Fly step it ran under
+        // the Start button beside it (harness, 2026-09-28).
+        className="mono min-h-10 w-full min-w-0 border border-[var(--border)] bg-[var(--surface-2)] px-2.5 text-sm"
       />
       {hint && <span className="text-[var(--muted)]">{hint}</span>}
     </label>
@@ -797,7 +817,7 @@ function ManualControls({ session, telemetry, ambient, setAmbient, height, setHe
  * into the flight loop. They light from `intent`, which is the same state the
  * agent is being sent — so a cap lit here is a key the drone knows about.
  */
-function FlightDeck({ intent, mode, telemetry, session, run, ready, height, hold, ambient }: {
+export function FlightDeck({ intent, mode, telemetry, session, run, ready, height, hold, ambient }: {
   intent: Intent;
   mode: Session["mode"];
   telemetry: Telemetry | null;

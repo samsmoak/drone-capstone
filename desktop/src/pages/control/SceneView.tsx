@@ -31,10 +31,49 @@ import { useEffect, useRef } from "react";
 import type { History } from "@/App";
 import type { Telemetry } from "@/lib/agent";
 
-/** The room drawn, in metres. Positions outside it are clamped for the picture
- *  only — the readouts beside it always report what the drone actually said. */
+/** The room drawn when there is no mission, in metres. Positions outside it are
+ *  clamped for the picture only — the readouts beside it always report what the
+ *  drone actually said. */
 const ROOM_M = 4;
 const CEILING_M = 2;
+/** Floor around a mission's geofence, so its edge is not the canvas edge. */
+const PLAN_MARGIN_M = 0.5;
+
+/**
+ * A mission, drawn on the floor of the scene (the Fly step).
+ *
+ * The room is then the operator's own floor plan — its geofence, obstacles,
+ * path and inspection points — instead of the declared 4 × 4 m box: still a
+ * DECLARED room (this drone senses no walls), but the one the mission was
+ * checked against.
+ */
+export type ScenePlan = {
+  fence: [number, number][];
+  obstacles: { kind: "line" | "rectangle" | "circle"; points: [number, number][]; radius?: number }[];
+  home: [number, number];
+  /** In flying order. `state` colours it: done, being held/flown to, or ahead. */
+  points: { id: string; x: number; y: number; z: number; state: "done" | "current" | "pending" }[];
+};
+
+/** The part of the world the canvas shows: a square floor, centred. */
+type RoomFrame = { cx: number; cy: number; size: number; ceiling: number };
+
+const DEFAULT_ROOM: RoomFrame = { cx: 0, cy: 0, size: ROOM_M, ceiling: CEILING_M };
+
+function frameFor(plan: ScenePlan | null | undefined): RoomFrame {
+  if (!plan || plan.fence.length < 3) return DEFAULT_ROOM;
+  const xs = plan.fence.map(([x]) => x);
+  const ys = plan.fence.map(([, y]) => y);
+  const width = Math.max(...xs) - Math.min(...xs);
+  const depth = Math.max(...ys) - Math.min(...ys);
+  // Rounded up to the 0.5 m grid, so the grid lines land on whole half-metres.
+  const size = Math.ceil((Math.max(width, depth) + 2 * PLAN_MARGIN_M) * 2) / 2;
+  return {
+    cx: (Math.max(...xs) + Math.min(...xs)) / 2,
+    cy: (Math.max(...ys) + Math.min(...ys)) / 2,
+    size, ceiling: Math.max(1.5, Math.min(CEILING_M, size / 2)),
+  };
+}
 
 /** Visible revolutions per second at full PWM. Legible, not literal. */
 const MAX_RPS = 3;
@@ -60,9 +99,11 @@ function rotate([x, y, z]: Vec3, roll: number, pitch: number, yaw: number): Vec3
   return [a * cy - b * sy, a * sy + b * cy, c];
 }
 
-export function SceneView({ telemetry, history, active }: {
+export function SceneView({ telemetry, history, active, plan = null }: {
   telemetry: Telemetry | null;
   history: History;
+  /** A mission to draw on the floor; null draws the default room. */
+  plan?: ScenePlan | null;
   /**
    * Whether the Scene tab is the one showing.
    *
@@ -79,10 +120,13 @@ export function SceneView({ telemetry, history, active }: {
   // written during render, which React forbids.
   const latest = useRef<Telemetry | null>(telemetry);
   const trail = useRef<History>(history);
+  const planned = useRef<ScenePlan | null>(plan);
   useEffect(() => {
     latest.current = telemetry;
     trail.current = history;
-  }, [telemetry, history]);
+    planned.current = plan;
+  }, [telemetry, history, plan]);
+  const room = frameFor(plan);
 
   useEffect(() => {
     if (!active) return;
@@ -148,7 +192,7 @@ export function SceneView({ telemetry, history, active }: {
         spin,
         trail: trail.current,
         known: telem !== null,
-      });
+      }, planned.current);
 
       raf = window.requestAnimationFrame(frame);
     };
@@ -175,8 +219,10 @@ export function SceneView({ telemetry, history, active }: {
         />
       </div>
       <p className="mono border-t border-[var(--console-line)] bg-[var(--console)] px-3 py-1.5 text-[10px] uppercase tracking-[0.08em] text-[var(--console-dim)]">
-        {ROOM_M} × {ROOM_M} × {CEILING_M} m room · position and attitude to scale · rotor spin
-        indicative, not literal
+        {plan
+          ? `The mission's room, as drawn · ${room.size} × ${room.size} m shown · position and attitude to scale`
+          : `${ROOM_M} × ${ROOM_M} × ${CEILING_M} m room · position and attitude to scale`}
+        {" "}· rotor spin indicative, not literal
       </p>
     </div>
   );
@@ -207,45 +253,54 @@ function readPalette(el: HTMLElement): Palette {
   };
 }
 
-function draw(ctx: CanvasRenderingContext2D, el: HTMLCanvasElement, palette: Palette, s: Scene) {
+function draw(ctx: CanvasRenderingContext2D, el: HTMLCanvasElement, palette: Palette, s: Scene,
+              plan: ScenePlan | null) {
   const { width, height } = el.getBoundingClientRect();
   const { ink, dim, line, primary, warning } = palette;
+  const room = frameFor(plan);
+  const ROOM = room.size;
+  const CEILING = room.ceiling;
 
   ctx.clearRect(0, 0, width, height);
 
   // Fit the room's diagonal into the shorter side, with room for the ceiling.
-  const scale = Math.min(width / (ROOM_M * 2 * COS30), height / (ROOM_M * 2 * SIN30 + CEILING_M)) * 0.82;
+  const scale = Math.min(width / (ROOM * 2 * COS30), height / (ROOM * 2 * SIN30 + CEILING)) * 0.82;
   const cx = width / 2;
-  const cy = height / 2 + (ROOM_M * SIN30 * scale) / 2;
+  const cy = height / 2 + (ROOM * SIN30 * scale) / 2;
 
+  // World metres in, canvas pixels out: the room's centre sits at the canvas's.
   const project = ([x, y, z]: Vec3): [number, number] => [
-    cx + (x - y) * COS30 * scale,
-    cy + (x + y) * SIN30 * scale - z * scale,
+    cx + ((x - room.cx) - (y - room.cy)) * COS30 * scale,
+    cy + ((x - room.cx) + (y - room.cy)) * SIN30 * scale - z * scale,
   ];
 
-  const half = ROOM_M / 2;
-  const clamp = (v: number) => Math.max(-half, Math.min(half, v));
+  const half = ROOM / 2;
+  const clampX = (v: number) => Math.max(room.cx - half, Math.min(room.cx + half, v));
+  const clampY = (v: number) => Math.max(room.cy - half, Math.min(room.cy + half, v));
 
   // ── the room ──────────────────────────────────────────────────────
   ctx.lineWidth = 1;
   ctx.strokeStyle = line;
-  for (let i = 0; i <= ROOM_M * 2; i++) {
-    const t = -half + i * 0.5;
-    const [ax, ay] = project([t, -half, 0]);
-    const [bx, by] = project([t, half, 0]);
+  const x0 = room.cx - half, x1 = room.cx + half, y0 = room.cy - half, y1 = room.cy + half;
+  for (let i = 0; i <= ROOM * 2; i++) {
+    const tx = x0 + i * 0.5, ty = y0 + i * 0.5;
+    const [ax, ay] = project([tx, y0, 0]);
+    const [bx, by] = project([tx, y1, 0]);
     ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
-    const [px, py] = project([-half, t, 0]);
-    const [qx, qy] = project([half, t, 0]);
+    const [px, py] = project([x0, ty, 0]);
+    const [qx, qy] = project([x1, ty, 0]);
     ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(qx, qy); ctx.stroke();
   }
 
   // Corner posts, so height reads as height rather than as distance.
   ctx.strokeStyle = dim;
-  for (const [px, py] of [[-half, -half], [half, -half], [half, half], [-half, half]] as const) {
+  for (const [px, py] of [[x0, y0], [x1, y0], [x1, y1], [x0, y1]] as const) {
     const [ax, ay] = project([px, py, 0]);
-    const [bx, by] = project([px, py, CEILING_M]);
+    const [bx, by] = project([px, py, CEILING]);
     ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
   }
+
+  if (plan) drawPlan(ctx, plan, project, { ink, dim, primary, warning });
 
   if (!s.known) {
     ctx.fillStyle = dim;
@@ -255,7 +310,7 @@ function draw(ctx: CanvasRenderingContext2D, el: HTMLCanvasElement, palette: Pal
     return;
   }
 
-  const dx = clamp(s.x), dy = clamp(s.y), dz = Math.max(0, Math.min(CEILING_M, s.z));
+  const dx = clampX(s.x), dy = clampY(s.y), dz = Math.max(0, Math.min(CEILING, s.z));
 
   // ── the trail ─────────────────────────────────────────────────────
   // Every fifth frame: 10 Hz for a minute is 600 points, and 120 is plenty to
@@ -268,8 +323,8 @@ function draw(ctx: CanvasRenderingContext2D, el: HTMLCanvasElement, palette: Pal
       ctx.globalAlpha = 0.08 + 0.5 * (i / points.length);
       ctx.strokeStyle = primary;
       ctx.beginPath();
-      const [ax, ay] = project([clamp(a.values["stateEstimate.x"] ?? 0), clamp(a.values["stateEstimate.y"] ?? 0), Math.max(0, a.height_m ?? 0)]);
-      const [bx, by] = project([clamp(b.values["stateEstimate.x"] ?? 0), clamp(b.values["stateEstimate.y"] ?? 0), Math.max(0, b.height_m ?? 0)]);
+      const [ax, ay] = project([clampX(a.values["stateEstimate.x"] ?? 0), clampY(a.values["stateEstimate.y"] ?? 0), Math.max(0, a.height_m ?? 0)]);
+      const [bx, by] = project([clampX(b.values["stateEstimate.x"] ?? 0), clampY(b.values["stateEstimate.y"] ?? 0), Math.max(0, b.height_m ?? 0)]);
       ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
     }
     ctx.globalAlpha = 1;
@@ -363,8 +418,95 @@ function draw(ctx: CanvasRenderingContext2D, el: HTMLCanvasElement, palette: Pal
   ];
   rows.forEach((row, i) => ctx.fillText(row, 10, 16 + i * 14));
 
-  if (Math.abs(s.x) > half || Math.abs(s.y) > half || s.z > CEILING_M) {
+  if (Math.abs(s.x - room.cx) > half || Math.abs(s.y - room.cy) > half || s.z > CEILING) {
     ctx.fillStyle = warning;
     ctx.fillText("outside the drawn room — figures above are the real ones", 10, 16 + rows.length * 14);
   }
 }
+
+/**
+ * The mission on the floor: the geofence as a solid outline, obstacles in the
+ * warning colour, the path at its flying heights with a drop line to each
+ * point, and each point marked by where the mission is — done (filled), being
+ * held or flown to (ringed), or ahead (hollow). Shape AND fill carry the state,
+ * never colour alone.
+ */
+function drawPlan(
+  ctx: CanvasRenderingContext2D,
+  plan: ScenePlan,
+  project: (p: Vec3) => [number, number],
+  colours: { ink: string; dim: string; primary: string; warning: string },
+) {
+  const { ink, dim, primary, warning } = colours;
+  const floor = (pts: [number, number][], close: boolean) => {
+    ctx.beginPath();
+    pts.forEach(([x, y], i) => {
+      const [px, py] = project([x, y, 0]);
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    });
+    if (close) ctx.closePath();
+    ctx.stroke();
+  };
+
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = primary;
+  floor(plan.fence, true);
+
+  ctx.strokeStyle = warning;
+  ctx.lineWidth = 1.5;
+  for (const o of plan.obstacles) {
+    if (o.kind === "circle" && o.points[0] && o.radius) {
+      const [cx0, cy0] = o.points[0];
+      const ring: [number, number][] = Array.from({ length: 24 }, (_, i) => [
+        cx0 + o.radius! * Math.cos((i / 24) * 2 * Math.PI),
+        cy0 + o.radius! * Math.sin((i / 24) * 2 * Math.PI),
+      ]);
+      floor(ring, true);
+    } else if (o.kind === "rectangle" && o.points.length === 2) {
+      const [[ax, ay], [bx, by]] = o.points;
+      floor([[ax, ay], [bx, ay], [bx, by], [ax, by]], true);
+    } else if (o.points.length === 2) {
+      floor(o.points, false);
+    }
+  }
+
+  // The path at its heights: home at the floor, then each point in order.
+  const stops: Vec3[] = [[plan.home[0], plan.home[1], 0], ...plan.points.map((p) => [p.x, p.y, p.z] as Vec3)];
+  ctx.setLineDash([5, 4]);
+  ctx.strokeStyle = dim;
+  ctx.lineWidth = 1.25;
+  ctx.beginPath();
+  stops.forEach((p, i) => {
+    const [px, py] = project(p);
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  });
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Home: a square on the floor.
+  const [hx, hy] = project([plan.home[0], plan.home[1], 0]);
+  ctx.strokeStyle = ink;
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(hx - 5, hy - 5, 10, 10);
+
+  ctx.font = '600 10px ui-monospace, SFMono-Regular, Menlo, monospace';
+  ctx.textAlign = "left";
+  for (const p of plan.points) {
+    const [gx, gy] = project([p.x, p.y, 0]);
+    const [px, py] = project([p.x, p.y, p.z]);
+    ctx.strokeStyle = dim;
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(px, py); ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(px, py, p.state === "current" ? 7 : 5, 0, 2 * Math.PI);
+    ctx.lineWidth = p.state === "current" ? 3 : 1.5;
+    ctx.strokeStyle = p.state === "pending" ? dim : primary;
+    ctx.fillStyle = primary;
+    if (p.state === "done") ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = ink;
+    ctx.fillText(p.id, px + 9, py + 3);
+  }
+}
+

@@ -255,3 +255,30 @@ INVARIANTS
   looser bound. The same principle as sys.canfly: a guessed threshold refused
   flights the firmware would have allowed, and guessing in the other direction
   would lock a position the estimator does not stand behind.
+
+GOALS — hold_at() AND fly_to() (fly_to since 2026-09-28)
+
+Both set a GOAL the existing motion drives towards, adding no control law:
+hold_at(height) for the height; fly_to(x, y, height) for a point in the room
+and a height, at the arrow keys' eased speed (MOVE_SPEED_M_S) and acceleration,
+on the same leash, capped at the speed the remaining distance can still be
+stopped from — so it arrives instead of coasting past. The goal's velocity is
+computed in the room's frame and turned into the drone's frame by the
+commanded heading, exactly as the keys' step is turned the other way.
+
+  goal_active        True while either goal is still gliding
+  operator_override  True once a held key cancelled a goal; hold_at/fly_to
+                     clear it
+
+ANY HELD KEY CANCELS EVERY GOAL, at the top of the tick, before anything moves
+— one place decides, so no branch can let a goal steer an axis the operator is
+steering. fly_to is refused unassisted and on the ground. This is what the
+mission controller flies a mission with (../missions/mission-controller.txt).
+Verified by test_manual.py TestFlyTo (13 tests, a drone that follows the
+point): arrival within 2 cm, never faster than the keys, no overshoot, right
+direction at any heading, keys cancel it, the leash holds, the dead-man lands.
+
+RELATED
+
+consumed-by       ../missions/mission-controller.txt
+                  fly_to, hold_at, the leash and the dead-man fly every mission

@@ -75,3 +75,10 @@ INVARIANTS
   first, every time: a push applies EVERY local migration the remote lacks.
   Verified by a real upload as the operator account (2026-09-24), then the
   test objects deleted.
+
+- RISK (2026-09-28): every flight CSV now has a point_id column
+  (telemetry/row.py). The import-flight-log function reads the CSV and upserts
+  rows; its source is NOT in this repo, so whether it passes the column through
+  is unknown — until migration 20260928000012 is applied, a backfill that sends
+  point_id would be refused. Apply the migration, and put the function's source
+  under backend/supabase/functions/.

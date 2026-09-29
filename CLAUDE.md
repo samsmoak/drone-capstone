@@ -68,6 +68,7 @@ node scripts/setup.mjs --dev                 # --check: only check; drop --dev: 
 cd backend/agent && source .venv/bin/activate
 ruff check . && mypy cropwatcher && pytest   # gates
 cropwatcher serve                            # serve (the api module has no entry point)
+cropwatcher process --fixture                # the data pipeline, on the test fixture
 
 # web
 cd web && pnpm dev

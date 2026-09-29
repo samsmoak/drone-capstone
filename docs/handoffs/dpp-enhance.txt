@@ -1,0 +1,201 @@
+TICKET — Data pipeline stage 2: enhance the camera frames
+=========================================================
+
+STATUS: READY TO START (2026-09-28). The skeleton your stage plugs into is on
+the branch feat/missions-and-pipeline; the code is the authority.
+
+  Owner           Kevin
+  Story           4.3: "As an inspector, I want clearer images, so that even
+                  small defects are visible."
+                  Stretch (low priority): colorize.
+  PDF acceptance  "Before vs. after images on real frames captured by the
+                  drone show visibly more detail."
+  Estimate (PDF)  12 hours; colorize 10 hours
+  Branch          feat/dpp-enhance
+  Your files      backend/agent/cropwatcher/pipeline/stages/enhance/<yours>.py
+                  backend/agent/tests/pipeline/test_enhance.py
+                  ml/upscaling-eval/
+                  model files in backend/agent/cropwatcher/pipeline/models/
+
+
+THE WHOLE SYSTEM, IN ONE PAGE — read this first
+───────────────────────────────────────────────
+
+DroneDeck flies a Crazyflie around a room, stops at pieces of equipment, and
+records temperature, pressure and camera frames at each. It has three parts:
+
+  1  PLANNING    the operator draws a room (geofence, obstacles) and a mission
+                 in it: an ordered list of INSPECTION POINTS.     Samuel, built
+  2  FLYING      the mission controller flies the mission through the manual
+                 flight system. While the drone HOLDS at a point, every
+                 reading and camera frame is stamped with that point's id.
+                                                                  Hannah
+  3  PROCESSING  the data pipeline: each point's stamped readings and frames
+                 go through four stages, and the point gets a verdict.
+                                                      Samuel, Kevin, Reagan
+
+THE PIPELINE, AND WHERE YOUR PART FITS
+
+  readings ─▶ clean ─▶ enhance ─▶ classify ─▶ interpret ─▶ result.json
+  + frames    Kevin    ▲ YOU      Reagan      Samuel
+
+  - The skeleton is BUILT: `cropwatcher process --flight <id>` already runs a
+    real flight through all four stages. Every stage but interpret is a STUB
+    that stands in for its owner's work — yours replaces stages/enhance/stub.py
+    (passes originals through).
+  - The unit of work is ONE INSPECTION POINT (its readings and frames).
+  - Your stage receives exactly the types in dpp-contract.txt, returns exactly
+    the types there, and nothing else. That is what lets it plug in without
+    anyone changing the rest.
+  - Classify reads your enhanced frames — or the originals, if the classifier
+    was trained on them. Agree which with Reagan: a model must see in use what
+    it saw in training.
+
+Read dpp-contract.txt next. Then this ticket's details.
+
+
+THE JOB, IN ONE PARAGRAPH
+
+The AI deck's camera gives 324×244 GRAYSCALE frames. For every frame of an
+inspection point, write an enhanced copy (upscaled, clearer) under
+ctx.workdir, and return where it is. THE ORIGINAL IS NEVER TOUCHED. The
+classifier and the inspector can then use either.
+
+
+TWO FACTS THAT SHAPE THIS TICKET
+
+1. THE CAMERA HAS NOT DELIVERED A WHOLE REAL FRAME YET
+   (docs/features/desktop/camera.txt). Until it does, work with:
+   - the agent's test pattern (cropwatcher/camera/source.py), for the
+     plumbing;
+   - THE TRAINING PHOTOS FROM STORY 4.1 (Hannah and Yordanos), shrunk to
+     324×244 grayscale. For judging quality, these are better than real
+     frames: you have the full-resolution original to compare against.
+
+2. SUPER-RESOLUTION INVENTS DETAIL. A GAN-based upscaler draws plausible
+   texture that was never in the scene. On an inspection drone, an invented
+   crack is a false alarm, and a smoothed-over one is a miss. So:
+   - The enhanced image is LABELLED AS ENHANCED everywhere it is shown.
+   - It is never the only evidence for a verdict. The classify owner decides
+     which image the model uses, and must train on the same kind.
+   - Your evaluation must look for invented detail, not just sharpness.
+
+
+INPUTS AND OUTPUTS
+
+Exactly as dpp-contract.txt, "Stage 2":
+
+  class YourEnhancer:
+      name = "fsrcnn"            # your choice
+      version = "x2-1"           # bump whenever output could change
+      def enhance(self, data: PointData, ctx: FlightContext) -> EnhanceResult: ...
+
+- ONE EnhancedFrame PER INPUT FRAME, IN THE SAME ORDER. A frame you could not
+  enhance gets path=None and a `note` explaining why. The rest carry on.
+- Write to ctx.workdir / "enhanced" / f"{frame.seq:06d}.png": 8-bit PNG,
+  grayscale in, grayscale out.
+- Set `scale` truthfully (the output width is frame.width * scale) and
+  `method` to what actually ran.
+
+
+CANDIDATE METHODS (all free, all run locally, none needs Docker)
+
+Evaluate at least the first three, then pick one by the numbers.
+
+  CLAHE + unsharp mask
+      Classical local-contrast boost, no upscaling.
+      Runtime: opencv-contrib-python-headless.
+      THE BASELINE TO BEAT. Instant, invents nothing, and often shows more on
+      low-contrast grayscale than a ×4 upscale does.
+
+  FSRCNN / ESPCN ×2, ×4
+      Small super-resolution networks.
+      Runtime: OpenCV dnn_superres (THE CONTRIB BUILD, not plain
+      opencv-python).
+      Tiny model files, fast on CPU. Pretrained .pb files are linked from
+      OpenCV's dnn_superres docs; record the source and license in
+      MODELS.json.
+
+  Real-ESRGAN, realesr-general-x4v3
+      Small GAN upscaler, BSD-3-Clause.
+      Runtime: export to ONNX, then onnxruntime.
+      The sharpest-looking result, and the one most likely to invent detail.
+      Check it hardest.
+
+  LapSRN, EDSR
+      Larger super-resolution networks. Runtime: OpenCV dnn_superres.
+      EDSR is slow on CPU. Only try it if the small ones fall short.
+
+  Colorize (stretch)
+      Zhang et al. colorization (OpenCV sample model), or DeOldify (MIT).
+      Runtime: OpenCV dnn, or ONNX.
+      COLORS ARE GUESSED, NOT MEASURED. Grayscale holds no color, so
+      "accurately" in the PDF's criterion cannot be met in general. Make it a
+      separate enhancer, never the default, and label its output "colorized
+      (estimated)".
+
+Keep evaluation code (PyTorch and the like) in ml/upscaling-eval/. Only the
+runtime path goes into stages/enhance/, within the dependency list in the
+contract (rule 11).
+
+
+STEP BY STEP
+
+1. BUILD THE EVALUATION SET (can start now): at least 30 training photos from
+   story 4.1, each shrunk to 324×244 grayscale, with the full-size original
+   kept as the reference.
+
+2. SCORE EVERY CANDIDATE in ml/upscaling-eval/, and write the table to
+   ml/upscaling-eval/RESULTS.txt:
+   - PSNR AND SSIM of the upscaled image against the reference (scikit-image
+     in ml/ is fine).
+   - TIME PER FRAME on the lab laptop's CPU.
+   - MODEL FILE SIZE.
+   - A BLIND SIDE-BY-SIDE CHECK: a sheet of 10 frames, original vs.
+     enhanced, shown to two teammates who don't know which method is which.
+     Record what they preferred, and whether anyone saw detail that isn't in
+     the reference.
+
+3. PICK ONE, and write the reason in RESULTS.txt.
+
+4. WRITE THE ENHANCER in stages/enhance/. Add the model to pipeline/models/
+   and MODELS.json (with sha256, source, license).
+
+5. TEST IT (below), plug it in, and run it on the fixture and a real flight.
+   Look at the output images yourself.
+
+6. TELL REAGAN WHICH METHOD WON. The classifier must be trained on whatever
+   images it will see in use.
+
+
+ACCEPTANCE
+
+  [ ] RESULTS.txt compares at least CLAHE, FSRCNN or ESPCN, and Real-ESRGAN
+      on PSNR, SSIM, time and size, and names the winner and why.
+  [ ] A before/after sheet of at least 10 frames (real ones if the camera
+      works by then), committed as a small image in ml/upscaling-eval/. This
+      is the PDF's criterion.
+  [ ] Every conformance check passes: one output per frame, same order, and
+      files written only under ctx.workdir.
+  [ ] No frames gives an empty result. A corrupt frame gives path=None with a
+      note, and every other frame is still enhanced.
+  [ ] The original frame file is byte-identical after the stage runs (test
+      it).
+  [ ] The time for 20 frames is measured and reported. Target: under 2 s.
+  [ ] The model file is under 20 MB, with a complete MODELS.json entry.
+  [ ] Gates pass: ruff check . && mypy cropwatcher && pytest
+
+
+OUT OF SCOPE
+
+- Deciding faulty or not faulty.
+- Getting frames off the drone. That is the camera work
+  (docs/features/desktop/camera.txt).
+- Changing how frames are recorded (cropwatcher/camera/recording.py).
+
+
+WHEN YOU SHIP
+
+Add the method, the evaluation numbers and the known limits (invented detail
+especially) to docs/features/pipeline/, then delete this ticket in the same
+pull request.

@@ -30,7 +30,16 @@ from collections.abc import Callable
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import (
+    Body,
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -44,6 +53,17 @@ from cropwatcher.camera.deck import parse_addr
 from cropwatcher.camera.recording import Recorder
 from cropwatcher.camera.wifi import DeckWifi, Phase, WifiError
 from cropwatcher.drone_setup import DroneSetup, SetupError
+from cropwatcher.flight.manual import CLIMB_RATE_M_S, MAX_HEIGHT_M, MOVE_SPEED_M_S
+from cropwatcher.mission.plan.floorplan import DEFAULT_CLEARANCE_M, PlanError, Room
+from cropwatcher.mission.plan.geofence import DEFAULT_Z_MAX_M, DEFAULT_Z_MIN_M
+from cropwatcher.mission.plan.mission import MIN_HOLD_S, Mission
+from cropwatcher.mission.plan.store import InUse, NotFound
+from cropwatcher.mission.plan.validate import (
+    errors,
+    outer_bound,
+    validate_mission,
+    validate_room,
+)
 from cropwatcher.paths import data_dir
 from cropwatcher.session import Mode, Session, SessionError, State
 from cropwatcher.sync.cloud import SupabaseCloud
@@ -124,6 +144,11 @@ class DeckWifiRequest(BaseModel):
     password: str = Field("", max_length=128)
 
 
+class MissionRunRequest(BaseModel):
+    mission_id: str = Field(..., min_length=1, max_length=64)
+    ambient: str = Field("22C", description="room temperature, e.g. 74F or 22C")
+
+
 class ConfirmRequest(BaseModel):
     #: The operator accepts flying with no base stations: height from the
     #: barometer only, no position hold, no drift or fence guard. Required only
@@ -161,7 +186,8 @@ class Agent:
         )
         #: Every camera frame of a session, to disk first (camera/recording.py).
         #: Standby frames are shown, never recorded.
-        self.recorder = Recorder(self.outbox, position=lambda: self.session.position())
+        self.recorder = Recorder(self.outbox, position=lambda: self.session.position(),
+                                 point_id=lambda: self.session.current_point_id())
         if isinstance(self.camera, DeckStream):
             self.camera.add_listener(self.recorder.on_frame)
         self.session = Session(
@@ -698,6 +724,12 @@ def run_program(request: ProgramRequest) -> dict:
         height_m=request.height_m, hold_s=request.hold_s, ambient=request.ambient))
 
 
+@app.post("/session/mission", dependencies=[Command])
+def run_mission(request: MissionRunRequest) -> dict:
+    """Fly a saved mission. Every refusal comes back as a 409, before anything arms."""
+    return _run(lambda: agent.session.run_mission(request.mission_id, ambient=request.ambient))
+
+
 @app.post("/session/manual/arm", dependencies=[Command])
 def arm_manual(request: ManualRequest) -> dict:
     return _run(lambda: agent.session.arm_manual(ambient=request.ambient))
@@ -723,6 +755,152 @@ def emergency_stop() -> dict:
 @app.post("/session/end", dependencies=[Command])
 def end_session() -> dict:
     return _run(lambda: agent.session.end("operator"))
+
+
+# ── rooms and missions ───────────────────────────────────────────────────
+#
+# The floor plans and missions saved on this laptop (mission/plan/store.py),
+# for the Auto page's Mission step. Every route needs the control token: a plan
+# decides where a drone will fly.
+#
+# Writes are POST, not PUT or DELETE, on purpose: the desktop window's CORS
+# allows GET and POST only (LocalCORS), and widening that for a verb name is
+# not worth a second method any page could try.
+#
+# Every room and mission comes back with its `problems` (validate.py) and
+# `valid`, so the editor shows exactly what the agent will refuse — the agent's
+# own check is the authority, not the editor's copy of it.
+
+
+def _plan_refusal(e: Exception) -> HTTPException:
+    if isinstance(e, NotFound):
+        return HTTPException(status_code=404, detail=str(e))
+    if isinstance(e, InUse):
+        return HTTPException(status_code=409, detail=str(e))
+    return HTTPException(status_code=422, detail=str(e))
+
+
+def _outer(room: Room | None) -> dict:
+    bound = outer_bound(room, default_half_extent_m=agent.session.fence_half_extent_m)
+    return {"vertices": bound.to_dict()["vertices"],
+            "measured": room is not None and room.coverage is not None}
+
+
+def _room_view(room: Room) -> dict:
+    problems = validate_room(room, outer=outer_bound(
+        room, default_half_extent_m=agent.session.fence_half_extent_m))
+    return {**room.to_dict(), "outer": _outer(room),
+            "problems": [p.to_dict() for p in problems], "valid": not errors(problems)}
+
+
+def _mission_view(mission: Mission, room: Room | None) -> dict:
+    if room is None:
+        problems = [{"code": "missing_room", "severity": "error", "where": None,
+                     "message": f"Its room {mission.room_id} is not on this computer."}]
+        valid = False
+    else:
+        found = validate_mission(mission, room, outer=outer_bound(
+            room, default_half_extent_m=agent.session.fence_half_extent_m))
+        problems, valid = [p.to_dict() for p in found], not errors(found)
+    return {**mission.to_dict(), "problems": problems, "valid": valid,
+            "path_length_m": round(mission.path_length_m(), 3),
+            "estimated_duration_s": round(mission.estimated_duration_s(
+                move_speed_m_s=MOVE_SPEED_M_S, climb_rate_m_s=CLIMB_RATE_M_S), 1)}
+
+
+def _room_or_none(room_id: str) -> Room | None:
+    try:
+        return agent.session.plans.room(room_id)
+    except (NotFound, PlanError):
+        return None
+
+
+@app.get("/plan/limits", dependencies=[Command])
+def plan_limits() -> dict:
+    """What the editor clamps every shape to, before any room exists."""
+    return {
+        "outer": _outer(None),
+        "default_clearance_m": DEFAULT_CLEARANCE_M,
+        "min_hold_s": MIN_HOLD_S,
+        "z_min_m": DEFAULT_Z_MIN_M, "z_max_m": min(DEFAULT_Z_MAX_M, MAX_HEIGHT_M),
+        "move_speed_m_s": MOVE_SPEED_M_S, "climb_rate_m_s": CLIMB_RATE_M_S,
+    }
+
+
+@app.get("/rooms", dependencies=[Command])
+def list_rooms() -> list[dict]:
+    return [_room_view(r) for r in agent.session.plans.rooms()]
+
+
+@app.get("/rooms/{room_id}", dependencies=[Command])
+def read_room(room_id: str) -> dict:
+    try:
+        return _room_view(agent.session.plans.room(room_id))
+    except (NotFound, PlanError) as e:
+        raise _plan_refusal(e) from None
+
+
+@app.post("/rooms", dependencies=[Command])
+def save_room(body: dict = Body(...)) -> dict:  # noqa: B008 — FastAPI's own idiom
+    try:
+        return _room_view(agent.session.plans.save_room(Room.from_dict(body)))
+    except PlanError as e:
+        raise _plan_refusal(e) from None
+
+
+@app.post("/rooms/{room_id}/delete", dependencies=[Command])
+def delete_room(room_id: str) -> dict:
+    try:
+        agent.session.plans.delete_room(room_id)
+    except (NotFound, PlanError) as e:
+        raise _plan_refusal(e) from None
+    return {"deleted": room_id}
+
+
+@app.get("/missions", dependencies=[Command])
+def list_missions() -> list[dict]:
+    rooms = {r.id: r for r in agent.session.plans.rooms()}
+    return [_mission_view(m, rooms.get(m.room_id)) for m in agent.session.plans.missions()]
+
+
+@app.get("/missions/{mission_id}", dependencies=[Command])
+def read_mission(mission_id: str) -> dict:
+    try:
+        mission = agent.session.plans.mission(mission_id)
+    except (NotFound, PlanError) as e:
+        raise _plan_refusal(e) from None
+    return _mission_view(mission, _room_or_none(mission.room_id))
+
+
+@app.post("/missions", dependencies=[Command])
+def save_mission(body: dict = Body(...)) -> dict:  # noqa: B008
+    try:
+        mission = agent.session.plans.save_mission(Mission.from_dict(body))
+    except PlanError as e:
+        raise _plan_refusal(e) from None
+    return _mission_view(mission, _room_or_none(mission.room_id))
+
+
+@app.post("/missions/validate", dependencies=[Command])
+def validate_draft(body: dict = Body(...)) -> dict:  # noqa: B008
+    """Check a draft that has not been saved: {"mission": ..., "room": ...}.
+    `room` is optional — without it, the saved room the mission names."""
+    try:
+        mission = Mission.from_dict(body.get("mission") or {})
+        room = Room.from_dict(body["room"]) if body.get("room") else \
+            agent.session.plans.room(mission.room_id)
+    except (NotFound, PlanError) as e:
+        raise _plan_refusal(e) from None
+    return _mission_view(mission, room)
+
+
+@app.post("/missions/{mission_id}/delete", dependencies=[Command])
+def delete_mission(mission_id: str) -> dict:
+    try:
+        agent.session.plans.delete_mission(mission_id)
+    except (NotFound, PlanError) as e:
+        raise _plan_refusal(e) from None
+    return {"deleted": mission_id}
 
 
 @app.post("/drone/connect", dependencies=[Command])

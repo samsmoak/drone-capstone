@@ -54,6 +54,118 @@ export type Session = {
   /** The radio, apart from any session: signed in and idle, the agent holds
    *  the drone on standby — vitals and the camera, never the motors. */
   radio: Radio;
+  /** The mission being flown, or the last one flown this session; null when
+   *  none has run. From the agent's session snapshot (session.py). */
+  mission: MissionProgress | null;
+};
+
+/** What the mission controller reports while a mission flies. */
+export type MissionProgress = {
+  id: string;
+  name: string;
+  revision: number;
+  room_id: string;
+  points: string[];
+  state: "idle" | "taking_off" | "transit" | "arriving" | "holding" | "returning"
+    | "landing" | "done" | "aborted" | "interrupted" | "failed";
+  current_point_id: string | null;
+  completed_point_ids: string[];
+  last_event: { kind: string; at_s: number; point_id: string | null; detail: string } | null;
+};
+
+// ── rooms and missions (backend/agent/cropwatcher/mission/plan) ─────────
+//
+// Metres, in the Lighthouse room frame: x and y absolute, heights above the
+// floor captured at takeoff. Feet appear only in labels (format.ts).
+
+export type XY = [number, number];
+
+export type Problem = {
+  code: string;
+  message: string;
+  severity: "error" | "warning";
+  /** A point id, "home", a leg ("P1 → P2"), an obstacle id, or null. */
+  where: string | null;
+};
+
+export type FenceShape = "rectangle" | "circle" | "polygon";
+
+export type Geofence = {
+  shape: FenceShape;
+  vertices: XY[];
+  z_min: number;
+  z_max: number;
+};
+
+export type ObstacleKind = "line" | "rectangle" | "circle";
+
+export type Obstacle = {
+  id: string;
+  kind: ObstacleKind;
+  label: string | null;
+  /** line: two ends · rectangle: two opposite corners · circle: the centre. */
+  points: XY[];
+  radius?: number;
+};
+
+/** The largest area anything in a room may occupy: its measured Lighthouse
+ *  coverage, or the agent's default area until that is measured. */
+export type OuterBound = { vertices: XY[]; measured: boolean };
+
+export type Room = {
+  format: number;
+  id: string;
+  name: string;
+  geofence: Geofence;
+  obstacles: Obstacle[];
+  coverage: Geofence | null;
+  clearance_m: number;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type RoomView = Room & { outer: OuterBound; problems: Problem[]; valid: boolean };
+
+export type InspectionPoint = {
+  id: string;
+  label: string | null;
+  x_m: number;
+  y_m: number;
+  z_m: number;
+  hold_s: number;
+};
+
+export type Mission = {
+  format: number;
+  id: string;
+  name: string;
+  room_id: string;
+  home: XY;
+  points: InspectionPoint[];
+  cruise_height_m: number;
+  return_to_start: boolean;
+  revision: number;
+  flown_revision: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MissionView = Mission & {
+  problems: Problem[];
+  valid: boolean;
+  path_length_m: number;
+  estimated_duration_s: number;
+};
+
+export type PlanLimits = {
+  outer: OuterBound;
+  default_clearance_m: number;
+  min_hold_s: number;
+  z_min_m: number;
+  z_max_m: number;
+  move_speed_m_s: number;
+  climb_rate_m_s: number;
 };
 
 export type Radio = {
@@ -270,6 +382,22 @@ export const api = {
       `/history/sessions?limit=${limit}${mode ? `&mode=${mode}` : ""}`, undefined, "GET"),
   readSession: (id: string) =>
     command<SessionRecord>(`/history/sessions/${encodeURIComponent(id)}`, undefined, "GET"),
+  planLimits: () => command<PlanLimits>("/plan/limits", undefined, "GET"),
+  rooms: () => command<RoomView[]>("/rooms", undefined, "GET"),
+  room: (id: string) => command<RoomView>(`/rooms/${encodeURIComponent(id)}`, undefined, "GET"),
+  mission: (id: string) =>
+    command<MissionView>(`/missions/${encodeURIComponent(id)}`, undefined, "GET"),
+  saveRoom: (room: Room) => command<RoomView>("/rooms", room),
+  deleteRoom: (id: string) => command<{ deleted: string }>(`/rooms/${encodeURIComponent(id)}/delete`),
+  missions: () => command<MissionView[]>("/missions", undefined, "GET"),
+  saveMission: (mission: Mission) => command<MissionView>("/missions", mission),
+  deleteMission: (id: string) =>
+    command<{ deleted: string }>(`/missions/${encodeURIComponent(id)}/delete`),
+  /** Check a draft the agent has not saved — the agent's own validation. */
+  validateMission: (mission: Mission, room: Room | null) =>
+    command<MissionView>("/missions/validate", { mission, room }),
+  runMission: (missionId: string, ambient: string) =>
+    command<Session>("/session/mission", { mission_id: missionId, ambient }),
   readSamples: (id: string, variables: readonly string[], mode?: Mode) =>
     command<SampleRow[]>(
       `/history/sessions/${encodeURIComponent(id)}/samples?vars=${encodeURIComponent(variables.join(","))}${mode ? `&mode=${mode}` : ""}`,

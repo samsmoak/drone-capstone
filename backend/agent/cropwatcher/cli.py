@@ -7,7 +7,8 @@ click in.
     cropwatcher check                       # every gate, no motors
     cropwatcher proptest                    # the firmware's motor test
     cropwatcher hover --height 0.3 --secs 10 --ambient 74F
-    cropwatcher mission --file plan.json
+    cropwatcher mission --id <mission id> --dry-run
+    cropwatcher process --flight <flight id>   # the data pipeline
     cropwatcher serve                       # the local API for the desktop app
 
 Every flight here goes through the same :class:`DroneLink` the app uses, so the
@@ -32,11 +33,15 @@ from cropwatcher.flight import geometry as geometry_estimation
 from cropwatcher.flight.checks import CheckResult, ChecksFailed, CheckStatus, ReadyReport, collect
 from cropwatcher.flight.control import FlightAborted
 from cropwatcher.flight.link import DroneLink, LinkError
-from cropwatcher.flight.missions import Mission, MissionValidationError, execute, lawnmower_mission
+from cropwatcher.flight.manual import CLIMB_RATE_M_S, MOVE_SPEED_M_S
 from cropwatcher.flight.programs import HoverTest, run_hover_test
+from cropwatcher.mission.controller import TERMINAL_STATES, MissionController, MissionEvent
+from cropwatcher.mission.plan.floorplan import PlanError
+from cropwatcher.mission.plan.store import NotFound, PlanStore
+from cropwatcher.mission.plan.validate import errors, outer_bound, validate_mission
 from cropwatcher.paths import flights_dir
+from cropwatcher.safety.flight_guard import Action as GuardAction
 from cropwatcher.safety.flight_guard import assess_positioning
-from cropwatcher.safety.geofence import Geofence
 from cropwatcher.telemetry.reader import FlightRecorder
 from cropwatcher.telemetry.row import parse_ambient
 from cropwatcher.telemetry.sinks import CsvSink
@@ -96,16 +101,12 @@ def build_parser() -> argparse.ArgumentParser:
     hover.add_argument("--secs", type=float, default=10.0, help="hold duration")
     _add_flight_common(hover)
 
-    mission = sub.add_parser("mission", help="fly a saved mission file")
-    mission.add_argument("--file", required=True, help="path to a mission JSON file")
+    mission = sub.add_parser(
+        "mission", help="check, then fly, a mission saved on this laptop (made in the app)")
+    mission.add_argument("--id", required=True, help="the mission's id")
+    mission.add_argument("--dry-run", action="store_true",
+                         help="check and describe the mission; never connect")
     _add_flight_common(mission)
-
-    lawn = sub.add_parser("lawnmower", help="write a serpentine scan to a mission file")
-    lawn.add_argument("--width", type=float, required=True, help="metres")
-    lawn.add_argument("--height-m", type=float, required=True, help="metres")
-    lawn.add_argument("--step", type=float, default=0.5, help="lane spacing, metres")
-    lawn.add_argument("--altitude", type=float, default=0.5, help="metres above the floor")
-    lawn.add_argument("--out", required=True, help="where to write the plan")
 
     serve = sub.add_parser("serve", help="run the local API for the desktop app")
     serve.add_argument("--host", default="127.0.0.1",
@@ -116,6 +117,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="land, cut motors and exit when stdin closes. The desktop app passes "
              "this so quitting it cannot strand an agent holding the radio.",
     )
+
+    process = sub.add_parser(
+        "process", help="run the data pipeline over a recorded flight; never connects")
+    which = process.add_mutually_exclusive_group(required=True)
+    which.add_argument("--flight", help="the flight's id (a session's flights list it)")
+    which.add_argument("--fixture", action="store_true",
+                       help="run on the test fixture in tests/pipeline (source checkout only)")
 
     sub.add_parser("selftest", help="load every library the agent only loads on demand")
     return parser
@@ -136,7 +144,8 @@ def _run_checks(link: DroneLink) -> ReadyReport:
     return collect(link.checks(), _print_step)
 
 
-def _record(link: DroneLink, report: ReadyReport, args, flight_id: str) -> FlightRecorder | None:
+def _record(link: DroneLink, report: ReadyReport, args, flight_id: str,
+            point_id: Any = None) -> FlightRecorder | None:
     if args.no_log:
         return None
     ambient_c, unit = parse_ambient(args.ambient)
@@ -144,7 +153,7 @@ def _record(link: DroneLink, report: ReadyReport, args, flight_id: str) -> Fligh
     assert link.stream is not None
     recorder = FlightRecorder(
         link.stream, sink, ambient_c=ambient_c, unit=unit,
-        ground_z=report.ground_z_m, flight_id=flight_id,
+        ground_z=report.ground_z_m, flight_id=flight_id, point_id=point_id,
     )
     recorder.start()
     print(f"  recording to {sink.path}")
@@ -372,51 +381,143 @@ def cmd_hover(args: argparse.Namespace) -> int:
 
 
 def cmd_mission(args: argparse.Namespace) -> int:
+    """Check a saved mission, and fly it the way the app does.
+
+    The same path as Session.run_mission: validate in its room, the checks, the
+    battery budget, the home mark, a confirmation — then the manual flight
+    system armed, the mission controller giving it goals, and the guard watching
+    with the room's own geofence. This terminal is the operator's window: it
+    keeps the heartbeat going, and Ctrl-C lands.
+    """
+    store = PlanStore()
     try:
-        mission = Mission.from_file(args.file)
-    except (OSError, ValueError) as e:
-        print(f"  could not read the mission: {e}")
+        mission = store.mission(args.id)
+        room = store.room(mission.room_id)
+    except (NotFound, PlanError) as e:
+        print(f"  {e}")
         return 2
-    try:
-        mission.validate(geofence=Geofence.square(args.fence))
-    except MissionValidationError as e:
-        print(f"  the plan is not safe to fly: {e}")
+    problems = validate_mission(mission, room,
+                                outer=outer_bound(room, default_half_extent_m=args.fence))
+    needed = mission.estimated_duration_s(move_speed_m_s=MOVE_SPEED_M_S,
+                                          climb_rate_m_s=CLIMB_RATE_M_S)
+    print(f"\n  {mission.name}  (revision {mission.revision}, room {room.name})")
+    print(f"  {len(mission.points)} inspection points, {mission.path_length_m():.1f} m of "
+          f"path, about {needed:.0f} s")
+    for point in mission.points:
+        print(f"    {point.id:6} ({point.x_m:+.2f}, {point.y_m:+.2f}) m at {point.z_m:.2f} m, "
+              f"hold {point.hold_s:.0f} s{f'  {point.label}' if point.label else ''}")
+    for problem in problems:
+        print(f"  {problem.severity:7}  {problem.message}")
+    if errors(problems):
+        print("\n  not safe to fly — fix the plan in the app")
+        return 2
+    if args.dry_run:
+        print("\n  checked; nothing connected")
+        return 0
+    if not MissionController.BUILT:
+        print("\n  The mission controller is not built yet (docs/handoffs/"
+              "mission-controller.txt). Nothing was armed.")
         return 2
 
     with DroneLink(args.uri) as link:
         report = _run_checks(link)
-        if mission.estimated_duration_s() > report.budget_s():
+        if not report.assisted:
+            print("\n  a mission needs the drone to know where it is — get the base "
+                  "stations seen and run the checks again")
+            return 1
+        if needed > report.budget_s():
             print(f"\n  this battery has about {report.budget_s():.0f}s of flying left; "
-                  f"the mission needs {mission.estimated_duration_s():.0f}s")
+                  f"the mission needs {needed:.0f}s")
+            return 1
+        snap = link.snapshot()
+        x, y = snap.get("stateEstimate.x"), snap.get("stateEstimate.y")
+        if x is None or y is None or \
+                ((x - mission.home[0]) ** 2 + (y - mission.home[1]) ** 2) ** 0.5 > 0.30:
+            print(f"\n  place the drone on the home mark at ({mission.home[0]:+.2f}, "
+                  f"{mission.home[1]:+.2f}) m first")
             return 1
         if not _confirm_area():
             print("  cancelled")
             return 1
 
-        recorder = _record(link, report, args, flight_id="cli")
-        flight = link.guarded_flight(
-            report, target_height_m=mission.altitude_m, hold_position=False,
-            fence_half_extent_m=args.fence,
-        )
+        controller = link.manual(report)
+        holder: dict[str, MissionController] = {}
+        recorder = _record(link, report, args, flight_id="cli", point_id=lambda: (
+            holder["flying"].current_point_id if "flying" in holder else None))
+        guard = link.manual_guard(report, fence_half_extent_m=args.fence,
+                                  fence=room.geofence.contains)
+
+        def on_event(event: MissionEvent) -> None:
+            print(f"  {event.kind}: {event.detail}")
+
+        controller.arm()
+        controller.start()
+        flying = MissionController(mission, controller, on_event=on_event)
+        holder["flying"] = flying
         try:
-            for event in execute(mission, flight):
-                print(f"  {event.kind}: {event.detail}")
-        except FlightAborted as e:
-            print(f"\n  {e.verdict.message}")
-            return 1
+            flying.start()
+            while flying.state not in TERMINAL_STATES:
+                controller.heartbeat()
+                verdict = guard.check(link.snapshot(), time.monotonic())
+                if not verdict.ok:
+                    print(f"\n  {verdict.message}")
+                    if verdict.action is GuardAction.STOP:
+                        controller.emergency_stop()
+                    else:
+                        controller.land()
+                    flying.abort(verdict.message)
+                time.sleep(0.1)
+        except KeyboardInterrupt:
+            print("\n  interrupted — landing")
+            flying.abort("interrupted from the terminal")
+            controller.land()
         finally:
+            deadline = time.monotonic() + 8.0
+            while str(controller.state) == "landing" and time.monotonic() < deadline:
+                controller.heartbeat()
+                time.sleep(0.1)
+            controller.stop()
+            link.restore_estimator()
             if recorder is not None:
                 recorder.stop()
-    return 0
+        store.mark_flown(mission.id, mission.revision)
+        print(f"\n  mission {flying.state}")
+        return 0 if str(flying.state) == "done" else 1
 
 
-def cmd_lawnmower(args: argparse.Namespace) -> int:
-    mission = lawnmower_mission(
-        width_m=args.width, height_m=args.height_m, step_m=args.step, altitude_m=args.altitude,
-    )
-    Path(args.out).write_text(json.dumps(mission.to_dict(), indent=2), encoding="utf-8")
-    print(f"  {len(mission.waypoints)} waypoints, about "
-          f"{mission.estimated_duration_s():.0f}s → {args.out}")
+def cmd_process(args: argparse.Namespace) -> int:
+    """The data pipeline over one recorded flight: load, clean, enhance,
+    classify, interpret, save (story 4.5). Reads files; touches no radio."""
+    from cropwatcher.pipeline.compose import default_stages
+    from cropwatcher.pipeline.runner import run_flight
+    from cropwatcher.pipeline.sinks import LocalResultSink
+    from cropwatcher.pipeline.sources import FlightNotFound, LocalFlightSource
+
+    if args.fixture:
+        root = Path(__file__).resolve().parents[1] / "tests" / "pipeline" / "fixtures" / "data"
+        if not root.exists():
+            print("  the fixture is only in a source checkout (tests/pipeline/fixtures)")
+            return 2
+        flight_id = json.loads((root / "fixture.json").read_text(encoding="utf-8"))["flight_id"]
+        results = root.parent / "results"
+    else:
+        root, flight_id, results = paths.data_dir(), args.flight, paths.results_dir()
+    try:
+        result, where = run_flight(flight_id, source=LocalFlightSource(root),
+                                   sink=LocalResultSink(results), stages=default_stages())
+    except FlightNotFound as e:
+        print(f"  {e}")
+        return 2
+    print(f"\n  flight {result.flight_id}")
+    for stage, name in result.stages.items():
+        print(f"    {stage:10} {name}")
+    for point in result.points:
+        detail = result.summary.get(point.point_id, {})
+        print(f"  {point.point_id:8} {point.verdict:18} {detail.get('readings', 0)} readings, "
+              f"{detail.get('frames', 0)} frames — {'; '.join(point.reasons)}")
+    for failure in result.failures:
+        print(f"  FAILED   {failure.point_id} {failure.stage}: {failure.reason}")
+    print(f"\n  saved {where}")
     return 0
 
 
@@ -527,7 +628,7 @@ def main(argv: list[str] | None = None) -> int:
         "proptest": cmd_proptest,
         "hover": cmd_hover,
         "mission": cmd_mission,
-        "lawnmower": cmd_lawnmower,
+        "process": cmd_process,
         "serve": cmd_serve,
         "selftest": cmd_selftest,
     }

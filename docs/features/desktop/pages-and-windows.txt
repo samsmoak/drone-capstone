@@ -12,7 +12,8 @@ stop.
                out. Opens first.
   Control      the keys across the top, then two columns: the console on the
                left (vitals, camera, scene), the controls on the right (the
-               action rail and the step's own controls).
+               action rail and the step's own controls). IN AUTO the page is
+               the mission flow instead — auto-control.txt.
   Sessions     every session (who, when, how it ended) and one session's detail
   (standby)    signed in with no session, Home shows the drone on standby
                with Connect / Disconnect, and every sensor page shows live
@@ -471,8 +472,11 @@ shares-data-with  drone-wifi.txt
                   the Drone Wi-Fi page and its sidebar badge
 depends-on        ../backend/sessions-and-modes.txt
                   Home's standby row, vitals with no session
+consumed-by       auto-control.txt
+                  Auto reuses FlightDeck, Checklist, RetryPanel, HealthTestPanel,
+                  Field, the ConsolePane (`views`) and SceneView (`plan`)
 
 
-LAST VERIFIED  2026-09-22, against desktop/src and a headless measurement pass
-at 720/1000/1280/1600 in both themes. The Drone Wi-Fi page (2026-09-24) was
-built and type-checked but NOT put through that measurement pass.
+LAST VERIFIED  2026-09-28, against desktop/src and a headless measurement pass
+of the whole harness — Auto sections included — at 720/900/1024/1280/1600 in
+both themes, all PASS, the self-test failing as it must.

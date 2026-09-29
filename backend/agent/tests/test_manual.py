@@ -33,6 +33,7 @@ from cropwatcher.flight.manual import (
     Intent,
     ManualController,
 )
+from tests.fakes import FakeClock, FakeCommander
 
 GROUND = 1.0
 
@@ -47,68 +48,6 @@ def glide_distance(seconds: float) -> float:
 
 #: Distance covered easing from full climb speed to a stop.
 STOPPING_DISTANCE = CLIMB_RATE_M_S**2 / (2 * CLIMB_ACCEL_M_S2)
-
-
-class FakeCommander:
-    """Records every command, so the drone's-eye view can be asserted."""
-
-    def __init__(self):
-        self.commands: list[tuple] = []
-
-    def send_setpoint(self, roll, pitch, yaw_rate, thrust):
-        self.commands.append(("setpoint", roll, pitch, yaw_rate, thrust))
-
-    def send_hover_setpoint(self, vx, vy, yawrate, zdistance):
-        self.commands.append(("hover", vx, vy, yawrate, zdistance))
-
-    def send_zdistance_setpoint(self, roll, pitch, yawrate, zdistance):
-        self.commands.append(("zdistance", roll, pitch, yawrate, zdistance))
-
-    def send_position_setpoint(self, x, y, z, yaw):
-        self.commands.append(("position", x, y, z, yaw))
-
-    def send_notify_setpoint_stop(self, remain_valid_milliseconds=0):
-        self.commands.append(("notify_stop",))
-
-    def send_stop_setpoint(self):
-        self.commands.append(("stop",))
-
-    def last(self, kind):
-        return next(c for c in reversed(self.commands) if c[0] == kind)
-
-    def kinds(self):
-        return [c[0] for c in self.commands]
-
-    #: The setpoints that fly the drone, as opposed to notify/stop bookkeeping.
-    FLYING = ("hover", "zdistance", "position", "setpoint")
-
-    def height(self):
-        """The commanded height, off whichever setpoint last carried one.
-
-        Which setpoint that is depends on the law and on whether the spot is
-        being held, and no test here is about that — they are about the height.
-        """
-        for c in reversed(self.commands):
-            if c[0] in ("hover", "zdistance"):
-                return c[4]
-            if c[0] == "position":
-                return c[3]
-        raise AssertionError("nothing carrying a height was ever sent")
-
-    def first_flying(self):
-        """Index of the first setpoint that flies the drone."""
-        return next(i for i, c in enumerate(self.commands) if c[0] in self.FLYING)
-
-
-class FakeClock:
-    def __init__(self):
-        self.now = 0.0
-
-    def __call__(self) -> float:
-        return self.now
-
-    def advance(self, seconds: float) -> None:
-        self.now += seconds
 
 
 #: An arbitrary spot the estimator reports the drone at, so tests that care
@@ -982,5 +921,162 @@ class TestHoldAt:
         rig = Rig()
         rig.fly_to(0.40)
         rig.ctl.hold_at(0.80)
+        rig.run(HEARTBEAT_TIMEOUT_S + 0.2, heartbeat=False)
+        assert rig.ctl.state in (ControlState.LANDING, ControlState.LANDED)
+
+
+class TestFlyTo:
+    """fly_to() — the goal the mission controller flies a mission with.
+
+    The drone here FOLLOWS the commanded point (the estimator reports wherever
+    the last position setpoint put it), because a goal the drone never moves
+    towards is held back by the leash — which one test below relies on.
+    """
+
+    @staticmethod
+    def airborne(rig: Rig, height: float = 0.40) -> None:
+        rig.ctl.arm()
+        rig.ctl.hold_at(height)
+        rig.run(6.0)
+        assert rig.ctl.state is ControlState.FLYING
+
+    @staticmethod
+    def follow(rig: Rig, seconds: float, intent: Intent | None = None) -> None:
+        """Tick with the drone tracking the commanded point perfectly."""
+        if intent is not None:
+            rig.ctl.set_intent(intent)
+        for _ in range(round(seconds / TICK_S)):
+            rig.clock.advance(TICK_S)
+            rig.ctl.heartbeat()
+            rig.ctl.tick()
+            _, x, y, _, yaw = rig.cmd.last("position")
+            rig.fix = Fix(x, y, yaw)
+
+    def test_it_glides_to_the_point_and_holds_it(self):
+        rig = Rig()
+        self.airborne(rig)
+        goal = (SOMEWHERE.x + 1.0, SOMEWHERE.y + 0.5)
+        rig.ctl.fly_to(*goal, 0.60)
+        assert rig.ctl.goal_active
+        self.follow(rig, 12.0)
+        _, x, y, z, _ = rig.cmd.last("position")
+        assert math.hypot(x - goal[0], y - goal[1]) <= 0.02
+        assert z == pytest.approx(GROUND + 0.60, abs=0.02)
+        assert not rig.ctl.goal_active
+        assert not rig.ctl.operator_override
+
+    def test_it_never_goes_faster_than_the_arrow_keys(self):
+        rig = Rig()
+        self.airborne(rig)
+        rig.ctl.fly_to(SOMEWHERE.x + 2.0, SOMEWHERE.y, 0.40)
+        previous = rig.cmd.last("position")
+        worst = 0.0
+        for _ in range(round(8.0 / TICK_S)):
+            self.follow(rig, TICK_S)
+            current = rig.cmd.last("position")
+            worst = max(worst, math.hypot(current[1] - previous[1],
+                                          current[2] - previous[2]) / TICK_S)
+            previous = current
+        assert worst <= MOVE_SPEED_M_S + 1e-6
+
+    def test_it_does_not_overshoot(self):
+        """The approach profile: the point slows before the goal, so it never
+        runs past it by the easing's stopping distance."""
+        rig = Rig()
+        self.airborne(rig)
+        goal_x = SOMEWHERE.x + 1.0
+        rig.ctl.fly_to(goal_x, SOMEWHERE.y, 0.40)
+        furthest = -math.inf
+        for _ in range(round(12.0 / TICK_S)):
+            self.follow(rig, TICK_S)
+            furthest = max(furthest, rig.cmd.last("position")[1])
+        assert furthest <= goal_x + 0.02
+
+    def test_it_travels_the_right_way_whatever_the_heading(self):
+        """The goal is in the ROOM's frame; the drone's heading must not bend it."""
+        rig = Rig(fix=Fix(0.0, 0.0, 90.0))
+        self.airborne(rig)
+        rig.ctl.fly_to(1.0, 0.0, 0.40)
+        self.follow(rig, 12.0)
+        _, x, y, _, _ = rig.cmd.last("position")
+        assert x == pytest.approx(1.0, abs=0.02)
+        assert y == pytest.approx(0.0, abs=0.02)
+
+    def test_a_held_key_cancels_it_and_says_so(self):
+        rig = Rig()
+        self.airborne(rig)
+        rig.ctl.fly_to(SOMEWHERE.x + 2.0, SOMEWHERE.y, 0.40)
+        self.follow(rig, 1.0)
+        self.follow(rig, TICK_S, Intent(left=True))
+        assert rig.ctl.operator_override
+        assert not rig.ctl.goal_active
+        # Released: the point stays where the operator left it, not the goal.
+        self.follow(rig, 3.0, Intent())
+        _, x, _, _, _ = rig.cmd.last("position")
+        assert x < SOMEWHERE.x + 1.0
+
+    def test_any_key_cancels_a_height_goal_too(self):
+        rig = Rig()
+        self.airborne(rig, 0.30)
+        rig.ctl.fly_to(SOMEWHERE.x, SOMEWHERE.y, 0.90)
+        self.follow(rig, 0.5)
+        self.follow(rig, TICK_S, Intent(yaw_left=True))
+        assert rig.ctl.operator_override
+        assert not rig.ctl.goal_active
+
+    def test_the_next_goal_clears_the_override(self):
+        rig = Rig()
+        self.airborne(rig)
+        rig.ctl.fly_to(SOMEWHERE.x + 1.0, SOMEWHERE.y, 0.40)
+        self.follow(rig, TICK_S, Intent(forward=True))
+        self.follow(rig, TICK_S, Intent())
+        assert rig.ctl.operator_override
+        rig.ctl.fly_to(SOMEWHERE.x, SOMEWHERE.y, 0.40)
+        assert not rig.ctl.operator_override
+
+    def test_the_leash_still_holds_a_drone_that_does_not_follow(self):
+        """The drone stuck where it is: the commanded point never gets more
+        than the leash ahead of it, goal or not."""
+        rig = Rig()
+        self.airborne(rig)
+        rig.ctl.fly_to(SOMEWHERE.x + 3.0, SOMEWHERE.y, 0.40)
+        rig.run(10.0)
+        _, x, y, _, _ = rig.cmd.last("position")
+        assert math.hypot(x - SOMEWHERE.x, y - SOMEWHERE.y) <= LEASH_M + 1e-6
+
+    def test_it_is_refused_unassisted(self):
+        rig = Rig(assisted=False, fix=None)
+        rig.ctl.arm()
+        rig.ctl.hold_at(0.40)
+        rig.run(6.0)
+        with pytest.raises(RuntimeError, match="position"):
+            rig.ctl.fly_to(1.0, 0.0, 0.40)
+
+    def test_it_is_refused_on_the_ground(self):
+        rig = Rig()
+        rig.ctl.arm()
+        with pytest.raises(RuntimeError, match="airborne"):
+            rig.ctl.fly_to(1.0, 0.0, 0.40)
+
+    def test_an_impossible_height_or_coordinate_is_refused(self):
+        rig = Rig()
+        self.airborne(rig)
+        with pytest.raises(ValueError):
+            rig.ctl.fly_to(1.0, 0.0, MAX_HEIGHT_M + 0.01)
+        with pytest.raises(ValueError):
+            rig.ctl.fly_to(math.nan, 0.0, 0.40)
+
+    def test_landing_ends_the_goal(self):
+        rig = Rig()
+        self.airborne(rig)
+        rig.ctl.fly_to(SOMEWHERE.x + 2.0, SOMEWHERE.y, 0.40)
+        rig.ctl.land()
+        assert not rig.ctl.goal_active
+
+    def test_the_heartbeat_still_lands_it_mid_leg(self):
+        """A mission does not defeat the dead-man: the app goes quiet, it lands."""
+        rig = Rig()
+        self.airborne(rig)
+        rig.ctl.fly_to(SOMEWHERE.x + 2.0, SOMEWHERE.y, 0.40)
         rig.run(HEARTBEAT_TIMEOUT_S + 0.2, heartbeat=False)
         assert rig.ctl.state in (ControlState.LANDING, ControlState.LANDED)

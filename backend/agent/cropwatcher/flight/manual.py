@@ -317,6 +317,13 @@ class ManualController:
         #: None whenever the keys are in charge, which is nearly always. See
         #: hold_at() for why this is a goal and not a jump.
         self._goal_height: float | None = None
+        #: A point in the room the agent is gliding the commanded point towards
+        #: — fly_to(). None whenever the keys are in charge. See fly_to().
+        self._goal_xy: tuple[float, float] | None = None
+        #: Set when a held key cancelled a goal: the operator took the drone
+        #: back. The mission controller reads it to stop commanding. Cleared by
+        #: the next hold_at() or fly_to().
+        self._operator_override = False
         self._last_heartbeat = clock()
         self._last_tick = clock()
         self._state = ControlState.IDLE
@@ -380,6 +387,19 @@ class ManualController:
         """The floor, in the estimator's frame. Barometric when unassisted."""
         return self._ground_z
 
+    @property
+    def goal_active(self) -> bool:
+        """Whether the commanded point is still gliding towards a hold_at() or
+        fly_to() goal. False once it has arrived, or a key cancelled it."""
+        with self._lock:
+            return self._goal_xy is not None or self._goal_height is not None
+
+    @property
+    def operator_override(self) -> bool:
+        """A held key cancelled a goal: the operator has taken the drone back."""
+        with self._lock:
+            return self._operator_override
+
     # ── operator input ───────────────────────────────────────────────────
 
     def arm(self) -> None:
@@ -392,6 +412,8 @@ class ManualController:
             self._intent = Intent()
             self._target_height = 0.0
             self._goal_height = None
+            self._goal_xy = None
+            self._operator_override = False
             self._reset_glide_locked()
             self._last_heartbeat = self._clock()
             self._last_tick = self._clock()
@@ -432,7 +454,52 @@ class ManualController:
                     f"hold height must be above 0 and at most {ceiling:.2f} m"
                 )
             self._goal_height = height_m
+            self._operator_override = False
         log.info("manual control: holding at %.2f m", height_m)
+
+    def fly_to(self, x: float, y: float, height_m: float) -> None:
+        """Glide the commanded point to (x, y) in the room, at `height_m` above
+        the floor, and hold it there.
+
+        THIS ADDS NO CONTROL LAW, exactly like hold_at(). It sets a goal that the
+        EXISTING motion drives towards: the same eased speed and acceleration
+        the arrow keys produce (MOVE_SPEED_M_S, MOVE_ACCEL_M_S2), the same 30 cm
+        leash, the same estimator gates, the same guards, the same trace. The
+        mission controller flies a mission by calling this, one inspection
+        point at a time — that is why autonomous flight inherits everything
+        tuned into manual flight and nothing else.
+
+        x and y are absolute Lighthouse metres, as the estimator reports them;
+        the height is above the floor captured at takeoff (CLAUDE.md #4).
+
+        IT ARRIVES, IT DOES NOT COAST PAST. The requested speed is capped at the
+        speed the remaining distance can still be stopped from — the approach
+        profile the height goal uses — so the point slows before the goal
+        instead of overshooting it by the easing's stopping distance.
+
+        THE KEYS ALWAYS WIN. Any held key cancels this goal (and a height goal)
+        on the next tick and sets operator_override, so the operator can take
+        the drone back mid-mission without a mode to leave.
+
+        Assisted and airborne only: without a position there is nowhere to fly
+        to, and on the ground there is no commanded point yet.
+        """
+        if not all(math.isfinite(v) for v in (x, y, height_m)):
+            raise ValueError("fly_to needs finite coordinates")
+        with self._lock:
+            if not self._assisted:
+                raise RuntimeError("the drone has no position estimate, so it cannot fly "
+                                   "to a point")
+            if self._state is not ControlState.FLYING:
+                raise RuntimeError("the drone is not airborne")
+            if self._target is None:
+                raise RuntimeError("no position has been reported yet")
+            if not 0.0 < height_m <= MAX_HEIGHT_M:
+                raise ValueError(f"height must be above 0 and at most {MAX_HEIGHT_M:.2f} m")
+            self._goal_xy = (x, y)
+            self._goal_height = height_m
+            self._operator_override = False
+        log.info("manual control: flying to (%+.2f, %+.2f) at %.2f m", x, y, height_m)
 
     def set_intent(self, intent: Intent) -> None:
         with self._lock:
@@ -462,6 +529,7 @@ class ManualController:
         with self._lock:
             self._intent = Intent()
             self._goal_height = None
+            self._goal_xy = None
             self._state = ControlState.STOPPED
             self.stats.emergency_stops += 1
         self._commander.send_stop_setpoint()
@@ -526,6 +594,9 @@ class ManualController:
             self.stats.ticks += 1
             state = self._state
             silent = now - self._last_heartbeat > self._heartbeat_timeout
+
+            if state in (ControlState.ARMED, ControlState.FLYING) and not silent:
+                self._keys_cancel_goals_locked(self._intent)
 
             if state is ControlState.ARMED:
                 if silent:
@@ -597,6 +668,46 @@ class ManualController:
         self._climb_velocity = self._vx = self._vy = 0.0
         self._roll = self._pitch = self._yaw_rate = 0.0
         self._release_target_locked()
+
+    def _keys_cancel_goals_locked(self, intent: Intent) -> None:
+        """Any held key ends every goal, before anything moves this tick.
+
+        One place, at the top of the tick, so no branch below can let a goal
+        drive a coordinate the operator is already steering — the bug the
+        height goal once had (see _height_velocity_locked).
+        """
+        if self._goal_xy is None and self._goal_height is None:
+            return
+        if any(dataclasses.astuple(intent)):
+            self._goal_xy = None
+            self._goal_height = None
+            self._operator_override = True
+            log.info("manual control: a key took over from the goal")
+
+    def _goal_body_velocity_locked(self) -> tuple[float, float] | None:
+        """The (forward, left) speed the xy goal is asking for, in the drone's
+        own frame — or None when there is no xy goal.
+
+        It closes on the TARGET, never on the measured position: the target is
+        what this controller owns, and the drone follows it on the leash
+        (_goal_velocity_locked says why a second loop on position is wrong).
+        """
+        goal, target = self._goal_xy, self._target
+        if goal is None or target is None:
+            return None
+        ex, ey = goal[0] - target.x, goal[1] - target.y
+        distance = math.hypot(ex, ey)
+        if distance <= GOAL_REACHED_M:
+            # Arrived. The ordinary "no keys held" behaviour holds the spot from
+            # here; there is no separate hold mode to leave.
+            self._goal_xy = None
+            return (0.0, 0.0)
+        speed = min(MOVE_SPEED_M_S, math.sqrt(2.0 * MOVE_ACCEL_M_S2 * distance))
+        wx, wy = ex / distance * speed, ey / distance * speed
+        # Room frame to body frame: the inverse of _advance_target_locked's turn.
+        heading = math.radians(target.yaw_deg)
+        cos_h, sin_h = math.cos(heading), math.sin(heading)
+        return (wx * cos_h + wy * sin_h, -wx * sin_h + wy * cos_h)
 
     def _release_target_locked(self) -> None:
         self._target = None
@@ -720,8 +831,13 @@ class ManualController:
         # cflib MotionCommander: left is +vy, turning left is +yawrate.
         left = (1 if intent.left else 0) - (1 if intent.right else 0)
         yaw = (1 if intent.yaw_left else 0) - (1 if intent.yaw_right else 0)
-        self._vx = self._ease(self._vx, forward * MOVE_SPEED_M_S, MOVE_ACCEL_M_S2 * dt)
-        self._vy = self._ease(self._vy, left * MOVE_SPEED_M_S, MOVE_ACCEL_M_S2 * dt)
+        # A fly_to() goal asks for a speed exactly as a held arrow does; with
+        # no goal (nearly always, in Manual) the keys ask. Never both: a key
+        # cancelled the goal at the top of the tick.
+        wanted = self._goal_body_velocity_locked() or (
+            forward * MOVE_SPEED_M_S, left * MOVE_SPEED_M_S)
+        self._vx = self._ease(self._vx, wanted[0], MOVE_ACCEL_M_S2 * dt)
+        self._vy = self._ease(self._vy, wanted[1], MOVE_ACCEL_M_S2 * dt)
         self._yaw_rate = self._ease(self._yaw_rate, yaw * YAW_RATE_DEG_S, YAW_ACCEL_DEG_S2 * dt)
         # _glide_height_locked has already moved the height for this tick.
         z = self._ground_z + self._target_height
@@ -808,8 +924,9 @@ class ManualController:
 
     def _begin_landing_locked(self) -> None:
         self._intent = Intent()
-        # Coming down outranks any goal that was still climbing.
+        # Coming down outranks any goal that was still climbing or travelling.
         self._goal_height = None
+        self._goal_xy = None
         self._state = ControlState.LANDING
         self._landing_started = False
         self._landing_until = self._clock() + LAND_S

@@ -334,3 +334,18 @@ label:has(> input[type="checkbox"]),
 label:has(> input[type="radio"]) {
   cursor: pointer;
 }
+
+/* The plan canvas's handles (pages/control/auto/plan/PlanCanvas.tsx) are
+   focusable SVG groups; the keyboard focus must show on them like on any
+   button (WCAG 2.4.7). */
+.plan-handle {
+  cursor: grab;
+}
+.plan-handle-dragging {
+  cursor: grabbing;
+}
+.plan-handle:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+

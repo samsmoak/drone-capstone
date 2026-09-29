@@ -181,7 +181,7 @@ class TestFlightFactories:
         assert flight.guard.context.takeoff_xy == (0.1, 0.2)
         assert flight.guard.context.ground_z == 0.5
 
-    def test_waypoint_missions_do_not_guard_drift(self):
+    def test_a_program_that_moves_does_not_guard_drift(self):
         link, _, _ = make_link()
         link.open()
         flight = link.guarded_flight(REPORT, target_height_m=None, hold_position=False)

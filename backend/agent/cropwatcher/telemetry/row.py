@@ -86,6 +86,11 @@ class TelemetryRow:
     motor_m4: int | None = None
     lighthouse_received: int | None = None      # count of base stations received
 
+    # The inspection point being held when this row was taken, or None — set
+    # only while the mission controller is HOLDING (story 3.5). What the data
+    # pipeline groups readings by. Empty in every manual flight and hover demo.
+    point_id: str | None = None
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
@@ -101,6 +106,7 @@ def build_row(
     position: tuple[float, float, float],
     unit: TempUnit,
     sensors: Mapping[str, float] | None = None,
+    point_id: str | None = None,
 ) -> TelemetryRow:
     """Assemble a row, converting temperatures into the operator's unit.
 
@@ -141,6 +147,7 @@ def build_row(
         y_m=y,
         z_m=z,
         **_sensor_columns(sensors or {}),
+        point_id=point_id,
     )
 
 

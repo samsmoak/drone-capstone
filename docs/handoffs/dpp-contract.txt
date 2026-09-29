@@ -1,0 +1,251 @@
+DATA PIPELINE — the contract every stage builds against
+=======================================================
+
+STATUS: BUILT (2026-09-28, branch feat/missions-and-pipeline). The authority is
+backend/agent/cropwatcher/pipeline/contracts.py; this page describes it. If the
+two ever disagree, the CODE wins — tell Samuel so this page is corrected.
+
+Read this before your own ticket. It is the agreement that lets three people
+build three stages separately and have them work together the first time they
+are joined.
+
+
+THE WHOLE SYSTEM, IN ONE PAGE
+─────────────────────────────
+
+DroneDeck flies a Crazyflie around a room, stops at pieces of equipment, and
+records temperature, pressure and camera frames at each.
+
+  1  PLANNING  the operator draws a room (geofence, obstacles) and a mission
+               in it: an ordered list of INSPECTION POINTS. (Samuel, built.)
+  2  FLYING    the mission controller flies the mission through the manual
+               flight system; while the drone HOLDS at a point, every reading
+               and frame is stamped with that point's id. (Hannah.)
+  3  PROCESSING  THIS PIPELINE: the stamped readings and frames of each point
+               go through clean → enhance → classify → interpret, and each
+               point gets a verdict. (Samuel, Kevin, Reagan.)
+
+  readings ─▶ clean ─▶ enhance ─▶ classify ─▶ interpret ─▶ result.json
+  + frames    Kevin    Kevin      Reagan      Samuel
+              (4.2)    (4.3)      (4.4, 4.6)  (4.6)
+
+Planning story 4.5: "A single command turns a recorded flight into a result
+with a verdict for each inspection point." That command exists:
+
+  cropwatcher process --flight <flight id>     a flight on this laptop
+  cropwatcher process --fixture                the test fixture (source checkout)
+
+THE UNIT OF WORK IS ONE INSPECTION POINT, not one row or one frame. The same
+stage code serves a run after the flight (batch, built) and, later, a run as
+each point completes (live, story 4.9: the mission controller's
+POINT_COMPLETE). Cleaning needs a window of readings to see a spike;
+classifying needs a point's frames together — both have exactly that. A flight
+with no mission is ONE point with id "flight" (contracts.WHOLE_FLIGHT).
+
+
+WHERE IT RUNS, AND WHY IT IS BUILT THIS WAY
+───────────────────────────────────────────
+
+On the laptop, inside the agent: the laptop has every frame the moment the
+drone lands (the cloud only ever gets 2 a second), and only the laptop can
+steer the drone, which stories 4.9 and 4.10 need.
+
+Built to move to a cloud worker later without rewriting a stage:
+
+  PORTS AND ADAPTERS   the core has two ports — where a flight comes from
+                       (sources.FlightSource) and where a result goes
+                       (sinks.ResultSink). LocalFlightSource and
+                       LocalResultSink are the laptop's adapters; a cloud
+                       worker is two more.
+  DEPENDENCY INJECTION compose.py builds the pipeline by handing each stage the
+                       implementation to use (the composition root).
+  STRATEGY             each stage is an interface (a Protocol); your class is
+                       one implementation. Plugging in is a one-line change.
+
+The batch runner runs in the command's own process (it flies nothing). The
+live runner will run in a PROCESS OF ITS OWN, never a thread beside the 50 Hz
+flight loop — CPU work there competes for Python's one interpreter lock, and a
+late setpoint drops the drone. That is why every stage must be self-contained.
+
+
+WHERE THE FILES ARE
+───────────────────
+
+  backend/agent/cropwatcher/pipeline/
+    contracts.py          the types and interfaces below — THE authority
+    sources.py            LocalFlightSource: the CSV, the session's frames in
+                          the flight's time window, the plan flown
+    sinks.py              LocalResultSink: results/<flight>/result.json, work/
+    runner.py             run_point, run_flight
+    compose.py            which implementation each stage uses  ← you edit one line
+    stages/
+      clean/stub.py       flags nothing                          ← Kevin adds his
+      enhance/stub.py     passes originals through               ← Kevin adds his
+      classify/stub.py    "unknown", with the reason             ← Reagan adds hers
+      interpret/labels.py labels → verdicts (no invented thresholds)  Samuel
+    models/MODELS.json    one entry per model file (empty today)
+  backend/agent/tests/pipeline/
+    fixtures/data/        a real flight's readings, points added; README.txt
+                          says exactly what is real and what is made up
+    conformance.py        THE LIST of implementations to check  ← add yours
+    test_conformance.py   the checks every implementation must pass
+    test_pipeline.py      loading, running, failures, the command
+  ml/                     training and evaluation — NOT shipped; its own
+                          requirements.txt (create it with your first work)
+
+
+THE TYPES (contracts.py)
+────────────────────────
+
+Shared input
+
+  FlightContext        flight_id, session_id, temp_unit ("C" | "F" — the unit
+                       of EVERY temperature), ground_z_m, started_at (UTC),
+                       workdir (the ONLY place a stage may write), mode
+                       ("batch" | "live")
+  InspectionPoint      id, label, x_m, y_m (absolute Lighthouse metres),
+                       z_m (above the floor captured at takeoff)
+  Reading              index (unique within the flight), recorded_at (UTC),
+                       t_s (seconds since the flight's first row), values:
+                       Mapping[str, float | None] — numeric columns by name
+  Frame                seq, recorded_at, t_s, path (READ ONLY), width (324),
+                       height (244), x_m, y_m, z_m
+  PointData            point, readings (by index), frames (by seq; may be empty)
+
+The names in Reading.values are TelemetryRow's field names
+(cropwatcher/telemetry/row.py — the authority). The ones that matter:
+
+  raw_temp, corrected_temp           temp_unit    the sensor; after correction
+  deviation, thermal_offset,         temp_unit    the correction engine's working
+  ambient_est, expected_raw
+  roc_per_s                          temp_unit/s
+  station_pressure_hpa,              hPa
+  sea_level_pressure_hpa
+  pressure_altitude_m                m
+  battery_v                          V
+  x_m, y_m, z_m                      m            z above the floor at takeoff
+
+Stage 1 — clean (story 4.2)            class Cleaner(Protocol)
+  clean(data, ctx) -> CleanResult
+  CleanResult(readings, flags)         readings: EXACTLY the input, unchanged
+                                       usable(index, column) -> bool (provided)
+  ReadingFlag(index, column, kind, reason)
+                                       column None = the whole row (a gap)
+                                       kind: missing | out_of_range | spike |
+                                             stuck | gap
+
+Stage 2 — enhance (story 4.3)          class Enhancer(Protocol)
+  enhance(data, ctx) -> EnhanceResult
+  EnhanceResult(frames)                ONE PER INPUT FRAME, SAME ORDER
+  EnhancedFrame(frame, path, method, scale, note=None)
+                                       path None = not enhanced, use the
+                                       original; then `note` says why
+
+Stage 3 — classify (stories 4.4, 4.6)  class Classifier(Protocol)
+  classify(data, clean, enhanced, ctx) -> ClassifyResult
+  ClassifyResult(images, sensors, features={})
+                                       images: one ImageVerdict per frame, in order
+                                       sensors: one Label for the readings
+                                       features: names carry units ("temp_max_c")
+  ImageVerdict(seq, source, label)     source: "original" | "enhanced"
+  Label(value, p_faulty, model, reason=None)
+                                       value: normal | faulty | unknown
+                                       "unknown" MUST have a reason (checked
+                                       when the Label is built); p_faulty 0..1
+                                       model: "<name>@<version>"
+
+Stage 4 — interpret (Samuel)           class Interpreter(Protocol)
+  interpret(data, clean, classified, ctx) -> PointResult
+  PointResult(point_id, verdict, reasons, alerts=())
+                                       verdict: normal | anomaly | insufficient_data
+  Alert(point_id, severity, reason, evidence_readings, evidence_frames)
+
+The flight's result                    FlightResult, saved as JSON
+  flight_id, pipeline_version, stages ({"clean": "name@version", …}),
+  created_at, points (one PointResult each), failures (StageFailure: point,
+  stage, reason), summary (per point: readings, frames, flags; "_transit":
+  readings that belonged to no point)
+
+
+WHAT THE RUNNER DOES WHEN A STAGE GOES WRONG (runner.py)
+────────────────────────────────────────────────────────
+
+A stage that fails never takes the flight with it. The failure is recorded and
+the point goes as far as it honestly can:
+
+  clean fails       the point stops: insufficient_data. Analysing readings
+                    nobody checked is what cleaning exists to prevent.
+  enhance fails     the original frames are used.
+  classify fails    every label "unknown", with the failure as the reason.
+  interpret fails   insufficient_data, with the failure as the reason.
+
+A stage that BREAKS THE CONTRACT — a cleaner that edits or drops a reading, an
+enhancer that returns the wrong number of frames or writes outside workdir, a
+classifier that skips a frame — is treated exactly like one that failed.
+
+Raise StageError("words for the operator") when your stage cannot run at all
+(a missing model file). Any other exception is logged with its traceback.
+
+
+RULES EVERY STAGE FOLLOWS
+─────────────────────────
+
+[checked] = test_conformance.py verifies it on every pull request.
+
+ 1. SELF-CONTAINED. Output depends only on the input and your model file. No
+    network, no Supabase, no other flights. Never import cropwatcher.flight,
+    .session, .api, .sync or .camera.                                 [checked]
+ 2. ONE OUTPUT PER INPUT, IN ORDER.                                   [checked]
+ 3. NEVER CHANGE OR DELETE THE INPUT. Cleaning FLAGS; the next stage skips
+    what is flagged.                                                  [checked]
+ 4. FILES ONLY UNDER ctx.workdir; originals byte-identical after.     [checked]
+ 5. SAME INPUT, SAME OUTPUT. Fix every random seed.                   [checked]
+ 6. AN EMPTY POINT IS A RESULT, NOT AN EXCEPTION.                     [checked]
+ 7. FAIL SMALL, SAY WHY: one bad frame gets "unknown" and a reason; a stage
+    that cannot run raises StageError. Never swallow an exception silently.
+ 8. UNITS: metres, seconds, hPa. Temperatures arrive in ctx.temp_unit —
+    convert them yourself, and name converted features with their unit.
+ 9. VERSION HONESTLY: bump `version` whenever your output could change.
+10. LOGGING: log = logging.getLogger(__name__). No print.
+11. RUNTIME DEPENDENCIES are numpy, Pillow, opencv-contrib-python-headless and
+    onnxruntime — they go into the desktop installer. Anything else, ask
+    Samuel. Training in ml/ may use anything.
+12. TIME: measure your stage per point on the lab laptop and put it in the PR.
+    Targets: clean < 0.2 s; enhance and classify each < 2 s for 20 frames.
+
+
+MODEL FILES
+───────────
+
+Runtime model files go in cropwatcher/pipeline/models/ with an entry in
+MODELS.json (a JSON list; empty today):
+
+  {"name": "mobilenetv3-small-faulty", "version": "2026-10-05",
+   "file": "mobilenetv3-small-faulty-2026-10-05.onnx", "sha256": "…",
+   "source": "trained in ml/image-classifier/ from torchvision
+              MobileNet_V3_Small_Weights.IMAGENET1K_V1",
+   "license": "BSD-3-Clause (code); ImageNet weights, research use",
+   "input": "1x3x224x224 float32, grayscale repeated to 3 channels",
+   "output": "1x2 logits [normal, faulty]", "threshold": 0.5}
+
+- ONNX, run with ONNX Runtime. Train in anything, export to ONNX; the same
+  file then runs on the laptop and on a future cloud worker.
+- NO DOCKER. These are ordinary Python packages in the agent's environment;
+  Docker cannot reach USB on macOS anyway (CLAUDE.md invariant 7).
+- Committed model files under 20 MB. Datasets never committed — a manifest
+  CSV (file, label, angle, session, date) instead.
+
+
+HOW YOU PLUG IN
+───────────────
+
+1. Put your class in your stage's folder: stages/clean/hampel.py →
+   class HampelCleaner (with `name` and `version`).
+2. Add it to the list in tests/pipeline/conformance.py. Every check in
+   test_conformance.py now runs against it.
+3. Change the one line in compose.py from the stub to your class.
+4. Run it: `cropwatcher process --fixture` (writes to tests/pipeline/fixtures/
+   results/, which git ignores), then on a real flight with --flight. Open
+   result.json and read your stage's output.
+5. Gates, from backend/agent/: ruff check . && mypy cropwatcher && pytest.
+   Open the pull request.

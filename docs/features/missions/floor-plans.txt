@@ -1,0 +1,106 @@
+================================================================================
+FLOOR PLANS AND MISSIONS — what the drone flies, checked before it can fly
+Last verified: 2026-09-28 against feat/missions-and-pipeline — tests/mission/
+(107 tests: plan, store, API, session, stamping) and the harness.
+SOURCE: backend/agent/cropwatcher/mission/plan/validate.py
+================================================================================
+
+--------------------------------------------------------------------------------
+STATUS  (Last verified: 2026-09-28)
+--------------------------------------------------------------------------------
+  agent     BUILT — rooms, missions, validation, saving, the API
+  desktop   BUILT — the editor in Auto › Control › ① Mission (auto-control.txt)
+  NOT BUILT the coverage survey (needs the lab); a room's base-station geometry
+            fingerprint (the agent has no reader for it yet); syncing plans to
+            Supabase
+
+--------------------------------------------------------------------------------
+1. WHAT IT IS
+--------------------------------------------------------------------------------
+A ROOM is the floor plan of one real space: a closed GEOFENCE, the OBSTACLES
+inside it, and (once measured) the Lighthouse COVERAGE around it. A MISSION is a
+plan in a room: a HOME mark where the drone sits before takeoff, an ordered list
+of INSPECTION POINTS (x, y, height, hold time, a stable id), a cruise height,
+and whether to fly back over home. Both are data, checked by the agent and
+saved as JSON on the laptop. Nothing here flies — see mission-controller.txt.
+
+--------------------------------------------------------------------------------
+2. WHERE IT LIVES
+--------------------------------------------------------------------------------
+backend/agent/cropwatcher/mission/plan/shapes.py      2-D geometry: point-in-
+                                                      polygon, segment distances
+backend/agent/cropwatcher/mission/plan/geofence.py    Geofence (closed polygon;
+                                                      rectangle, circle presets)
+backend/agent/cropwatcher/mission/plan/obstacles.py   line, rectangle, circle
+backend/agent/cropwatcher/mission/plan/floorplan.py   Room, clearance, ids
+backend/agent/cropwatcher/mission/plan/mission.py     Mission, InspectionPoint
+backend/agent/cropwatcher/mission/plan/validate.py    every check; outer_bound
+backend/agent/cropwatcher/mission/plan/store.py       rooms/, missions/ on disk
+backend/agent/cropwatcher/api/rest.py                 /plan/limits, /rooms,
+                                                      /missions, /missions/validate
+backend/agent/cropwatcher/paths.py                    rooms_dir, missions_dir
+backend/agent/tests/mission/                          the tests
+desktop/src/pages/control/auto/plan/                  the editor
+
+--------------------------------------------------------------------------------
+3. DECISIONS
+--------------------------------------------------------------------------------
+• THE GEOFENCE IS ALWAYS CLOSED — a rectangle, a circle, or at least 3
+  corners joined last-to-first, with no crossing edges and a real area. An open
+  line has no inside; a bow-tie has no single one. A circle is stored as a
+  32-sided polygon, so every check handles one shape.
+• THE LAYERS NEST, and each is checked against the one outside it: the ROOM'S
+  MAP (measured coverage, or the agent's default ±2 m area until measured) ⊃
+  the geofence ⊃ obstacles, home, points and every LEG between them. The map is
+  where the drone's position can be trusted — this drone senses no walls
+  (no distance sensor), so "the map of the room" can only mean that. The
+  editor clamps every typed or dragged dimension to it.
+• CLEARANCE, 0.25 m by default per room, applies to obstacles AND the fence's
+  own edge. Derived, not guessed: half-span ~0.05 m + the manual system's drift
+  notice 0.15 m + estimator noise ~0.05 m. A point on the fence line would be
+  landed by the in-flight guard on ordinary drift.
+• LEGS ARE CHECKED, NOT JUST POINTS: home → P1 → … → last (→ home). Two points
+  can sit in clear floor with a bench between them, and in an L-shaped room a
+  leg leaves the fence with both ends inside (tests/mission/test_geofence.py).
+• A HOME MARK on every mission: legs are checked from it, and the session
+  refuses to start when the drone is more than 0.30 m (the leash) from it.
+• Holds are at least 5 s — story 3.4's "5 seconds of readings".
+• VALIDATION RETURNS PROBLEMS, NOT AN EXCEPTION — every one, with where it is
+  (a point id, "home", a leg "P1 → P2"). Errors block flying; warnings
+  ("coverage not measured") are said and do not. The editor asks the agent
+  (POST /missions/validate) instead of keeping a copy of the rules.
+• REVISIONS: saving a change to a mission whose current revision has flown
+  makes a new revision; the flight keeps a copy of the plan it flew. Saving an
+  unchanged mission changes nothing.
+• WRITES ARE POST, not PUT/DELETE: the desktop window's CORS allows GET and
+  POST only (agent-api.txt) and that list stays narrow.
+• Rooms are separate from missions, so one room's fence serves many missions;
+  deleting a room that missions use is refused, naming how many.
+
+--------------------------------------------------------------------------------
+4. INVARIANTS
+--------------------------------------------------------------------------------
+• mission/plan NEVER imports cropwatcher.flight: a plan is drawn, checked and
+  saved with no drone. tests/mission/test_boundaries.py holds it.
+• x and y are absolute Lighthouse metres; heights are above the floor captured
+  at takeoff (CLAUDE.md invariant 4). The editor shows feet only as labels.
+• Ids go into file names: 1–64 of [A-Za-z0-9_-] for rooms and missions, 1–32
+  for inspection points. An id from the API cannot walk out of the folder.
+• Inspection point ids never change once saved — every reading taken at a
+  point is stamped with its id (story 3.5).
+• Writes are atomic (temp file, then rename); one unreadable file is skipped
+  with a log line and never hides the rest of a list.
+
+--------------------------------------------------------------------------------
+5. RELATED
+--------------------------------------------------------------------------------
+consumed-by       mission-controller.txt
+                  the validated Mission it flies; run_mission re-validates
+consumed-by       ../desktop/auto-control.txt
+                  the editor and list read and write rooms and missions
+shares-data-with  ../frontend/mission-planner.txt
+                  KNOWN DIVERGENCE (2026-09-28): the web planner builds the OLD
+                  plan format (zones → waypoints) into Supabase `missions`, and
+                  nothing flies it. Left as it is until plans sync to Supabase.
+depends-on        ../backend/agent-api.txt
+                  the token, the CORS method list the routes are shaped by

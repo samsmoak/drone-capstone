@@ -1,0 +1,339 @@
+MISSIONS AND THE DATA PIPELINE — the 100 stages
+===============================================
+
+STATUS (2026-09-28, commit on feat/missions-and-pipeline, pushed; NOT merged):
+
+  DONE      stages 1–4, 7–98 — everything the agent and desktop can do without
+            a drone or the team. Gates: ruff, mypy (74 files), pytest 787
+            passed; desktop build; harness 720–1600 both themes PASS. What
+            shipped is in features/missions/, features/pipeline/ and
+            features/desktop/auto-control.txt.
+  CHANGED   stage 69: writes are POST (/rooms, /missions, …/delete), not
+            PUT/DELETE — the window's CORS allows GET and POST only.
+            stage 91: the editor asks the agent (POST /missions/validate)
+            instead of keeping its own copy of the rules (no shapes.ts rules).
+  NEXT      stage 99: open the pull request and merge (CLAUDE.md "Git":
+            `gh pr merge <n> --squash --admin`).
+  OWED BY THE OWNER  stage 5 (geometry + ladder), stage 6 (coverage survey),
+            stage 100: `cd backend && supabase db push` for migration
+            20260928000012 — before any mission flies; and find the
+            import-flight-log function's source.
+  THE TEAM  Hannah, Kevin, Reagan: ../handoffs/.
+
+Two things are being built:
+
+  MISSIONS   the operator draws a floor plan, places inspection points on it,
+             saves it as a mission, and the drone flies it on its own.
+  PIPELINE   every flight's readings and frames go through clean → enhance →
+             classify → interpret, and every inspection point gets a verdict.
+
+And the desktop Control page is remodelled for Auto, so that planning and
+flying a mission is what the page is for.
+
+
+THE WORDS, USED THE SAME WAY EVERYWHERE
+
+  Room               the floor plan of one real space: a closed geofence, the
+                     obstacles inside it, and (once measured) the Lighthouse
+                     coverage around it. Saved once, reused by many missions.
+  Inspection point   one place the drone must hold and record: x, y, height,
+                     how long to hold, and a stable id ("P1").
+  Mission            a room + a home mark + an ordered list of inspection
+                     points + a cruise height. A plan; data only.
+  Mission controller the part of the agent that takes a saved mission and
+                     flies it, by giving goals to the manual flight system.
+  Manual flight      ManualController (flight/manual.py): the tuned 50 Hz
+  system             loop, its leash, its guards and its dead-man. The only
+                     thing that ever commands the drone in Manual or in Auto.
+  Pipeline           clean → enhance → classify → interpret, one inspection
+                     point at a time.
+
+
+WHAT EXISTS TODAY (read from the code, main at 733ba2a)
+
+  flight/manual.py        ManualController: one commanded point at 50 Hz,
+                          eased motion, a 30 cm leash, a 0.5 s heartbeat
+                          dead-man. hold_at() already drives the height to a
+                          goal with no key held.
+  flight/missions.py      Mission, a lawnmower generator, validate(), and
+                          execute() — which flies with the firmware's go_to,
+                          a second way of flying. Only the CLI uses it.
+  flight/control.py       GuardedFlight (go_to); runs the Auto hover demo.
+  safety/geofence.py      an axis-aligned BOX, ±2.0 m by default.
+  safety/occupancy.py     a ROS grid map (greenhouse legacy); nothing live
+                          uses it.
+  safety/flight_guard.py  the in-flight fence is a square (|x|, |y| ≤ 2.0 m).
+  api/rest.py             POST /flight/mission was removed on purpose: it flew
+                          with no authentication and skipped the checks.
+  camera/recording.py     frames to <session>/frames/, indexed by frames.csv.
+  telemetry/row.py        TelemetryRow: one schema for the CSV and Postgres.
+  desktop Control         left: console tabs (Vitals, Camera, Scene); right:
+                          FlightDeck, then the step's controls. Auto shows the
+                          hover demo only.
+  pipeline                nothing.
+
+A FINDING: sync/cloud.py calls the Edge Function import-flight-log, and its
+source is not in the repo (backend/supabase/functions/ does not exist).
+
+
+PRIMARY SOURCES
+
+  CLAUDE.md — flight invariants 1–7 and the conventions
+  docs/features/backend/flight-status.txt — "Manual is the foundation for
+    autonomous", and the test ladder
+  docs/features/desktop/pages-and-windows.txt — the Control page's decisions
+    and invariants
+  web/public/docs/dronedeck-project-management-planning.pdf — stories 3.x, 4.x
+  WAI-ARIA Authoring Practices — Tabs, Window Splitter, aria-current="step"
+  Supabase Edge Functions limits — https://supabase.com/docs/guides/functions/limits
+  Hexagonal architecture (ports and adapters), Alistair Cockburn
+
+
+DECISIONS
+
+Missions
+  - A room's geofence is ALWAYS CLOSED: a rectangle, a circle (stored as a
+    32-sided polygon, so there is one shape to check), or at least 3 points,
+    closed automatically, with no crossing edges and a non-zero area.
+  - Layers nest: Lighthouse coverage ⊃ geofence ⊃ obstacles and path. Every
+    inspection point and every LEG (home → P1 → … → home) is checked.
+  - CLEARANCE is 0.25 m by default, per room, from every obstacle and from the
+    geofence's own edge. Derived, not guessed: the drone's half-span (~0.05 m)
+    + the manual system's drift notice (DRIFT_NOTICE_M, 0.15 m) + the
+    estimator's measured noise (~0.05 m). A point on the fence line would be
+    landed by the in-flight guard on ordinary drift.
+  - Coverage is MEASURED by a hand-carried survey, never computed. Until a
+    room has one, validation uses the agent's default fence (±2.0 m) as the
+    outer bound and says "coverage not measured".
+  - Every mission has a HOME mark: where the drone must sit before takeoff.
+    Legs are checked from home, and the session refuses to start a mission
+    when the drone is more than 0.30 m (the leash) from it.
+  - Inspection points hold at least 5 s (story 3.4).
+  - The mission controller flies a mission ONLY through
+    ManualController.fly_to() and hold_at(). One way of flying, the tuned one.
+    flight/missions.py and its go_to path are deleted.
+  - Keys always win: any key held mid-mission cancels the goal and sets
+    operator_override; the mission ends INTERRUPTED and the operator has the
+    drone. The heartbeat dead-man stays with the app.
+  - Rooms and missions are JSON on the laptop. Saving a mission that has
+    flown makes a new REVISION; the flight keeps a copy of the exact plan
+    flown in its session folder.
+  - The mission controller itself is Hannah's (handoffs). This build lands
+    its interface and a skeleton that REFUSES TO FLY (BUILT = False), and the
+    session checks that BEFORE arming anything.
+  - Not in this build: the base-station geometry fingerprint on a room (the
+    agent has no reader for it yet) and the coverage survey tool (needs the
+    lab).
+
+Pipeline
+  - Runs on the laptop, inside the agent. Built as ports and adapters so a
+    cloud worker is a new adapter. Supabase stores results later; it does not
+    compute (Deno only, 2 s of CPU per request).
+  - The unit of work is ONE INSPECTION POINT. The same stage code serves live
+    and batch runs.
+  - The contract is ../handoffs/dpp-contract.txt → pipeline/contracts.py.
+  - The batch runner runs in the CLI's own process. The live runner (a
+    separate process, never a thread beside the 50 Hz loop) is a later stage.
+
+Telemetry
+  - point_id is stamped into every telemetry row and frames.csv row while the
+    mission controller is HOLDING, and is empty otherwise.
+  - The upload sends point_id only when a batch carries one. A flight with no
+    mission uploads exactly as today, so nothing breaks before the Supabase
+    migration is applied.
+
+Desktop, Auto mode (Manual is unchanged)
+  - Left: the Mission flow, three steps like the Zoomaa booking flow —
+    ① Mission (list, view, edit, save, use), ② Check (the session and its
+    checks), ③ Fly (Start mission at the top, the scene with the mission).
+  - Right: FlightDeck (vitals, keys, action rail — never behind a tab), then
+    the monitor tabs Vitals and Camera.
+  - The draggable divider stays, with its own saved position for Auto.
+  - The flow locks on Fly while a mission is flying.
+
+
+THE 100 STAGES
+
+PHASE 0 — BASELINE                                                   1–6
+  1  Branch feat/missions-and-pipeline off main (733ba2a).               done
+  2  Record the gates: ruff, mypy (49 files), pytest (695 passed), desktop
+     build. All pass.                                                    done
+  3  This plan, replacing the 70-stage draft.                            done
+  4  Handoff tickets rewritten: each opens with the whole system and where
+     its owner's part fits.
+  5  (owner, lab) `cropwatcher geometry --distance 1.0`, then the assisted
+     ladder rungs 3–8, logged in flight-log.txt.
+  6  (owner, lab) Hand-carried coverage survey of the room.
+
+PHASE 1 — SHAPES AND THE GEOFENCE                                    7–15
+  7  cropwatcher/mission/ package with a docstring map of its parts.
+  8  mission/plan/shapes.py: point-in-polygon, segment intersection,
+     point-to-segment and segment-to-segment distance, polygon area,
+     self-intersection.
+  9  mission/plan/geofence.py: a closed polygon; rectangle and circle presets;
+     ≥ 3 vertices, finite, no repeated vertex, no crossing edges, area > 0.
+ 10  contains(x, y), distance to the edge, contains_segment for non-convex
+     fences, height band, bounds.
+ 11  check() raises GeofenceViolation naming what failed.
+ 12  to_dict / from_dict with a shape tag, so the editor round-trips a preset.
+ 13  Tests: squares, an L-shape, a bow-tie refused, 2 points refused, a
+     circle, a leg that leaves a concave fence while both ends are inside.
+ 14  The in-flight guard accepts a polygon fence (GuardContext.fence); the
+     square stays the default for Manual.
+ 15  Guard tests: outside a polygon lands; inside does not.
+
+PHASE 2 — OBSTACLES, ROOMS, INSPECTION POINTS, MISSIONS              16–30
+ 16  mission/plan/obstacles.py: line, rectangle, circle; distance to a point
+     and to a segment.
+ 17  Obstacle validation: finite, non-degenerate, positive radius.
+ 18  mission/plan/floorplan.py: Room (id, name, geofence, obstacles,
+     coverage, clearance_m, revision, timestamps).
+ 19  Room checks: obstacles inside the fence (warning), fence inside coverage.
+ 20  mission/plan/mission.py: InspectionPoint (id, label, x, y, z, hold_s ≥ 5)
+     and Mission (id, name, room_id, home, points, cruise height,
+     return_to_start, revision, flown_revision, timestamps).
+ 21  Stable point ids: unique, 1–32 characters of [A-Za-z0-9_-].
+ 22  Duration estimate from the manual system's own speeds, passed in (plan/
+     never imports flight/).
+ 23  to_dict / from_dict with a format version; unknown versions refused.
+ 24  mission/plan/validate.py: Problem (code, message, point_id, severity).
+ 25  Checks: the fence inside the outer bound (coverage, or the default fence
+     with a warning).
+ 26  Checks: home and every point inside the fence with clearance; heights in
+     the fence's band; holds ≥ 5 s.
+ 27  Checks: every leg inside the fence, clear of the fence edge and of every
+     obstacle by the clearance.
+ 28  Checks: cruise height in the band; ids unique; at least one point.
+ 29  Tests for every problem code, and a clean mission with none.
+ 30  A test that mission/plan imports nothing from cropwatcher.flight.
+
+PHASE 3 — SAVING                                                     31–38
+ 31  paths.py: rooms_dir(), missions_dir(), results_dir().
+ 32  mission/plan/store.py: save, load, list, delete for rooms and missions;
+     ids checked against path traversal; atomic writes.
+ 33  Revisions: saving a mission whose current revision has flown makes a new
+     one.
+ 34  Deleting a room that missions use is refused, naming how many.
+ 35  Saving a room revalidates the missions in it (reported, not blocked).
+ 36  An unreadable file is skipped with a log line, never fatal to a list.
+ 37  Tests for all of it, in a temporary data folder.
+ 38  Retire flight/missions.py, safety/occupancy.py, safety/geofence.py and
+     the `lawnmower` command; their tests go with them.
+
+PHASE 4 — THE GOAL IN THE MANUAL FLIGHT SYSTEM                       39–46
+ 39  ManualController.fly_to(x, y, height): a goal like hold_at — the same
+     easing, the same leash, the approach profile that arrives without
+     overshoot; assisted and airborne only.
+ 40  goal_active and operator_override.
+ 41  Any held key cancels every goal and sets operator_override; hold_at and
+     fly_to clear it.
+ 42  FakeCommander and FakeClock move to tests/fakes.py.
+ 43  Tests: a goal glides and arrives within a centimetre; no overshoot; the
+     keys cancel it and set the override; the leash still bounds it.
+ 44  Tests: refused unassisted and on the ground.
+ 45  Every existing manual test passes untouched.
+ 46  The goal's velocity is computed in the room's frame and turned into the
+     drone's frame by the commanded heading, like the keys.
+
+PHASE 5 — THE MISSION CONTROLLER'S INTERFACE (Hannah builds the body) 47–52
+ 47  mission/controller/events.py: MissionState, EventKind, MissionEvent.
+ 48  mission/controller/flight.py: MissionFlight, the Protocol of the manual
+     flight system the controller may use.
+ 49  mission/controller/mission_controller.py: MissionController with its
+     full interface; BUILT = False; start() refuses.
+ 50  A typing test: ManualController satisfies MissionFlight.
+ 51  A test that the skeleton refuses to start.
+ 52  handoffs/mission-controller.txt rewritten against the real interface.
+
+PHASE 6 — MISSIONS IN THE SESSION                                    53–62
+ 53  Session.run_mission(mission_id, ambient): Auto, assisted, ready.
+ 54  Loads and validates the mission and its room; the first error is the
+     refusal.
+ 55  Battery budget against the mission's estimated duration.
+ 56  The drone must be within 0.30 m of home.
+ 57  The controller must be built — checked BEFORE anything arms.
+ 58  Arms the manual flight system with the room's polygon as the guard's
+     fence; trace; the flight's program is "mission:<id>@r<revision>".
+ 59  The plan flown is copied into the session folder.
+ 60  Mission events → the live socket and the session snapshot (mission id,
+     state, current and completed points, the last event).
+ 61  When the flight ends: flown_revision recorded; audit MISSION_RUN.
+ 62  Tests with an injected controller: refused unassisted, off home, over
+     budget, invalid, not built; a built fake runs and ends.
+
+PHASE 7 — STAMPING THE INSPECTION POINT                              63–68
+ 63  TelemetryRow.point_id; build_row takes it.
+ 64  FlightRecorder asks the session for the current point on every row.
+ 65  frames.csv gains point_id; the frame recorder asks the same question.
+ 66  Supabase migration: telemetry.point_id (text), indexed with flight_id.
+ 67  insert_telemetry drops point_id from a batch that carries none, so
+     uploads work before the migration is applied.
+ 68  Tests: rows and frames carry the id only while holding; an upload with no
+     id sends no point_id key.
+
+PHASE 8 — THE AGENT API                                              69–73
+ 69  GET/PUT/DELETE /rooms and /rooms/{id}; GET/PUT/DELETE /missions and
+     /missions/{id}; every route behind the control token.
+ 70  POST /missions/validate: problems for an unsaved draft.
+ 71  POST /session/mission {mission_id, ambient}.
+ 72  A malformed body is a 422 naming the field; a refusal is a 409 in words.
+ 73  API tests: token required, round trip, validation, refusals.
+
+PHASE 9 — THE PIPELINE SKELETON                                      74–82
+ 74  pipeline/contracts.py exactly as the contract.
+ 75  Stubs: clean (no flags), enhance (identity), classify (unknown with a
+     reason).
+ 76  Interpret: verdicts from the labels — "insufficient_data" while no model
+     has spoken; never a threshold that was not measured.
+ 77  sources.py: LocalFlightSource — the flight CSV, its session's frames in
+     the flight's window, the mission flown (or the single point "flight").
+ 78  sinks.py: LocalResultSink → <data>/results/<flight id>/result.json.
+ 79  runner.py: point by point; a stage error is recorded and skipped.
+ 80  compose.py: the one place each stage's implementation is chosen.
+ 81  `cropwatcher process --flight <id>` and `--fixture`.
+ 82  tests/pipeline: fixtures from a real flight, conformance.py (the rules
+     every implementation must pass), and the import boundary.
+
+PHASE 10 — THE CONTROL PAGE IN AUTO                                  83–94
+ 83  lib/agent.ts: rooms, missions, validate, runMission; the types.
+ 84  pages/control/auto/AutoControl.tsx: left the flow, right FlightDeck and
+     the monitor tabs; Manual untouched.
+ 85  Its own divider key (cropwatcher.split.control.auto); stacking below lg.
+ 86  The step bar: tappable, aria-current="step", reachability from the
+     agent's own state; locked on Fly while flying.
+ 87  ① Mission: the list, with its four states.
+ 88  ① Mission: view a mission — the plan drawn, its details, Edit, Use.
+ 89  ① Mission: the plan canvas — SVG in metres, grid, origin, the default
+     bound, the live drone.
+ 90  ① Mission: the room editor — geofence presets, drag corners, type
+     dimensions; obstacles.
+ 91  ① Mission: the path editor — home, points, holds, heights; red or green
+     as placed, from the agent's own validation.
+ 92  ② Check: the session flow moved here for Auto.
+ 93  ③ Fly: Start mission at the top, disabled with its reason; the scene with
+     the room, path and points; progress; the outcome.
+ 94  The monitor tabs reuse the console's Vitals and Camera panels.
+
+PHASE 11 — DOCS, GATES, SHIP                                         95–100
+ 95  Harness: Auto sections; measure 720–1600 in both themes, self-test
+     failing as it must.
+ 96  Feature docs: features/missions/ and features/pipeline/; update
+     pages-and-windows, manual-control, flight-safety, agent-api,
+     sessions-and-modes, data-model, telemetry; the router.
+ 97  Gates: ruff, mypy, pytest; desktop build; the graph check.
+ 98  Handoff tickets checked against the code that landed.
+ 99  Commit, push, pull request, merge (CLAUDE.md "Git").
+100  Owed to the owner: apply the Supabase migration; the lab stages 5 and 6.
+
+
+NOT IN THIS PLAN
+
+  - The mission controller's body (Hannah), the cleaner and enhancer (Kevin),
+    the classifier (Reagan) — ../handoffs/.
+  - The live pipeline runner and verdicts on the Fly step as they arrive.
+  - Rooms, missions and results in Supabase; alerts on the web dashboard.
+  - The web mission planner (/app/plan): it builds the old plan format and
+    nothing flies it. Left as it is, recorded as a known divergence.
+  - The geometry fingerprint on a room; the coverage survey tool.
+  - Revisiting a flagged point (4.10), a combined model (4.8), visual
+    baselines (4.7); turning to face the equipment at a point.

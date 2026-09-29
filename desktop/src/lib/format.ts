@@ -73,3 +73,18 @@ export function initialOf(name: string | null | undefined, email: string | null 
   const source = (name || email || "?").trim();
   return source.charAt(0).toUpperCase() || "?";
 }
+
+const FEET_PER_METRE = 3.28084;
+
+/**
+ * A length in metres, with feet beside it for the label only.
+ *
+ * Metres everywhere inside (CLAUDE.md, "Units"); feet appear only here, at the
+ * boundary, because the operator may think in them. Nothing is ever stored in
+ * feet or converted back from this string.
+ */
+export function formatMetres(metres: number | null | undefined, digits = 2): string {
+  if (metres === null || metres === undefined || !Number.isFinite(metres)) return "—";
+  return `${metres.toFixed(digits)} m (${(metres * FEET_PER_METRE).toFixed(1)} ft)`;
+}
+
