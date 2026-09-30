@@ -33,7 +33,8 @@ from cropwatcher.mission.controller import (
 from cropwatcher.mission.controller.events import TERMINAL_EVENTS
 from cropwatcher.mission.controller.mission_controller import ARRIVE_M, SETTLE_S
 from cropwatcher.mission.plan.mission import Mission
-from tests.mission.plans import mission
+from cropwatcher.mission.plan.validate import errors, validate_mission
+from tests.mission.plans import OUTER, mission, room
 from tests.sim_drone import MANUAL_TICK_S, SimDrone
 
 K = EventKind
@@ -91,6 +92,9 @@ def every_mission_ends_once():
 class Scenario:
     def __init__(self, plan: Mission | None = None, *, listener=None, **drone) -> None:
         self.plan = plan or mission()
+        # Only a mission the session would fly: inside the test room's fence
+        # and height band, every leg clear of its table (plans.room()).
+        assert not errors(validate_mission(self.plan, room(), outer=OUTER))
         home = self.plan.home
         self.sim = SimDrone(start=Fix(home[0], home[1], 0.0), **drone)
         self.flight = RecordedFlight(self.sim.ctl, self.sim.clock)
@@ -163,7 +167,9 @@ def test_three_points_in_order_with_exactly_the_specs_events(returning):
 
 
 def test_every_hold_lasts_hold_s_and_the_point_is_stamped_only_while_holding_there():
-    """C1, T11–T13: sampled every manual tick."""
+    """C1, T11–T13: sampled every manual tick, in all three dimensions. THE
+    SPEC's arrival is x-y (drift_m); the height is the flight system's goal —
+    this proves the two together put the drone AT the point, not over it."""
     s = Scenario()
     points = {p.id: p for p in s.plan.points}
     bad: list[str] = []
@@ -178,6 +184,10 @@ def test_every_hold_lasts_hold_s_and_the_point_is_stamped_only_while_holding_the
             off = math.dist(s.sim.true_xy, (p.x_m, p.y_m))
             if off > ARRIVE_M:
                 bad.append(f"{s.sim.clock():.2f}: {point_id} stamped {off:.3f} m away")
+            high = abs(s.sim.true_height - p.z_m)
+            if high > ARRIVE_M:
+                bad.append(f"{s.sim.clock():.2f}: {point_id} stamped {high:.3f} m off "
+                           f"its height")
 
     s.sim.watch(sample)
     s.fly()

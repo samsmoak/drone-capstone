@@ -9,6 +9,7 @@ import math
 import pytest
 
 from cropwatcher.flight.manual import (
+    GOAL_REACHED_M,
     HEARTBEAT_TIMEOUT_S,
     LAND_S,
     LEASH_M,
@@ -184,3 +185,31 @@ def test_step_ticks_a_mission_every_mission_tick():
     counter = Counter()
     sim.step(2.0, counter)
     assert counter.ticks == round(2.0 / MISSION_TICK_S)
+
+
+def test_it_climbs_to_the_commanded_height_above_the_floor_not_above_zero():
+    sim = SimDrone(start=START, ground_z=1.2)            # the floor is not z = 0
+    assert sim.true_height == 0.0
+    airborne(sim, height=0.40)
+    sim.step(4 * sim.lag_s)
+    assert sim.true_height == pytest.approx(0.40, abs=0.01)
+    # A height goal ends within the loop's own GOAL_REACHED_M, not exactly.
+    assert sim.target_z == pytest.approx(1.2 + 0.40, abs=GOAL_REACHED_M)
+    assert sim.position_z == pytest.approx(1.2 + 0.40, abs=0.01)
+
+
+def test_a_fly_to_changes_height_too():
+    sim = SimDrone(start=START)
+    airborne(sim, height=0.40)
+    sim.ctl.fly_to(START.x, START.y, 0.70)
+    sim.run_until(None, lambda: not sim.ctl.goal_active, limit_s=20.0)
+    sim.step(4 * sim.lag_s)
+    assert sim.true_height == pytest.approx(0.70, abs=0.01)
+
+
+def test_landing_brings_it_to_the_floor():
+    sim = SimDrone(start=START)
+    airborne(sim)
+    sim.ctl.land()
+    sim.step(LAND_S + 0.5)
+    assert sim.true_height == 0.0

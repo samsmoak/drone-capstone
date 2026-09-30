@@ -7,15 +7,19 @@ setpoints the loop sends — so a mission scenario proves the mission controller
 AND the tuned flight system together, on one clock, with no thread.
 
 HOW IT MOVES
-    While airborne, the drone's true (x, y) follows the last POSITION setpoint
-    with a first-order lag (time constant lag_s), plus a steady drift (wind).
-    The estimator reports that position at the stream's 10 Hz
-    (telemetry/stream.py PERIOD_MS), with optional Gaussian noise from a seeded
-    generator, so the same seed always gives the same flight. Height is not
-    modelled: a Fix carries none, and nothing a mission decides reads it.
+    While airborne, the drone's true (x, y, z) follows the last setpoint with
+    a first-order lag (time constant lag_s), plus a steady x-y drift (wind).
+    z is in the estimator's frame, like the setpoints: the floor is ground_z,
+    not 0 (CLAUDE.md invariant 4), so a point's height above the floor is
+    z - ground_z. The estimator reports the position at the stream's 10 Hz
+    (telemetry/stream.py PERIOD_MS), with optional Gaussian noise on every
+    axis from a seeded generator, so the same seed always gives the same
+    flight. `position` is the Fix the loop reads (x, y, yaw); `position_z`
+    is the height the estimator reports beside it.
 
     Landing is the firmware's high-level land: it comes down where it is, so
-    the xy setpoint is pinned to the drone's position when landing begins.
+    the x-y setpoint is pinned to the drone's position when landing begins
+    and the height setpoint drops to the floor.
     landed_at is where it touched down — or, after an emergency stop in the
     air, where it fell.
 
@@ -77,6 +81,9 @@ class SimDrone:
         self.drift_m_s = drift_m_s
         self._rng = random.Random(seed)
         self._true = (start.x, start.y)
+        self.ground_z = ground_z
+        self._true_z = ground_z                # on the floor
+        self._setpoint_z: float | None = None
         self._yaw = start.yaw_deg
         self._setpoint: tuple[float, float] | None = None
         self._body_velocity = (0.0, 0.0)       # a hover setpoint, before any fix
@@ -95,6 +102,10 @@ class SimDrone:
         self.landed_at: tuple[float, float] | None = None
         #: What the estimator reports now. Updated at ESTIMATE_S.
         self.position: Fix = start
+        self.position_z: float = ground_z
+        #: The last height commanded, in the estimator's frame (the firmware's
+        #: posCtl.targetZ), or None before any.
+        self.target_z: float | None = None
         self.ctl = ManualController(
             self.cmd, ground_z=ground_z, land=lambda z, d: self.lands.append((z, d)),
             assisted=assisted, clock=self.clock,
@@ -113,6 +124,11 @@ class SimDrone:
     def true_xy(self) -> tuple[float, float]:
         """Where the drone really is — what noise and the estimator hide."""
         return self._true
+
+    @property
+    def true_height(self) -> float:
+        """How high the drone really is above the floor."""
+        return self._true_z - self.ground_z
 
     def watch(self, observer: Callable[[], None]) -> None:
         """Call `observer` after every manual tick — to sample, say,
@@ -189,21 +205,28 @@ class SimDrone:
         if state is ControlState.LANDING and self._setpoint is not self._landing_spot:
             # The firmware's land comes down where the drone is.
             self._setpoint = self._landing_spot = self._true
+            self._setpoint_z = self.ground_z
         if state in _AIRBORNE:
             self._move(MANUAL_TICK_S)
         # Compared across ticks, not within one: an emergency stop or a land()
         # changes the state between ticks, from another caller.
         if self._was_airborne and state not in _AIRBORNE and self.landed_at is None:
             self.landed_at = self._true
+        if state not in _AIRBORNE:
+            self._true_z = self.ground_z           # on the floor, or fallen to it
         self._was_airborne = state in _AIRBORNE
 
     def _apply_commands(self) -> None:
         for command in self.cmd.commands[self._seen:]:
             if command[0] == "position":
                 self._setpoint = (command[1], command[2])
+                self._setpoint_z = self.target_z = command[3]
                 self._yaw = command[4]
             elif command[0] == "hover":
                 self._body_velocity = (command[1], command[2])
+                self._setpoint_z = self.target_z = command[4]
+            elif command[0] == "zdistance":
+                self._setpoint_z = self.target_z = command[4]
         self._seen = len(self.cmd.commands)
 
     def _move(self, dt: float) -> None:
@@ -217,6 +240,9 @@ class SimDrone:
                 c, s = math.cos(math.radians(self._yaw)), math.sin(math.radians(self._yaw))
                 x, y = x + (vx * c - vy * s) * dt, y + (vx * s + vy * c) * dt
             x, y = x + self.drift_m_s[0] * dt, y + self.drift_m_s[1] * dt
+            if self._setpoint_z is not None:
+                self._true_z = follow((self._true_z, 0.0), (self._setpoint_z, 0.0), dt,
+                                      self.lag_s)[0]
         left = math.hypot(*self._push_left)
         if left > 0:
             step = min(left, PUSH_SPEED_M_S * dt)
@@ -226,8 +252,10 @@ class SimDrone:
         self._true = (x, y)
 
     def _report(self) -> None:
-        x, y = self._true
+        x, y, z = self._true[0], self._true[1], self._true_z
         if self.noise_m > 0:
             x += self._rng.gauss(0.0, self.noise_m)
             y += self._rng.gauss(0.0, self.noise_m)
+            z += self._rng.gauss(0.0, self.noise_m)
         self.position = Fix(x, y, self._yaw)
+        self.position_z = z
