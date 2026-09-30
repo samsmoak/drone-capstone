@@ -34,7 +34,7 @@ import {
   watchAgentExit,
   type Intent,
   type Mode,
-  type NoseFacing,
+  type SeenDirection,
   type CameraWifi,
   type SetupState,
   type Session,
@@ -68,10 +68,10 @@ export const KEY_MAP: Record<string, keyof Intent> = {
   KeyD: "yaw_right",
 };
 
-/** Shift + an arrow: where things are, as the operator sees them. On the ground
- *  it is where the drone's NOSE points; in the air, which way ↑ just WENT. Only
- *  with no position (lib/arrows.ts) — base stations measure it themselves. */
-export const ALIGN_KEYS: Record<string, NoseFacing> = {
+/** Shift + an arrow, in the air with no base stations: which way the last arrow
+ *  you flew actually WENT, as you see it — the arrows turn to match, for this
+ *  flight (cropwatcher/flight/manual.py correct_nose). Never a flight key. */
+export const ALIGN_KEYS: Record<string, SeenDirection> = {
   ArrowUp: "away",
   ArrowLeft: "left",
   ArrowRight: "right",
@@ -248,12 +248,9 @@ export default function App() {
   const flying = session?.activity === "manual" || session?.activity === "program"
     || session?.activity === "mission";
   const manualFlying = session?.activity === "manual";
-  // Shift + arrow aligns the arrows, with no position only: on the ground it
-  // says where the nose points, in the air which way ↑ went (ALIGN_KEYS).
-  const noPosition = session?.mode === "manual"
-    && (!session.assisted || session.controls.live?.active === "takeoff");
-  const align: "set" | "correct" | null = !noPosition ? null
-    : session?.controls.live ? "correct" : "set";
+  // Shift + arrow corrects the arrows: in the air (controls.live is set only
+  // while flying), with no base stations (the agent says "takeoff").
+  const canCorrect = session?.mode === "manual" && session.controls.live?.active === "takeoff";
 
   // ── keyboard: key *state*, not the OS repeat stream ────────────────
   useEffect(() => {
@@ -273,16 +270,13 @@ export default function App() {
         void run(api.land, "Land (L)");
         return;
       }
-      // Shift + arrow is never flight: it aligns the arrows, or does nothing.
-      // Checked before the flight keys so it cannot also move the drone.
-      const aligned = ALIGN_KEYS[event.code];
-      if (aligned && event.shiftKey) {
+      // Shift + arrow is never flight: it corrects the arrows, or does
+      // nothing. Checked before the flight keys so it cannot move the drone.
+      const went = ALIGN_KEYS[event.code];
+      if (went && event.shiftKey) {
         event.preventDefault();
-        if (event.repeat || !align) return;
-        void run(align === "set"
-          ? () => api.setNose(aligned)
-          : () => api.correctNose(aligned),
-        align === "set" ? `Nose ${aligned} (Shift+arrow)` : `↑ went ${aligned} (Shift+arrow)`);
+        if (event.repeat || !canCorrect) return;
+        void run(() => api.correctNose(went), `It went ${went} (Shift+arrow)`);
         return;
       }
       if (event.repeat || !manualFlying) return;
@@ -332,7 +326,7 @@ export default function App() {
       window.removeEventListener("keyup", onUp);
       window.removeEventListener("blur", onBlur);
     };
-  }, [manualFlying, align, run]);
+  }, [manualFlying, canCorrect, run]);
 
   // Nothing is known yet: the agent has not answered, or it is still trying the
   // saved sign-in. Hold the shape rather than claim "signed out".

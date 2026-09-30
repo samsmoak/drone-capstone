@@ -9,7 +9,6 @@ import pytest
 
 from cropwatcher.flight.controls_store import Controls, ControlsStore
 from cropwatcher.flight.keyframe import ActiveFrame, FrameStatus, KeyFrame, NoseFacing
-from cropwatcher.flight.manual import Speed
 from cropwatcher.session import Mode, SessionError
 from cropwatcher.telemetry.stream import Snapshot
 from tests.test_session import rig, start_and_confirm  # noqa: F401 — the fixture
@@ -40,33 +39,14 @@ class TestStore:
         assert loaded.key_frame is KeyFrame.OPERATOR
         assert loaded.operator is None
 
-    def test_the_nose_is_saved_and_comes_back(self, tmp_path):
-        store = ControlsStore(tmp_path / "controls.json")
-        store.save(Controls().with_nose(NoseFacing.TOWARDS))
-        assert store.load().nose is NoseFacing.TOWARDS
-        assert json.loads((tmp_path / "controls.json").read_text())["nose"] == "towards"
-
-    @pytest.mark.parametrize("content", [
-        '{"key_frame": "room"}', '{"nose": "sideways"}', '{"nose": 3}',
-    ])
-    def test_an_old_or_bad_nose_is_away(self, tmp_path, content):
-        """A file from before the setting, or a bad value: away — exactly what
-        the arrows did before it existed."""
+    def test_a_file_from_the_nose_and_speed_builds_still_loads(self, tmp_path):
+        """Those builds (2026-09-30) saved a nose and a speed; a saved nose
+        rotated the arrows before takeoff, flight after flight. Both ignored."""
         path = tmp_path / "controls.json"
-        path.write_text(content)
-        assert ControlsStore(path).load().nose is NoseFacing.AWAY
-
-    def test_slow_is_the_default_and_the_choice_is_kept(self, tmp_path):
-        store = ControlsStore(tmp_path / "controls.json")
-        assert store.load().speed is Speed.SLOW
-        store.save(Controls().with_speed(Speed.NORMAL))
-        assert store.load().speed is Speed.NORMAL
-
-    @pytest.mark.parametrize("content", ['{"nose": "left"}', '{"speed": "warp"}', '{"speed": 2}'])
-    def test_an_old_or_bad_speed_is_slow(self, tmp_path, content):
-        path = tmp_path / "controls.json"
-        path.write_text(content)
-        assert ControlsStore(path).load().speed is Speed.SLOW
+        path.write_text('{"key_frame": "room", "nose": "towards", "speed": "slow"}')
+        loaded = ControlsStore(path).load()
+        assert loaded.key_frame is KeyFrame.ROOM
+        assert set(loaded.to_dict()) == {"key_frame", "operator", "operator_marked_at"}
 
     def test_clearing_the_spot_clears_its_date(self):
         c = Controls().with_operator((1.0, 1.0)).with_operator(None)
@@ -143,46 +123,34 @@ class TestSession:
         rig.session.set_key_frame("room")
         assert rig.link.manual_controller.key_frame[0] is KeyFrame.ROOM
 
-    def test_the_nose_is_saved_and_reaches_a_flight(self, rig, tmp_path):  # noqa: F811
-        rig.session.set_nose("left")
-        assert json.loads((tmp_path / "controls.json").read_text())["nose"] == "left"
-        assert rig.session.snapshot().controls["nose"] == "left"
+    def test_a_correction_reaches_the_flying_controller(self, rig):  # noqa: F811
         start_and_confirm(rig)
         rig.session.arm_manual()
-        assert rig.link.manual_controller.nose is NoseFacing.LEFT
+        rig.session.correct_nose("left")
+        assert rig.link.manual_controller.corrections == [NoseFacing.LEFT]
 
-    def test_changing_the_nose_in_the_air_reaches_the_controller(self, rig):  # noqa: F811
+    def test_a_correction_is_never_saved(self, rig, tmp_path):  # noqa: F811
         start_and_confirm(rig)
         rig.session.arm_manual()
-        rig.session.set_nose("towards")
-        assert rig.link.manual_controller.nose is NoseFacing.TOWARDS
+        rig.session.correct_nose("towards")
+        path = tmp_path / "controls.json"
+        assert not path.exists() or "nose" not in json.loads(path.read_text())
+        assert "nose" not in rig.session.snapshot().controls
 
-    def test_an_unknown_nose_is_refused_in_words(self, rig):  # noqa: F811
-        with pytest.raises(SessionError, match="towards"):
-            rig.session.set_nose("up")
-        assert rig.session.snapshot().controls["nose"] == "away"
+    def test_on_the_ground_a_correction_says_to_take_off(self, rig):  # noqa: F811
+        with pytest.raises(SessionError, match="Take off first"):
+            rig.session.correct_nose("left")
 
-    def test_the_speed_is_saved_and_reaches_a_flight(self, rig, tmp_path):  # noqa: F811
-        rig.session.set_speed("normal")
-        assert json.loads((tmp_path / "controls.json").read_text())["speed"] == "normal"
+    def test_the_controllers_refusal_reaches_the_operator_in_words(self, rig):  # noqa: F811
         start_and_confirm(rig)
         rig.session.arm_manual()
-        assert rig.link.manual_controller.speed is Speed.NORMAL
-        rig.session.set_speed("slow")                       # and in the air
-        assert rig.link.manual_controller.speed is Speed.SLOW
 
-    def test_an_unknown_speed_is_refused_in_words(self, rig):  # noqa: F811
-        with pytest.raises(SessionError, match="slow"):
-            rig.session.set_speed("warp")
+        def refuse(went):
+            raise RuntimeError("fly an arrow first, then press Shift + the arrow")
 
-    def test_a_correction_turns_the_saved_nose(self, rig, tmp_path):  # noqa: F811
-        rig.session.set_nose("left")
-        start_and_confirm(rig)
-        rig.session.arm_manual()
-        rig.session.correct_nose("left")                    # left of left: towards
-        assert rig.session.snapshot().controls["nose"] == "towards"
-        assert rig.link.manual_controller.nose is NoseFacing.TOWARDS
-        assert json.loads((tmp_path / "controls.json").read_text())["nose"] == "towards"
+        rig.link.manual_controller.correct_nose = refuse
+        with pytest.raises(SessionError, match="^Fly an arrow first"):
+            rig.session.correct_nose("left")
 
     def test_an_unknown_correction_is_refused_in_words(self, rig):  # noqa: F811
         with pytest.raises(SessionError, match="towards"):

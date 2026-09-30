@@ -48,9 +48,9 @@ from cropwatcher.flight.checks import CheckResult, ChecksFailed, ReadyReport, co
 from cropwatcher.flight.control import GuardedFlight, PhaseEvent
 from cropwatcher.flight.controls_store import ControlsStore, valid_spot
 from cropwatcher.flight.core import DEFAULT_URI
-from cropwatcher.flight.keyframe import FrameStatus, KeyFrame, NoseFacing, turn_nose
+from cropwatcher.flight.keyframe import FrameStatus, KeyFrame, NoseFacing
 from cropwatcher.flight.link import DEFAULT_FENCE_M, DEFAULT_MAX_HEIGHT_M, DroneLink, LinkError
-from cropwatcher.flight.manual import CLIMB_RATE_M_S, MOVE_SPEED_M_S, Speed
+from cropwatcher.flight.manual import CLIMB_RATE_M_S, MOVE_SPEED_M_S
 from cropwatcher.flight.programs import HoverTest, Outcome, run_hover_test
 from cropwatcher.history import SessionLog, SessionMeta, sessions_dir, set_flight_processing
 from cropwatcher.mission.controller import (
@@ -1318,9 +1318,7 @@ class Session:
     def _attach_controls(self, controller: Any) -> None:
         """Tell a new flight which way the arrows move it, and listen for
         when that changes — in Manual, and in a mission the keys take over."""
-        controller.set_key_frame(self._controls.key_frame, self._controls.operator,
-                                 self._controls.nose)
-        controller.set_speed(self._controls.speed)
+        controller.set_key_frame(self._controls.key_frame, self._controls.operator)
         controller.set_frame_listener(self._frame_changed)
 
     def _frame_changed(self, status: FrameStatus | None) -> None:
@@ -1339,9 +1337,7 @@ class Session:
         self._save_controls()
         controller = self.manual
         if controller is not None:
-            controller.set_key_frame(self._controls.key_frame, self._controls.operator,
-                                     self._controls.nose)
-            controller.set_speed(self._controls.speed)
+            controller.set_key_frame(self._controls.key_frame, self._controls.operator)
         self._set(controls=self._controls_dict())
 
     def set_key_frame(self, frame: str) -> None:
@@ -1355,41 +1351,25 @@ class Session:
         self._controls = self._controls.with_frame(chosen)
         self._apply_controls()
 
-    def set_nose(self, nose: str) -> None:
-        """With no position: which way the drone's nose pointed at takeoff, as
-        the operator stands — "away", "left", "right" or "towards". It is what
-        makes up "away from you" without base stations (keyframe.py). Works in
-        the air: the next tick uses it, still measured from takeoff."""
-        try:
-            facing = NoseFacing(nose)
-        except ValueError:
-            raise SessionError(
-                'Say where the nose points: "away", "left", "right" or "towards".') from None
-        self._controls = self._controls.with_nose(facing)
-        self._apply_controls()
-
     def correct_nose(self, went: str) -> None:
-        """In the air, with no position: up was pressed and the drone went
-        `went` of the operator — "away" (right already), "left", "right" or
-        "towards" them. The arrows turn to match (keyframe.turn_nose), from
-        wherever the operator now stands: after turning round to face a drone
-        behind them, "towards" puts up away from them again."""
+        """Shift + an arrow, in the air, with no position: the last arrow flown
+        moved the drone `went` of the operator — "away", "left", "right" or
+        "towards" them. The arrows turn to match, for this flight only
+        (ManualController.correct_nose). Nothing is saved: the next flight
+        starts along the nose again, as the arrows always have."""
         try:
             seen = NoseFacing(went)
         except ValueError:
             raise SessionError(
                 'Say which way it went: "away", "left", "right" or "towards".') from None
-        self._controls = self._controls.with_nose(turn_nose(self._controls.nose, seen))
-        self._apply_controls()
-
-    def set_speed(self, speed: str) -> None:
-        """How fast the keys fly it: "slow" or "normal". Works in the air."""
+        controller = self.manual
+        if controller is None:
+            raise SessionError("Take off first — then fly an arrow and, if it went the "
+                               "wrong way, press Shift + the arrow it went.")
         try:
-            chosen = Speed(speed)
-        except ValueError:
-            raise SessionError('The keys fly "slow" or "normal".') from None
-        self._controls = self._controls.with_speed(chosen)
-        self._apply_controls()
+            controller.correct_nose(seen)
+        except RuntimeError as e:
+            raise SessionError(str(e)[:1].upper() + str(e)[1:] + ".") from None
 
     def mark_operator(self, *, from_drone: bool = False,
                       x: float | None = None, y: float | None = None,

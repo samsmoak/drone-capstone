@@ -65,12 +65,12 @@ class FakeManual:
     def set_intent(self, intent): self.events.append("intent")
     def heartbeat(self): self.events.append("heartbeat")
 
-    def set_key_frame(self, frame, operator_xy, nose=None):
+    def set_key_frame(self, frame, operator_xy):
         self.key_frame = (frame, operator_xy)
-        self.nose = nose
 
-    def set_speed(self, speed):
-        self.speed = speed
+    def correct_nose(self, went):
+        self.corrections = [*getattr(self, "corrections", []), went]
+        return went
 
     def set_frame_listener(self, listener):
         self.frame_listener = listener

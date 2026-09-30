@@ -60,7 +60,7 @@ const session: Session = {
     jobs: [{ flight_id: "f1c2d3e4-flight", state: "done", queued_at: "2026-09-29T10:00:00+00:00",
              finished_at: "2026-09-29T10:00:02+00:00", error: null }],
   },
-  controls: { key_frame: "operator", operator: [0.4, -1.8], operator_marked_at: "2026-09-30T09:00:00+00:00", nose: "away", speed: "slow", live: null },
+  controls: { key_frame: "operator", operator: [0.4, -1.8], operator_marked_at: "2026-09-30T09:00:00+00:00", live: null },
   flight: null,
   message: "The checks did not pass, so the drone will not arm.",
   can_fly: false,
@@ -354,25 +354,25 @@ createRoot(document.getElementById("root")!).render(
     })}
     {control("Control · Manual, arrows from you", {
       state: "busy", mode: "manual", activity: "manual", assisted: true, message: null,
-      controls: { key_frame: "operator", operator: [0.4, -1.8], operator_marked_at: "2026-09-30T09:00:00+00:00", nose: "away", speed: "normal",
+      controls: { key_frame: "operator", operator: [0.4, -1.8], operator_marked_at: "2026-09-30T09:00:00+00:00",
                   live: { chosen: "operator", active: "operator", reason: null, forward_deg: 72.5,
                           operator: [0.4, -1.8], operator_source: "marked" } },
     })}
     {control("Control · Manual, arrows near you", {
       state: "busy", mode: "manual", activity: "manual", assisted: true, message: null,
-      controls: { key_frame: "operator", operator: [0.4, -1.8], operator_marked_at: "2026-09-30T09:00:00+00:00", nose: "away", speed: "normal",
+      controls: { key_frame: "operator", operator: [0.4, -1.8], operator_marked_at: "2026-09-30T09:00:00+00:00",
                   live: { chosen: "operator", active: "room", reason: "near_operator", forward_deg: 0,
                           operator: [0.4, -1.8], operator_source: "marked" } },
     })}
     {control("Control · Manual, arrows no position", {
       state: "busy", mode: "manual", activity: "manual", assisted: false, message: null,
-      controls: { key_frame: "room", operator: null, operator_marked_at: null, nose: "left", speed: "slow",
+      controls: { key_frame: "room", operator: null, operator_marked_at: null,
                   live: { chosen: "room", active: "takeoff", reason: "no_position", forward_deg: -116,
                           operator: null, operator_source: null } },
     })}
     {control("Control · Manual, no position, on the ground", {
       state: "ready", mode: "manual", activity: null, assisted: false, message: null,
-      controls: { key_frame: "operator", operator: null, operator_marked_at: null, nose: "towards", speed: "slow", live: null },
+      controls: { key_frame: "operator", operator: null, operator_marked_at: null, live: null },
     })}
     {WINDOWS.map((w) => (
       <Shell key={w.key} label={`Window · ${w.label}`}>

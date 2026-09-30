@@ -142,11 +142,11 @@ Thrust and height came OFF the attitude indicator when the vitals moved, because
 the vitals show them and two places for one number is worse than either.
 
 THE ARROWS ROW, under the keys (2026-09-30, ArrowFrame.tsx): From you / Room,
-I'm here, Use takeoff spot — or, with no position, NOSE POINTS (Away / Left /
-Right / At me; "Nose at takeoff" in the air; Shift + an arrow does the same
-from the keyboard), which replaces them because without base stations they
-cannot do anything — SPEED (Slow / Normal, always shown in Manual) — and one
-sentence saying what the arrows do RIGHT NOW — away from you, or the fallback in force (near you, no position, no
+I'm here, Use takeoff spot — shown only with base stations, where they can do
+something; without them the row is the sentence alone (the Nose and Speed
+buttons of 2026-09-30 were taken out at the owner's word; Shift + an arrow in
+the air corrects the arrows, App.tsx ALIGN_KEYS) — and one sentence saying what
+the arrows do RIGHT NOW — away from you, or the fallback in force (near you, no position, no
 heading) with a ▲. The keys' caption says it too ("Position · from you"). It
 is in the FlightDeck, not a panel, because it can be switched in the air and
 must be read with the keys. The words are lib/arrows.ts; the decision is the

@@ -174,58 +174,50 @@ and falls back, said on screen, when it must:
   near you   within NEAR_OPERATOR_M (0.50 m) of the spot "away" has no clear
              direction: the room's directions, until FAR_OPERATOR_M (0.60 m)
              out again — hysteresis, so a drone at the edge does not flicker.
-  takeoff    no position (no base stations, or not reported yet): ↑ is away
-             from the operator AS THEY STOOD AT TAKEOFF — the nose's heading at
-             liftoff turned by where they said it pointed (NOSE POINTS, below),
-             then turned into the drone's frame by its heading now
-             (stabilizer.yaw — reported with or without base stations).
-             ArduPilot's Simple mode, DJI's Course Lock. Unassisted flight is
-             always this: its tilt is rotated by (forward − heading now).
+  takeoff    no position (no base stations, or not reported yet): ↑ is the
+             way the nose pointed at liftoff — corrected in the air if it is
+             wrong (SHIFT + AN ARROW, below) — turned into the drone's frame
+             by its heading now (stabilizer.yaw, reported with or without base
+             stations). ArduPilot's Simple mode, DJI's Course Lock. Unassisted
+             flight is always this: its tilt is rotated by (forward − heading).
   nose       not even a heading reported: the old behaviour.
 
-NOSE POINTS (2026-09-30, the owner: "even if the nose points the wrong way it
-should obey my keys"). With no position nothing knows where the operator is —
-no base stations, and a Crazyflie 2.1 has no compass — so "away from you" can
-only be TOLD, once, then KEPT by the heading. The operator says where the nose
-points as they stand: away / left / right / at them (controls.nose,
-POST /controls/nose), which adds 0 / -90 / +90 / 180° to the takeoff heading
-(keyframe.NOSE_TO_FORWARD_DEG; headings counter-clockwise, so the nose at their
-LEFT means their forward is the nose turned 90° clockwise). The drone can be
-set down any way round. In the air it still means "at takeoff": the app labels
-it "Nose at takeoff" there.
-  - SHIFT + AN ARROW sets it from the keyboard (desktop App.tsx ALIGN_KEYS;
-    never a flight key). On the ground: the arrow the nose points along. In
-    the air: the arrow ↑ just WENT — POST /controls/nose/correct, which ADDS
-    that offset to the current one (keyframe.turn_nose): up went left of you
-    means your forward is 90° clockwise of where it went, the offset LEFT
-    already stands for. Composed over all 16 cases, up ends away from you.
-  - It does not follow the operator by itself: turn round to face a drone
-    behind you and ↑ still goes the way you first faced — it comes at you, so
-    Shift+↓ ("it came at me") adds 180° and puts it right. That one key is
-    all turning round costs without base stations; with them, the FROM YOU
-    frame measures it.
-  - Ignored whenever there is a position; FROM YOU and ROOM decide then.
-  - Gyro heading, relative to power-on, drifts slowly; not yet measured in a
-    flight (flight-status.txt, UPDATE 6 lists the lab check).
-  - Defaults to away, which is exactly what the arrows did before it existed;
-    a controls.json from before it, or a bad value, loads as away.
+SHIFT + AN ARROW CORRECTS IT, IN THE AIR (2026-09-30). With no position nothing
+knows where the operator is — no base stations, and a Crazyflie 2.1 has no
+compass; the gyro knows only how far it has turned. So every flight starts with
+↑ along the nose, as the arrows always have, kept through A/D turns. If an
+arrow goes the wrong way, Shift + the arrow for the way it ACTUALLY went turns
+the arrows to match (POST /controls/nose/correct; ManualController.correct_nose,
+keyframe.turn_nose). Turned round to face a drone behind you? ↑ now comes at
+you: Shift+↓.
+  - Measured against the LAST SINGLE ARROW FLOWN and the correction it flew
+    under — never the current one — so pressing it twice is one correction.
+    The first version composed on every press: four presses in 3 s spun the
+    arrows round (trace_7ee43c51). Diagonals are not remembered.
+  - This flight only: arm() starts along the nose again. Nothing is saved.
+    The first version saved the choice in controls.json, and a press of "At
+    me" rotated ↑ backwards before every later takeoff (trace_7ee43c51: ↑
+    pitched the nose UP; trace_0c6429ce: ↑ rolled it left). Taken out, with
+    its Nose buttons, at the owner's word; a saved "nose" is ignored on load.
+  - On the ground it is refused ("take off first"): there is nothing to see.
+  - Ignored with a position; FROM YOU and ROOM measure it then.
 
-SPEED — SLOW OR NORMAL (2026-09-30, the owner: "fly more steadily"). How fast
-the KEYS fly it; flight/manual.py SPEEDS, kept in controls.json (default SLOW;
-an old file or a bad value is SLOW), POST /controls/speed, changeable in the
-air with no step because every command eases towards its target.
+THE ARROWS ARE GENTLE (2026-09-30, the owner: "fly more steadily"). One setting,
+no switch — the Slow / Normal buttons were taken out with the Nose buttons.
 
-              arrows        arrows unassisted   A / D     W / S
-  NORMAL      0.20 m/s      5° lean, 12°/s      30°/s     0.15 m/s
-  SLOW        0.12 m/s      3° lean,  8°/s      20°/s     0.10 m/s
+                 before     now
+  lean, no position    5°     2.5°   half the push: g·tan 2.5° = 0.43 m/s²
+  lean builds at    12°/s    8°/s    full lean in ~0.3 s
+  one press pushes for   —     1.0 s   then eases level; press again for more
+  arrows, with position  0.20 m/s   0.12 m/s  (KEY_MOVE_SPEED_M_S)
+  W / S, A / D     unchanged: 0.15 m/s, 30°/s
 
-Keys only: fly_to() (missions) and hold_at() ("Hover at") keep MOVE_SPEED_M_S
-and CLIMB_RATE_M_S, which the mission time estimates in api/rest.py come from
-— tests pin both, and fail if Slow leaks into a mission. Unassisted, Slow does
-not cap a speed — nothing measures one: an arrow is a lean, the lean is an
-acceleration (g·tan 3° = 0.51 m/s² against 0.86 at 5°) for as long as it is
-held, and the drone coasts after. Slow is 40 % less push, not a limit; a Flow
-deck is what would give a speed to hold.
+With no position a lean is an ACCELERATION for as long as it is held and the
+drone coasts after — nothing measures its speed, so nothing can hold one. A 5°
+lean held two seconds reached ~1.7 m/s. MAX_PUSH_S bounds one press to ~0.5 m/s
+from rest; releasing, or pressing the other way, starts a fresh push. Keys only:
+fly_to() (missions) and hold_at() ("Hover at") keep MOVE_SPEED_M_S and
+CLIMB_RATE_M_S — tests fail if the keys' numbers leak into a mission.
 
 THE OPERATOR'S SPOT. "I'm here" (desktop) takes the DRONE's position now —
 carry it to your feet, or fly it over your head. Without a mark, "away" is
@@ -233,8 +225,7 @@ measured from where this flight took off, as ArduPilot's home is where it
 armed. The choice and the spot are kept on the laptop (controls.json,
 flight/controls_store.py), per Lighthouse setup rather than per room: Manual
 has no room selected, and the spot is a point in the base stations' frame.
-Settable in the air (POST /controls/frame, /controls/operator, /controls/nose,
-/controls/nose/correct, /controls/speed); the next tick
+Settable in the air (POST /controls/frame, /controls/operator); the next tick
 uses it. What the arrows mean now reaches the app as the session's
 `controls.live`, on change only — the operator direction turns continuously
 as the drone circles, and that is not news.

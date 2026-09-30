@@ -24,11 +24,11 @@ and two it falls back to, said out loud in the app:
 
   room       from operator, when the drone is within NEAR_OPERATOR_M of the
              operator's spot — there "away" has no clear direction.
-  takeoff    ↑ is away from the operator AS THEY STOOD AT TAKEOFF, however it
-             turns after. When there is no position (no base stations, or not
-             reported yet): ArduPilot's Simple mode, DJI's Course Lock. The
-             operator says which way the nose pointed at takeoff (NoseFacing),
-             so the drone need not be set down facing away from them.
+  takeoff    ↑ is the way the nose pointed at takeoff, however it turns after.
+             When there is no position (no base stations, or not reported
+             yet): ArduPilot's Simple mode, DJI's Course Lock. If that is the
+             wrong way, Shift + the arrow it went corrects it in the air
+             (NoseFacing, turn_nose) — for that flight only.
   nose       the old behaviour, only when not even a heading is reported.
 
 WITHOUT A POSITION, NOTHING KNOWS WHERE THE OPERATOR IS. The drone has a
@@ -37,7 +37,7 @@ heading (the gyro, relative to power-on; there is no compass on a Crazyflie
 you" cannot be measured — it can only be TOLD, once, and then KEPT through
 every turn by the heading. It stays right while the operator faces the way they
 did at takeoff; turning round to follow a drone behind them needs a position
-(the operator frame), or telling it again.
+(the operator frame), or a correction in the air.
 
 Headings follow the Crazyflie's convention, which the estimator reports:
 degrees counter-clockwise from +x, so 0° is +x and 90° is +y. "Left" is 90°
@@ -95,18 +95,22 @@ NOSE_TO_FORWARD_DEG: dict[NoseFacing, float] = {
 }
 
 
-def turn_nose(nose: NoseFacing, went: NoseFacing) -> NoseFacing:
-    """Correct the nose setting from what the operator SAW, in the air.
+def turn_nose(nose: NoseFacing, went: NoseFacing,
+              pressed: NoseFacing = NoseFacing.AWAY) -> NoseFacing:
+    """Correct where up points from what the operator SAW, in the air.
 
-    Up was pressed and the drone went `went` of them (away, left, right, or
-    towards them) instead of away. Up moves along their forward as currently
-    set, F = takeoff heading + offset. Went LEFT means F is 90° counter-
-    clockwise of their true forward, so the true forward is F turned 90°
-    CLOCKWISE — which is the offset LEFT already stands for. So the correction
-    is simply the two offsets added: the same table, composed. Turning round to
-    face a drone behind you is "it came at me": 180°.
+    The arrow `pressed` (up: AWAY, down: TOWARDS, left, right) was flown under
+    `nose` and the drone went `went` of them. That key moves the drone along
+    its own direction off the current forward F; it should have gone
+    `pressed`, it went `went`, so the true forward is F turned by the
+    difference of the two offsets. For up (pressed AWAY) that is `went`'s
+    offset alone: went LEFT means F is 90° counter-clockwise of the true
+    forward, so the true forward is F turned 90° clockwise — the offset LEFT
+    stands for. Turning round to face a drone behind you: up came at you,
+    TOWARDS, 180°.
     """
-    total = (NOSE_TO_FORWARD_DEG[nose] + NOSE_TO_FORWARD_DEG[went]) % 360.0
+    total = (NOSE_TO_FORWARD_DEG[nose] + NOSE_TO_FORWARD_DEG[went]
+             - NOSE_TO_FORWARD_DEG[pressed]) % 360.0
     for facing, offset in NOSE_TO_FORWARD_DEG.items():
         if offset % 360.0 == total:
             return facing

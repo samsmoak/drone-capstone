@@ -188,3 +188,29 @@ class TestTurnNose:
         # Where they really face: the direction up went, turned the other way.
         true_forward = (old + NOSE_TO_FORWARD_DEG[went]) % 360.0
         assert forward(turn_nose(nose, went)) % 360.0 == pytest.approx(true_forward)
+
+
+class TestTurnNoseFromAnyArrow:
+    """Shift + an arrow corrects against the arrow that flew, whichever it was."""
+
+    @pytest.mark.parametrize("pressed", list(NoseFacing))
+    @pytest.mark.parametrize("went", list(NoseFacing))
+    def test_the_arrow_that_flew_ends_up_going_where_it_meant(self, pressed, went):
+        takeoff = -23.0
+        def forward(n):
+            return resolve(KeyFrame.OPERATOR, drone_xy=None, operator_xy=None,
+                           operator_source=None, takeoff_heading_deg=takeoff,
+                           nose=n).forward_deg
+        for nose in NoseFacing:
+            old = forward(nose)
+            # The key moved it along old + offset(pressed); that direction is,
+            # in truth, `went` of the operator. So their forward is that
+            # direction minus offset(went).
+            flew = old - NOSE_TO_FORWARD_DEG[pressed]      # keys: left is +90 CCW
+            true_forward = (flew + NOSE_TO_FORWARD_DEG[went]) % 360.0
+            new = turn_nose(nose, went, pressed=pressed)
+            assert forward(new) % 360.0 == pytest.approx(true_forward)
+
+    def test_left_flew_and_went_away(self):
+        assert turn_nose(NoseFacing.AWAY, NoseFacing.AWAY, pressed=NoseFacing.LEFT) \
+            is NoseFacing.RIGHT
