@@ -1,6 +1,39 @@
 MANUAL CONTROL — assisted flying from held keys
 ===============================================
 
+LOCKED — 2026-09-30, by the owner (Samuel): "no one should change the manual
+flight control unless I want to make that change". It flies right as it is.
+Do not change how the keys fly the drone — not the keys, the lean, the speeds,
+Shift, or the tuning — without Samuel's say-so in writing. The files are
+fingerprinted (backend/agent/tests/test_manual_control_lock.py) and need his
+review (.github/CODEOWNERS); CLAUDE.md, "Manual flight control is locked".
+
+
+HOW TO FLY IT (what the operator does, as locked)
+
+  Start           the props idle on the floor. Nothing lifts yet.
+  W / S           up / down. Hold W to take off. Let go: it holds that height.
+  A / D           turn the nose left / right, on the spot. It does NOT change
+                  which way the arrows go.
+  ↑ ↓ ← →         move. ↑ is the way the NOSE POINTED WHEN IT TOOK OFF — set
+                  the drone down facing away from you and ↑ is away from you,
+                  ↓ back towards you, ← and → to your left and right. That
+                  stays true however much you turn it with A / D.
+  SHIFT (hold)    reverses the arrows while you hold it: ↑ comes back, ← goes
+                  right. For when the drone faces you. Let go and they are
+                  normal again. W / S and A / D are never reversed.
+  L               land.
+  Emergency stop  hold the button for a second: the motors stop.
+
+  Hold an arrow as long as you need: it keeps pushing for as long as it is
+  held, and the drone levels when you let go. With no base stations it has no
+  position to hold, so it coasts a little after you let go — tap the opposite
+  arrow to stop it. Every flight starts the same way; nothing carries over.
+
+  Keys with no base stations: a 2.5° lean (half the old 5°), built at 8°/s.
+  With base stations (position hold): the arrows move it at 0.12 m/s.
+
+
 WHAT IT IS
 
 Manual mode does not send raw thrust. The window reports WHICH KEYS ARE HELD

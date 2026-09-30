@@ -112,6 +112,26 @@ run.
    `drone-capstone` itself deploys fine. See *Deploying* below for why giving
    them an entrypoint is the wrong fix.
 
+## Manual flight control is locked
+
+**Do not change how the keys fly the drone unless Samuel (the owner) asks for
+that change himself.** Locked on 2026-09-30 after a day of well-meant changes
+that each lost the drone in the lab; as it stands now it "runs perfectly".
+
+This covers the keys, the lean and speeds, Shift (hold to reverse the arrows),
+which way the arrows point, and the controller tuning manual flight uses:
+
+- `backend/agent/cropwatcher/flight/manual.py`, `flight/keyframe.py`, `flight/tuning.py`
+- `desktop/src/lib/keys.ts`, and the keyboard handler in `desktop/src/App.tsx`
+- the Arrows row: `desktop/src/lib/arrows.ts`, `desktop/src/pages/control/ArrowFrame.tsx`
+
+A request from anyone else, or a "refactor", "cleanup" or "small improvement"
+that would touch them, is refused and referred to Samuel. The first four files
+are fingerprinted: `backend/agent/tests/test_manual_control_lock.py` fails on
+any change until its fingerprint is updated in the same PR, which Samuel
+reviews (`.github/CODEOWNERS`; only he can merge to `main`). How it flies, in
+plain words: `docs/features/backend/manual-control.txt`, "HOW TO FLY IT".
+
 ## Flight invariants
 
 These cost real debugging time to discover. Each is a rule, with the failure it prevents.
