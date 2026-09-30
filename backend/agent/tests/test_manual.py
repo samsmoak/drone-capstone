@@ -17,6 +17,7 @@ from cropwatcher.flight.keyframe import (
     NEAR_OPERATOR_M,
     ActiveFrame,
     KeyFrame,
+    NoseFacing,
     Reason,
 )
 from cropwatcher.flight.manual import (
@@ -68,7 +69,7 @@ class Rig:
     def __init__(self, assisted: bool = True, fix: Fix | None = SOMEWHERE, *,
                  key_frame: KeyFrame = KeyFrame.OPERATOR,
                  operator: tuple[float, float] | None = None,
-                 yaw: float | None = None):
+                 yaw: float | None = None, nose: NoseFacing = NoseFacing.AWAY):
         self.clock = FakeClock()
         self.cmd = FakeCommander()
         self.lands: list[tuple[float, float]] = []
@@ -83,7 +84,7 @@ class Rig:
             assisted=assisted, clock=self.clock,
             position=lambda: self.fix,
             heading=lambda: self.fix.yaw_deg if self.fix is not None else self.yaw,
-            key_frame=key_frame, operator_xy=operator,
+            key_frame=key_frame, operator_xy=operator, nose=nose,
             on_frame_change=self.frames.append,
         )
 
@@ -1284,3 +1285,91 @@ class TestFlyTo:
         rig.ctl.fly_to(SOMEWHERE.x + 2.0, SOMEWHERE.y, 0.40)
         rig.run(HEARTBEAT_TIMEOUT_S + 0.2, heartbeat=False)
         assert rig.ctl.state in (ControlState.LANDING, ControlState.LANDED)
+
+
+class TestNosePointsWhereTheOperatorSays:
+    """No base stations, and the drone set down any way round: the operator
+    says which way the nose points, and up is away from THEM — then kept, by
+    the heading, however the drone turns. The nose is +x at takeoff here
+    (heading 0), so the drone's own right is -y and its left +y.
+
+    Tilt convention, verified against the firmware (manual-control.txt): the
+    up arrow on a nose-away drone is pitch -MAX_TILT_DEG (nose down, forward);
+    positive roll is right side down, which moves it right."""
+
+    @staticmethod
+    def up(nose: NoseFacing, turned_to: float = 0.0) -> tuple[float, float]:
+        rig = Rig(assisted=False, fix=Fix(0.0, 0.0, 0.0), nose=nose)
+        rig.fly_to(0.3)
+        rig.fix = Fix(0.0, 0.0, turned_to)
+        rig.run(1.0, Intent(forward=True))
+        _, roll, pitch, _, _ = rig.cmd.last("zdistance")
+        assert rig.ctl.frame_status.active is ActiveFrame.TAKEOFF
+        return roll, pitch
+
+    def test_nose_away_flies_along_the_nose(self):
+        roll, pitch = self.up(NoseFacing.AWAY)
+        assert pitch == pytest.approx(-MAX_TILT_DEG) and roll == pytest.approx(0.0, abs=1e-9)
+
+    def test_nose_at_your_left_flies_to_its_right(self):
+        # Their forward is the nose turned clockwise: the drone's right.
+        roll, pitch = self.up(NoseFacing.LEFT)
+        assert roll == pytest.approx(MAX_TILT_DEG) and pitch == pytest.approx(0.0, abs=1e-9)
+
+    def test_nose_at_your_right_flies_to_its_left(self):
+        roll, pitch = self.up(NoseFacing.RIGHT)
+        assert roll == pytest.approx(-MAX_TILT_DEG) and pitch == pytest.approx(0.0, abs=1e-9)
+
+    def test_nose_towards_you_flies_backwards(self):
+        roll, pitch = self.up(NoseFacing.TOWARDS)
+        assert pitch == pytest.approx(MAX_TILT_DEG) and roll == pytest.approx(0.0, abs=1e-9)
+
+    def test_it_still_holds_after_the_drone_turns(self):
+        # Nose at their left (their forward = the drone's -y at takeoff). A
+        # quarter turn left later, that direction is behind the drone.
+        roll, pitch = self.up(NoseFacing.LEFT, turned_to=90.0)
+        assert pitch == pytest.approx(MAX_TILT_DEG) and roll == pytest.approx(0.0, abs=1e-9)
+
+    def test_right_goes_to_the_operators_right_too(self):
+        rig = Rig(assisted=False, fix=Fix(0.0, 0.0, 0.0), nose=NoseFacing.TOWARDS)
+        rig.fly_to(0.3)
+        rig.run(1.0, Intent(right=True))
+        _, roll, pitch, _, _ = rig.cmd.last("zdistance")
+        # Facing the operator, their right is the drone's left.
+        assert roll == pytest.approx(-MAX_TILT_DEG) and pitch == pytest.approx(0.0, abs=1e-9)
+
+    def test_changed_in_the_air_it_counts_from_takeoff(self):
+        rig = Rig(assisted=False, fix=Fix(0.0, 0.0, 0.0))
+        rig.fly_to(0.3)
+        rig.fix = Fix(0.0, 0.0, 90.0)             # turned a quarter left since
+        rig.ctl.set_key_frame(KeyFrame.OPERATOR, None, NoseFacing.RIGHT)
+        rig.run(1.0, Intent(forward=True))
+        _, roll, pitch, _, _ = rig.cmd.last("zdistance")
+        # Nose at their right at takeoff: their forward is +y, which after the
+        # quarter turn is straight ahead of the drone.
+        assert pitch == pytest.approx(-MAX_TILT_DEG) and roll == pytest.approx(0.0, abs=1e-9)
+
+    def test_a_frame_change_without_a_nose_keeps_the_nose(self):
+        rig = Rig(assisted=False, fix=Fix(0.0, 0.0, 0.0), nose=NoseFacing.TOWARDS)
+        rig.fly_to(0.3)
+        rig.ctl.set_key_frame(KeyFrame.ROOM, None)
+        rig.run(1.0, Intent(forward=True))
+        _, _, pitch, _, _ = rig.cmd.last("zdistance")
+        assert pitch == pytest.approx(MAX_TILT_DEG)
+
+    def test_assisted_before_a_position_arrives_it_applies_too(self):
+        # The velocity fallback, in the drone's frame: nose at their left means
+        # up is the drone's right, -vy.
+        rig = Rig(fix=None, yaw=0.0, nose=NoseFacing.LEFT)
+        rig.fly_to(0.3)
+        rig.run(1.0, Intent(forward=True))
+        _, vx, vy, _, _ = rig.cmd.last("hover")
+        assert vx == pytest.approx(0.0, abs=1e-9) and vy == pytest.approx(-MOVE_SPEED_M_S)
+
+    def test_with_a_position_it_is_ignored(self):
+        away = Rig(fix=Fix(1.0, 0.0, 0.0), operator=(0.0, 0.0))
+        left = Rig(fix=Fix(1.0, 0.0, 0.0), operator=(0.0, 0.0), nose=NoseFacing.LEFT)
+        for rig in (away, left):
+            rig.fly_to(0.3)
+            rig.run(1.0, Intent(forward=True))
+        assert away.ctl.target == left.ctl.target

@@ -11,22 +11,50 @@
  * it over your head, and press it. Without a mark, "away" is measured from
  * where the drone took off — ArduPilot's home — which is right whenever you
  * stand by the takeoff spot.
+ *
+ * WITHOUT A POSITION (no base stations) "From you" and "Room" cannot work —
+ * nothing knows where the drone or you are — so they give way to NOSE POINTS:
+ * where the nose points as you stand. The drone can be set down any way round;
+ * ↑ is then away from you as you stood at takeoff, kept by its heading however
+ * it turns (keyframe.py). Changeable in the air, and still counted from
+ * takeoff there, which the buttons' titles say.
  */
 
 import type { Run } from "@/App";
 import { api, type Session } from "@/lib/agent";
-import { arrowWords } from "@/lib/arrows";
+import { arrowWords, NOSE_CHOICES } from "@/lib/arrows";
 import { SmallButton } from "./auto/plan/fields";
 
 export function ArrowFrame({ session, run }: { session: Session; run: Run }) {
   const controls = session.controls;
-  const words = arrowWords(controls);
+  const words = arrowWords(controls, session.assisted);
   const connected = session.radio.state === "connected" || session.state === "ready" || session.state === "busy";
   const canMark = connected && session.assisted;
   const marked = controls.operator;
+  // No position: the nose choice is what makes "away from you". Also while an
+  // assisted flight waits for its first position (the agent says "takeoff").
+  const noPosition = !session.assisted || controls.live?.active === "takeoff";
+  const inAir = controls.live !== null;
 
   return (
     <div className="grid gap-1.5 border-t border-[var(--border)] pt-2.5">
+      {noPosition && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <p className="eyebrow pr-1">{inAir ? "Nose at takeoff" : "Nose points"}</p>
+          <div className="flex gap-1" role="group" aria-label="Where the drone's nose points, as you stand">
+            {NOSE_CHOICES.map((choice) => (
+              <SmallButton key={choice.value} pressed={controls.nose === choice.value}
+                           onClick={() => void run(() => api.setNose(choice.value), `Nose ${choice.where}`)}
+                           title={inAir
+                             ? `At takeoff its nose pointed ${choice.where}: ↑ flies away from where you stood then`
+                             : `Its nose points ${choice.where}: ↑ flies away from you, however it turns after takeoff`}>
+                {choice.label}
+              </SmallButton>
+            ))}
+          </div>
+        </div>
+      )}
+      {session.assisted && (
       <div className="flex flex-wrap items-center gap-1.5">
         <p className="eyebrow pr-1">Arrows</p>
         <div className="flex gap-1" role="group" aria-label="Arrow keys move the drone">
@@ -59,6 +87,7 @@ export function ArrowFrame({ session, run }: { session: Session; run: Run }) {
           </SmallButton>
         )}
       </div>
+      )}
       <p role="status" className={`text-xs leading-snug ${words.warn ? "text-[var(--foreground)]" : "text-[var(--muted)]"}`}>
         {words.warn && <span aria-hidden className="mr-1 text-[var(--status-warning)]">▲</span>}
         {words.line}

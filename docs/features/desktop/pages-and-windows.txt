@@ -142,7 +142,9 @@ Thrust and height came OFF the attitude indicator when the vitals moved, because
 the vitals show them and two places for one number is worse than either.
 
 THE ARROWS ROW, under the keys (2026-09-30, ArrowFrame.tsx): From you / Room,
-I'm here, Use takeoff spot, and one sentence saying what the arrows do RIGHT
+I'm here, Use takeoff spot — or, with no position, NOSE POINTS (Away / Left /
+Right / At me; "Nose at takeoff" in the air), which replaces them because
+without base stations they cannot do anything — and one sentence saying what the arrows do RIGHT
 NOW — away from you, or the fallback in force (near you, no position, no
 heading) with a ▲. The keys' caption says it too ("Position · from you"). It
 is in the FlightDeck, not a panel, because it can be switched in the air and

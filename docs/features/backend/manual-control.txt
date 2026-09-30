@@ -174,12 +174,33 @@ and falls back, said on screen, when it must:
   near you   within NEAR_OPERATOR_M (0.50 m) of the spot "away" has no clear
              direction: the room's directions, until FAR_OPERATOR_M (0.60 m)
              out again — hysteresis, so a drone at the edge does not flicker.
-  takeoff    no position (no base stations, or not reported yet): ↑ keeps the
-             way the nose pointed at liftoff, turned into the drone's frame by
-             its heading now (stabilizer.yaw — reported with or without base
-             stations). ArduPilot's Simple mode. Unassisted flight is always
-             this: its tilt is rotated by (takeoff heading − heading now).
+  takeoff    no position (no base stations, or not reported yet): ↑ is away
+             from the operator AS THEY STOOD AT TAKEOFF — the nose's heading at
+             liftoff turned by where they said it pointed (NOSE POINTS, below),
+             then turned into the drone's frame by its heading now
+             (stabilizer.yaw — reported with or without base stations).
+             ArduPilot's Simple mode, DJI's Course Lock. Unassisted flight is
+             always this: its tilt is rotated by (forward − heading now).
   nose       not even a heading reported: the old behaviour.
+
+NOSE POINTS (2026-09-30, the owner: "even if the nose points the wrong way it
+should obey my keys"). With no position nothing knows where the operator is —
+no base stations, and a Crazyflie 2.1 has no compass — so "away from you" can
+only be TOLD, once, then KEPT by the heading. The operator says where the nose
+points as they stand: away / left / right / at them (controls.nose,
+POST /controls/nose), which adds 0 / -90 / +90 / 180° to the takeoff heading
+(keyframe.NOSE_TO_FORWARD_DEG; headings counter-clockwise, so the nose at their
+LEFT means their forward is the nose turned 90° clockwise). The drone can be
+set down any way round. In the air it still means "at takeoff": the app labels
+it "Nose at takeoff" there.
+  - It does NOT follow the operator. Turn round to face a drone behind you
+    and ↑ still goes the way you first faced; the words on screen say so.
+    Following you needs a position: the FROM YOU frame, with base stations.
+  - Ignored whenever there is a position; FROM YOU and ROOM decide then.
+  - Gyro heading, relative to power-on, drifts slowly; not yet measured in a
+    flight (flight-status.txt, UPDATE 6 lists the lab check).
+  - Defaults to away, which is exactly what the arrows did before it existed;
+    a controls.json from before it, or a bad value, loads as away.
 
 THE OPERATOR'S SPOT. "I'm here" (desktop) takes the DRONE's position now —
 carry it to your feet, or fly it over your head. Without a mark, "away" is
@@ -187,7 +208,7 @@ measured from where this flight took off, as ArduPilot's home is where it
 armed. The choice and the spot are kept on the laptop (controls.json,
 flight/controls_store.py), per Lighthouse setup rather than per room: Manual
 has no room selected, and the spot is a point in the base stations' frame.
-Settable in the air (POST /controls/frame, /controls/operator); the next tick
+Settable in the air (POST /controls/frame, /controls/operator, /controls/nose); the next tick
 uses it. What the arrows mean now reaches the app as the session's
 `controls.live`, on change only — the operator direction turns continuously
 as the drone circles, and that is not news.

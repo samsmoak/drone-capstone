@@ -27,6 +27,7 @@ COMMANDS = [
     ("post", "/session/health-test", None),
     ("post", "/session/retry", None),
     ("post", "/session/reset-drone", None),
+    ("post", "/controls/nose", {"nose": "away"}),
     ("post", "/session/program", {"height_m": 0.3, "hold_s": 5}),
     ("post", "/session/manual/arm", {}),
     ("post", "/session/land", None),
@@ -387,7 +388,17 @@ class TestArrowKeyControls:
     def test_the_snapshot_carries_the_defaults(self, client):
         body = client.get("/session", headers=auth(client)).json()
         assert body["controls"] == {"key_frame": "operator", "operator": None,
-                                    "operator_marked_at": None, "live": None}
+                                    "operator_marked_at": None, "nose": "away", "live": None}
+
+    def test_saying_where_the_nose_points_is_kept(self, client):
+        body = client.post("/controls/nose", json={"nose": "left"}, headers=auth(client)).json()
+        assert body["controls"]["nose"] == "left"
+        again = client.get("/session", headers=auth(client)).json()
+        assert again["controls"]["nose"] == "left"
+
+    def test_an_unknown_nose_is_a_readable_refusal(self, client):
+        response = client.post("/controls/nose", json={"nose": "up"}, headers=auth(client))
+        assert response.status_code == 409 and "towards" in response.json()["detail"]
 
     def test_choosing_the_room_frame_is_kept(self, client):
         body = client.post("/controls/frame", json={"frame": "room"}, headers=auth(client)).json()
