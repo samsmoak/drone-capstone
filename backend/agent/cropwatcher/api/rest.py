@@ -156,6 +156,21 @@ class ProcessingRequest(BaseModel):
     on: bool
 
 
+class KeyFrameRequest(BaseModel):
+    #: Which way the arrow keys move the drone: "operator" (away from you) or
+    #: "room" (the room's own directions). flight/keyframe.py.
+    frame: str
+
+
+class OperatorSpotRequest(BaseModel):
+    #: Where the operator stands. Exactly one of: the drone's position now
+    #: ("I'm here"), a spot in room metres, or clear (use the takeoff spot).
+    from_drone: bool = False
+    x: float | None = None
+    y: float | None = None
+    clear: bool = False
+
+
 class ConfirmRequest(BaseModel):
     #: The operator accepts flying with no base stations: height from the
     #: barometer only, no position hold, no drift or fence guard. Required only
@@ -740,6 +755,19 @@ def process_flight(flight_id: str) -> dict:
 def set_processing(request: ProcessingRequest) -> dict:
     """The DPP switch: process this session's flights when they land."""
     return _run(lambda: agent.session.set_processing(request.on))
+
+
+@app.post("/controls/frame", dependencies=[Command])
+def set_key_frame(request: KeyFrameRequest) -> dict:
+    """Which way the arrow keys move the drone. Works in the air."""
+    return _run(lambda: agent.session.set_key_frame(request.frame))
+
+
+@app.post("/controls/operator", dependencies=[Command])
+def mark_operator(request: OperatorSpotRequest) -> dict:
+    """Where the operator stands — what "away from you" is measured from."""
+    return _run(lambda: agent.session.mark_operator(
+        from_drone=request.from_drone, x=request.x, y=request.y, clear=request.clear))
 
 
 @app.post("/session/mode", dependencies=[Command])

@@ -49,6 +49,12 @@ that. Land, an emergency stop and re-arming all clear it too.
 WHERE IT LIVES
 
   backend/agent/cropwatcher/flight/manual.py  the loop and the control state
+  backend/agent/cropwatcher/flight/keyframe.py  which way the arrows move it
+  backend/agent/cropwatcher/flight/controls_store.py  the choice and the spot, saved
+  backend/agent/cropwatcher/session.py      set_key_frame, mark_operator, `controls`
+  desktop/src/pages/control/ArrowFrame.tsx  From you / Room, I'm here, what they mean
+  desktop/src/lib/arrows.ts                 the words for each frame
+  backend/agent/tests/test_keyframe.py, tests/test_controls.py
   backend/agent/cropwatcher/flight/link.py    reads the position the spot comes from
   backend/agent/cropwatcher/flight/geometry.py  re-measures where the stations are
   backend/agent/cropwatcher/api/rest.py     /ws/live carries the intent
@@ -87,8 +93,10 @@ absolutely every tick, moving or still, with send_position_setpoint(x, y, z,
 yaw). Each held key advances one coordinate of that point at its own eased
 rate, for exactly as long as it is held:
 
-  Up / Down arrow   forward / back    0.20 m/s along the nose
-  Left / Right      sideways          0.20 m/s across the nose
+  Up / Down arrow   away / back       0.20 m/s — from you, or the room's
+                                      forward; NEVER along the nose (below)
+  Left / Right      round / sideways  0.20 m/s — round you, or the room's
+                                      left and right
   W / S             height            0.15 m/s
   A / D             heading           30 deg/s
 
@@ -132,13 +140,47 @@ than LEASH_M (0.30 m) from where the drone actually is, so the worst lurch
 possible is a 30 cm one, releasing a key always settles within 30 cm, and the
 arrows cannot command more than the drone can really fly.
 
-FORWARD MEANS WHERE THE NOSE POINTS. The keys are in the drone's frame, the
-point is in the room's, so each step is rotated by the heading being
-commanded. The firmware did this for us when we sent velocities; with a
-position it is ours, and the sign of the sine term is the difference between
-forward and backward. Heading is locked unless A/D is held — if it drifted,
-the meaning of "forward" would rotate under the operator and the drone would
-curve.
+THE ARROWS FOLLOW YOU, NEVER THE NOSE (2026-09-30, the owner's ask; until
+then "forward meant where the nose points"). A drone set down at -116°
+(flight-log.txt) or turned with A/D flew "forward" somewhere the operator did
+not expect, and after half a turn ↑ came towards them. A quadcopter moves in
+any direction without turning, so the heading is now only the nose: A and D
+turn it and nothing else. The arrows move the commanded point in the ROOM, in
+the frame flight/keyframe.py picks each tick:
+
+  FROM YOU (default)  ↑ away from the operator's spot, ↓ back towards it,
+                      ← / → round it — their left and right as they face the
+                      drone. Stays right when the drone flies behind them and
+                      they turn to face it. ArduPilot's Super Simple mode, DJI's
+                      Home Lock; base stations stand in for their GPS.
+  ROOM                ↑ is the room's +x — the direction `cropwatcher geometry`
+                      asked the operator to face the drone along ("the
+                      direction you want to call forward").
+
+and falls back, said on screen, when it must:
+
+  near you   within NEAR_OPERATOR_M (0.50 m) of the spot "away" has no clear
+             direction: the room's directions, until FAR_OPERATOR_M (0.60 m)
+             out again — hysteresis, so a drone at the edge does not flicker.
+  takeoff    no position (no base stations, or not reported yet): ↑ keeps the
+             way the nose pointed at liftoff, turned into the drone's frame by
+             its heading now (stabilizer.yaw — reported with or without base
+             stations). ArduPilot's Simple mode. Unassisted flight is always
+             this: its tilt is rotated by (takeoff heading − heading now).
+  nose       not even a heading reported: the old behaviour.
+
+THE OPERATOR'S SPOT. "I'm here" (desktop) takes the DRONE's position now —
+carry it to your feet, or fly it over your head. Without a mark, "away" is
+measured from where this flight took off, as ArduPilot's home is where it
+armed. The choice and the spot are kept on the laptop (controls.json,
+flight/controls_store.py), per Lighthouse setup rather than per room: Manual
+has no room selected, and the spot is a point in the base stations' frame.
+Settable in the air (POST /controls/frame, /controls/operator); the next tick
+uses it. What the arrows mean now reaches the app as the session's
+`controls.live`, on change only — the operator direction turns continuously
+as the drone circles, and that is not news.
+
+A mission's keys — a held key taking over from fly_to() — follow the same frame.
 
 Unassisted flight never commands a point: without base stations x and y are
 dead reckoning. With no position the loop falls back to the velocity law
@@ -171,7 +213,9 @@ THE NUMBERS
   MAX_HEIGHT_M        1.00          ceiling (assisted)
   MAX_UNASSISTED_HEIGHT_M 0.80      ceiling on the barometer
   LAND_RATE_M_S       0.25          barometer descent
-  MOVE_SPEED_M_S      0.20          arrows, body frame
+  MOVE_SPEED_M_S      0.20          arrows, in the frame keyframe.py picks
+  NEAR_OPERATOR_M     0.50          closer to the spot: room directions
+  FAR_OPERATOR_M      0.60          ...until this far out again (hysteresis)
   LEASH_M             0.30          how far the point may get ahead of the drone
   DRIFT_NOTICE_M      0.15          off the point and still correcting -> logged
   MAX_HOLD_VARIANCE_M2 0.01         10 cm std dev; looser and the fix is not
@@ -185,10 +229,10 @@ THE NUMBERS
 
 KEYS (all shown on screen, always)
 
-  Up / Down arrow   forward / back
-  Left / Right      left / right
+  Up / Down arrow   away from you / back (Room: the room's forward / back)
+  Left / Right      round you (Room: the room's left / right)
   W / S             rise / descend, gently
-  A / D             rotate left / right
+  A / D             turn the nose — and nothing else
   L                 land gracefully
   Emergency stop    hold one second, no key binding
 
@@ -263,8 +307,8 @@ hold_at(height) for the height; fly_to(x, y, height) for a point in the room
 and a height, at the arrow keys' eased speed (MOVE_SPEED_M_S) and acceleration,
 on the same leash, capped at the speed the remaining distance can still be
 stopped from — so it arrives instead of coasting past. The goal's velocity is
-computed in the room's frame and turned into the drone's frame by the
-commanded heading, exactly as the keys' step is turned the other way.
+computed in the room's frame — the frame the arrows move the point in too —
+and added as it is; the heading never bends it.
 
   goal_active        True while either goal is still gliding
   operator_override  True once a held key cancelled a goal; hold_at/fly_to
@@ -280,5 +324,8 @@ direction at any heading, keys cancel it, the leash holds, the dead-man lands.
 
 RELATED
 
+consumed-by       ../desktop/pages-and-windows.txt
+                  the FlightDeck's Arrows row: the frame, I'm here, and what the
+                  arrows mean now (session `controls`)
 consumed-by       ../missions/mission-controller.txt
                   fly_to, hold_at, the leash and the dead-man fly every mission

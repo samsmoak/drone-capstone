@@ -60,7 +60,9 @@ backend/supabase/migrations/20260928000012_telemetry_point_id.sql
   overshoot — the approach profile the height goal uses.
 • KEYS ALWAYS WIN. Any held key cancels every goal at the top of the tick and
   sets operator_override; the mission ends INTERRUPTED and the drone is the
-  operator's, as in Manual.
+  operator's, as in Manual — the arrows away from them, or in the room's
+  directions, never along the nose (../backend/manual-control.txt). fly_to's
+  own velocity is in the room's frame and no heading bends it.
 • THE HEARTBEAT STAYS WITH THE APP. The controller never calls heartbeat(): if
   the window goes quiet the drone lands, mission or not.
 • EVERY REFUSAL BEFORE ANYTHING ARMS: Auto, assisted, checks passed, the

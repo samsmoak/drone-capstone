@@ -35,6 +35,12 @@ whether the next flight will be processed (on by default in Auto, off in
 Manual — the operator's choice wins and lasts until the session ends), the
 recent jobs, and the last flight to land. See ../pipeline/data-pipeline.txt.
 
+THE ARROW KEYS' FRAME (2026-09-30) is in the snapshot too: Snapshot.controls
+carries the operator's choice (away from them, or the room's directions), their
+marked spot, and — while flying — what the arrows mean right now (`live`). It
+is kept on the laptop, not per session; see manual-control.txt, "THE ARROWS
+FOLLOW YOU".
+
 MODE is auto or manual, chosen in the desktop app's SIDEBAR, and DEFAULTS TO
 MANUAL (Snapshot.mode). It cannot change while busy: swapping controller mid-air
 would hand the drone to a different command source with no warning. (It sat in a

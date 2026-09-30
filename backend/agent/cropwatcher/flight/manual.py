@@ -102,6 +102,13 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
 
+from cropwatcher.flight.keyframe import (
+    FrameStatus,
+    KeyFrame,
+    keys_to_room,
+    resolve,
+    room_to_body,
+)
 from cropwatcher.safety.flight_guard import MAX_PLAUSIBLE_SPEED_M_S
 
 log = logging.getLogger(__name__)
@@ -122,7 +129,7 @@ GOAL_REACHED_M = 0.01               # a held goal is done within a centimetre
 LIFTOFF_HEIGHT_M = 0.05             # target above this means "flying"
 TOUCHDOWN_HEIGHT_M = 0.05           # lowering below this lands
 MAX_HEIGHT_M = 1.00
-MOVE_SPEED_M_S = 0.20               # arrows, body frame
+MOVE_SPEED_M_S = 0.20               # arrows — in the frame keyframe.py chooses
 YAW_RATE_DEG_S = 30.0
 LAND_S = 3.0
 
@@ -269,6 +276,10 @@ class ManualController:
         land: Callable[[float, float], None],
         assisted: bool = True,
         position: Callable[[], Fix | None] | None = None,
+        heading: Callable[[], float | None] | None = None,
+        key_frame: KeyFrame = KeyFrame.OPERATOR,
+        operator_xy: tuple[float, float] | None = None,
+        on_frame_change: Callable[[FrameStatus | None], None] | None = None,
         heartbeat_timeout_s: float = HEARTBEAT_TIMEOUT_S,
         tick_s: float = TICK_S,
         clock: Callable[[], float] = time.monotonic,
@@ -279,6 +290,12 @@ class ManualController:
         `assisted` is False when the drone has no usable position estimate: W
         and S then drive the throttle directly and the operator holds the
         height by eye, because there is no height for the drone to hold.
+        `heading()` is the drone's heading now, degrees (stabilizer.yaw) —
+        reported with or without base stations; it is what turns the arrows
+        into the drone's own frame when no position can carry them.
+        `key_frame` and `operator_xy` say which way the arrows move it
+        (keyframe.py); `on_frame_change` hears whenever what they mean
+        changes, outside the lock, so the app can say so.
         """
         self._commander = commander
         self._ground_z = ground_z
@@ -287,6 +304,19 @@ class ManualController:
         #: Where the drone reports it is, for holding a spot. None when
         #: nothing is reporting one — then the loop keeps to velocities.
         self._position = position
+        self._heading = heading
+        #: Which way the arrows move the drone (keyframe.py). The operator's
+        #: MARKED spot, if they said "I'm here"; otherwise the takeoff spot
+        #: stands in for it, as ArduPilot's home is where the drone armed.
+        self._key_frame = key_frame
+        self._marked_operator = operator_xy
+        self._on_frame_change = on_frame_change
+        #: Where and which way this flight lifted off. Reset by arm().
+        self._takeoff_xy: tuple[float, float] | None = None
+        self._takeoff_heading: float | None = None
+        #: What the arrows meant on the last flying tick; None on the ground.
+        self._frame: FrameStatus | None = None
+        self._frame_changed = False
         #: The point the drone is being told to be at: x, y and heading. The
         #: height is carried separately, in _target_height, because it is
         #: relative to the floor. None until a position has been reported.
@@ -395,6 +425,17 @@ class ManualController:
             return self._goal_xy is not None or self._goal_height is not None
 
     @property
+    def frame_status(self) -> FrameStatus | None:
+        """What the arrow keys mean right now, while flying; None on the ground."""
+        with self._lock:
+            return self._frame
+
+    @property
+    def key_frame(self) -> KeyFrame:
+        with self._lock:
+            return self._key_frame
+
+    @property
     def operator_override(self) -> bool:
         """A held key cancelled a goal: the operator has taken the drone back."""
         with self._lock:
@@ -415,6 +456,9 @@ class ManualController:
             self._goal_xy = None
             self._operator_override = False
             self._reset_glide_locked()
+            self._takeoff_xy = None
+            self._takeoff_heading = None
+            self._set_frame_locked(None)
             self._last_heartbeat = self._clock()
             self._last_tick = self._clock()
             self._state = ControlState.ARMED
@@ -423,6 +467,7 @@ class ManualController:
         # silently held at zero: the props never idle and the keys do nothing.
         # The lab's working scripts do the same (hop_test.py, keyboard_fly.py).
         self._commander.send_setpoint(0.0, 0.0, 0.0, 0)
+        self._flush_frame_change()
         log.info("manual control: armed")
 
     def hold_at(self, height_m: float) -> None:
@@ -506,6 +551,29 @@ class ManualController:
             self._intent = intent
             self._last_heartbeat = self._clock()
 
+    def set_key_frame(self, key_frame: KeyFrame,
+                      operator_xy: tuple[float, float] | None) -> None:
+        """Which way the arrows move the drone, and the operator's marked spot
+        (None: use where this flight took off). Takes effect on the next tick,
+        in the air or on the ground."""
+        with self._lock:
+            self._key_frame = key_frame
+            self._marked_operator = operator_xy
+            if self._frame is not None:
+                # Re-resolve at once so the app is told now, not a tick later.
+                self._resolve_frame_locked(self._last_fix[1] if self._last_fix else None)
+        self._flush_frame_change()
+        log.info("manual control: arrows %s%s", key_frame,
+                 "" if operator_xy is None else f", operator at ({operator_xy[0]:+.2f}, "
+                 f"{operator_xy[1]:+.2f})")
+
+    def set_frame_listener(self,
+                           listener: Callable[[FrameStatus | None], None] | None) -> None:
+        """Who hears when what the arrows mean changes (the session, for the
+        app). Called outside the lock; a listener that raises is logged."""
+        with self._lock:
+            self._on_frame_change = listener
+
     def heartbeat(self) -> None:
         """Refresh liveness without changing what the operator is asking for."""
         with self._lock:
@@ -517,9 +585,11 @@ class ManualController:
             state = self._state
             if state is ControlState.FLYING:
                 self._begin_landing_locked()
-                return
-            if state is ControlState.ARMED:
+            elif state is ControlState.ARMED:
                 self._state = ControlState.IDLE
+        self._flush_frame_change()
+        if state is ControlState.FLYING:
+            return
         if state is ControlState.ARMED:
             self._commander.send_stop_setpoint()
             log.info("manual control: disarmed on the ground")
@@ -532,7 +602,9 @@ class ManualController:
             self._goal_xy = None
             self._state = ControlState.STOPPED
             self.stats.emergency_stops += 1
+            self._set_frame_locked(None)
         self._commander.send_stop_setpoint()
+        self._flush_frame_change()
         log.warning("manual control: EMERGENCY STOP")
 
     def reset(self) -> None:
@@ -611,6 +683,9 @@ class ManualController:
                         self._height_velocity_locked(intent, allow_down=False), dt)
                     if self._target_height > LIFTOFF_HEIGHT_M:
                         self._state = ControlState.FLYING
+                        # The way the nose points as it lifts off is what the
+                        # arrows keep when there is no position (keyframe.py).
+                        self._takeoff_heading = self._heading_now_locked()
                         send = self._flight_setpoint_locked(intent, dt)
                     else:
                         send = lambda: self._commander.send_setpoint(0.0, 0.0, 0.0, IDLE_THRUST)  # noqa: E731
@@ -657,6 +732,66 @@ class ManualController:
 
         if send is not None:
             send()
+        self._flush_frame_change()
+
+    # ── the arrows' frame ────────────────────────────────────────────────
+
+    def _heading_now_locked(self) -> float | None:
+        """The drone's heading now, degrees, or None if nothing reports one."""
+        if self._heading is None:
+            return None
+        try:
+            heading = self._heading()
+        except Exception:
+            return None
+        return None if heading is None or not math.isfinite(heading) else float(heading)
+
+    def _resolve_frame_locked(self, fix: Fix | None) -> FrameStatus:
+        """What the arrows mean this tick (keyframe.py), remembered for the app."""
+        if self._marked_operator is not None:
+            operator, source = self._marked_operator, "marked"
+        elif self._takeoff_xy is not None:
+            operator, source = self._takeoff_xy, "takeoff"
+        else:
+            operator, source = None, None
+        status = resolve(
+            self._key_frame,
+            drone_xy=None if fix is None else (fix.x, fix.y),
+            operator_xy=operator, operator_source=source,
+            takeoff_heading_deg=self._takeoff_heading,
+            was_near=self._frame.near if self._frame is not None else False,
+        )
+        self._set_frame_locked(status)
+        return status
+
+    def _set_frame_locked(self, status: FrameStatus | None) -> None:
+        """Remember what the arrows mean; flag a change the app should hear.
+        The operator direction turns continuously as the drone moves round,
+        so only a change of frame, reason or spot is news — not the angle."""
+        before = self._frame
+
+        def news(s: FrameStatus | None) -> tuple | None:
+            return None if s is None else (s.chosen, s.active, s.reason, s.operator,
+                                           s.operator_source)
+
+        if news(before) != news(status):
+            self._frame_changed = True
+        self._frame = status
+
+    def _flush_frame_change(self) -> None:
+        """Tell the listener what the arrows mean now, outside the lock. A
+        broken listener must never stop the control loop."""
+        with self._lock:
+            if not self._frame_changed:
+                return
+            self._frame_changed = False
+            status = self._frame
+        if self._on_frame_change is None:
+            return
+        try:
+            self._on_frame_change(status)
+        except Exception:
+            log.exception("manual control: the frame listener failed")
 
     # ── helpers (lock held) ──────────────────────────────────────────────
 
@@ -684,9 +819,9 @@ class ManualController:
             self._operator_override = True
             log.info("manual control: a key took over from the goal")
 
-    def _goal_body_velocity_locked(self) -> tuple[float, float] | None:
-        """The (forward, left) speed the xy goal is asking for, in the drone's
-        own frame — or None when there is no xy goal.
+    def _goal_room_velocity_locked(self) -> tuple[float, float] | None:
+        """The (x, y) speed the xy goal is asking for, in the room's frame —
+        or None when there is no xy goal.
 
         It closes on the TARGET, never on the measured position: the target is
         what this controller owns, and the drone follows it on the leash
@@ -703,11 +838,9 @@ class ManualController:
             self._goal_xy = None
             return (0.0, 0.0)
         speed = min(MOVE_SPEED_M_S, math.sqrt(2.0 * MOVE_ACCEL_M_S2 * distance))
-        wx, wy = ex / distance * speed, ey / distance * speed
-        # Room frame to body frame: the inverse of _advance_target_locked's turn.
-        heading = math.radians(target.yaw_deg)
-        cos_h, sin_h = math.cos(heading), math.sin(heading)
-        return (wx * cos_h + wy * sin_h, -wx * sin_h + wy * cos_h)
+        # Already in the room's frame, the frame the arrows now move in too:
+        # nothing to turn, whatever the heading.
+        return (ex / distance * speed, ey / distance * speed)
 
     def _release_target_locked(self) -> None:
         self._target = None
@@ -826,16 +959,42 @@ class ManualController:
         forward and nothing else. The point is then commanded absolutely,
         every tick, whether or not anything is held; the firmware flies to it
         at 100 Hz and corrects any difference on its own.
+
+        THE ARROWS MOVE THE POINT IN THE ROOM, NEVER ALONG THE NOSE: away from
+        the operator, or along the room's own directions (keyframe.py). The
+        heading is only the nose — A and D turn it and nothing else.
         """
         forward = (1 if intent.forward else 0) - (1 if intent.back else 0)
         # cflib MotionCommander: left is +vy, turning left is +yawrate.
         left = (1 if intent.left else 0) - (1 if intent.right else 0)
         yaw = (1 if intent.yaw_left else 0) - (1 if intent.yaw_right else 0)
+
+        fix = self._believable_fix_locked()
+        if self._target is None and fix is not None:
+            # Seeded from where the drone actually is, at liftoff — which is
+            # also where "away from you" is measured from until the operator
+            # marks their own spot.
+            self._target = fix
+            if self._takeoff_xy is None:
+                self._takeoff_xy = (fix.x, fix.y)
+            if self._takeoff_heading is None:
+                self._takeoff_heading = fix.yaw_deg
+        # Where the drone is, for "away from you". A fix the jump test refused
+        # leaves the commanded point, which the drone is leashed to: the frame
+        # must not flip because one reading was thrown away.
+        where = fix if fix is not None else self._target
+        frame = self._resolve_frame_locked(where)
+
         # A fly_to() goal asks for a speed exactly as a held arrow does; with
         # no goal (nearly always, in Manual) the keys ask. Never both: a key
-        # cancelled the goal at the top of the tick.
-        wanted = self._goal_body_velocity_locked() or (
-            forward * MOVE_SPEED_M_S, left * MOVE_SPEED_M_S)
+        # cancelled the goal at the top of the tick. Both are ROOM velocities,
+        # except with no heading at all, where the keys can only be the nose's.
+        if frame.forward_deg is None:
+            keys = (forward * MOVE_SPEED_M_S, left * MOVE_SPEED_M_S)
+        else:
+            keys = keys_to_room(forward * MOVE_SPEED_M_S, left * MOVE_SPEED_M_S,
+                                frame.forward_deg)
+        wanted = self._goal_room_velocity_locked() or keys
         self._vx = self._ease(self._vx, wanted[0], MOVE_ACCEL_M_S2 * dt)
         self._vy = self._ease(self._vy, wanted[1], MOVE_ACCEL_M_S2 * dt)
         self._yaw_rate = self._ease(self._yaw_rate, yaw * YAW_RATE_DEG_S, YAW_ACCEL_DEG_S2 * dt)
@@ -843,15 +1002,16 @@ class ManualController:
         z = self._ground_z + self._target_height
         vx, vy, rate = self._vx, self._vy, self._yaw_rate
 
-        fix = self._believable_fix_locked()
         if self._target is None:
-            # Seeded from where the drone actually is, at liftoff. Until a
-            # position is reported there is no point to hold, so the old
+            # Until a position is reported there is no point to hold, so the old
             # velocity law flies it — that is unassisted flight in all but
             # name, and it is the only honest thing to do without a position.
-            self._target = fix
-            if self._target is None:
-                return lambda: self._commander.send_hover_setpoint(vx, vy, rate, z)
+            # Its velocities are in the drone's frame: turn the room ones by
+            # the heading now, so the arrows still ignore the nose.
+            heading = self._heading_now_locked()
+            if frame.forward_deg is not None and heading is not None:
+                vx, vy = room_to_body(vx, vy, heading)
+            return lambda: self._commander.send_hover_setpoint(vx, vy, rate, z)
 
         self._advance_target_locked(vx, vy, rate, dt)
         if fix is not None:
@@ -869,20 +1029,19 @@ class ManualController:
     def _advance_target_locked(self, vx: float, vy: float, yaw_rate: float, dt: float) -> None:
         """Move the commanded point by what the keys asked for this tick.
 
-        The keys are in the drone's own frame — "forward" is where the nose
-        points — while the point is in the room's frame, so the step is
-        rotated by the heading being commanded. The firmware did this for us
-        when we sent velocities; with a position it is ours to do, and the
-        sign of the sine term is the difference between forward and backward.
+        (vx, vy) is already a ROOM velocity — keyframe.py turned the keys into
+        the room's frame, whichever way the nose points — so it is added as it
+        is. Yaw turns the nose and nothing else.
+
+        (Until 2026-09-30 the keys were in the drone's own frame and this
+        turned the step by the heading: "forward means where the nose
+        points". The owner reversed that — see keyframe.py.)
         """
         target = self._target
         assert target is not None
-        heading = math.radians(target.yaw_deg)
-        cos_h, sin_h = math.cos(heading), math.sin(heading)
         self._target = Fix(
-            # +vx is forward along the heading, +vy is 90 degrees to its left.
-            x=target.x + (vx * cos_h - vy * sin_h) * dt,
-            y=target.y + (vx * sin_h + vy * cos_h) * dt,
+            x=target.x + vx * dt,
+            y=target.y + vy * dt,
             yaw_deg=_wrap_deg(target.yaw_deg + yaw_rate * dt),
         )
 
@@ -908,15 +1067,27 @@ class ManualController:
 
     def _zdistance_setpoint_locked(self, intent: Intent, dt: float) -> Callable[[], None]:
         """Level attitude from the arrows, height held by the firmware on the
-        barometer — the unassisted law. Tilt and yaw ease in and out."""
-        forward = (1 if intent.forward else 0) - (1 if intent.back else 0)
-        right = (1 if intent.right else 0) - (1 if intent.left else 0)
+        barometer — the unassisted law. Tilt and yaw ease in and out.
+
+        No base stations, so no room and no operator to be away from: the
+        arrows keep the direction the nose had at takeoff (keyframe.py,
+        "takeoff"), turned into the drone's frame by its heading now, so
+        turning it with A and D does not turn the arrows. With no heading
+        reported at all they tilt along the nose, as they always did."""
+        forward = float((1 if intent.forward else 0) - (1 if intent.back else 0))
+        left = float((1 if intent.left else 0) - (1 if intent.right else 0))
         # Turning left is a positive yaw rate (cflib MotionCommander.start_turn_left).
         yaw = (1 if intent.yaw_left else 0) - (1 if intent.yaw_right else 0)
+        # Landing reuses this law with no keys held: nothing to turn, and the
+        # arrows are not the operator's any more (the frame stays cleared).
+        frame = self._resolve_frame_locked(None) if self._state is ControlState.FLYING else None
+        heading = self._heading_now_locked()
+        if frame is not None and frame.forward_deg is not None and heading is not None:
+            forward, left = room_to_body(*keys_to_room(forward, left, frame.forward_deg), heading)
         self._pitch = self._ease(
             self._pitch, forward * MAX_TILT_DEG * PITCH_SIGN, TILT_RATE_DEG_S * dt)
         # Positive roll is to the right in the firmware's setpoint frame.
-        self._roll = self._ease(self._roll, right * MAX_TILT_DEG, TILT_RATE_DEG_S * dt)
+        self._roll = self._ease(self._roll, -left * MAX_TILT_DEG, TILT_RATE_DEG_S * dt)
         self._yaw_rate = self._ease(self._yaw_rate, yaw * YAW_RATE_DEG_S, YAW_ACCEL_DEG_S2 * dt)
         z = self._ground_z + self._target_height
         roll, pitch, rate = self._roll, self._pitch, self._yaw_rate
@@ -924,6 +1095,8 @@ class ManualController:
 
     def _begin_landing_locked(self) -> None:
         self._intent = Intent()
+        # Coming down: the arrows no longer move it, so they mean nothing.
+        self._set_frame_locked(None)
         # Coming down outranks any goal that was still climbing or travelling.
         self._goal_height = None
         self._goal_xy = None

@@ -32,6 +32,8 @@ COMMANDS = [
     ("post", "/session/emergency-stop", None),
     ("post", "/session/end", None),
     ("post", "/session/mode", {"mode": "manual"}),
+    ("post", "/controls/frame", {"frame": "room"}),
+    ("post", "/controls/operator", {"x": 0.0, "y": 0.0}),
     ("post", "/sync/now", None),
     ("get", "/session", None),
 ]
@@ -376,3 +378,36 @@ class TestRecordingRoutes:
             assert (bad.status_code, beyond.status_code) == (404, 204)
         finally:
             rest.agent.recorder.stop()
+
+
+class TestArrowKeyControls:
+    """Which way the arrow keys move the drone (flight/keyframe.py)."""
+
+    def test_the_snapshot_carries_the_defaults(self, client):
+        body = client.get("/session", headers=auth(client)).json()
+        assert body["controls"] == {"key_frame": "operator", "operator": None,
+                                    "operator_marked_at": None, "live": None}
+
+    def test_choosing_the_room_frame_is_kept(self, client):
+        body = client.post("/controls/frame", json={"frame": "room"}, headers=auth(client)).json()
+        assert body["controls"]["key_frame"] == "room"
+        again = client.get("/session", headers=auth(client)).json()
+        assert again["controls"]["key_frame"] == "room"
+
+    def test_an_unknown_frame_is_a_readable_refusal(self, client):
+        response = client.post("/controls/frame", json={"frame": "nose"}, headers=auth(client))
+        assert response.status_code == 409 and "operator" in response.json()["detail"]
+
+    def test_marking_and_clearing_a_spot(self, client):
+        body = client.post("/controls/operator", json={"x": 1.25, "y": -0.5},
+                           headers=auth(client)).json()
+        assert body["controls"]["operator"] == [1.25, -0.5]
+        assert body["controls"]["operator_marked_at"]
+        body = client.post("/controls/operator", json={"clear": True}, headers=auth(client)).json()
+        assert body["controls"]["operator"] is None
+
+    def test_from_the_drone_needs_a_drone(self, client):
+        response = client.post("/controls/operator", json={"from_drone": True},
+                               headers=auth(client))
+        assert response.status_code == 409
+        assert "not reporting a position" in response.json()["detail"]

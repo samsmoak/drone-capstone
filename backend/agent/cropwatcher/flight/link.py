@@ -118,6 +118,12 @@ def _fix(snapshot: Snapshot) -> Fix | None:
     return Fix(float(x), float(y), float(yaw))
 
 
+def _heading(snapshot: Snapshot) -> float | None:
+    """The drone's heading now, degrees counter-clockwise from +x, or None."""
+    yaw = snapshot.get("stabilizer.yaw")
+    return None if yaw is None else float(yaw)
+
+
 #: How long the connection handshake may take before it is called a failure.
 #:
 #: cflib's SyncCrazyflie.open_link() waits on an Event with NO TIMEOUT
@@ -411,6 +417,10 @@ class DroneLink:
             # there are no base stations, so x and y are dead reckoning and
             # anchoring to them would fly the drone into the drift.
             position=(lambda: _fix(stream.snapshot())) if report.assisted else None,
+            # The heading, with or without base stations: it is what keeps the
+            # arrows in the room's directions when there is no position to
+            # carry them (keyframe.py, "takeoff").
+            heading=lambda: _heading(stream.snapshot()),
         )
 
     def restore_estimator(self) -> None:

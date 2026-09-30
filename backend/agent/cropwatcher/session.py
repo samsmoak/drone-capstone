@@ -46,7 +46,9 @@ from typing import Any
 from cropwatcher.audit import Action, AuditLog, Result
 from cropwatcher.flight.checks import CheckResult, ChecksFailed, ReadyReport, collect
 from cropwatcher.flight.control import GuardedFlight, PhaseEvent
+from cropwatcher.flight.controls_store import ControlsStore, valid_spot
 from cropwatcher.flight.core import DEFAULT_URI
+from cropwatcher.flight.keyframe import FrameStatus, KeyFrame
 from cropwatcher.flight.link import DEFAULT_FENCE_M, DEFAULT_MAX_HEIGHT_M, DroneLink, LinkError
 from cropwatcher.flight.manual import CLIMB_RATE_M_S, MOVE_SPEED_M_S
 from cropwatcher.flight.programs import HoverTest, Outcome, run_hover_test
@@ -182,6 +184,14 @@ class Snapshot:
     #: flown with DPP off can still be processed from the page.
     processing: dict[str, Any] = field(default_factory=lambda: {
         "on": False, "chosen": False, "jobs": [], "last_flight_id": None})
+    #: Which way the arrow keys move the drone (flight/keyframe.py): the
+    #: operator's choice (`key_frame`, "operator" or "room"), their marked
+    #: spot (`operator`, room metres, or None for the takeoff spot) and, while
+    #: flying, what the arrows mean right now (`live`: the active frame, why
+    #: it is not the chosen one, the spot in use). `live` is None on the ground.
+    controls: dict[str, Any] = field(default_factory=lambda: {
+        "key_frame": "operator", "operator": None, "operator_marked_at": None,
+        "live": None})
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -195,6 +205,7 @@ class Snapshot:
             "retry_required": self.retry_required,
             "mission": self.mission,
             "processing": self.processing,
+            "controls": self.controls,
         }
 
 
@@ -218,8 +229,13 @@ class Session:
         plans: PlanStore | None = None,
         mission_controller: Callable[..., Any] = MissionController,
         processing: ProcessingQueue | None = None,
+        controls: ControlsStore | None = None,
     ) -> None:
         self._cloud = cloud
+        #: The arrow keys' frame and the operator's spot, kept on the laptop.
+        self._controls_store = controls or ControlsStore()
+        self._controls = self._controls_store.load()
+        self._controls_live: dict[str, Any] | None = None
         #: Flights waiting for the data pipeline, run in a process of their own.
         self.processing = processing or ProcessingQueue()
         #: The operator's DPP choice for this session, or None for the mode's
@@ -263,6 +279,7 @@ class Session:
         self._worker_name: str | None = None
         self._worker_started_at: float | None = None
         self._snapshot = Snapshot()
+        self._snapshot.controls = self._controls_dict()
         self.operator: Operator | None = None
         self.audit: AuditLog | None = None
 
@@ -995,6 +1012,7 @@ class Session:
         self._keep_plan_flown(flight_id, mission, room)
 
         controller = link.manual(report)
+        self._attach_controls(controller)
         self._height_reference = controller.ground_z
         applied = [a.to_dict() for a in getattr(link, "tuning_applied", [])]
         self._start_trace(link, controller, flight_id, applied)
@@ -1092,6 +1110,7 @@ class Session:
 
         flight_id = self._begin_flight(mode=Mode.MANUAL, program=None, ambient=ambient)
         controller = link.manual(report)
+        self._attach_controls(controller)
         self._height_reference = controller.ground_z
         applied = [a.to_dict() for a in getattr(link, "tuning_applied", [])]
         self._start_trace(link, controller, flight_id, applied)
@@ -1158,6 +1177,79 @@ class Session:
             self._trace.close()
             self._trace = None
 
+    # ── the arrow keys' frame ────────────────────────────────────────────
+
+    def _controls_dict(self) -> dict[str, Any]:
+        return {**self._controls.to_dict(), "live": self._controls_live}
+
+    def _attach_controls(self, controller: Any) -> None:
+        """Tell a new flight which way the arrows move it, and listen for
+        when that changes — in Manual, and in a mission the keys take over."""
+        controller.set_key_frame(self._controls.key_frame, self._controls.operator)
+        controller.set_frame_listener(self._frame_changed)
+
+    def _frame_changed(self, status: FrameStatus | None) -> None:
+        """The manual controller says the arrows mean something new."""
+        self._controls_live = None if status is None else status.to_dict()
+        self._set(controls=self._controls_dict())
+
+    def _save_controls(self) -> None:
+        try:
+            self._controls_store.save(self._controls)
+        except OSError:
+            # Kept for this run; the next launch returns to what was saved.
+            log.exception("could not save the arrow-key settings")
+
+    def _apply_controls(self) -> None:
+        self._save_controls()
+        controller = self.manual
+        if controller is not None:
+            controller.set_key_frame(self._controls.key_frame, self._controls.operator)
+        self._set(controls=self._controls_dict())
+
+    def set_key_frame(self, frame: str) -> None:
+        """Which way the arrows move the drone: away from the operator
+        ("operator") or along the room's own directions ("room"). Works in
+        the air — the next tick uses it."""
+        try:
+            chosen = KeyFrame(frame)
+        except ValueError:
+            raise SessionError('The arrow keys follow "operator" or "room".') from None
+        self._controls = self._controls.with_frame(chosen)
+        self._apply_controls()
+
+    def mark_operator(self, *, from_drone: bool = False,
+                      x: float | None = None, y: float | None = None,
+                      clear: bool = False) -> None:
+        """Where the operator stands — what "away from you" is measured from.
+
+        `from_drone`: the drone's position now — carry it to your feet, or fly
+        it over your head, and press "I'm here". `x`, `y`: a spot in room
+        metres. `clear`: forget the mark; the takeoff spot stands in for it.
+        """
+        if clear:
+            self._controls = self._controls.with_operator(None)
+            self._apply_controls()
+            return
+        if from_drone:
+            report = self.report
+            if report is not None and not report.assisted:
+                raise SessionError(
+                    "Without base stations the drone has no position, so there is no spot "
+                    "to mark. The arrows keep the direction it faced at takeoff.")
+            here = self.position()
+            if here is None:
+                raise SessionError(
+                    "The drone is not reporting a position. Connect it where the base "
+                    "stations can see it, then press I'm here again.")
+            x, y = here[0], here[1]
+        if x is None or y is None:
+            raise SessionError("Say where you are: from the drone, or an x and y in metres.")
+        if not valid_spot(x, y):
+            raise SessionError(f"({x:.2f}, {y:.2f}) m is not a spot in this room.")
+        self._controls = self._controls.with_operator((x, y))
+        self._apply_controls()
+
     def set_intent(self, keys: dict[str, Any]) -> None:
         if self.manual is None:
             return
@@ -1223,6 +1315,7 @@ class Session:
             if self.manual is not controller:
                 return                      # End session got there first
             self.manual = None
+        self._frame_changed(None)           # on the ground: the arrows mean nothing
         flying, self.mission = self.mission, None
         self._mission_plan = None
         if flying is not None and flying.state not in TERMINAL_STATES:
@@ -1309,6 +1402,8 @@ class Session:
         # Land first, whatever else fails afterwards.
         with self._manual_lock:
             manual, self.manual = self.manual, None
+        if manual is not None:
+            self._frame_changed(None)
         try:
             if manual is not None:
                 manual.stop()                    # lands if airborne, then disarms
