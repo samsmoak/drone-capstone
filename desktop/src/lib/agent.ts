@@ -70,13 +70,8 @@ export type Session = {
 /** "operator": away from you. "room": the room's own directions. */
 export type KeyFrameChoice = "operator" | "room";
 
-/** With no position: which way the drone's nose pointed at takeoff, as the
- *  operator stands (cropwatcher/flight/keyframe.py NoseFacing). */
-export type NoseFacing = "away" | "left" | "right" | "towards";
-
-/** How fast the keys fly it (cropwatcher/flight/manual.py Speed). Missions and
- *  "Hover at" keep their own speed either way. */
-export type KeySpeed = "slow" | "normal";
+/** Which way the drone went, as the operator sees it (Shift + an arrow). */
+export type SeenDirection = "away" | "left" | "right" | "towards";
 
 /** What the arrows mean on this tick, from the agent. */
 export type ArrowFrame = {
@@ -96,10 +91,6 @@ export type Controls = {
   /** The operator's marked spot, room metres; null: the takeoff spot is used. */
   operator: [number, number] | null;
   operator_marked_at: string | null;
-  /** With no position, what turns "the nose at takeoff" into "away from you". */
-  nose: NoseFacing;
-  /** How fast the keys fly it. Slow unless the operator chose Normal. */
-  speed: KeySpeed;
   /** null on the ground. */
   live: ArrowFrame | null;
 };
@@ -499,12 +490,9 @@ export const api = {
   setProcessing: (on: boolean) => command<Session>("/session/processing", { on }),
   /** Which way the arrow keys move the drone. Works in the air. */
   setKeyFrame: (frame: KeyFrameChoice) => command<Session>("/controls/frame", { frame }),
-  /** With no position: which way the nose pointed at takeoff. Works in the air. */
-  setNose: (nose: NoseFacing) => command<Session>("/controls/nose", { nose }),
-  /** In the air, with no position: ↑ went `went` of you — turn the arrows to match. */
-  correctNose: (went: NoseFacing) => command<Session>("/controls/nose/correct", { went }),
-  /** How fast the keys fly it. Works in the air. */
-  setSpeed: (speed: KeySpeed) => command<Session>("/controls/speed", { speed }),
+  /** Shift + an arrow, in the air, no base stations: the last arrow flown
+   *  went `went` of you — the arrows turn to match, for this flight. */
+  correctNose: (went: SeenDirection) => command<Session>("/controls/nose/correct", { went }),
   /** "I'm here": the drone's position now becomes the operator's spot. */
   markOperatorHere: () => command<Session>("/controls/operator", { from_drone: true }),
   /** Forget the marked spot; "away" is measured from where it takes off. */

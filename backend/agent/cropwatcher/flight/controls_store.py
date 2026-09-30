@@ -21,8 +21,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from cropwatcher.flight.keyframe import KeyFrame, NoseFacing
-from cropwatcher.flight.manual import Speed
+from cropwatcher.flight.keyframe import KeyFrame
 from cropwatcher.paths import data_dir
 
 log = logging.getLogger(__name__)
@@ -41,30 +40,17 @@ class Controls:
     #: Where the operator stands, room metres; None: use the takeoff spot.
     operator: tuple[float, float] | None = None
     operator_marked_at: str | None = None
-    #: With no position: which way the nose pointed at takeoff, as the
-    #: operator stood (keyframe.NoseFacing).
-    nose: NoseFacing = NoseFacing.AWAY
-    #: How fast the keys fly it. Slow by default: the owner asked for steadier
-    #: flight (2026-09-30), and a laptop that never chose gets what they asked.
-    speed: Speed = Speed.SLOW
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "key_frame": str(self.key_frame),
             "operator": None if self.operator is None else [self.operator[0], self.operator[1]],
             "operator_marked_at": self.operator_marked_at,
-            "nose": str(self.nose),
-            "speed": str(self.speed),
         }
 
     def with_frame(self, frame: KeyFrame) -> Controls:
         return replace(self, key_frame=frame)
 
-    def with_nose(self, nose: NoseFacing) -> Controls:
-        return replace(self, nose=nose)
-
-    def with_speed(self, speed: Speed) -> Controls:
-        return replace(self, speed=speed)
 
     def with_operator(self, xy: tuple[float, float] | None) -> Controls:
         if xy is None:
@@ -106,19 +92,10 @@ class ControlsStore:
                 and valid_spot(float(spot[0]), float(spot[1]))):
             operator = (float(spot[0]), float(spot[1]))
         marked_at = raw.get("operator_marked_at")
-        try:
-            # A file from before the setting existed has none: away, which is
-            # exactly what the arrows did then.
-            nose = NoseFacing(raw.get("nose", NoseFacing.AWAY))
-        except ValueError:
-            nose = NoseFacing.AWAY
-        try:
-            speed = Speed(raw.get("speed", Speed.SLOW))
-        except ValueError:
-            speed = Speed.SLOW
+        # A "nose" or "speed" written by the 2026-09-30 builds is ignored: a
+        # saved nose rotated the arrows before takeoff, flight after flight.
         return Controls(frame, operator,
-                        marked_at if operator is not None and isinstance(marked_at, str) else None,
-                        nose, speed)
+                        marked_at if operator is not None and isinstance(marked_at, str) else None)
 
     def save(self, controls: Controls) -> None:
         """Written whole, then renamed over the old file: a crash mid-write

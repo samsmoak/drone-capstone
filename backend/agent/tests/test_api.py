@@ -27,9 +27,7 @@ COMMANDS = [
     ("post", "/session/health-test", None),
     ("post", "/session/retry", None),
     ("post", "/session/reset-drone", None),
-    ("post", "/controls/nose", {"nose": "away"}),
     ("post", "/controls/nose/correct", {"went": "left"}),
-    ("post", "/controls/speed", {"speed": "slow"}),
     ("post", "/session/program", {"height_m": 0.3, "hold_s": 5}),
     ("post", "/session/manual/arm", {}),
     ("post", "/session/land", None),
@@ -390,28 +388,17 @@ class TestArrowKeyControls:
     def test_the_snapshot_carries_the_defaults(self, client):
         body = client.get("/session", headers=auth(client)).json()
         assert body["controls"] == {"key_frame": "operator", "operator": None,
-                                    "operator_marked_at": None, "nose": "away", "speed": "slow",
-                                    "live": None}
+                                    "operator_marked_at": None, "live": None}
 
-    def test_saying_where_the_nose_points_is_kept(self, client):
-        body = client.post("/controls/nose", json={"nose": "left"}, headers=auth(client)).json()
-        assert body["controls"]["nose"] == "left"
-        again = client.get("/session", headers=auth(client)).json()
-        assert again["controls"]["nose"] == "left"
+    def test_a_correction_on_the_ground_is_a_readable_refusal(self, client):
+        response = client.post("/controls/nose/correct", json={"went": "left"},
+                               headers=auth(client))
+        assert response.status_code == 409 and "Take off first" in response.json()["detail"]
 
-    def test_a_correction_and_the_speed_through_the_api(self, client):
-        body = client.post("/controls/nose/correct", json={"went": "towards"},
-                           headers=auth(client)).json()
-        assert body["controls"]["nose"] == "towards"
-        body = client.post("/controls/speed", json={"speed": "normal"},
-                           headers=auth(client)).json()
-        assert body["controls"]["speed"] == "normal"
-        response = client.post("/controls/speed", json={"speed": "warp"}, headers=auth(client))
-        assert response.status_code == 409
-
-    def test_an_unknown_nose_is_a_readable_refusal(self, client):
-        response = client.post("/controls/nose", json={"nose": "up"}, headers=auth(client))
-        assert response.status_code == 409 and "towards" in response.json()["detail"]
+    def test_the_nose_and_speed_settings_are_gone(self, client):
+        for path, body in (("/controls/nose", {"nose": "left"}),
+                           ("/controls/speed", {"speed": "slow"})):
+            assert client.post(path, json=body, headers=auth(client)).status_code in (404, 405)
 
     def test_choosing_the_room_frame_is_kept(self, client):
         body = client.post("/controls/frame", json={"frame": "room"}, headers=auth(client)).json()

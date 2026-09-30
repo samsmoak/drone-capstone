@@ -109,6 +109,7 @@ from cropwatcher.flight.keyframe import (
     keys_to_room,
     resolve,
     room_to_body,
+    turn_nose,
 )
 from cropwatcher.safety.flight_guard import MAX_PLAUSIBLE_SPEED_M_S
 
@@ -130,7 +131,10 @@ GOAL_REACHED_M = 0.01               # a held goal is done within a centimetre
 LIFTOFF_HEIGHT_M = 0.05             # target above this means "flying"
 TOUCHDOWN_HEIGHT_M = 0.05           # lowering below this lands
 MAX_HEIGHT_M = 1.00
-MOVE_SPEED_M_S = 0.20               # arrows — in the frame keyframe.py chooses
+MOVE_SPEED_M_S = 0.20               # fly_to(): missions; mission time estimates use it
+# The ARROW keys, assisted: slower than a mission (2026-09-30, the owner: "fly
+# more steadily"). fly_to() keeps MOVE_SPEED_M_S.
+KEY_MOVE_SPEED_M_S = 0.12
 YAW_RATE_DEG_S = 30.0
 LAND_S = 3.0
 
@@ -143,7 +147,7 @@ LAND_S = 3.0
 # command now eases toward what the keys ask for at a bounded rate.
 CLIMB_ACCEL_M_S2 = 0.30             # 0 → 0.15 m/s in 0.5 s; stops within ~4 cm
 MOVE_ACCEL_M_S2 = 0.40              # assisted arrows: 0 → 0.20 m/s in 0.5 s
-TILT_RATE_DEG_S = 12.0              # unassisted arrows: 0 → 5° in ~0.4 s
+TILT_RATE_DEG_S = 8.0               # unassisted arrows: 0 → 2.5° in ~0.3 s
 YAW_ACCEL_DEG_S2 = 90.0             # 0 → 30 °/s in ~0.3 s
 
 # ── unassisted flight (barometer height hold) ────────────────────────────
@@ -152,50 +156,22 @@ YAW_ACCEL_DEG_S2 = 90.0             # 0 → 30 °/s in ~0.3 s
 # a z-distance setpoint. Lower ceiling than assisted flight, because a baro
 # height wanders by tens of centimetres and the operator has less margin.
 MAX_UNASSISTED_HEIGHT_M = 0.80
-MAX_TILT_DEG = 5.0                  # arrows: gentle, there is no position hold
+# Arrows: HALF the old 5° (2026-09-30). With no position a lean is not a speed
+# but an acceleration, g * tan(lean) — 0.43 m/s^2 here, 0.86 at 5° — for as
+# long as it is held, and the drone coasts after: nothing measures its speed,
+# so nothing can hold one. Two things bound it instead: the lean, and...
+MAX_TILT_DEG = 2.5
+# ...how long one press may lean. Held past this, that arrow eases back to
+# level and the drone coasts on what it has — at most ~0.5 m/s from rest,
+# where a held 5° lean reached 1.7 m/s in two seconds (the lab, 2026-09-30).
+# Let go and press again for more. A change of direction starts a new push.
+MAX_PUSH_S = 1.0
 # The generic z-distance packet and the legacy rpyt packet disagree on the sign
 # of pitch (cfclient negates it for its height-hold mode). VERIFY IN THE LAB:
 # if the up arrow moves the drone backwards, flip this.
 PITCH_SIGN = -1.0
 LAND_RATE_M_S = 0.25                # target lowered to the floor at this rate
 TOUCHDOWN_HOLD_S = 0.6              # settle on the floor before the motors stop
-
-
-# ── how fast the KEYS fly it ─────────────────────────────────────────────
-#
-# The owner (2026-09-30): "reduce the speed at which the drone flies in any
-# direction, so it flies more steadily". A choice, Slow or Normal, and it is
-# the KEYS' speed only: fly_to() and hold_at() — missions, "Hover at" — keep
-# the constants above, which the mission time estimates are computed from.
-#
-# Unassisted there is no speed to limit: an arrow TILTS the drone, and the tilt
-# is an acceleration, g * tan(tilt) — 0.86 m/s^2 at 5°, 0.51 at 3° — for as
-# long as the key is held, with nothing to brake it after. Slow cannot cap the
-# speed; it takes the push down by 40 % and builds it more gently.
-
-class Speed(StrEnum):
-    SLOW = "slow"
-    NORMAL = "normal"
-
-
-@dataclass(frozen=True)
-class SpeedProfile:
-    move_m_s: float                 # assisted arrows: the commanded point's speed
-    climb_m_s: float                # W / S
-    yaw_deg_s: float                # A / D
-    tilt_deg: float                 # unassisted arrows: the lean
-    tilt_rate_deg_s: float          # unassisted arrows: how fast the lean builds
-
-
-SPEEDS: dict[Speed, SpeedProfile] = {
-    # What the keys have always done.
-    Speed.NORMAL: SpeedProfile(MOVE_SPEED_M_S, CLIMB_RATE_M_S, YAW_RATE_DEG_S,
-                               MAX_TILT_DEG, TILT_RATE_DEG_S),
-    # 40 % less push on the arrows, turns and climbs a third slower, the lean
-    # eased in over the same ~0.4 s (3° at 8°/s) so it starts no harder.
-    Speed.SLOW: SpeedProfile(move_m_s=0.12, climb_m_s=0.10, yaw_deg_s=20.0,
-                             tilt_deg=3.0, tilt_rate_deg_s=8.0),
-}
 
 
 class ControlState(StrEnum):
@@ -317,8 +293,6 @@ class ManualController:
         heading: Callable[[], float | None] | None = None,
         key_frame: KeyFrame = KeyFrame.OPERATOR,
         operator_xy: tuple[float, float] | None = None,
-        nose: NoseFacing = NoseFacing.AWAY,
-        speed: Speed = Speed.NORMAL,
         on_frame_change: Callable[[FrameStatus | None], None] | None = None,
         heartbeat_timeout_s: float = HEARTBEAT_TIMEOUT_S,
         tick_s: float = TICK_S,
@@ -334,8 +308,7 @@ class ManualController:
         reported with or without base stations; it is what turns the arrows
         into the drone's own frame when no position can carry them.
         `key_frame` and `operator_xy` say which way the arrows move it
-        (keyframe.py), and `nose` which way the nose pointed at takeoff, for
-        when there is no position; `on_frame_change` hears whenever what they mean
+        (keyframe.py); `on_frame_change` hears whenever what they mean
         changes, outside the lock, so the app can say so.
         """
         self._commander = commander
@@ -351,11 +324,16 @@ class ManualController:
         #: stands in for it, as ArduPilot's home is where the drone armed.
         self._key_frame = key_frame
         self._marked_operator = operator_xy
-        #: With no position: which way the nose pointed at takeoff, as the
-        #: operator stood — what turns the takeoff heading into their forward.
-        self._nose = nose
-        #: How fast the KEYS fly it (Slow / Normal); goals keep the constants.
-        self._speed = SPEEDS[speed]
+        #: With no position: where ↑ points relative to the nose at takeoff.
+        #: AWAY — along the nose — at every arm(), exactly as the arrows always
+        #: started; only correct_nose() turns it, and only for this flight.
+        self._nose = NoseFacing.AWAY
+        #: The last single arrow flown this flight and the correction it flew
+        #: under — what correct_nose() measures against, so pressing the
+        #: correction twice does not turn it twice.
+        self._last_arrow: tuple[NoseFacing, NoseFacing] | None = None
+        #: Per axis: the sign being pushed and when that push began (MAX_PUSH_S).
+        self._push: dict[str, tuple[int, float]] = {}
         self._on_frame_change = on_frame_change
         #: Where and which way this flight lifted off. Reset by arm().
         self._takeoff_xy: tuple[float, float] | None = None
@@ -504,6 +482,9 @@ class ManualController:
             self._reset_glide_locked()
             self._takeoff_xy = None
             self._takeoff_heading = None
+            self._nose = NoseFacing.AWAY
+            self._last_arrow = None
+            self._push = {}
             self._set_frame_locked(None)
             self._last_heartbeat = self._clock()
             self._last_tick = self._clock()
@@ -598,31 +579,47 @@ class ManualController:
             self._last_heartbeat = self._clock()
 
     def set_key_frame(self, key_frame: KeyFrame,
-                      operator_xy: tuple[float, float] | None,
-                      nose: NoseFacing | None = None) -> None:
-        """Which way the arrows move the drone, the operator's marked spot
-        (None: use where this flight took off) and, for flight with no
-        position, which way the nose pointed at takeoff (None: unchanged).
-        Takes effect on the next tick, in the air or on the ground."""
+                      operator_xy: tuple[float, float] | None) -> None:
+        """Which way the arrows move the drone, and the operator's marked spot
+        (None: use where this flight took off). Takes effect on the next tick,
+        in the air or on the ground."""
         with self._lock:
             self._key_frame = key_frame
             self._marked_operator = operator_xy
-            if nose is not None:
-                self._nose = nose
             if self._frame is not None:
                 # Re-resolve at once so the app is told now, not a tick later.
                 self._resolve_frame_locked(self._last_fix[1] if self._last_fix else None)
         self._flush_frame_change()
-        log.info("manual control: arrows %s%s, nose %s at takeoff", key_frame,
+        log.info("manual control: arrows %s%s", key_frame,
                  "" if operator_xy is None else f", operator at ({operator_xy[0]:+.2f}, "
-                 f"{operator_xy[1]:+.2f})", self._nose)
+                 f"{operator_xy[1]:+.2f})")
 
-    def set_speed(self, speed: Speed) -> None:
-        """How fast the keys fly it. Takes effect on the next tick, in the air
-        too: every command eases towards its new target, so there is no step."""
+    def correct_nose(self, went: NoseFacing) -> NoseFacing:
+        """Shift + an arrow, in the air: the last arrow flown moved the drone
+        `went` of the operator (away, left, right, towards them). Turn the
+        arrows so it goes where that key meant (keyframe.turn_nose).
+
+        Measured against the LAST ARROW FLOWN and the correction it flew
+        under, not the current one: pressing Shift+← twice before flying again
+        is the same correction twice, never two turns (the lab, 2026-09-30:
+        four presses in 3 s spun the arrows round). Only for this flight —
+        arm() starts along the nose again. Returns the new setting.
+        """
         with self._lock:
-            self._speed = SPEEDS[speed]
-        log.info("manual control: keys at %s speed", speed)
+            if self._state is not ControlState.FLYING:
+                raise RuntimeError("take off first — then fly an arrow and, if it went "
+                                   "the wrong way, press Shift + the arrow it went")
+            if self._last_arrow is None:
+                raise RuntimeError("fly an arrow first, then press Shift + the arrow for "
+                                   "the way it actually went")
+            pressed, flown_under = self._last_arrow
+            self._nose = turn_nose(flown_under, went, pressed=pressed)
+            if self._frame is not None:
+                self._resolve_frame_locked(self._last_fix[1] if self._last_fix else None)
+            nose = self._nose
+        self._flush_frame_change()
+        log.info("manual control: %s went %s — arrows corrected (%s)", pressed, went, nose)
+        return nose
 
     def set_frame_listener(self,
                            listener: Callable[[FrameStatus | None], None] | None) -> None:
@@ -754,6 +751,7 @@ class ManualController:
                     self._begin_landing_locked()
                 else:
                     intent = self._intent
+                    self._note_arrow_locked(intent)
                     self._glide_height_locked(
                         self._height_velocity_locked(intent, allow_down=True), dt)
                     if intent.down and self._target_height <= TOUCHDOWN_HEIGHT_M:
@@ -957,7 +955,7 @@ class ManualController:
             # THE KEYS ALWAYS WIN, and they win by cancelling rather than by
             # out-voting: two things moving one target is the bug above.
             self._goal_height = None
-            return self._speed.climb_m_s * ((1 if up else 0) - (1 if down else 0))
+            return CLIMB_RATE_M_S * ((1 if up else 0) - (1 if down else 0))
         return self._goal_velocity_locked()
 
     def _goal_velocity_locked(self) -> float:
@@ -1047,7 +1045,7 @@ class ManualController:
         # no goal (nearly always, in Manual) the keys ask. Never both: a key
         # cancelled the goal at the top of the tick. Both are ROOM velocities,
         # except with no heading at all, where the keys can only be the nose's.
-        move = self._speed.move_m_s
+        move = KEY_MOVE_SPEED_M_S
         if frame.forward_deg is None:
             keys = (forward * move, left * move)
         else:
@@ -1055,8 +1053,7 @@ class ManualController:
         wanted = self._goal_room_velocity_locked() or keys
         self._vx = self._ease(self._vx, wanted[0], MOVE_ACCEL_M_S2 * dt)
         self._vy = self._ease(self._vy, wanted[1], MOVE_ACCEL_M_S2 * dt)
-        self._yaw_rate = self._ease(self._yaw_rate, yaw * self._speed.yaw_deg_s,
-                                    YAW_ACCEL_DEG_S2 * dt)
+        self._yaw_rate = self._ease(self._yaw_rate, yaw * YAW_RATE_DEG_S, YAW_ACCEL_DEG_S2 * dt)
         # _glide_height_locked has already moved the height for this tick.
         z = self._ground_z + self._target_height
         vx, vy, rate = self._vx, self._vy, self._yaw_rate
@@ -1133,8 +1130,10 @@ class ManualController:
         "takeoff"), turned into the drone's frame by its heading now, so
         turning it with A and D does not turn the arrows. With no heading
         reported at all they tilt along the nose, as they always did."""
-        forward = float((1 if intent.forward else 0) - (1 if intent.back else 0))
-        left = float((1 if intent.left else 0) - (1 if intent.right else 0))
+        along = (1 if intent.forward else 0) - (1 if intent.back else 0)
+        across = (1 if intent.left else 0) - (1 if intent.right else 0)
+        forward = float(self._pushing_locked("forward", along))
+        left = float(self._pushing_locked("left", across))
         # Turning left is a positive yaw rate (cflib MotionCommander.start_turn_left).
         yaw = (1 if intent.yaw_left else 0) - (1 if intent.yaw_right else 0)
         # Landing reuses this law with no keys held: nothing to turn, and the
@@ -1143,15 +1142,39 @@ class ManualController:
         heading = self._heading_now_locked()
         if frame is not None and frame.forward_deg is not None and heading is not None:
             forward, left = room_to_body(*keys_to_room(forward, left, frame.forward_deg), heading)
-        speed = self._speed
         self._pitch = self._ease(
-            self._pitch, forward * speed.tilt_deg * PITCH_SIGN, speed.tilt_rate_deg_s * dt)
+            self._pitch, forward * MAX_TILT_DEG * PITCH_SIGN, TILT_RATE_DEG_S * dt)
         # Positive roll is to the right in the firmware's setpoint frame.
-        self._roll = self._ease(self._roll, -left * speed.tilt_deg, speed.tilt_rate_deg_s * dt)
-        self._yaw_rate = self._ease(self._yaw_rate, yaw * speed.yaw_deg_s, YAW_ACCEL_DEG_S2 * dt)
+        self._roll = self._ease(self._roll, -left * MAX_TILT_DEG, TILT_RATE_DEG_S * dt)
+        self._yaw_rate = self._ease(self._yaw_rate, yaw * YAW_RATE_DEG_S, YAW_ACCEL_DEG_S2 * dt)
         z = self._ground_z + self._target_height
         roll, pitch, rate = self._roll, self._pitch, self._yaw_rate
         return lambda: self._commander.send_zdistance_setpoint(roll, pitch, rate, z)
+
+    def _pushing_locked(self, axis: str, sign: int) -> int:
+        """The arrow axis to lean along this tick: `sign` while this push is
+        younger than MAX_PUSH_S, 0 after — the lean eases out and the drone
+        coasts. Releasing, or pressing the other way, starts a fresh push."""
+        if sign == 0:
+            self._push.pop(axis, None)
+            return 0
+        now = self._clock()
+        held = self._push.get(axis)
+        if held is None or held[0] != sign:
+            self._push[axis] = (sign, now)
+            return sign
+        return sign if now - held[1] < MAX_PUSH_S else 0
+
+    def _note_arrow_locked(self, intent: Intent) -> None:
+        """Remember a single arrow as it flies, with the correction in force —
+        what correct_nose() measures against. Diagonals say nothing about which
+        key went where, so they are not remembered."""
+        held = [facing for facing, on in ((NoseFacing.AWAY, intent.forward),
+                                           (NoseFacing.TOWARDS, intent.back),
+                                           (NoseFacing.LEFT, intent.left),
+                                           (NoseFacing.RIGHT, intent.right)) if on]
+        if len(held) == 1:
+            self._last_arrow = (held[0], self._nose)
 
     def _begin_landing_locked(self) -> None:
         self._intent = Intent()
