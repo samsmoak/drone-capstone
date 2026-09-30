@@ -1,12 +1,13 @@
 ================================================================================
 THE MISSION CONTROLLER — how a saved mission is flown
-Last verified: 2026-09-29 against claude/awesome-carson-eqkt8w — test_manual.py
-TestFlyTo (13), tests/mission/test_session_missions.py (22), test_stamping.py.
+Last verified: 2026-09-30 against main (ab2d2ce) — BUILT = False
+(mission_controller.py), session.py's BUILT refusal; cli.py's change of that
+day (#83) is check output only and moves nothing here.
 SOURCE: backend/agent/cropwatcher/mission/controller/mission_controller.py
 ================================================================================
 
 --------------------------------------------------------------------------------
-STATUS  (Last verified: 2026-09-28)
+STATUS  (Last verified: 2026-09-30)
 --------------------------------------------------------------------------------
   goal       BUILT — ManualController.fly_to(), goal_active, operator_override
   session    BUILT — Session.run_mission(), POST /session/mission, the room's
@@ -20,6 +21,10 @@ STATUS  (Last verified: 2026-09-28)
              end-to-end scenarios, the lab rungs, the measured constants
              (../../handoffs/sprint-1/undone/mission-verification.txt).
   flown      NEVER — no mission has flown.
+  experiment `experiment/samuel` and any `samuel/*` branch are Samuel's
+             private experiment. They are not the build: these tickets
+             are still open and still yours. Do not read them, build on
+             them, or count them as built.
 
 --------------------------------------------------------------------------------
 1. WHAT IT IS

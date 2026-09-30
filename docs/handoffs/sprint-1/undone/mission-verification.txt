@@ -2,6 +2,10 @@ TICKET — Proving the mission controller: the simulated drone, the mission
 report, the scenarios, the lab flights
 ========================================================================
 
+`experiment/samuel` and any `samuel/*` branch are Samuel's private
+experiment. They are not the build: these tickets are still open and
+still yours. Do not read them, build on them, or count them as built.
+
 STATUS: READY TO START. Everything this builds on is on main: the manual
 flight system (flight/manual.py), the controller's fixed interface
 (mission/controller/), the flight trace (telemetry/trace.py), FakeClock and
