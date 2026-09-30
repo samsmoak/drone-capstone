@@ -177,6 +177,17 @@ class NoseRequest(BaseModel):
     nose: str
 
 
+class NoseCorrectionRequest(BaseModel):
+    #: In the air, with no position: which way up just moved the drone, as the
+    #: operator sees it — "away", "left", "right" or "towards". keyframe.py.
+    went: str
+
+
+class SpeedRequest(BaseModel):
+    #: How fast the keys fly it: "slow" or "normal". flight/manual.py.
+    speed: str
+
+
 class OperatorSpotRequest(BaseModel):
     #: Where the operator stands. Exactly one of: the drone's position now
     #: ("I'm here"), a spot in room metres, or clear (use the takeoff spot).
@@ -789,6 +800,18 @@ def set_key_frame(request: KeyFrameRequest) -> dict:
 def set_nose(request: NoseRequest) -> dict:
     """With no position: which way the nose pointed at takeoff. Works in the air."""
     return _run(lambda: agent.session.set_nose(request.nose))
+
+
+@app.post("/controls/nose/correct", dependencies=[Command])
+def correct_nose(request: NoseCorrectionRequest) -> dict:
+    """In the air: up went `went` of the operator — turn the arrows to match."""
+    return _run(lambda: agent.session.correct_nose(request.went))
+
+
+@app.post("/controls/speed", dependencies=[Command])
+def set_speed(request: SpeedRequest) -> dict:
+    """How fast the keys fly it. Works in the air."""
+    return _run(lambda: agent.session.set_speed(request.speed))
 
 
 @app.post("/controls/operator", dependencies=[Command])

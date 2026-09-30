@@ -95,6 +95,24 @@ NOSE_TO_FORWARD_DEG: dict[NoseFacing, float] = {
 }
 
 
+def turn_nose(nose: NoseFacing, went: NoseFacing) -> NoseFacing:
+    """Correct the nose setting from what the operator SAW, in the air.
+
+    Up was pressed and the drone went `went` of them (away, left, right, or
+    towards them) instead of away. Up moves along their forward as currently
+    set, F = takeoff heading + offset. Went LEFT means F is 90° counter-
+    clockwise of their true forward, so the true forward is F turned 90°
+    CLOCKWISE — which is the offset LEFT already stands for. So the correction
+    is simply the two offsets added: the same table, composed. Turning round to
+    face a drone behind you is "it came at me": 180°.
+    """
+    total = (NOSE_TO_FORWARD_DEG[nose] + NOSE_TO_FORWARD_DEG[went]) % 360.0
+    for facing, offset in NOSE_TO_FORWARD_DEG.items():
+        if offset % 360.0 == total:
+            return facing
+    raise AssertionError(f"offsets are multiples of 90°, got {total}")  # pragma: no cover
+
+
 def _wrap_deg(degrees: float) -> float:
     """Fold a heading into [-180, 180)."""
     return (degrees + 180.0) % 360.0 - 180.0

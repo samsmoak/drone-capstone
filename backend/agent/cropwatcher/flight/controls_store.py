@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from cropwatcher.flight.keyframe import KeyFrame, NoseFacing
+from cropwatcher.flight.manual import Speed
 from cropwatcher.paths import data_dir
 
 log = logging.getLogger(__name__)
@@ -43,6 +44,9 @@ class Controls:
     #: With no position: which way the nose pointed at takeoff, as the
     #: operator stood (keyframe.NoseFacing).
     nose: NoseFacing = NoseFacing.AWAY
+    #: How fast the keys fly it. Slow by default: the owner asked for steadier
+    #: flight (2026-09-30), and a laptop that never chose gets what they asked.
+    speed: Speed = Speed.SLOW
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -50,6 +54,7 @@ class Controls:
             "operator": None if self.operator is None else [self.operator[0], self.operator[1]],
             "operator_marked_at": self.operator_marked_at,
             "nose": str(self.nose),
+            "speed": str(self.speed),
         }
 
     def with_frame(self, frame: KeyFrame) -> Controls:
@@ -57,6 +62,9 @@ class Controls:
 
     def with_nose(self, nose: NoseFacing) -> Controls:
         return replace(self, nose=nose)
+
+    def with_speed(self, speed: Speed) -> Controls:
+        return replace(self, speed=speed)
 
     def with_operator(self, xy: tuple[float, float] | None) -> Controls:
         if xy is None:
@@ -104,9 +112,13 @@ class ControlsStore:
             nose = NoseFacing(raw.get("nose", NoseFacing.AWAY))
         except ValueError:
             nose = NoseFacing.AWAY
+        try:
+            speed = Speed(raw.get("speed", Speed.SLOW))
+        except ValueError:
+            speed = Speed.SLOW
         return Controls(frame, operator,
                         marked_at if operator is not None and isinstance(marked_at, str) else None,
-                        nose)
+                        nose, speed)
 
     def save(self, controls: Controls) -> None:
         """Written whole, then renamed over the old file: a crash mid-write

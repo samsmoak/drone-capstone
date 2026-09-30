@@ -161,6 +161,43 @@ LAND_RATE_M_S = 0.25                # target lowered to the floor at this rate
 TOUCHDOWN_HOLD_S = 0.6              # settle on the floor before the motors stop
 
 
+# ── how fast the KEYS fly it ─────────────────────────────────────────────
+#
+# The owner (2026-09-30): "reduce the speed at which the drone flies in any
+# direction, so it flies more steadily". A choice, Slow or Normal, and it is
+# the KEYS' speed only: fly_to() and hold_at() — missions, "Hover at" — keep
+# the constants above, which the mission time estimates are computed from.
+#
+# Unassisted there is no speed to limit: an arrow TILTS the drone, and the tilt
+# is an acceleration, g * tan(tilt) — 0.86 m/s^2 at 5°, 0.51 at 3° — for as
+# long as the key is held, with nothing to brake it after. Slow cannot cap the
+# speed; it takes the push down by 40 % and builds it more gently.
+
+class Speed(StrEnum):
+    SLOW = "slow"
+    NORMAL = "normal"
+
+
+@dataclass(frozen=True)
+class SpeedProfile:
+    move_m_s: float                 # assisted arrows: the commanded point's speed
+    climb_m_s: float                # W / S
+    yaw_deg_s: float                # A / D
+    tilt_deg: float                 # unassisted arrows: the lean
+    tilt_rate_deg_s: float          # unassisted arrows: how fast the lean builds
+
+
+SPEEDS: dict[Speed, SpeedProfile] = {
+    # What the keys have always done.
+    Speed.NORMAL: SpeedProfile(MOVE_SPEED_M_S, CLIMB_RATE_M_S, YAW_RATE_DEG_S,
+                               MAX_TILT_DEG, TILT_RATE_DEG_S),
+    # 40 % less push on the arrows, turns and climbs a third slower, the lean
+    # eased in over the same ~0.4 s (3° at 8°/s) so it starts no harder.
+    Speed.SLOW: SpeedProfile(move_m_s=0.12, climb_m_s=0.10, yaw_deg_s=20.0,
+                             tilt_deg=3.0, tilt_rate_deg_s=8.0),
+}
+
+
 class ControlState(StrEnum):
     IDLE = "idle"                   # disarmed, motors off
     ARMED = "armed"                 # props idling on the ground
@@ -281,6 +318,7 @@ class ManualController:
         key_frame: KeyFrame = KeyFrame.OPERATOR,
         operator_xy: tuple[float, float] | None = None,
         nose: NoseFacing = NoseFacing.AWAY,
+        speed: Speed = Speed.NORMAL,
         on_frame_change: Callable[[FrameStatus | None], None] | None = None,
         heartbeat_timeout_s: float = HEARTBEAT_TIMEOUT_S,
         tick_s: float = TICK_S,
@@ -316,6 +354,8 @@ class ManualController:
         #: With no position: which way the nose pointed at takeoff, as the
         #: operator stood — what turns the takeoff heading into their forward.
         self._nose = nose
+        #: How fast the KEYS fly it (Slow / Normal); goals keep the constants.
+        self._speed = SPEEDS[speed]
         self._on_frame_change = on_frame_change
         #: Where and which way this flight lifted off. Reset by arm().
         self._takeoff_xy: tuple[float, float] | None = None
@@ -576,6 +616,13 @@ class ManualController:
         log.info("manual control: arrows %s%s, nose %s at takeoff", key_frame,
                  "" if operator_xy is None else f", operator at ({operator_xy[0]:+.2f}, "
                  f"{operator_xy[1]:+.2f})", self._nose)
+
+    def set_speed(self, speed: Speed) -> None:
+        """How fast the keys fly it. Takes effect on the next tick, in the air
+        too: every command eases towards its new target, so there is no step."""
+        with self._lock:
+            self._speed = SPEEDS[speed]
+        log.info("manual control: keys at %s speed", speed)
 
     def set_frame_listener(self,
                            listener: Callable[[FrameStatus | None], None] | None) -> None:
@@ -910,7 +957,7 @@ class ManualController:
             # THE KEYS ALWAYS WIN, and they win by cancelling rather than by
             # out-voting: two things moving one target is the bug above.
             self._goal_height = None
-            return CLIMB_RATE_M_S * ((1 if up else 0) - (1 if down else 0))
+            return self._speed.climb_m_s * ((1 if up else 0) - (1 if down else 0))
         return self._goal_velocity_locked()
 
     def _goal_velocity_locked(self) -> float:
@@ -1000,15 +1047,16 @@ class ManualController:
         # no goal (nearly always, in Manual) the keys ask. Never both: a key
         # cancelled the goal at the top of the tick. Both are ROOM velocities,
         # except with no heading at all, where the keys can only be the nose's.
+        move = self._speed.move_m_s
         if frame.forward_deg is None:
-            keys = (forward * MOVE_SPEED_M_S, left * MOVE_SPEED_M_S)
+            keys = (forward * move, left * move)
         else:
-            keys = keys_to_room(forward * MOVE_SPEED_M_S, left * MOVE_SPEED_M_S,
-                                frame.forward_deg)
+            keys = keys_to_room(forward * move, left * move, frame.forward_deg)
         wanted = self._goal_room_velocity_locked() or keys
         self._vx = self._ease(self._vx, wanted[0], MOVE_ACCEL_M_S2 * dt)
         self._vy = self._ease(self._vy, wanted[1], MOVE_ACCEL_M_S2 * dt)
-        self._yaw_rate = self._ease(self._yaw_rate, yaw * YAW_RATE_DEG_S, YAW_ACCEL_DEG_S2 * dt)
+        self._yaw_rate = self._ease(self._yaw_rate, yaw * self._speed.yaw_deg_s,
+                                    YAW_ACCEL_DEG_S2 * dt)
         # _glide_height_locked has already moved the height for this tick.
         z = self._ground_z + self._target_height
         vx, vy, rate = self._vx, self._vy, self._yaw_rate
@@ -1095,11 +1143,12 @@ class ManualController:
         heading = self._heading_now_locked()
         if frame is not None and frame.forward_deg is not None and heading is not None:
             forward, left = room_to_body(*keys_to_room(forward, left, frame.forward_deg), heading)
+        speed = self._speed
         self._pitch = self._ease(
-            self._pitch, forward * MAX_TILT_DEG * PITCH_SIGN, TILT_RATE_DEG_S * dt)
+            self._pitch, forward * speed.tilt_deg * PITCH_SIGN, speed.tilt_rate_deg_s * dt)
         # Positive roll is to the right in the firmware's setpoint frame.
-        self._roll = self._ease(self._roll, -left * MAX_TILT_DEG, TILT_RATE_DEG_S * dt)
-        self._yaw_rate = self._ease(self._yaw_rate, yaw * YAW_RATE_DEG_S, YAW_ACCEL_DEG_S2 * dt)
+        self._roll = self._ease(self._roll, -left * speed.tilt_deg, speed.tilt_rate_deg_s * dt)
+        self._yaw_rate = self._ease(self._yaw_rate, yaw * speed.yaw_deg_s, YAW_ACCEL_DEG_S2 * dt)
         z = self._ground_z + self._target_height
         roll, pitch, rate = self._roll, self._pitch, self._yaw_rate
         return lambda: self._commander.send_zdistance_setpoint(roll, pitch, rate, z)

@@ -193,14 +193,39 @@ POST /controls/nose), which adds 0 / -90 / +90 / 180° to the takeoff heading
 LEFT means their forward is the nose turned 90° clockwise). The drone can be
 set down any way round. In the air it still means "at takeoff": the app labels
 it "Nose at takeoff" there.
-  - It does NOT follow the operator. Turn round to face a drone behind you
-    and ↑ still goes the way you first faced; the words on screen say so.
-    Following you needs a position: the FROM YOU frame, with base stations.
+  - SHIFT + AN ARROW sets it from the keyboard (desktop App.tsx ALIGN_KEYS;
+    never a flight key). On the ground: the arrow the nose points along. In
+    the air: the arrow ↑ just WENT — POST /controls/nose/correct, which ADDS
+    that offset to the current one (keyframe.turn_nose): up went left of you
+    means your forward is 90° clockwise of where it went, the offset LEFT
+    already stands for. Composed over all 16 cases, up ends away from you.
+  - It does not follow the operator by itself: turn round to face a drone
+    behind you and ↑ still goes the way you first faced — it comes at you, so
+    Shift+↓ ("it came at me") adds 180° and puts it right. That one key is
+    all turning round costs without base stations; with them, the FROM YOU
+    frame measures it.
   - Ignored whenever there is a position; FROM YOU and ROOM decide then.
   - Gyro heading, relative to power-on, drifts slowly; not yet measured in a
     flight (flight-status.txt, UPDATE 6 lists the lab check).
   - Defaults to away, which is exactly what the arrows did before it existed;
     a controls.json from before it, or a bad value, loads as away.
+
+SPEED — SLOW OR NORMAL (2026-09-30, the owner: "fly more steadily"). How fast
+the KEYS fly it; flight/manual.py SPEEDS, kept in controls.json (default SLOW;
+an old file or a bad value is SLOW), POST /controls/speed, changeable in the
+air with no step because every command eases towards its target.
+
+              arrows        arrows unassisted   A / D     W / S
+  NORMAL      0.20 m/s      5° lean, 12°/s      30°/s     0.15 m/s
+  SLOW        0.12 m/s      3° lean,  8°/s      20°/s     0.10 m/s
+
+Keys only: fly_to() (missions) and hold_at() ("Hover at") keep MOVE_SPEED_M_S
+and CLIMB_RATE_M_S, which the mission time estimates in api/rest.py come from
+— tests pin both, and fail if Slow leaks into a mission. Unassisted, Slow does
+not cap a speed — nothing measures one: an arrow is a lean, the lean is an
+acceleration (g·tan 3° = 0.51 m/s² against 0.86 at 5°) for as long as it is
+held, and the drone coasts after. Slow is 40 % less push, not a limit; a Flow
+deck is what would give a speed to hold.
 
 THE OPERATOR'S SPOT. "I'm here" (desktop) takes the DRONE's position now —
 carry it to your feet, or fly it over your head. Without a mark, "away" is
@@ -208,7 +233,8 @@ measured from where this flight took off, as ArduPilot's home is where it
 armed. The choice and the spot are kept on the laptop (controls.json,
 flight/controls_store.py), per Lighthouse setup rather than per room: Manual
 has no room selected, and the spot is a point in the base stations' frame.
-Settable in the air (POST /controls/frame, /controls/operator, /controls/nose); the next tick
+Settable in the air (POST /controls/frame, /controls/operator, /controls/nose,
+/controls/nose/correct, /controls/speed); the next tick
 uses it. What the arrows mean now reaches the app as the session's
 `controls.live`, on change only — the operator direction turns continuously
 as the drone circles, and that is not news.

@@ -47,7 +47,7 @@ export function arrowWords(controls: Controls, assisted: boolean): ArrowWords {
   const live = controls.live;
   if (!live && !assisted) {
     return { short: "from you", warn: true,
-      line: "No position from the base stations, so the drone cannot tell where you are. Say where its nose points as you stand, and ↑ flies away from you — kept however it turns." };
+      line: "No position from the base stations, so the drone cannot tell where you are. Say where its nose points as you stand — tap it here, or Shift + the arrow it points along — and ↑ flies away from you, kept however it turns." };
   }
   if (!live) {
     if (controls.key_frame === "room") {
@@ -83,7 +83,10 @@ export function arrowWords(controls: Controls, assisted: boolean): ArrowWords {
         // from you" cannot be measured — it is TOLD (the nose choice) and then
         // kept by the heading. Kept from takeoff, so turning round to follow
         // the drone does not turn the arrows; said, never implied.
-        line: `No position: ↑ is away from you as you stood at takeoff (nose ${NOSE_WHERE[controls.nose]}), however it turns. If you turn round, ↑ still goes the way you first faced.` };
+        // In the air the correction is by what the operator SEES: which way ↑
+        // just went (App.tsx ALIGN_KEYS, keyframe.turn_nose) — the one step
+        // that also mends turning round to face a drone behind them.
+        line: `No position: ↑ is away from you as you stood at takeoff (nose ${NOSE_WHERE[controls.nose]}), however it turns. ↑ went the wrong way, or you turned round? Shift + the arrow it went.` };
     case "nose":
       return { short: "nose", warn: true,
         line: "No heading reported: the arrows follow the nose, as the drone sees it." };

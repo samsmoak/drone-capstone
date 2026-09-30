@@ -69,6 +69,9 @@ class FakeManual:
         self.key_frame = (frame, operator_xy)
         self.nose = nose
 
+    def set_speed(self, speed):
+        self.speed = speed
+
     def set_frame_listener(self, listener):
         self.frame_listener = listener
 

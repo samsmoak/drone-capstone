@@ -18,6 +18,7 @@ from cropwatcher.flight.keyframe import (
     keys_to_room,
     resolve,
     room_to_body,
+    turn_nose,
 )
 
 
@@ -154,3 +155,36 @@ class TestNoseFacing:
         s = resolve(KeyFrame.OPERATOR, drone_xy=None, operator_xy=None, operator_source=None,
                     takeoff_heading_deg=None, nose=NoseFacing.LEFT)
         assert s.active is ActiveFrame.NOSE and s.forward_deg is None
+
+
+class TestTurnNose:
+    """In the air: "up went <this way> of me" corrects the setting."""
+
+    @pytest.mark.parametrize(("nose", "went", "expected"), [
+        (NoseFacing.AWAY, NoseFacing.AWAY, NoseFacing.AWAY),
+        (NoseFacing.AWAY, NoseFacing.LEFT, NoseFacing.LEFT),
+        (NoseFacing.AWAY, NoseFacing.RIGHT, NoseFacing.RIGHT),
+        (NoseFacing.AWAY, NoseFacing.TOWARDS, NoseFacing.TOWARDS),
+        (NoseFacing.LEFT, NoseFacing.LEFT, NoseFacing.TOWARDS),
+        (NoseFacing.LEFT, NoseFacing.RIGHT, NoseFacing.AWAY),
+        (NoseFacing.RIGHT, NoseFacing.TOWARDS, NoseFacing.LEFT),
+        (NoseFacing.TOWARDS, NoseFacing.TOWARDS, NoseFacing.AWAY),
+    ])
+    def test_corrections_compose(self, nose, went, expected):
+        assert turn_nose(nose, went) is expected
+
+    @pytest.mark.parametrize("nose", list(NoseFacing))
+    @pytest.mark.parametrize("went", list(NoseFacing))
+    def test_up_ends_up_away_from_the_operator(self, nose, went):
+        """Whatever was set and whichever way up went, after the correction up
+        points where the operator actually faces. Up went `went` of them along
+        the old forward F; their true forward is F turned back by that."""
+        takeoff = 37.0
+        def forward(n):
+            return resolve(KeyFrame.OPERATOR, drone_xy=None, operator_xy=None,
+                           operator_source=None, takeoff_heading_deg=takeoff,
+                           nose=n).forward_deg
+        old = forward(nose)
+        # Where they really face: the direction up went, turned the other way.
+        true_forward = (old + NOSE_TO_FORWARD_DEG[went]) % 360.0
+        assert forward(turn_nose(nose, went)) % 360.0 == pytest.approx(true_forward)

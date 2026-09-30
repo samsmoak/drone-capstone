@@ -19,6 +19,7 @@ from cropwatcher.flight.keyframe import (
     KeyFrame,
     NoseFacing,
     Reason,
+    turn_nose,
 )
 from cropwatcher.flight.manual import (
     CLIMB_ACCEL_M_S2,
@@ -33,6 +34,7 @@ from cropwatcher.flight.manual import (
     MAX_UNASSISTED_HEIGHT_M,
     MOVE_ACCEL_M_S2,
     MOVE_SPEED_M_S,
+    SPEEDS,
     TICK_S,
     TOUCHDOWN_HOLD_S,
     YAW_RATE_DEG_S,
@@ -40,6 +42,7 @@ from cropwatcher.flight.manual import (
     Fix,
     Intent,
     ManualController,
+    Speed,
 )
 from tests.fakes import FakeClock, FakeCommander
 
@@ -69,7 +72,8 @@ class Rig:
     def __init__(self, assisted: bool = True, fix: Fix | None = SOMEWHERE, *,
                  key_frame: KeyFrame = KeyFrame.OPERATOR,
                  operator: tuple[float, float] | None = None,
-                 yaw: float | None = None, nose: NoseFacing = NoseFacing.AWAY):
+                 yaw: float | None = None, nose: NoseFacing = NoseFacing.AWAY,
+                 speed: Speed = Speed.NORMAL):
         self.clock = FakeClock()
         self.cmd = FakeCommander()
         self.lands: list[tuple[float, float]] = []
@@ -84,7 +88,7 @@ class Rig:
             assisted=assisted, clock=self.clock,
             position=lambda: self.fix,
             heading=lambda: self.fix.yaw_deg if self.fix is not None else self.yaw,
-            key_frame=key_frame, operator_xy=operator, nose=nose,
+            key_frame=key_frame, operator_xy=operator, nose=nose, speed=speed,
             on_frame_change=self.frames.append,
         )
 
@@ -1373,3 +1377,127 @@ class TestNosePointsWhereTheOperatorSays:
             rig.fly_to(0.3)
             rig.run(1.0, Intent(forward=True))
         assert away.ctl.target == left.ctl.target
+
+
+class TestSlowKeys:
+    """Slow (2026-09-30, the owner: "fly more steadily"): the KEYS fly gentler;
+    goals — fly_to() for missions, hold_at() for "Hover at" — do not change."""
+
+    def test_the_two_speeds_are_what_was_agreed(self):
+        slow, normal = SPEEDS[Speed.SLOW], SPEEDS[Speed.NORMAL]
+        assert (slow.tilt_deg, slow.tilt_rate_deg_s, slow.yaw_deg_s, slow.climb_m_s,
+                slow.move_m_s) == (3.0, 8.0, 20.0, 0.10, 0.12)
+        assert (normal.tilt_deg, normal.tilt_rate_deg_s, normal.yaw_deg_s, normal.climb_m_s,
+                normal.move_m_s) == (MAX_TILT_DEG, 12.0, 30.0, CLIMB_RATE_M_S, MOVE_SPEED_M_S)
+        # 40 % less push: g*tan(3°) against g*tan(5°).
+        assert math.tan(math.radians(3.0)) / math.tan(math.radians(5.0)) == pytest.approx(
+            0.599, abs=0.002)
+
+    def test_unassisted_arrows_lean_three_degrees(self):
+        rig = Rig(assisted=False, fix=Fix(0.0, 0.0, 0.0), speed=Speed.SLOW)
+        rig.fly_to(0.3)
+        rig.run(1.0, Intent(forward=True, right=True))
+        _, roll, pitch, _, _ = rig.cmd.last("zdistance")
+        assert pitch == pytest.approx(-3.0) and roll == pytest.approx(3.0)
+
+    def test_the_lean_builds_at_eight_degrees_a_second(self):
+        rig = Rig(assisted=False, fix=Fix(0.0, 0.0, 0.0), speed=Speed.SLOW)
+        rig.fly_to(0.3)
+        rig.run(0.2, Intent(forward=True))
+        _, _, pitch, _, _ = rig.cmd.last("zdistance")
+        assert pitch == pytest.approx(-8.0 * 0.2, abs=0.01)
+
+    def test_turning_and_climbing_are_slower(self):
+        rig = Rig(assisted=False, fix=Fix(0.0, 0.0, 0.0), speed=Speed.SLOW)
+        rig.fly_to(0.3)
+        rig.run(1.0, Intent(yaw_left=True))
+        _, _, _, rate, _ = rig.cmd.last("zdistance")
+        assert rate == pytest.approx(20.0)
+        rig.run(1.0, Intent())
+        rig.run(2.0, Intent(up=True))
+        assert rig.ctl.climb_velocity == pytest.approx(0.10)
+
+    def test_assisted_arrows_move_the_point_at_twelve_centimetres_a_second(self):
+        rig = Rig(speed=Speed.SLOW)
+        TestFlyTo.airborne(rig)
+        previous = rig.cmd.last("position")
+        fastest = 0.0
+        for _ in range(round(1.0 / TICK_S)):
+            TestFlyTo.follow(rig, TICK_S, Intent(forward=True))
+            current = rig.cmd.last("position")
+            fastest = max(fastest, math.hypot(current[1] - previous[1],
+                                              current[2] - previous[2]) / TICK_S)
+            previous = current
+        assert fastest == pytest.approx(0.12, abs=1e-6)
+
+    def test_a_mission_flies_at_its_own_speed_whatever_the_keys_are_set_to(self):
+        rig = Rig(speed=Speed.SLOW)
+        TestFlyTo.airborne(rig)
+        rig.ctl.fly_to(SOMEWHERE.x + 2.0, SOMEWHERE.y, 0.40)
+        previous = rig.cmd.last("position")
+        fastest = 0.0
+        for _ in range(round(4.0 / TICK_S)):
+            TestFlyTo.follow(rig, TICK_S)
+            current = rig.cmd.last("position")
+            fastest = max(fastest, math.hypot(current[1] - previous[1],
+                                              current[2] - previous[2]) / TICK_S)
+            previous = current
+        assert fastest == pytest.approx(MOVE_SPEED_M_S, abs=1e-6)
+
+    def test_hover_at_climbs_at_its_own_speed_too(self):
+        rig = Rig(speed=Speed.SLOW)
+        rig.ctl.arm()
+        rig.ctl.hold_at(0.60)
+        rig.run(2.0)
+        assert rig.ctl.climb_velocity == pytest.approx(CLIMB_RATE_M_S)
+
+    def test_changed_in_the_air_it_eases_with_no_step(self):
+        rig = Rig(assisted=False, fix=Fix(0.0, 0.0, 0.0))
+        rig.fly_to(0.3)
+        rig.run(1.0, Intent(forward=True))
+        assert rig.cmd.last("zdistance")[2] == pytest.approx(-MAX_TILT_DEG)
+        rig.ctl.set_speed(Speed.SLOW)
+        pitches = []
+        for _ in range(round(0.5 / TICK_S)):
+            rig.run(TICK_S)
+            pitches.append(rig.cmd.last("zdistance")[2])
+        steps = [abs(b - a) for a, b in zip([-MAX_TILT_DEG, *pitches], pitches, strict=False)]
+        assert max(steps) <= 8.0 * TICK_S + 1e-9          # never more than one eased step
+        assert pitches[-1] == pytest.approx(-3.0)
+
+    def test_the_controller_defaults_to_normal(self):
+        """Missions and tests build controllers directly; Slow is the operator's
+        choice, which the session hands over (controls.json, Speed.SLOW)."""
+        rig = Rig(assisted=False, fix=Fix(0.0, 0.0, 0.0))
+        rig.fly_to(0.3)
+        rig.run(1.0, Intent(forward=True))
+        assert rig.cmd.last("zdistance")[2] == pytest.approx(-MAX_TILT_DEG)
+
+
+class TestShiftArrowCorrects:
+    """In the air, no position: up was pressed and went the wrong way; the
+    operator says which way it went, and up is away from them again."""
+
+    def test_the_scenario_the_owner_described(self):
+        # The nose pointed to the operator's left, but the setting says away:
+        # up flies the nose's way, +x, which is to their left. They say "it
+        # went left"; up must now fly -y, their true forward.
+        rig = Rig(assisted=False, fix=Fix(0.0, 0.0, 0.0))
+        rig.fly_to(0.3)
+        rig.run(1.0, Intent(forward=True))
+        assert rig.cmd.last("zdistance")[2] == pytest.approx(-MAX_TILT_DEG)   # along the nose
+        rig.ctl.set_key_frame(KeyFrame.OPERATOR, None, turn_nose(NoseFacing.AWAY,
+                                                                   NoseFacing.LEFT))
+        rig.run(1.5, Intent(forward=True))
+        _, roll, pitch, _, _ = rig.cmd.last("zdistance")
+        # -y is the drone's right: roll right, no pitch.
+        assert roll == pytest.approx(MAX_TILT_DEG) and pitch == pytest.approx(0.0, abs=1e-9)
+
+    def test_turning_round_is_it_came_at_me(self):
+        rig = Rig(assisted=False, fix=Fix(0.0, 0.0, 0.0))
+        rig.fly_to(0.3)
+        rig.ctl.set_key_frame(KeyFrame.OPERATOR, None, turn_nose(NoseFacing.AWAY,
+                                                                   NoseFacing.TOWARDS))
+        rig.run(1.5, Intent(forward=True))
+        _, roll, pitch, _, _ = rig.cmd.last("zdistance")
+        assert pitch == pytest.approx(MAX_TILT_DEG) and roll == pytest.approx(0.0, abs=1e-9)

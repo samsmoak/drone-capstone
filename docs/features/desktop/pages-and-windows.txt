@@ -143,9 +143,10 @@ the vitals show them and two places for one number is worse than either.
 
 THE ARROWS ROW, under the keys (2026-09-30, ArrowFrame.tsx): From you / Room,
 I'm here, Use takeoff spot — or, with no position, NOSE POINTS (Away / Left /
-Right / At me; "Nose at takeoff" in the air), which replaces them because
-without base stations they cannot do anything — and one sentence saying what the arrows do RIGHT
-NOW — away from you, or the fallback in force (near you, no position, no
+Right / At me; "Nose at takeoff" in the air; Shift + an arrow does the same
+from the keyboard), which replaces them because without base stations they
+cannot do anything — SPEED (Slow / Normal, always shown in Manual) — and one
+sentence saying what the arrows do RIGHT NOW — away from you, or the fallback in force (near you, no position, no
 heading) with a ▲. The keys' caption says it too ("Position · from you"). It
 is in the FlightDeck, not a panel, because it can be switched in the air and
 must be read with the keys. The words are lib/arrows.ts; the decision is the

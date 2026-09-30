@@ -17,13 +17,26 @@
  * where the nose points as you stand. The drone can be set down any way round;
  * ↑ is then away from you as you stood at takeoff, kept by its heading however
  * it turns (keyframe.py). Changeable in the air, and still counted from
- * takeoff there, which the buttons' titles say.
+ * takeoff there, which the buttons' titles say. SHIFT + AN ARROW does the same
+ * from the keyboard (App.tsx ALIGN_KEYS): the nose on the ground, and in the
+ * air which way ↑ just went — the correction for turning round.
+ *
+ * SPEED, Slow or Normal, is how fast the KEYS fly it (flight/manual.py SPEEDS);
+ * a mission and "Hover at" keep their own. Changeable in the air — every
+ * command eases to it, so there is no jolt.
  */
 
 import type { Run } from "@/App";
-import { api, type Session } from "@/lib/agent";
+import { api, type KeySpeed, type Session } from "@/lib/agent";
 import { arrowWords, NOSE_CHOICES } from "@/lib/arrows";
 import { SmallButton } from "./auto/plan/fields";
+
+const SPEED_CHOICES: { value: KeySpeed; label: string; title: string }[] = [
+  { value: "slow", label: "Slow",
+    title: "Gentler keys, steadier flight: a smaller lean, slower turns and climbs" },
+  { value: "normal", label: "Normal",
+    title: "The keys at full speed, as before" },
+];
 
 export function ArrowFrame({ session, run }: { session: Session; run: Run }) {
   const controls = session.controls;
@@ -88,6 +101,18 @@ export function ArrowFrame({ session, run }: { session: Session; run: Run }) {
         )}
       </div>
       )}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <p className="eyebrow pr-1">Speed</p>
+        <div className="flex gap-1" role="group" aria-label="How fast the keys fly the drone">
+          {SPEED_CHOICES.map((choice) => (
+            <SmallButton key={choice.value} pressed={controls.speed === choice.value}
+                         onClick={() => void run(() => api.setSpeed(choice.value), `Speed ${choice.value}`)}
+                         title={choice.title}>
+              {choice.label}
+            </SmallButton>
+          ))}
+        </div>
+      </div>
       <p role="status" className={`text-xs leading-snug ${words.warn ? "text-[var(--foreground)]" : "text-[var(--muted)]"}`}>
         {words.warn && <span aria-hidden className="mr-1 text-[var(--status-warning)]">▲</span>}
         {words.line}

@@ -74,6 +74,10 @@ export type KeyFrameChoice = "operator" | "room";
  *  operator stands (cropwatcher/flight/keyframe.py NoseFacing). */
 export type NoseFacing = "away" | "left" | "right" | "towards";
 
+/** How fast the keys fly it (cropwatcher/flight/manual.py Speed). Missions and
+ *  "Hover at" keep their own speed either way. */
+export type KeySpeed = "slow" | "normal";
+
 /** What the arrows mean on this tick, from the agent. */
 export type ArrowFrame = {
   chosen: KeyFrameChoice;
@@ -94,6 +98,8 @@ export type Controls = {
   operator_marked_at: string | null;
   /** With no position, what turns "the nose at takeoff" into "away from you". */
   nose: NoseFacing;
+  /** How fast the keys fly it. Slow unless the operator chose Normal. */
+  speed: KeySpeed;
   /** null on the ground. */
   live: ArrowFrame | null;
 };
@@ -495,6 +501,10 @@ export const api = {
   setKeyFrame: (frame: KeyFrameChoice) => command<Session>("/controls/frame", { frame }),
   /** With no position: which way the nose pointed at takeoff. Works in the air. */
   setNose: (nose: NoseFacing) => command<Session>("/controls/nose", { nose }),
+  /** In the air, with no position: ↑ went `went` of you — turn the arrows to match. */
+  correctNose: (went: NoseFacing) => command<Session>("/controls/nose/correct", { went }),
+  /** How fast the keys fly it. Works in the air. */
+  setSpeed: (speed: KeySpeed) => command<Session>("/controls/speed", { speed }),
   /** "I'm here": the drone's position now becomes the operator's spot. */
   markOperatorHere: () => command<Session>("/controls/operator", { from_drone: true }),
   /** Forget the marked spot; "away" is measured from where it takes off. */
