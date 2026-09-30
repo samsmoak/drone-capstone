@@ -27,6 +27,7 @@ verdict (``pm.state`` low power, the supervisor's tumble flag) that is used.
 
 from __future__ import annotations
 
+import math
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -146,6 +147,49 @@ PM_SHUTDOWN = 4
 # already cuts the motors when it sets this; the guard reports it.
 SUPERVISOR_TUMBLED_BIT = 5
 
+# ── crash cut-off ────────────────────────────────────────────────────────
+#
+# The firmware's tumble flag is not enough on its own. Measured 2026-09-30
+# (trace_079af354): the drone flipped (roll 157.9 deg), then sat at pitch -38 to
+# -85 deg with thrust pinned at 65535 for 24 s — the flag came only as the
+# operator pressed Emergency stop. So the guard reads the attitude itself.
+#
+# PX4's failure detector disarms at 60 deg of roll or pitch held for 0.3 s
+# (FD_FAIL_R, FD_FAIL_P, FD_FAIL_R_TTRI defaults). Tilt here is the angle from
+# upright, acos(cos(roll) * cos(pitch)), so a diagonal lean counts in full.
+# Against this drone's own record — 76 manual traces, 27,703 flying samples
+# taken before any crash began — normal flight never passed 48.4 deg (p99.9
+# 35.6 deg), while every one of the 50 crashes passed 60. Past 90 deg the drone
+# is upside down: nothing is recovering it, so one sample is enough.
+TILT_CUTOFF_DEG = 60.0
+TILT_CUTOFF_S = 0.3
+INVERTED_DEG = 90.0
+
+# ── thrust at the ceiling ────────────────────────────────────────────────
+#
+# Thrust clipped at the motors' maximum means the controller is asking for more
+# than the drone has, and attitude authority is what goes: with every motor at
+# the limit there is nothing left to turn or level with. Hover measured at
+# ~53,000 of 65,535 on this airframe — about 81 % — so there is little spare.
+#
+# NOT A CRASH PREDICTOR, and it is not sold as one: in the 76 traces, 35 of the
+# 54 flights whose longest run at the ceiling was under 0.5 s crashed anyway —
+# a flip is usually too fast for anything on this side of the radio. What a
+# long run does say is that the drone is not holding itself up. Four flights
+# sat at the ceiling for 2 s or more (3.0, 7.9, 16.2 and 16.7 s); the two
+# longest flipped 0.1 s after the run ended, 14 s after this would have landed
+# them. ArduCopter's thrust-loss check uses the same signal, throttle held at
+# its limit, over 1 s; 2 s leaves out the 1.1 and 1.4 s runs of ordinary
+# flight. Landing lowers the demand, which is the one thing that helps.
+THRUST_CEILING = 65000                # stabilizer.thrust, clipped at 65535
+THRUST_CEILING_S = 2.0
+
+
+def tilt_deg(roll_deg: float, pitch_deg: float) -> float:
+    """The angle between the drone's up and the world's up, degrees."""
+    c = math.cos(math.radians(roll_deg)) * math.cos(math.radians(pitch_deg))
+    return math.degrees(math.acos(max(-1.0, min(1.0, c))))
+
 
 def station_ids(bitmask: float | None) -> tuple[int, ...]:
     if bitmask is None:
@@ -262,6 +306,7 @@ class Action(StrEnum):
 class Reason(StrEnum):
     NONE = "none"
     TUMBLED = "tumbled"
+    THRUST_CEILING = "thrust_ceiling"
     POSITION_LOST = "position_lost"
     RECEPTION_LOST = "reception_lost"
     BATTERY_LOW = "battery_low"
@@ -324,6 +369,8 @@ class FlightGuard:
         self._height_error_since: float | None = None
         self._low_voltage_since: float | None = None
         self._hold_armed_at: float | None = None
+        self._tilted_since: float | None = None
+        self._ceiling_since: float | None = None
 
     def arm_hold_checks(self, now: float) -> None:
         """Start drift/height checks — call once the takeoff climb completes."""
@@ -355,6 +402,38 @@ class FlightGuard:
             self._low_voltage_since = None
         return OK
 
+    def _attitude_verdict(self, snap: Snapshot, now: float) -> Verdict:
+        """Stop a drone that has gone over; land one the motors cannot hold."""
+        roll, pitch = snap.get("stabilizer.roll"), snap.get("stabilizer.pitch")
+        if roll is not None and pitch is not None:
+            tilt = tilt_deg(roll, pitch)
+            if tilt > TILT_CUTOFF_DEG:
+                if self._tilted_since is None:
+                    self._tilted_since = now
+                if tilt > INVERTED_DEG or now - self._tilted_since >= TILT_CUTOFF_S:
+                    return Verdict(
+                        Action.STOP, Reason.TUMBLED,
+                        f"The drone tipped {tilt:.0f}° from upright — motors stopped.",
+                    )
+            else:
+                self._tilted_since = None
+
+        thrust = snap.get("stabilizer.thrust")
+        if thrust is not None and thrust >= THRUST_CEILING:
+            if self._ceiling_since is None:
+                self._ceiling_since = now
+            if now - self._ceiling_since >= THRUST_CEILING_S:
+                return Verdict(
+                    Action.LAND, Reason.THRUST_CEILING,
+                    f"The motors have been at full power for "
+                    f"{now - self._ceiling_since:.1f} s and still cannot hold the drone — "
+                    f"landing. A tired battery, a damaged propeller or too much weight "
+                    f"on the drone does this.",
+                )
+        else:
+            self._ceiling_since = None
+        return OK
+
     def check(self, snap: Snapshot, now: float) -> Verdict:
         ctx = self.context
         # The snapshot's own age IS how long we have been blind, so no timer
@@ -380,6 +459,11 @@ class FlightGuard:
                 Action.STOP, Reason.TUMBLED,
                 "The drone reports it has tumbled — motors stopped.",
             )
+        # Attitude and thrust come from the IMU and the controller, not from any
+        # position, so these run assisted or not.
+        verdict = self._attitude_verdict(snap, now)
+        if not verdict.ok:
+            return verdict
 
         # Everything below the battery reads the position estimate. Without base
         # stations there is no estimate to read, so those guards are off and the

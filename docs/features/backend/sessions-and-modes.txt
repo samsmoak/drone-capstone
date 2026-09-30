@@ -83,6 +83,22 @@ retry that fails leaves the session open in checks_failed with the link closed,
 so a power-cycled drone gets a fresh link on the next Retry; Start is refused
 while that session is open. A normal landing does not require a retry.
 
+RESET DRONE IS RETRY WITH A RESTART FIRST (2026-09-30, the owner's "hard switch
+to pull after a crash"). Session.reset_drone, POST /session/reset-drone: stop
+the motors on the spot (it is allowed mid-flight, like Emergency stop), let an
+Auto program's worker wind down, close the flight, restart the drone over the
+radio, reconnect as soon as it answers, run every check — and stand in
+awaiting_confirmation in the SAME session, retry_required cleared. A restart is
+the one thing that clears what a crash can leave inside the drone: a latched
+motor lock, and decks, which are only detected at power-on. Measured on the lab
+drone: 9.4 s from press to checked. No session open, it is restart_drone.
+Refused while checks run or the session ends. A restart the radio cannot do,
+or a drone that does not answer within RESET_RECONNECT_S (12 s) after the
+settle, leaves checks_failed with retry_required and says to switch it off and
+on by hand. The manual guard and the reset can both close the same flight;
+_finish_lock makes the second wait for the first, so the guard's closing
+"Motors stopped" can never land on top of a reset already under way.
+
 STAYING SIGNED IN. Signing in saves the Supabase refresh token in the app data
 folder (session.json, mode 0600). At startup the agent restores it in the
 background; an expired or revoked token is deleted and the sign-in form shows.
@@ -179,6 +195,11 @@ flight system is armed with the room's fence as the guard's, and handed to the
 mission controller (../missions/mission-controller.txt). The snapshot's
 `mission` carries its progress to the app.
 
+
+LAST VERIFIED  2026-09-30, Reset drone only: tests/test_session.py
+TestResetDrone (7, the guard race pinned by a test that fails without
+_finish_lock), and Session.reset_drone run against the lab drone — 9.4 s to
+awaiting_confirmation, same session.
 
 RELATED
 

@@ -26,6 +26,7 @@ COMMANDS = [
     ("post", "/session/prop-test", None),
     ("post", "/session/health-test", None),
     ("post", "/session/retry", None),
+    ("post", "/session/reset-drone", None),
     ("post", "/session/program", {"height_m": 0.3, "hold_s": 5}),
     ("post", "/session/manual/arm", {}),
     ("post", "/session/land", None),

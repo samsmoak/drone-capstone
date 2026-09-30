@@ -90,6 +90,15 @@ STANDBY_SOON_S = 2.0
 #: (measured 2026-09-24: power-cycle at 1.0 s, link back at 4.6 s). Looking
 #: sooner starts a connect that blocks for its full timeout.
 RESTART_SETTLE_S = 4.0
+#: Reset drone: how long past the settle it keeps trying to reconnect before
+#: saying the drone did not come back, and how often it tries.
+RESET_RECONNECT_S = 12.0
+RESET_RECONNECT_POLL_S = 1.0
+#: Reset drone mid-program: how long to let the program's worker wind down
+#: after the stop, before the reset takes over.
+RESET_WORKER_WAIT_S = 5.0
+
+
 def _power_cycle(uri: str) -> None:
     """Restart the drone's electronics through its radio chip (cflib)."""
     from cflib.utils.power_switch import PowerSwitch
@@ -299,6 +308,14 @@ class Session:
         # checks' ground unless an unassisted flight re-read it from the baro.
         self._height_reference: float | None = None
         self._manual_lock = threading.Lock()
+        #: Held for the whole of closing a manual flight, so the guard thread
+        #: and Reset drone cannot interleave: whichever closes it, the other
+        #: waits and then finds nothing to do — and never lands its "Landed" or
+        #: "Motors stopped" state on top of a reset already under way.
+        self._finish_lock = threading.RLock()
+        #: Reset drone's waits, on the instance so a test can shorten them.
+        self._reset_settle_s = RESTART_SETTLE_S
+        self._reset_reconnect_s = RESET_RECONNECT_S
         self._trace: flight_trace.FlightTrace | None = None
         self._unsubscribe_trace: Callable[[], None] | None = None
         #: Opening and closing `self.link` happen under this, whoever does it —
@@ -643,19 +660,13 @@ class Session:
                 # No standby link to take over: open one. (With standby
                 # running, the session usually inherits the link it opened.)
                 try:
-                    link = self._link_factory()
-                    link.open()
-                    self.link = link
+                    link = self._open_link_locked()
                 except LinkError as e:
                     on_refused({"reason": str(e)})
                     self._set(state=State.CHECKS_FAILED, message=str(e),
                               radio={"state": "searching", "hardware_id": None,
                                      "message": str(e)})
                     return None
-                # Live telemetry reaches the app's windows from the moment the
-                # link is open — before, during and after a flight.
-                if link.stream is not None:
-                    self._unsubscribe_telemetry = link.stream.subscribe(self._publish_telemetry)
 
         try:
             report = collect(link.checks(), on_step)
@@ -685,6 +696,17 @@ class Session:
                          "message": None})
         self._link_ready(link, report.ai_deck)
         return report
+
+    def _open_link_locked(self) -> DroneLink:
+        """Open a fresh link and stream its telemetry. `_link_lock` held."""
+        link = self._link_factory()
+        link.open()
+        self.link = link
+        # Live telemetry reaches the app's windows from the moment the link is
+        # open — before, during and after a flight.
+        if link.stream is not None:
+            self._unsubscribe_telemetry = link.stream.subscribe(self._publish_telemetry)
+        return link
 
     def _link_ready(self, link: DroneLink, ai_deck: bool | None) -> None:
         """Hand the link to the Wi-Fi hand-off, once per link."""
@@ -735,21 +757,132 @@ class Session:
             Action.SESSION_RETRY, Result.REFUSED, session_id=session_id, detail=detail))
         if report is None:
             return                                  # still retry_required; Retry again
+        self._checked_again(report, "Checked again.")
+
+    def _checked_again(self, report: ReadyReport, lead: str) -> None:
+        """The checks passed again in this session: back to confirming the area,
+        exactly where a new session stands after its first checks."""
         self.report = report
         self._height_reference = report.ground_z_m if report.assisted else None
         self._set(
-            state=State.AWAITING_CONFIRMATION, retry_required=False,
+            state=State.AWAITING_CONFIRMATION, retry_required=False, activity=None,
             drone={"hardware_id": report.hardware_id, "battery_v": round(report.vbat, 2),
                    "endurance_s": round(report.endurance_s)},
             assisted=report.assisted, unassisted_reason=report.unassisted_reason,
             ai_deck=report.ai_deck,
             message=(
-                "Checked again. Put the drone on a flat, clear surface, then confirm."
+                f"{lead} Put the drone on a flat, clear surface, then confirm."
                 if report.assisted else
-                "Checked again. The drone cannot hold a height by itself right now — put it "
-                "on a flat, clear surface, then confirm to fly it by hand."
+                f"{lead} The drone cannot hold a height by itself right now — put it "
+                f"on a flat, clear surface, then confirm to fly it by hand."
             ),
         )
+
+    # ── reset: the hard switch ───────────────────────────────────────────
+
+    def reset_drone(self) -> None:
+        """Stop everything, restart the drone, and check it as for a new session.
+
+        The switch for after a crash. Retry re-runs the checks on the drone as
+        it is; this restarts the drone first. After a tumble the firmware can
+        latch the motors off, and a crash can leave an estimator, a controller
+        or a deck in a state nothing but a power-on clears — deck detection
+        itself only runs at power-on. A restart is the one step that returns
+        all of it to how it was when the session began.
+
+        Works from any point in a session — mid-flight included, where it stops
+        the motors first and on the spot, like Emergency stop, because a
+        restart drops anything in the air. The session, its history and its
+        audit trail carry on, as they do after Retry. With no session open it
+        is restart_drone.
+        """
+        _, audit = self._require_operator()
+        with self._lock:
+            snap = self._snapshot
+            if snap.session_id is None:
+                in_session = False
+            elif snap.state in (State.STARTING, State.ENDING):
+                raise SessionError("The drone is being checked or the session is ending. "
+                                   "Wait for that to finish, then reset.")
+            else:
+                in_session = True
+        if not in_session:
+            self.restart_drone(reason="the operator pressed Reset drone")
+            return
+
+        audit.record(Action.DRONE_RESET, session_id=snap.session_id, flight_id=self._flight_id,
+                     detail={"state": str(snap.state), "activity": snap.activity})
+        # Motors first, now, in this thread — before anything that can wait.
+        manual = self.manual
+        if manual is not None:
+            manual.emergency_stop()
+        if self.flight is not None:
+            self.flight.request_stop()
+        # A program flies on the worker; it winds down once told to stop.
+        worker = self._worker
+        if worker is not None and worker.is_alive():
+            worker.join(RESET_WORKER_WAIT_S)
+        self._start_worker("Reset drone", self._do_reset)
+
+    def _do_reset(self) -> None:
+        _, audit = self._require_operator()
+        session_id = self._snapshot.session_id
+        # Close the flight before the link goes. The manual guard may already be
+        # closing it — it saw "stopped" — and have taken `self.manual` already,
+        # so the lock is taken whatever `self.manual` reads: it waits out a
+        # close in progress, whose "Motors stopped" state must land BEFORE the
+        # reset's, never after it.
+        with self._finish_lock:
+            manual = self.manual
+            if manual is not None:
+                self._finish_manual_locked(manual, None)
+        self._set(state=State.STARTING, activity="resetting", checks=[], health_test=None,
+                  flight=None, retry_required=False,
+                  message="Restarting the drone. It will be checked as for a new session.")
+        with self._link_lock:
+            uri = self.link.uri if self.link is not None else DEFAULT_URI
+            self._close_link()
+            try:
+                self._power_cycle(uri)
+            except Exception as e:
+                log.warning("reset: restart over the radio failed: %s", e)
+                audit.record(Action.DRONE_RESET, Result.FAILED, session_id=session_id,
+                             detail={"reason": "power_cycle_failed"})
+                self._set(state=State.CHECKS_FAILED, activity=None, retry_required=True,
+                          message="Could not restart the drone over the radio. Switch it off "
+                                  "and on by hand, then press Retry.")
+                return
+        log.info("reset: restarted the drone over the radio")
+        self._set(radio={"state": "restarting", "hardware_id": None,
+                         "message": "Restarting the drone…"})
+
+        # The drone answers again ~3.6 s after a restart (measured 2026-09-24).
+        # Looking sooner starts a connect that blocks for its full timeout, so
+        # wait that long, then keep trying until it answers or clearly will not.
+        time.sleep(self._reset_settle_s)
+        deadline = time.monotonic() + self._reset_reconnect_s
+        while True:
+            with self._link_lock:
+                try:
+                    self._open_link_locked()
+                    break
+                except LinkError as e:
+                    error = str(e)
+            if time.monotonic() >= deadline:
+                audit.record(Action.DRONE_RESET, Result.FAILED, session_id=session_id,
+                             detail={"reason": "no_answer_after_restart"})
+                self._set(state=State.CHECKS_FAILED, activity=None, retry_required=True,
+                          radio={"state": "searching", "hardware_id": None, "message": error},
+                          message="The drone did not answer after restarting. Check it is "
+                                  "switched on, then press Retry.")
+                return
+            time.sleep(RESET_RECONNECT_POLL_S)
+
+        report = self._connect_and_check(audit, on_refused=lambda detail: audit.record(
+            Action.DRONE_RESET, Result.REFUSED, session_id=session_id, detail=detail))
+        if report is None:
+            return                                  # the checks say why; Retry is there
+        self._checked_again(report, "Restarted and checked again.")
 
     def _publish_telemetry(self, snap: Any) -> None:
         ground = self._height_reference
@@ -1311,6 +1444,10 @@ class Session:
 
     def _finish_manual(self, controller: Any, verdict: Any) -> None:
         """Close a manual flight that has come down, and free the session."""
+        with self._finish_lock:
+            self._finish_manual_locked(controller, verdict)
+
+    def _finish_manual_locked(self, controller: Any, verdict: Any) -> None:
         with self._manual_lock:
             if self.manual is not controller:
                 return                      # End session got there first

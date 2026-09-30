@@ -145,6 +145,47 @@ class TestFailures:
         assert "unassisted" in warned.detail
         assert not report.assisted
 
+    def test_no_deck_is_the_reason_given_not_the_base_stations(self):
+        """The lab, 2026-09-30: deck.bcLighthouse4 = 0 and nothing received.
+        For a week the reason said "check the base stations are on" while they
+        sat solid green; the deck was the fault. It must be named alone."""
+        clock = FakeClock()
+        lab = lambda: healthy(clock, **{"lighthouse.bsReceive": 0,  # noqa: E731
+                                        "lighthouse.bsAvailable": 0})
+        report, warned = self.warning_step(
+            make_cf(**{"deck.bcLighthouse4": "0"}), lab, clock, CheckKey.DECK)
+        assert report.unassisted_reason == checks.NO_LIGHTHOUSE_DECK
+        assert warned.detail == checks.NO_LIGHTHOUSE_DECK
+        assert "No base station signal" not in report.unassisted_reason
+        assert not report.lighthouse_deck
+
+    def test_the_battery_waits_for_its_own_log_block(self):
+        """The first sample can hold one log block and not the one carrying the
+        battery. Measured 2026-09-30: `check` failed "Battery readings are not
+        available" against a drone reporting 3.80 V."""
+        clock = FakeClock()
+
+        def source() -> Snapshot:
+            if clock.now < 0.3:
+                partial = {"supervisor.info": supervisor.CAN_BE_ARMED | supervisor.CAN_FLY}
+                return Snapshot(MappingProxyType(partial), updated_at=clock.now)
+            return healthy(clock)
+
+        report, steps = run(make_cf(), source, clock)
+        battery = next(s for s in steps
+                       if s.key is CheckKey.BATTERY and s.status is not CheckStatus.RUNNING)
+        assert battery.status is CheckStatus.PASSED
+        assert report.vbat == pytest.approx(4.05)
+
+    def test_the_battery_still_fails_when_it_never_arrives(self):
+        clock = FakeClock()
+        no_battery = lambda: Snapshot(MappingProxyType(  # noqa: E731
+            {"supervisor.info": supervisor.CAN_BE_ARMED | supervisor.CAN_FLY}),
+            updated_at=clock.now)
+        failed = self.failing_step(make_cf(), no_battery, clock)
+        assert failed.key is CheckKey.BATTERY
+        assert "not available" in failed.detail
+
     def test_no_telemetry(self):
         clock = FakeClock()
         stale = lambda: Snapshot(MappingProxyType({}), updated_at=None)  # noqa: E731

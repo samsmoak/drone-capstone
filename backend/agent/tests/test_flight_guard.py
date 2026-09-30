@@ -327,3 +327,73 @@ class TestAssistedStillGuards:
         verdict = guard.check(
             snap(pm__state=PM_LOW_POWER, kalman__varPX=4.38, kalman__varPY=4.38), 10.0)
         assert verdict.action is Action.STOP and verdict.reason is Reason.POSITION_LOST
+
+
+class TestCrashCutoff:
+    """The guard reads the attitude itself, because the firmware's tumble flag
+    came 24 s late on 2026-09-30 (trace_079af354): after the flip the drone sat
+    at pitch -38 deg with thrust pinned at 65535 until the operator pressed
+    Emergency stop. Values below are that trace's own rows."""
+
+    @staticmethod
+    def guard(assisted: bool = False) -> FlightGuard:
+        return FlightGuard(GuardContext(
+            ground_z=GROUND, fence_half_extent_m=2.0, max_height_m=1.0, assisted=assisted,
+        ))
+
+    def test_upside_down_stops_on_one_sample(self):
+        # 48:19.42 — roll 157.9, pitch 2.9: the flip itself.
+        verdict = self.guard().check(
+            snap(stabilizer__roll=157.9, stabilizer__pitch=2.9), now=10.0)
+        assert verdict.action is Action.STOP and verdict.reason is Reason.TUMBLED
+        assert "158°" in verdict.message
+
+    def test_a_steep_lean_stops_once_it_has_lasted(self):
+        # 48:20.63 onwards — roll 68.0, pitch -36.3: ~76 deg, held.
+        guard = self.guard()
+        steep = {"stabilizer__roll": 68.0, "stabilizer__pitch": -36.3}
+        assert guard.check(snap(now=10.0, **steep), now=10.0).ok
+        assert guard.check(snap(now=10.2, **steep), now=10.2).ok
+        verdict = guard.check(snap(now=10.3, **steep), now=10.3)
+        assert verdict.action is Action.STOP and verdict.reason is Reason.TUMBLED
+
+    def test_a_lean_that_recovers_starts_the_clock_again(self):
+        guard = self.guard()
+        assert guard.check(snap(now=10.0, stabilizer__roll=65.0), now=10.0).ok
+        assert guard.check(snap(now=10.2, stabilizer__roll=20.0), now=10.2).ok
+        assert guard.check(snap(now=10.3, stabilizer__roll=65.0), now=10.3).ok
+        assert guard.check(snap(now=10.5, stabilizer__roll=65.0), now=10.5).ok
+
+    def test_the_steepest_normal_flight_is_left_alone(self):
+        # 48.4 deg is the most any of 76 traces leaned before a crash began.
+        guard = self.guard()
+        for t in (10.0, 11.0, 12.0):
+            assert guard.check(snap(now=t, stabilizer__roll=40.0, stabilizer__pitch=26.0),
+                               now=t).ok
+
+    def test_a_diagonal_lean_counts_in_full(self):
+        # 45 deg of roll and 45 of pitch is 60 deg from upright, not 45.
+        guard = self.guard()
+        lean = {"stabilizer__roll": 46.0, "stabilizer__pitch": 46.0}
+        guard.check(snap(now=10.0, **lean), now=10.0)
+        assert guard.check(snap(now=10.3, **lean), now=10.3).reason is Reason.TUMBLED
+
+    def test_it_runs_with_base_stations_too(self):
+        verdict = self.guard(assisted=True).check(
+            snap(stabilizer__roll=-178.0, stabilizer__pitch=26.6), now=10.0)
+        assert verdict.reason is Reason.TUMBLED
+
+    def test_full_power_for_two_seconds_lands(self):
+        guard = self.guard()
+        for t in (10.0, 11.0, 11.9):
+            assert guard.check(snap(now=t, stabilizer__thrust=65535), now=t).ok
+        verdict = guard.check(snap(now=12.0, stabilizer__thrust=65535), now=12.0)
+        assert verdict.action is Action.LAND and verdict.reason is Reason.THRUST_CEILING
+
+    def test_a_short_burst_at_full_power_is_ordinary(self):
+        guard = self.guard()
+        assert guard.check(snap(now=10.0, stabilizer__thrust=65535), now=10.0).ok
+        assert guard.check(snap(now=11.4, stabilizer__thrust=65535), now=11.4).ok
+        assert guard.check(snap(now=11.5, stabilizer__thrust=53000), now=11.5).ok
+        assert guard.check(snap(now=12.0, stabilizer__thrust=65535), now=12.0).ok
+        assert guard.check(snap(now=13.5, stabilizer__thrust=65535), now=13.5).ok

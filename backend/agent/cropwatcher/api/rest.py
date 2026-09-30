@@ -816,6 +816,13 @@ def retry() -> dict:
     return _run(agent.session.retry)
 
 
+@app.post("/session/reset-drone", dependencies=[Command])
+def reset_drone() -> dict:
+    """The hard switch: motors off, restart the drone, check it as for a new
+    session (Session.reset_drone). Allowed mid-flight — it stops the motors."""
+    return _run(agent.session.reset_drone)
+
+
 @app.post("/session/program", dependencies=[Command])
 def run_program(request: ProgramRequest) -> dict:
     return _run(lambda: agent.session.run_program(

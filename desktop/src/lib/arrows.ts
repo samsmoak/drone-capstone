@@ -57,7 +57,11 @@ export function arrowWords(controls: Controls): ArrowWords {
         line: "↑ is the room's forward, whichever way the nose points." };
     case "takeoff":
       return { short: "takeoff", warn: true,
-        line: "No position from the base stations: ↑ keeps the direction it faced at takeoff, however it turns." };
+        // Without a position nothing knows where the operator stands, so "away
+        // from you" cannot be computed — only kept, by setting the drone down
+        // the right way round. Saying so is the whole fix available here
+        // (the lab, 2026-09-30: "the arrows go the wrong way", unassisted).
+        line: "No position from the base stations: ↑ keeps the direction its nose faced at takeoff, however it turns. Set it down facing away from you and ↑ is away from you." };
     case "nose":
       return { short: "nose", warn: true,
         line: "No heading reported: the arrows follow the nose, as the drone sees it." };

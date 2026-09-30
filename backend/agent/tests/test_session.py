@@ -3,6 +3,7 @@ confirmed area, and every flight ends recorded."""
 
 from __future__ import annotations
 
+import threading
 import time
 from types import MappingProxyType, SimpleNamespace
 from typing import Any
@@ -1126,3 +1127,152 @@ class TestRestartDrone:
         with pytest.raises(SessionError):
             session.restart_drone(reason="test")
         assert cycled == []
+
+
+class TestResetDrone:
+    """The hard switch (2026-09-30): after a crash, stop everything, restart the
+    drone, and stand exactly where a new session stands after its checks."""
+
+    def make(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+        cloud = FakeCloud()
+        cloud.sign_in = lambda email, password: Operator("user-1", email, "Ada", "operator")
+        cloud.sign_out = lambda: None
+        link = FakeLink()
+        cycled: list[str] = []
+        outbox = Outbox(tmp_path / "outbox")
+        session = Session(cloud=cloud, outbox=outbox, link_factory=lambda: link,
+                          power_cycle=cycled.append)
+        session._reset_settle_s = 0.0
+        rig = SimpleNamespace(session=session, link=link, outbox=outbox, cycled=cycled)
+        return rig
+
+    @staticmethod
+    def flying(rig):
+        """Mid-flight, with a controller that stops the way the real one does:
+        at once, on the spot (ManualController.emergency_stop)."""
+        start_and_confirm(rig)
+        manual = rig.link.manual_controller
+        manual.state = "flying"
+
+        def stop_now():
+            manual.events.append("emergency_stop")
+            manual.state = "stopped"
+
+        manual.emergency_stop = stop_now
+        rig.session.arm_manual()
+        assert rig.session.snapshot().state is State.BUSY
+        return manual
+
+    def test_mid_flight_it_stops_restarts_and_checks_again(self, tmp_path, monkeypatch):
+        rig = self.make(tmp_path, monkeypatch)
+        manual = self.flying(rig)
+        session_id = rig.session.snapshot().session_id
+        runs = rig.link.checks_runs
+
+        rig.session.reset_drone()
+        assert manual.events.count("emergency_stop") == 1   # before anything waited
+        rig.session.wait_idle()
+
+        snap = rig.session.snapshot()
+        assert rig.cycled == ["radio://0/80/2M"]
+        assert rig.link.checks_runs == runs + 1
+        assert snap.state is State.AWAITING_CONFIRMATION     # confirm again, as new
+        assert snap.session_id == session_id                 # the same session
+        assert not snap.retry_required
+        assert snap.activity is None
+        assert snap.message.startswith("Restarted and checked again.")
+        assert rig.session.manual is None
+        flights = [r.payload for r in rig.outbox.pending(Kind.FLIGHT)]
+        assert flights[-1]["status"] == "aborted"
+        assert flights[-1]["abort_reason"] == "emergency_stop"
+        actions = [r.payload["action"] for r in rig.outbox.pending(Kind.AUDIT)]
+        assert "drone_reset" in actions
+
+    def test_after_it_the_drone_may_fly_again(self, tmp_path, monkeypatch):
+        rig = self.make(tmp_path, monkeypatch)
+        self.flying(rig)
+        rig.session.reset_drone()
+        rig.session.wait_idle()
+        rig.session.confirm_area()
+        rig.link.manual_controller = FakeManual()
+        rig.session.arm_manual()
+        assert rig.session.snapshot().state is State.BUSY
+
+    def test_the_guard_closing_the_flight_first_cannot_undo_the_reset(
+            self, tmp_path, monkeypatch):
+        """The guard sees "stopped" and closes the flight itself. Caught mid-close
+        — it has taken the controller, not yet said "Motors stopped" — the reset
+        must wait for it, so that state lands before the reset's, not after."""
+        rig = self.make(tmp_path, monkeypatch)
+        manual = self.flying(rig)
+        release = threading.Event()
+        in_close = threading.Event()
+
+        def slow_stop():
+            in_close.set()
+            release.wait(5)
+
+        manual.stop = slow_stop
+        manual.emergency_stop()                              # the guard's next look closes it
+        assert in_close.wait(3)                              # ...and is stuck inside
+        assert rig.session.manual is None                    # the controller already taken
+
+        rig.session.reset_drone()
+        time.sleep(0.3)                                      # the reset has had every chance
+        release.set()
+        rig.session.wait_idle()
+        time.sleep(0.2)
+        assert rig.session.snapshot().state is State.AWAITING_CONFIRMATION
+
+    def test_with_no_session_it_is_a_plain_restart(self, tmp_path, monkeypatch):
+        rig = self.make(tmp_path, monkeypatch)
+        sign_in(rig)
+        rig.session.reset_drone()
+        assert rig.cycled == ["radio://0/80/2M"]
+        assert rig.session.snapshot().radio["state"] == "restarting"
+        assert rig.session.snapshot().state is State.IDLE
+
+    def test_a_drone_that_does_not_come_back_says_so(self, tmp_path, monkeypatch):
+        rig = self.make(tmp_path, monkeypatch)
+        self.flying(rig)
+        rig.session._reset_reconnect_s = 0.05
+        real_cycle = rig.cycled.append
+
+        def cycle_and_vanish(uri):
+            real_cycle(uri)
+            rig.link.open_error = LinkError("No Crazyflie found on the radio.")
+
+        rig.session._power_cycle = cycle_and_vanish
+        rig.session.reset_drone()
+        rig.session.wait_idle()
+        snap = rig.session.snapshot()
+        assert snap.state is State.CHECKS_FAILED
+        assert snap.retry_required
+        assert "did not answer" in snap.message
+        rig.link.open_error = None                           # switched on by hand
+        rig.session.retry()
+        rig.session.wait_idle()
+        assert rig.session.snapshot().state is State.AWAITING_CONFIRMATION
+
+    def test_a_radio_that_cannot_restart_it_says_to_do_it_by_hand(self, tmp_path, monkeypatch):
+        rig = self.make(tmp_path, monkeypatch)
+        self.flying(rig)
+
+        def refuse(uri):
+            raise OSError("radio busy")
+
+        rig.session._power_cycle = refuse
+        rig.session.reset_drone()
+        rig.session.wait_idle()
+        snap = rig.session.snapshot()
+        assert snap.state is State.CHECKS_FAILED
+        assert "by hand" in snap.message
+
+    def test_not_while_the_checks_are_running(self, tmp_path, monkeypatch):
+        rig = self.make(tmp_path, monkeypatch)
+        start_and_confirm(rig)
+        rig.session._set(state=State.STARTING)
+        with pytest.raises(SessionError, match="Wait"):
+            rig.session.reset_drone()
+        assert rig.cycled == []

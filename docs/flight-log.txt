@@ -149,6 +149,27 @@ RUNG 1 (again) — stations re-read while the cage was worked on
                deck.bcLighthouse4 STILL 0 — not yet recovered.
   RE-RUN IT    cd backend/agent && .venv/bin/python -m cropwatcher.camera.probe
 
+2026-09-30 — THE LIGHTHOUSE DECK IS STILL NOT DETECTED, A WEEK ON
+  MEASURED     read-only, app quit, drone on the floor at 3.80 V:
+               deck.bcLighthouse4 0, deck.bcAI 1; 1-Wire memories: ONE,
+               vid 0xbc pid 0x12 "bcAI" rev C1. lighthouse.systemType 2,
+               method 1, bsAvailable 0; bsReceive 0 and bsActive 0 over 2 s;
+               supervisor.info 526 (can fly, not crashed or locked).
+               Both base stations solid green (the operator, looking).
+               `cropwatcher stations`: nothing received, calibrated or with
+               geometry; estimate walking +15 -> +37 m in 11 s, drone still.
+               Reseated by the operator, power-cycled: bcLighthouse4 still 0.
+               Every manual trace since 09-23 has bsReceive 0 throughout.
+  MEANT        the 09-23 fault never recovered, and every session since said
+               "check the base stations" — the deck check's own warning was
+               right, the headline reason was not. Flights today: 3, all
+               unassisted, all ended in a flip (trace_fb6f9a81, _079af354,
+               _50ce1af6); the second ran 24 s at full thrust after flipping.
+  CHANGED      the reason now names the deck; the guard stops a flipped
+               drone itself; Reset drone restarts it and checks again.
+               See features/backend/flight-status.txt, UPDATE 6.
+  RE-RUN IT    cd backend/agent && .venv/bin/cropwatcher stations --seconds 12
+
 WHAT IS FITTED — asked the drone directly, read-only
   MEASURED     deck.bcLighthouse4   1   YES
                deck.bcAI            1   YES

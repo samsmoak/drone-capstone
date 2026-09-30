@@ -74,8 +74,20 @@ Kalman estimator is restored when the flight ends.
 
 EXPERIMENTAL. A barometer height indoors wanders by tens of centimetres and prop
 wash disturbs it; the drone also has no position hold, so it drifts. Base
-stations remain the real fix. The pitch sign differs between the generic and
-legacy setpoint packets — PITCH_SIGN in manual.py must be checked in the lab.
+stations remain the real fix — no gain and no agent-side "brake" can hold a
+position nothing measures, so none was added (2026-09-30).
+
+PITCH_SIGN (-1) IS RIGHT — verified 2026-09-30, closing the "check it in the
+lab" this line used to carry, which also said the two packets disagree on the
+sign. The firmware source says they do not: zDistanceDecoder and the rpyt
+decoder both pass pitch through unchanged, and controller_pid compares it with
+state->attitude.pitch as it stands. sensfusion6 sets that pitch to asin(gx),
+with g the world's up in the drone's frame, so nose DOWN reads NEGATIVE: the
+up arrow's -5 deg is nose down, which is forward. The lab traces agree (up
+arrow: stabilizer.pitch -2 to -4; right: roll +2 to +4, right side down).
+"The arrows go the wrong way" unassisted is the frame, not the sign: with no
+position nothing knows where the operator stands, so up is the way the nose
+faced at takeoff (keyframe.py) — set it down facing away from you.
 
 Replaced (2026-09-16): a raw-throttle law. Its slow ramp through liftoff let the
 drone skid on a leg and tumble, and letting go of W held nothing.
