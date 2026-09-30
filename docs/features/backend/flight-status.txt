@@ -16,6 +16,65 @@ readings as they were taken. This file is what those readings mean.
 
 
 ========================================================================
+UPDATE 6 — 2026-09-30, early morning (in the lab, drone queried directly)
+========================================================================
+
+HEADLINE
+
+Every manual flight since 2026-09-23 has been BAROMETER-ONLY, because the
+drone does not detect its Lighthouse deck: deck.bcLighthouse4 = 0, and the
+1-wire bus enumerates ONE board, bcAI rev C1. Both base stations are solid
+green; `cropwatcher stations` shows nothing received, calibrated or with
+geometry, and the estimate running away at ~2 m/s on a still drone. Reseated
+and power-cycled today: still 0. The flight-log recorded it on 09-23 as "not
+yet recovered" and nothing surfaced it since — every session's reason said
+"check the base stations are on". That reason is fixed (flight-safety.txt,
+"NO DECK IS NOT NO STATIONS"); the deck is a hardware fault still open.
+
+This one fact explains the owner's three complaints:
+- "The arrows still go the wrong way": UPDATE 5's frame work and PR #81's
+  "arrows follow you" both need a position. With none, up is the nose's
+  takeoff direction. The key mapping itself is verified right, from the
+  firmware source and the traces (manual-control.txt, PITCH_SIGN).
+- "It drifts sideways": nothing measures sideways position. No tuning fixes
+  that; the deck does.
+- "It is not smooth": see thrust, below.
+
+WHAT THE TRACES SAY (97 on this laptop, 76 with 20+ flying samples)
+
+- 50 of 76 manual flights ended past 60 deg of tilt — a crash. Most begin
+  with a yaw-rate spike while thrust is pinned, several go from level to past
+  60 deg inside one 0.1 s sample.
+- Hover takes ~53,000 of 65,535 thrust (~81 %), with a fresh 4.06 V battery.
+  There is little left to level or turn with. The AI deck on top of the
+  Lighthouse deck is the payload.
+- Baro vertical speed noise: sd 0.76 m/s; thrust swings 33k -> 65k -> 44k
+  inside a second as the height loop chases it.
+
+WHAT IS FIXED, AND VERIFIED
+
+- The guard stops a drone past 90 deg (one sample) or 60 deg (0.3 s), and
+  lands one held at full thrust for 2 s (flight-safety.txt). Replayed on all
+  97 traces: only real crashes stopped; trace_079af354 would have stopped
+  24.2 s sooner than it did.
+- Reset drone: motors off, restart over the radio, checks again, same session
+  (sessions-and-modes.txt). Run on the lab drone: 9.4 s.
+- The battery check no longer fails on the first telemetry sample.
+
+WHAT IS NOT FIXED
+
+1. THE LIGHTHOUSE DECK IS NOT DETECTED. Hardware. Next: inspect its pins and
+   the AI deck's pass-through header it sits on; try it without the AI deck;
+   if the deck works but its ID chip does not answer, the firmware can bind
+   the driver without detection (CONFIG_DECK_FORCE="bcLighthouse4" in
+   firmware/drone-wifi/app-config — a CI build and a reflash, not done).
+2. THRUST HEADROOM. ~81 % to hover leaves the attitude loop nothing when a
+   gust or a turn asks for more. Fly without the AI deck, or fit the thrust
+   upgrade; check props and motors after 50 crashes.
+3. Everything in UPDATE 5 about geometry still stands once the deck is back.
+
+
+========================================================================
 UPDATE 5 — 2026-09-22, late evening
 ========================================================================
 

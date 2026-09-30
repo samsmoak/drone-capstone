@@ -135,7 +135,9 @@ def build_parser() -> argparse.ArgumentParser:
 def _print_step(step: CheckResult) -> None:
     if step.status is CheckStatus.RUNNING:
         return
-    mark = "ok  " if step.status is CheckStatus.PASSED else "FAIL"
+    # A warning is not a failure: the checks carry on past it, and printing
+    # FAIL above a closing READY read as a contradiction.
+    mark = {CheckStatus.PASSED: "ok  ", CheckStatus.WARNING: "warn"}.get(step.status, "FAIL")
     print(f"  {mark} {step.label:22} {step.detail}")
 
 

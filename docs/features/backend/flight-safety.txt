@@ -32,7 +32,11 @@ THE CHECKS (in order, each yields a CheckResult the UI renders live)
   motors       supervisor.info: crashed -> ask the firmware to recover and
                wait for it; tumbled -> stand it up; locked -> restart it
   battery      sys.canfly is the authority, not a voltage this code invented;
-               the voltage is shown for the operator, never used as the gate
+               the voltage is shown for the operator, never used as the gate.
+               Read from a fresh sample, waited for: the stream lands in five
+               blocks, and the first sample can lack this one (2026-09-30)
+  deck         deck.bcLighthouse4. 0 is named as THE reason, alone — see
+               "NO DECK IS NOT NO STATIONS" below
   positioning  base stations RECEIVED and calibrated and with geometry.
                ONE is enough to fly (MIN_USABLE_STATIONS = 1); a room with two
                insists on both with CROPWATCHER_MIN_STATIONS=2. Zero is not a
@@ -61,6 +65,8 @@ Manual mode runs exactly the same checks as auto — the risk is identical.
 THE GUARDS (checked on every sample while flying)
 
   TUMBLED          supervisor bit 5            -> STOP
+  TUMBLED          tilt > 90°, or > 60° 0.3 s  -> STOP   (the agent's own)
+  THRUST_CEILING   thrust >= 65000 for 2.0 s   -> LAND
   POSITION_LOST    usable stations < 2         -> STOP
   RECEPTION_LOST   no reception past 0.5 s     -> LAND
   BATTERY_LOW      pm.state == 3 (lowPower)    -> LAND
@@ -69,8 +75,8 @@ THE GUARDS (checked on every sample while flying)
   OUTSIDE_FENCE    beyond the takeoff fence    -> LAND
   TELEMETRY_STALE  the stream stopped          -> LAND
 
-Unassisted (GuardContext.assisted = False) only TUMBLED, BATTERY_LOW and
-TELEMETRY_STALE apply. Every other guard reads a position, and without base
+Unassisted (GuardContext.assisted = False) only TUMBLED, THRUST_CEILING,
+BATTERY_LOW and TELEMETRY_STALE apply. Every other guard reads a position, and without base
 stations that "position" is the accelerometer integrating — they would fire on
 noise and steer a landing by nothing.
 
@@ -185,6 +191,12 @@ INVARIANTS
   holds the drone with no session and never arms; a session that takes the
   link over runs every check on it, exactly as on a link it opened.
 
+- NO DECK IS NOT NO STATIONS. With deck.bcLighthouse4 = 0 the unassisted
+  reason used to be the positioning one — "no base station signal, check the
+  stations are on" — true, and useless: from 2026-09-23 to 09-30 every session
+  said it with both stations solid green, and the deck (not detected: only the
+  AI deck on the 1-wire bus) was the fault. checks.NO_LIGHTHOUSE_DECK now
+  says what to do: power off, press the deck down, power on.
 - Advisory is not the same as trusted. A positioning warning must always
   return assisted = False. The 2026-09-16 crash was a blind drone told it could
   hold a position; tests pin that the crash readings come back unassisted.
@@ -241,6 +253,19 @@ INVARIANTS
   when reading telemetry back.
 - Read sys.canfly before commanding flight. The supervisor refuses to arm below
   roughly 3.75 V and reports this itself.
+- THE GUARD READS THE ATTITUDE ITSELF; the firmware's tumble bit is not
+  enough. 2026-09-30 (trace_079af354): the drone flipped (roll 158°), then sat
+  at pitch -38° to -85° with thrust pinned at 65535 for 24 s — the bit came as
+  the operator pressed Emergency stop. Tilt = acos(cos roll · cos pitch); STOP
+  past 90° on one sample, or past 60° held 0.3 s (PX4's FD_FAIL_R/P and
+  FD_FAIL_R_TTRI defaults). Replayed over all 97 traces on this laptop: normal
+  flight never leaned past 48.4°, every stop was a real crash, and that flight
+  would have stopped 24.2 s sooner.
+- THRUST AT THE CEILING IS NOT A CRASH PREDICTOR — a flip here usually goes
+  from level to past 60° inside one 0.1 s sample, too fast for anything this
+  side of the radio. It says the drone cannot hold itself up (hover is ~81 %
+  of full thrust on this airframe), so 2.0 s there lands. It fired on exactly
+  the 4 of 97 traces that sat there that long; two of those later flipped.
 - After a tumble the supervisor holds every motor at zero until told to
   recover. On 2026-09-17 the flight after a tumble reported "flying" for 19 s
   with thrust 0 and all four motors at 0. Never arm without reading
@@ -255,6 +280,11 @@ GuardContext.fence is an optional (x, y) → inside? test. A mission passes its
 room's closed geofence (mission/plan/geofence.py), and the guard lands the drone
 outside THAT polygon; Manual and the hover demo keep the ±2.0 m square. The
 square stays the default, so nothing Manual flies changed.
+
+LAST VERIFIED  2026-09-30, the crash cut-off, the thrust ceiling and the deck
+reason only: tests/test_flight_guard.py TestCrashCutoff and test_checks.py;
+the new guard replayed over all 97 traces on the lab laptop; `cropwatcher
+check` run against the lab drone (battery passes, deck named).
 
 RELATED
 

@@ -59,6 +59,20 @@ POSITIONING_TIMEOUT_S = 10.0
 TELEMETRY_TIMEOUT_S = 5.0
 SETTLE_POLL_S = 0.15
 
+#: What to do when the drone does not detect its Lighthouse deck. Deck
+#: detection reads a small memory chip on each deck over ONE shared pin, once,
+#: at power-on (flight-log.txt, 2026-09-23): a deck that is fitted but not
+#: detected is a contact fault on that pin, so the fix is in the operator's
+#: hands and a power cycle proves it. The base stations are not the problem.
+NO_LIGHTHOUSE_DECK = (
+    "The drone does not detect its Lighthouse deck, so it cannot see the base "
+    "stations however they are set up — the stations are not the problem. Switch "
+    "the drone off, press the Lighthouse deck (the one with four light sensors, "
+    "on top) firmly down onto its pins, and switch it on again: decks are only "
+    "detected at power-on. Until then only unassisted manual flight is available, "
+    "and the drone will drift."
+)
+
 
 class CheckKey(StrEnum):
     IDENTITY = "identity"
@@ -131,12 +145,22 @@ class ReadyReport:
     #: the frames themselves need the deck's own Wi-Fi (see camera/source.py).
     #: Recorded, never acted on: nothing refuses a flight over a camera.
     ai_deck: bool | None = None
+    #: Whether the drone detected its Lighthouse deck (deck.bcLighthouse4).
+    #: False outranks every other reason: with no deck, no base station can
+    #: reach the estimator however well the stations are working.
+    lighthouse_deck: bool = True
 
     @property
     def unassisted_reason(self) -> str | None:
         """Why assistance is unavailable, in words, or None when it is fine."""
         if self.assisted:
             return None
+        if not self.lighthouse_deck:
+            # Named first and alone. The positioning problems would say "no base
+            # station signal — check the stations are on", which is true and
+            # useless: from 2026-09-23 to 09-30 every session said it, the
+            # stations sat solid green, and the deck was the fault all along.
+            return NO_LIGHTHOUSE_DECK
         return " ".join(self.positioning.problems()) or "The position estimate is not usable."
 
     def budget_s(self) -> float:
@@ -307,7 +331,18 @@ def run_checks(
     )
 
     # 4. Battery — the firmware's verdict, plus endurance for information.
+    #
+    # Read afresh, and waited for. `snap` above is the FIRST sample that
+    # arrived, and the stream comes in five log blocks that land separately: it
+    # can hold one block and not the one carrying pm.vbat and sys.canfly.
+    # Measured 2026-09-30 — `cropwatcher check` failed "Battery readings are
+    # not available" against a drone reporting 3.80 V a second later.
     yield running(CheckKey.BATTERY)
+    deadline = clock() + TELEMETRY_TIMEOUT_S
+    snap = snapshot()
+    while (snap.get("pm.vbat") is None or snap.get("sys.canfly") is None) and clock() < deadline:
+        sleep(0.1)
+        snap = snapshot()
     vbat, canfly = snap.get("pm.vbat"), snap.get("sys.canfly")
     if vbat is None or canfly is None:
         result = fail(CheckKey.BATTERY, "Battery readings are not available.")
@@ -342,17 +377,13 @@ def run_checks(
     if str(cf.param.get_value("deck.bcLighthouse4")) != "1":
         # No deck means no positioning at all, whatever the lighthouse
         # variables happen to read — there is nothing left to wait for.
-        yield warn(
-            CheckKey.DECK,
-            "No Lighthouse deck detected, so the drone cannot know where it is. "
-            "Only unassisted manual flight is available.",
-        )
+        yield warn(CheckKey.DECK, NO_LIGHTHOUSE_DECK)
         px, py, pz = last_estimate()
         return ReadyReport(
             hardware_id=hardware_id, vbat=vbat, endurance_s=endurance,
             ground_z_m=pz, takeoff_xy=(px, py), estimate_spread_m=float("inf"),
             positioning=assess_positioning(snapshot()), assisted=False,
-            ai_deck=ai_deck,
+            ai_deck=ai_deck, lighthouse_deck=False,
         )
     yield CheckResult(CheckKey.DECK, CheckStatus.PASSED, "Lighthouse deck fitted")
 

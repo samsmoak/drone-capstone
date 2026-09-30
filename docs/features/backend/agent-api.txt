@@ -47,6 +47,8 @@ ENDPOINTS
                                     (manual-control.txt, "THE ARROWS FOLLOW YOU")
     POST /session/land              graceful landing
     POST /session/emergency-stop    cut the motors
+    POST /session/reset-drone       motors off, restart the drone, checks again,
+                                    same session (sessions-and-modes.txt)
     POST /session/end               land if needed, close, flush
     POST /sync/now                  push whatever is waiting
     POST /drone/connect             hold the drone on standby now — never arms

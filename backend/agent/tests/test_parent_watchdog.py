@@ -14,11 +14,13 @@ from __future__ import annotations
 
 import io
 import logging
+import os
 import socket
 import subprocess
 import sys
 import threading
 import time
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -46,21 +48,26 @@ def _wait_for_port(port: int, process: subprocess.Popen) -> None:
     pytest.fail(f"agent never opened port {port}")
 
 
-def _start(port: int, *extra: str) -> subprocess.Popen:
+def _start(port: int, data_dir: Path, *extra: str) -> subprocess.Popen:
+    # Its own data folder and no standby. Without these the probe agent read the
+    # operator's saved sign-in, wrote into their agent.log, and could have
+    # opened the radio under a running app (seen 2026-09-30 in a real log).
+    env = os.environ | {"CROPWATCHER_DATA_DIR": str(data_dir), "CROPWATCHER_STANDBY": "0"}
     process = subprocess.Popen(
         [sys.executable, "-m", "cropwatcher.cli", "serve", "--port", str(port), *extra],
         stdin=subprocess.PIPE,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        env=env,
     )
     _wait_for_port(port, process)
     return process
 
 
 class TestExitWithParent:
-    def test_exits_when_stdin_closes(self):
+    def test_exits_when_stdin_closes(self, tmp_path):
         port = _free_port()
-        process = _start(port, "--exit-with-parent")
+        process = _start(port, tmp_path, "--exit-with-parent")
         try:
             assert process.stdin is not None
             process.stdin.close()  # what the parent dying looks like
@@ -69,10 +76,10 @@ class TestExitWithParent:
             if process.poll() is None:
                 process.kill()
 
-    def test_keeps_running_without_the_flag(self):
+    def test_keeps_running_without_the_flag(self, tmp_path):
         """Opt-in: `cropwatcher serve` from a shell must not die on stdin EOF."""
         port = _free_port()
-        process = _start(port)
+        process = _start(port, tmp_path)
         try:
             assert process.stdin is not None
             process.stdin.close()

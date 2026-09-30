@@ -28,6 +28,7 @@ class Action(StrEnum):
     PROP_TEST = "prop_test"
     HEALTH_TEST = "health_test"
     SESSION_RETRY = "session_retry"
+    DRONE_RESET = "drone_reset"             # motors off, restart, checks again
     MODE_CHANGED = "mode_changed"
     PROGRAM_RUN = "program_run"
     MISSION_RUN = "mission_run"

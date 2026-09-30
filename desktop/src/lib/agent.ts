@@ -428,6 +428,9 @@ export const api = {
     command<Session>("/session/confirm", { accept_unassisted: acceptUnassisted }),
   healthTest: () => command<Session>("/session/health-test"),
   retry: () => command<Session>("/session/retry"),
+  /** The hard switch: motors off, restart the drone over the radio, then every
+   *  check again — this session, standing where a new one stands. */
+  resetDrone: () => command<Session>("/session/reset-drone"),
   runProgram: (height_m: number, hold_s: number, ambient: string) =>
     command<Session>("/session/program", { height_m, hold_s, ambient }),
   armManual: (ambient: string) => command<Session>("/session/manual/arm", { ambient }),

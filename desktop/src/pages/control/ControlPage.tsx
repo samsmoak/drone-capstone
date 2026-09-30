@@ -497,7 +497,12 @@ export function Checklist({ session, run }: { session: Session; run: Run }) {
       note={session.state === "starting" ? "Keep the drone still while these run." : undefined}
       action={failed ? (
         session.session_id
-          ? <Button variant="primary" onClick={() => void run(api.retry, "Retry the checks")}>Retry</Button>
+          ? (
+            <div className="flex flex-wrap gap-2">
+              <Button variant="primary" onClick={() => void run(api.retry, "Retry the checks")}>Retry</Button>
+              <ResetDroneButton run={run} />
+            </div>
+          )
           : <Button onClick={() => void run(api.start, "Start session")}>Try again</Button>
       ) : undefined}
     >
@@ -608,17 +613,35 @@ export function RetryPanel({ run }: { run: Run }) {
     >
       <div className="grid gap-4">
         <ol className="grid list-decimal gap-1.5 pl-5 text-sm">
-          <li>Pick the drone up and look it over: propellers seated, nothing bent or loose.</li>
+          <li>Pick the drone up and look it over: propellers seated, nothing bent or loose, every deck pressed down on its pins.</li>
           <li>Stand it level on a flat surface, clear of anything it could hit.</li>
           <li>Press Retry. It frees the motors if the drone locked them, then runs every check again — the same steps as a new session, in this one.</li>
         </ol>
-        <div>
+        <div className="flex flex-wrap gap-2">
           <Button variant="primary" onClick={() => void run(api.retry, "Retry the checks")}>
             Retry — check the drone again
           </Button>
+          <ResetDroneButton run={run} />
         </div>
+        <p className="text-sm">
+          After a hard crash, or if Retry does not clear it, Reset drone restarts the drone
+          itself first — as if you had just switched it on and started this session.
+        </p>
       </div>
     </Panel>
+  );
+}
+
+/** The hard switch: motors off, the drone restarted over the radio, and every
+ *  check run again — the session carries on, standing where a new one stands
+ *  after its checks. A restart is the only thing that clears what a crash can
+ *  leave behind in the drone (a latched motor lock, a deck not detected: decks
+ *  are only detected at power-on). ~10 s: restart, reconnect, checks. */
+export function ResetDroneButton({ run }: { run: Run }) {
+  return (
+    <Button onClick={() => void run(api.resetDrone, "Reset drone")}>
+      Reset drone
+    </Button>
   );
 }
 
