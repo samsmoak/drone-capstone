@@ -105,11 +105,9 @@ from typing import Protocol
 from cropwatcher.flight.keyframe import (
     FrameStatus,
     KeyFrame,
-    NoseFacing,
     keys_to_room,
     resolve,
     room_to_body,
-    turn_nose,
 )
 from cropwatcher.safety.flight_guard import MAX_PLAUSIBLE_SPEED_M_S
 
@@ -325,14 +323,6 @@ class ManualController:
         #: stands in for it, as ArduPilot's home is where the drone armed.
         self._key_frame = key_frame
         self._marked_operator = operator_xy
-        #: With no position: where ↑ points relative to the nose at takeoff.
-        #: AWAY — along the nose — at every arm(), exactly as the arrows always
-        #: started; only correct_nose() turns it, and only for this flight.
-        self._nose = NoseFacing.AWAY
-        #: The last single arrow flown this flight and the correction it flew
-        #: under — what correct_nose() measures against, so pressing the
-        #: correction twice does not turn it twice.
-        self._last_arrow: tuple[NoseFacing, NoseFacing] | None = None
         self._on_frame_change = on_frame_change
         #: Where and which way this flight lifted off. Reset by arm().
         self._takeoff_xy: tuple[float, float] | None = None
@@ -481,8 +471,6 @@ class ManualController:
             self._reset_glide_locked()
             self._takeoff_xy = None
             self._takeoff_heading = None
-            self._nose = NoseFacing.AWAY
-            self._last_arrow = None
             self._set_frame_locked(None)
             self._last_heartbeat = self._clock()
             self._last_tick = self._clock()
@@ -591,33 +579,6 @@ class ManualController:
         log.info("manual control: arrows %s%s", key_frame,
                  "" if operator_xy is None else f", operator at ({operator_xy[0]:+.2f}, "
                  f"{operator_xy[1]:+.2f})")
-
-    def correct_nose(self, went: NoseFacing) -> NoseFacing:
-        """Shift + an arrow, in the air: the last arrow flown moved the drone
-        `went` of the operator (away, left, right, towards them). Turn the
-        arrows so it goes where that key meant (keyframe.turn_nose).
-
-        Measured against the LAST ARROW FLOWN and the correction it flew
-        under, not the current one: pressing Shift+← twice before flying again
-        is the same correction twice, never two turns (the lab, 2026-09-30:
-        four presses in 3 s spun the arrows round). Only for this flight —
-        arm() starts along the nose again. Returns the new setting.
-        """
-        with self._lock:
-            if self._state is not ControlState.FLYING:
-                raise RuntimeError("take off first — then fly an arrow and, if it went "
-                                   "the wrong way, press Shift + the arrow it went")
-            if self._last_arrow is None:
-                raise RuntimeError("fly an arrow first, then press Shift + the arrow for "
-                                   "the way it actually went")
-            pressed, flown_under = self._last_arrow
-            self._nose = turn_nose(flown_under, went, pressed=pressed)
-            if self._frame is not None:
-                self._resolve_frame_locked(self._last_fix[1] if self._last_fix else None)
-            nose = self._nose
-        self._flush_frame_change()
-        log.info("manual control: %s went %s — arrows corrected (%s)", pressed, went, nose)
-        return nose
 
     def set_frame_listener(self,
                            listener: Callable[[FrameStatus | None], None] | None) -> None:
@@ -749,7 +710,6 @@ class ManualController:
                     self._begin_landing_locked()
                 else:
                     intent = self._intent
-                    self._note_arrow_locked(intent)
                     self._glide_height_locked(
                         self._height_velocity_locked(intent, allow_down=True), dt)
                     if intent.down and self._target_height <= TOUCHDOWN_HEIGHT_M:
@@ -813,7 +773,6 @@ class ManualController:
             operator_xy=operator, operator_source=source,
             takeoff_heading_deg=self._takeoff_heading,
             was_near=self._frame.near if self._frame is not None else False,
-            nose=self._nose,
         )
         self._set_frame_locked(status)
         return status
@@ -1146,17 +1105,6 @@ class ManualController:
         z = self._ground_z + self._target_height
         roll, pitch, rate = self._roll, self._pitch, self._yaw_rate
         return lambda: self._commander.send_zdistance_setpoint(roll, pitch, rate, z)
-
-    def _note_arrow_locked(self, intent: Intent) -> None:
-        """Remember a single arrow as it flies, with the correction in force —
-        what correct_nose() measures against. Diagonals say nothing about which
-        key went where, so they are not remembered."""
-        held = [facing for facing, on in ((NoseFacing.AWAY, intent.forward),
-                                           (NoseFacing.TOWARDS, intent.back),
-                                           (NoseFacing.LEFT, intent.left),
-                                           (NoseFacing.RIGHT, intent.right)) if on]
-        if len(held) == 1:
-            self._last_arrow = (held[0], self._nose)
 
     def _begin_landing_locked(self) -> None:
         self._intent = Intent()

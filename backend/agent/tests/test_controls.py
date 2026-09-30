@@ -8,7 +8,7 @@ from types import MappingProxyType, SimpleNamespace
 import pytest
 
 from cropwatcher.flight.controls_store import Controls, ControlsStore
-from cropwatcher.flight.keyframe import ActiveFrame, FrameStatus, KeyFrame, NoseFacing
+from cropwatcher.flight.keyframe import ActiveFrame, FrameStatus, KeyFrame
 from cropwatcher.session import Mode, SessionError
 from cropwatcher.telemetry.stream import Snapshot
 from tests.test_session import rig, start_and_confirm  # noqa: F401 — the fixture
@@ -122,39 +122,6 @@ class TestSession:
         rig.session.arm_manual()
         rig.session.set_key_frame("room")
         assert rig.link.manual_controller.key_frame[0] is KeyFrame.ROOM
-
-    def test_a_correction_reaches_the_flying_controller(self, rig):  # noqa: F811
-        start_and_confirm(rig)
-        rig.session.arm_manual()
-        rig.session.correct_nose("left")
-        assert rig.link.manual_controller.corrections == [NoseFacing.LEFT]
-
-    def test_a_correction_is_never_saved(self, rig, tmp_path):  # noqa: F811
-        start_and_confirm(rig)
-        rig.session.arm_manual()
-        rig.session.correct_nose("towards")
-        path = tmp_path / "controls.json"
-        assert not path.exists() or "nose" not in json.loads(path.read_text())
-        assert "nose" not in rig.session.snapshot().controls
-
-    def test_on_the_ground_a_correction_says_to_take_off(self, rig):  # noqa: F811
-        with pytest.raises(SessionError, match="Take off first"):
-            rig.session.correct_nose("left")
-
-    def test_the_controllers_refusal_reaches_the_operator_in_words(self, rig):  # noqa: F811
-        start_and_confirm(rig)
-        rig.session.arm_manual()
-
-        def refuse(went):
-            raise RuntimeError("fly an arrow first, then press Shift + the arrow")
-
-        rig.link.manual_controller.correct_nose = refuse
-        with pytest.raises(SessionError, match="^Fly an arrow first"):
-            rig.session.correct_nose("left")
-
-    def test_an_unknown_correction_is_refused_in_words(self, rig):  # noqa: F811
-        with pytest.raises(SessionError, match="towards"):
-            rig.session.correct_nose("up")
 
     def test_ending_the_session_clears_the_live_frame(self, rig):  # noqa: F811
         start_and_confirm(rig)

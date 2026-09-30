@@ -24,20 +24,10 @@ and two it falls back to, said out loud in the app:
 
   room       from operator, when the drone is within NEAR_OPERATOR_M of the
              operator's spot — there "away" has no clear direction.
-  takeoff    ↑ is the way the nose pointed at takeoff, however it turns after.
-             When there is no position (no base stations, or not reported
-             yet): ArduPilot's Simple mode, DJI's Course Lock. If that is the
-             wrong way, Shift + the arrow it went corrects it in the air
-             (NoseFacing, turn_nose) — for that flight only.
+  takeoff    ↑ is the way the nose pointed when it lifted off, however it
+             turns after. When there is no position (no base stations, or not
+             reported yet): ArduPilot's Simple mode.
   nose       the old behaviour, only when not even a heading is reported.
-
-WITHOUT A POSITION, NOTHING KNOWS WHERE THE OPERATOR IS. The drone has a
-heading (the gyro, relative to power-on; there is no compass on a Crazyflie
-2.1) and nothing else: no position, and no idea of the operator. So "away from
-you" cannot be measured — it can only be TOLD, once, and then KEPT through
-every turn by the heading. It stays right while the operator faces the way they
-did at takeoff; turning round to follow a drone behind them needs a position
-(the operator frame), or a correction in the air.
 
 Headings follow the Crazyflie's convention, which the estimator reports:
 degrees counter-clockwise from +x, so 0° is +x and 90° is +y. "Left" is 90°
@@ -68,58 +58,6 @@ class ActiveFrame(StrEnum):
     ROOM = "room"
     TAKEOFF = "takeoff"
     NOSE = "nose"
-
-
-class NoseFacing(StrEnum):
-    """Which way the drone's nose pointed at takeoff, as the operator stands.
-
-    Only used with no position (the takeoff frame): it is what turns "the way
-    the nose pointed" into "away from the operator". With a position the
-    operator frame measures "away" directly and this is not needed.
-    """
-
-    AWAY = "away"                       # the nose pointed where the operator faces
-    LEFT = "left"                       # ...to the operator's left
-    RIGHT = "right"                     # ...to the operator's right
-    TOWARDS = "towards"                 # ...back at the operator
-
-
-#: Where the operator's forward is, relative to the nose at takeoff, degrees
-#: counter-clockwise. The nose at the operator's LEFT is 90° counter-clockwise
-#: of their forward, so their forward is the nose turned 90° CLOCKWISE: -90.
-NOSE_TO_FORWARD_DEG: dict[NoseFacing, float] = {
-    NoseFacing.AWAY: 0.0,
-    NoseFacing.LEFT: -90.0,
-    NoseFacing.RIGHT: 90.0,
-    NoseFacing.TOWARDS: 180.0,
-}
-
-
-def turn_nose(nose: NoseFacing, went: NoseFacing,
-              pressed: NoseFacing = NoseFacing.AWAY) -> NoseFacing:
-    """Correct where up points from what the operator SAW, in the air.
-
-    The arrow `pressed` (up: AWAY, down: TOWARDS, left, right) was flown under
-    `nose` and the drone went `went` of them. That key moves the drone along
-    its own direction off the current forward F; it should have gone
-    `pressed`, it went `went`, so the true forward is F turned by the
-    difference of the two offsets. For up (pressed AWAY) that is `went`'s
-    offset alone: went LEFT means F is 90° counter-clockwise of the true
-    forward, so the true forward is F turned 90° clockwise — the offset LEFT
-    stands for. Turning round to face a drone behind you: up came at you,
-    TOWARDS, 180°.
-    """
-    total = (NOSE_TO_FORWARD_DEG[nose] + NOSE_TO_FORWARD_DEG[went]
-             - NOSE_TO_FORWARD_DEG[pressed]) % 360.0
-    for facing, offset in NOSE_TO_FORWARD_DEG.items():
-        if offset % 360.0 == total:
-            return facing
-    raise AssertionError(f"offsets are multiples of 90°, got {total}")  # pragma: no cover
-
-
-def _wrap_deg(degrees: float) -> float:
-    """Fold a heading into [-180, 180)."""
-    return (degrees + 180.0) % 360.0 - 180.0
 
 
 class Reason(StrEnum):
@@ -179,7 +117,6 @@ def resolve(
     operator_source: str | None,
     takeoff_heading_deg: float | None,
     was_near: bool = False,
-    nose: NoseFacing = NoseFacing.AWAY,
 ) -> FrameStatus:
     """Decide the frame the arrows move in, for where things are now."""
     def status(active: ActiveFrame, reason: Reason | None, forward: float | None,
@@ -188,12 +125,10 @@ def resolve(
 
     if drone_xy is None:
         # No position: nothing to be "away from", and no room to be in. Keep
-        # the operator's forward as it was at takeoff: the nose's heading then,
-        # turned by where the operator said the nose pointed.
+        # the direction the nose had at takeoff, if a heading was reported.
         if takeoff_heading_deg is None:
             return status(ActiveFrame.NOSE, Reason.NO_HEADING, None)
-        forward = _wrap_deg(takeoff_heading_deg + NOSE_TO_FORWARD_DEG[nose])
-        return status(ActiveFrame.TAKEOFF, Reason.NO_POSITION, forward)
+        return status(ActiveFrame.TAKEOFF, Reason.NO_POSITION, takeoff_heading_deg)
 
     if chosen is KeyFrame.ROOM or operator_xy is None:
         # Room chosen — or operator chosen with no spot yet, which only

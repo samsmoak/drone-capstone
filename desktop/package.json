@@ -11,7 +11,8 @@
     "build:all": "node scripts/refuse-if-running.mjs && pnpm sidecar && pnpm build",
     "app": "pnpm tauri build && node scripts/open-app.mjs",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test": "node --test scripts/keys.test.mjs"
   },
   "dependencies": {
     "@fontsource-variable/fraunces": "^5.3.0",

@@ -14,9 +14,8 @@
  *
  * WITHOUT A POSITION (no base stations) "From you" and "Room" cannot work, so
  * the row is only the sentence: ↑ flies the way the nose pointed at takeoff,
- * and Shift + an arrow corrects it in the air (App.tsx ALIGN_KEYS). No buttons
- * for it — the 2026-09-30 Nose and Speed buttons were taken out at the owner's
- * word: a saved nose had rotated the arrows before takeoff.
+ * and holding Shift reverses the arrows (lib/keys.ts). No buttons for it —
+ * the 2026-09-30 Nose and Speed buttons were taken out at the owner's word.
  */
 
 import type { Run } from "@/App";

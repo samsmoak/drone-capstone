@@ -17,7 +17,6 @@ from cropwatcher.flight.keyframe import (
     NEAR_OPERATOR_M,
     ActiveFrame,
     KeyFrame,
-    NoseFacing,
     Reason,
 )
 from cropwatcher.flight.manual import (
@@ -1287,115 +1286,6 @@ class TestFlyTo:
         rig.ctl.fly_to(SOMEWHERE.x + 2.0, SOMEWHERE.y, 0.40)
         rig.run(HEARTBEAT_TIMEOUT_S + 0.2, heartbeat=False)
         assert rig.ctl.state in (ControlState.LANDING, ControlState.LANDED)
-
-
-class TestShiftArrowCorrectsInTheAir:
-    """No base stations. Every flight starts with up along the nose, as the
-    arrows always have. In the air, Shift + an arrow says which way the LAST
-    ARROW FLOWN actually went, and the arrows turn to match — for that flight.
-
-    The drone's nose is +x at takeoff (heading 0): its left is +y. Up on a
-    drone whose arrows run along the nose is pitch -MAX_TILT_DEG (nose down,
-    forward); positive roll is right side down, which moves it right."""
-
-    @staticmethod
-    def airborne(heading: float = 0.0) -> Rig:
-        rig = Rig(assisted=False, fix=Fix(0.0, 0.0, heading))
-        rig.fly_to(0.3)
-        return rig
-
-    @staticmethod
-    def up(rig: Rig) -> tuple[float, float]:
-        rig.run(0.6, Intent(forward=True))
-        _, roll, pitch, _, _ = rig.cmd.last("zdistance")
-        rig.run(0.6, Intent())
-        return roll, pitch
-
-    def test_every_flight_starts_along_the_nose(self):
-        roll, pitch = self.up(self.airborne())
-        assert pitch < 0 and roll == pytest.approx(0.0, abs=1e-9)
-
-    def test_up_went_left_so_up_turns_to_where_you_face(self):
-        # Up flew along the nose, +x, and the operator saw it go to their LEFT:
-        # they face -y. Up must now fly -y, the drone's right: roll right.
-        rig = self.airborne()
-        self.up(rig)
-        assert rig.ctl.correct_nose(NoseFacing.LEFT) is NoseFacing.LEFT
-        roll, pitch = self.up(rig)
-        assert roll > 0 and pitch == pytest.approx(0.0, abs=1e-9)
-
-    def test_pressing_it_twice_is_still_one_correction(self):
-        """The lab, 2026-09-30: four presses in 3 s spun the arrows round."""
-        rig = self.airborne()
-        self.up(rig)
-        rig.ctl.correct_nose(NoseFacing.LEFT)
-        rig.ctl.correct_nose(NoseFacing.LEFT)
-        rig.ctl.correct_nose(NoseFacing.LEFT)
-        roll, pitch = self.up(rig)
-        assert roll > 0 and pitch == pytest.approx(0.0, abs=1e-9)
-
-    def test_it_is_measured_against_the_arrow_that_flew(self):
-        # Left flew the drone's left, +y, and the operator saw it go AWAY: they
-        # face +y. Up must now fly +y — the drone's left: roll left.
-        rig = self.airborne()
-        rig.run(0.6, Intent(left=True))
-        rig.run(0.6, Intent())
-        rig.ctl.correct_nose(NoseFacing.AWAY)
-        roll, pitch = self.up(rig)
-        assert roll < 0 and pitch == pytest.approx(0.0, abs=1e-9)
-
-    def test_turning_round_is_shift_down(self):
-        rig = self.airborne()
-        self.up(rig)
-        rig.ctl.correct_nose(NoseFacing.TOWARDS)            # it came at me
-        roll, pitch = self.up(rig)
-        assert pitch > 0 and roll == pytest.approx(0.0, abs=1e-9)
-
-    def test_after_flying_again_a_new_correction_builds_on_the_last(self):
-        rig = self.airborne()
-        self.up(rig)
-        rig.ctl.correct_nose(NoseFacing.LEFT)
-        self.up(rig)                                        # flown under the correction
-        rig.ctl.correct_nose(NoseFacing.LEFT)               # and it went left again
-        roll, pitch = self.up(rig)
-        assert pitch > 0 and roll == pytest.approx(0.0, abs=1e-9)
-
-    def test_it_holds_through_a_turn(self):
-        rig = self.airborne()
-        self.up(rig)
-        rig.ctl.correct_nose(NoseFacing.LEFT)               # up is now -y
-        rig.fix = Fix(0.0, 0.0, 90.0)                       # turned a quarter left
-        roll, pitch = self.up(rig)
-        # -y is now behind the drone.
-        assert pitch > 0 and roll == pytest.approx(0.0, abs=1e-9)
-
-    def test_the_next_flight_starts_along_the_nose_again(self):
-        rig = self.airborne()
-        self.up(rig)
-        rig.ctl.correct_nose(NoseFacing.TOWARDS)
-        rig.ctl.land()
-        rig.run(4.0)
-        assert rig.ctl.state is ControlState.LANDED
-        rig.fly_to(0.3)
-        roll, pitch = self.up(rig)
-        assert pitch < 0 and roll == pytest.approx(0.0, abs=1e-9)
-
-    def test_on_the_ground_there_is_nothing_to_correct(self):
-        rig = Rig(assisted=False, fix=Fix(0.0, 0.0, 0.0))
-        rig.ctl.arm()
-        with pytest.raises(RuntimeError, match="take off first"):
-            rig.ctl.correct_nose(NoseFacing.LEFT)
-
-    def test_before_any_arrow_there_is_nothing_to_measure(self):
-        rig = self.airborne()
-        with pytest.raises(RuntimeError, match="fly an arrow first"):
-            rig.ctl.correct_nose(NoseFacing.LEFT)
-
-    def test_a_diagonal_says_nothing_about_which_key_went_where(self):
-        rig = self.airborne()
-        rig.run(0.6, Intent(forward=True, left=True))
-        with pytest.raises(RuntimeError, match="fly an arrow first"):
-            rig.ctl.correct_nose(NoseFacing.LEFT)
 
 
 class TestGentleArrows:

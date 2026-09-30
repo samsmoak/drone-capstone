@@ -68,10 +68,6 @@ class FakeManual:
     def set_key_frame(self, frame, operator_xy):
         self.key_frame = (frame, operator_xy)
 
-    def correct_nose(self, went):
-        self.corrections = [*getattr(self, "corrections", []), went]
-        return went
-
     def set_frame_listener(self, listener):
         self.frame_listener = listener
 

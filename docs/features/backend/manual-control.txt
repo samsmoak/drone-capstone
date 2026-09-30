@@ -175,32 +175,34 @@ and falls back, said on screen, when it must:
              direction: the room's directions, until FAR_OPERATOR_M (0.60 m)
              out again — hysteresis, so a drone at the edge does not flicker.
   takeoff    no position (no base stations, or not reported yet): ↑ is the
-             way the nose pointed at liftoff — corrected in the air if it is
-             wrong (SHIFT + AN ARROW, below) — turned into the drone's frame
+             way the nose pointed at liftoff, turned into the drone's frame
              by its heading now (stabilizer.yaw, reported with or without base
              stations). ArduPilot's Simple mode, DJI's Course Lock. Unassisted
              flight is always this: its tilt is rotated by (forward − heading).
   nose       not even a heading reported: the old behaviour.
 
-SHIFT + AN ARROW CORRECTS IT, IN THE AIR (2026-09-30). With no position nothing
-knows where the operator is — no base stations, and a Crazyflie 2.1 has no
-compass; the gyro knows only how far it has turned. So every flight starts with
-↑ along the nose, as the arrows always have, kept through A/D turns. If an
-arrow goes the wrong way, Shift + the arrow for the way it ACTUALLY went turns
-the arrows to match (POST /controls/nose/correct; ManualController.correct_nose,
-keyframe.turn_nose). Turned round to face a drone behind you? ↑ now comes at
-you: Shift+↓.
-  - Measured against the LAST SINGLE ARROW FLOWN and the correction it flew
-    under — never the current one — so pressing it twice is one correction.
-    The first version composed on every press: four presses in 3 s spun the
-    arrows round (trace_7ee43c51). Diagonals are not remembered.
-  - This flight only: arm() starts along the nose again. Nothing is saved.
-    The first version saved the choice in controls.json, and a press of "At
-    me" rotated ↑ backwards before every later takeoff (trace_7ee43c51: ↑
-    pitched the nose UP; trace_0c6429ce: ↑ rolled it left). Taken out, with
-    its Nose buttons, at the owner's word; a saved "nose" is ignored on load.
-  - On the ground it is refused ("take off first"): there is nothing to see.
-  - Ignored with a position; FROM YOU and ROOM measure it then.
+HOLD SHIFT TO REVERSE THE ARROWS (2026-09-30, the owner: "invert control as
+long as you hold it"). ↑ is ↓ and ← is → while Shift is down — for a drone
+whose nose points back at you — and the instant it comes up they are as they
+were. Worked out in the desktop app from the keys held (desktop/src/lib/
+keys.ts, tested by scripts/keys.test.mjs — `pnpm test`); the agent only ever
+sees the resulting keys. W / S are never reversed (up is up), nor A / D: a turn
+looks the same from anywhere — clockwise from above is clockwise — so
+reversing them would turn the drone the wrong way. Nothing is saved or turned.
+
+With no position nothing knows where the operator is — no base stations, and a
+Crazyflie 2.1 has no compass; the gyro knows only how far it has turned. So ↑
+is always the way the nose pointed at takeoff, kept through A/D turns; Shift is
+how the operator says "it is facing me now".
+
+It replaced, the same day, a Shift + arrow "correction" that TURNED the arrows
+for the rest of the flight (and before it, Nose buttons whose choice was
+saved). Both lost the drone in the lab: a saved "At me" flew ↑ backwards before
+every takeoff (trace_7ee43c51), and nine presses of Shift+↑ meaning "reverse"
+turned the arrows 90° and sent no movement while Shift was held
+(trace_eeb1d2ef). Removed at the owner's word, with /controls/nose, /controls/
+speed and /controls/nose/correct. Do not bring back anything that changes what
+the arrows mean after the operator lets go.
 
 THE ARROWS ARE GENTLE (2026-09-30, the owner: "fly more steadily"). One setting,
 no switch — the Slow / Normal buttons were taken out with the Nose buttons.

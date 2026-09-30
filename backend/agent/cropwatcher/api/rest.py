@@ -171,12 +171,6 @@ class KeyFrameRequest(BaseModel):
     frame: str
 
 
-class NoseCorrectionRequest(BaseModel):
-    #: In the air, with no position: which way the last arrow flown moved the
-    #: drone, as the operator sees it — "away", "left", "right" or "towards".
-    went: str
-
-
 class OperatorSpotRequest(BaseModel):
     #: Where the operator stands. Exactly one of: the drone's position now
     #: ("I'm here"), a spot in room metres, or clear (use the takeoff spot).
@@ -783,12 +777,6 @@ def set_processing(request: ProcessingRequest) -> dict:
 def set_key_frame(request: KeyFrameRequest) -> dict:
     """Which way the arrow keys move the drone. Works in the air."""
     return _run(lambda: agent.session.set_key_frame(request.frame))
-
-
-@app.post("/controls/nose/correct", dependencies=[Command])
-def correct_nose(request: NoseCorrectionRequest) -> dict:
-    """Shift + an arrow, in the air: the last arrow went `went` — turn to match."""
-    return _run(lambda: agent.session.correct_nose(request.went))
 
 
 @app.post("/controls/operator", dependencies=[Command])
