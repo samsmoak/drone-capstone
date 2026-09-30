@@ -200,7 +200,10 @@ INVARIANTS
   desktop(43661) -> bootloader(43666) -> python(43670), and the LAST one holds
   the port and the radio. Tauri kills only the bootloader; the Python process
   was re-parented to launchd, kept the radio, and the next launch reported "no
-  drone found". Verified fixed on quit and on kill -9.
+  drone found". Verified fixed on quit and on kill -9 — with a session that
+  ends. One that could not (a dead Wi-Fi link) kept the agent alive 9 h after
+  a quit on 2026-09-30; the agent now exits within 20 s whatever the session
+  does. See ../backend/agent-api.txt, "EVERY SHUTDOWN IS BOUNDED".
 - The verifier's probe agent is isolated: verify_sidecar.py runs it
   with its own temporary data folder and CROPWATCHER_STANDBY=0 — without
   that, verifying on a developer's laptop restored their saved sign-in and

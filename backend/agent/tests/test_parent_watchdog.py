@@ -13,6 +13,7 @@ terminal — so the opt-in side is asserted too.
 from __future__ import annotations
 
 import io
+import logging
 import socket
 import subprocess
 import sys
@@ -20,6 +21,7 @@ import threading
 import time
 
 import pytest
+from fastapi.testclient import TestClient
 
 from cropwatcher.api import rest
 
@@ -98,7 +100,93 @@ class TestSessionEndsOnParentLoss:
         monkeypatch.setattr(rest.agent.session, "end",
                             lambda reason: events.append(f"end:{reason}"))
 
-        rest.exit_when_parent_closes()
+        rest.exit_when_parent_closes(deadline_s=0.2)
 
         assert exited.wait(timeout=5)
+        time.sleep(0.5)                  # past the deadline: it was disarmed
         assert events == ["end:the app closed", "exit:0"]
+
+
+class TestShutdownIsBounded:
+    """Closing the app must end the process even when the session will not end.
+
+    Measured 2026-09-30: the watchdog fired, `session.end` blocked on a drone
+    that had not answered for 3.7 h, and the agent held the radio for 9 h.
+    """
+
+    @pytest.fixture
+    def hung_end(self, monkeypatch):
+        """`session.end` blocks until released; `os._exit` is recorded instead.
+
+        Never released on teardown: a released watchdog goes on to call
+        `os._exit(0)`, and after monkeypatch undoes itself that is the real one
+        — it would end the test run. The stuck thread is a daemon; leave it.
+        """
+        exits: list[int] = []
+        exited = threading.Event()
+        release = threading.Event()
+
+        def fake_exit(code: int) -> None:
+            exits.append(code)
+            exited.set()
+
+        monkeypatch.setattr(rest.os, "_exit", fake_exit)
+        monkeypatch.setattr(rest.agent.session, "end", lambda reason: release.wait())
+        return exits, exited, release
+
+    def test_a_session_that_never_ends_still_exits(self, hung_end, monkeypatch):
+        exits, exited, _ = hung_end
+        monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+
+        rest.exit_when_parent_closes(deadline_s=0.2)
+
+        assert exited.wait(timeout=5), "the agent outlived its parent"
+        assert exits == [1]              # forced, and the code says so
+
+    def test_sigterm_is_bounded_too(self, hung_end, tmp_path, monkeypatch):
+        """The lifespan shutdown calls the same `session.end`; serve arms it."""
+        exits, _, release = hung_end
+        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("CROPWATCHER_STANDBY", "0")
+        monkeypatch.setattr(rest.app.state, "exit_deadline_s", 0.2, raising=False)
+        # The shutdown runs on this thread, so the fake exit must unblock it.
+        monkeypatch.setattr(rest.os, "_exit", lambda code: (exits.append(code), release.set()))
+
+        shut_down = threading.Event()
+
+        def run_the_app() -> None:
+            with TestClient(rest.app):
+                pass                     # leaving runs the lifespan shutdown
+            shut_down.set()
+
+        # On a thread, so a regression fails here instead of hanging the suite.
+        threading.Thread(target=run_the_app, daemon=True).start()
+        assert shut_down.wait(timeout=5), "SIGTERM left the agent running"
+        assert exits == [1]
+
+    def test_a_shutdown_that_finishes_is_not_cut_short(self, monkeypatch):
+        exits: list[int] = []
+        monkeypatch.setattr(rest.os, "_exit", exits.append)
+
+        rest.arm_exit_deadline(0.2).set()
+
+        time.sleep(0.5)
+        assert exits == []
+
+
+class TestConsoleLoggingIsDropped:
+    def test_stderr_goes_and_the_log_file_stays(self, tmp_path):
+        """Nothing reads stderr once the parent is gone; a write can block there."""
+        logger = logging.getLogger("cropwatcher.test.console")
+        console = logging.StreamHandler(sys.stderr)
+        log_file = logging.FileHandler(tmp_path / "agent.log")
+        logger.addHandler(console)
+        logger.addHandler(log_file)
+        try:
+            rest._detach_console_logging()
+            assert console not in logger.handlers
+            assert log_file in logger.handlers
+        finally:
+            logger.removeHandler(console)
+            logger.removeHandler(log_file)
+            log_file.close()

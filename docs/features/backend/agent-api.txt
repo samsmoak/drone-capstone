@@ -125,7 +125,24 @@ INVARIANTS
 - --exit-with-parent exits when stdin closes. A one-file PyInstaller binary is
   two processes; killing the child reaches only the bootloader, and the real
   Python process keeps the radio. See ../desktop/desktop-app.txt. The
-  verifier now proves it on every build, per OS.
+  verifier now proves it on every build, per OS — but only with no session
+  open, which is why it passed on the build below.
+- EVERY SHUTDOWN IS BOUNDED: 20 s (SHUTDOWN_DEADLINE_S), then os._exit(1)
+  whatever is still running. Noticing the parent is gone is half of it; the
+  exit must not wait on session.end. On 2026-09-30 the watchdog fired, then
+  session.end blocked on a Wi-Fi link to a drone silent for 3.7 h, and the
+  agent held the radio and port 8765 for 9 h — refusing SIGTERM, since the
+  lifespan shutdown calls the same session.end — until killed by hand; the
+  next launch and install.mjs both found it running. arm_exit_deadline covers
+  the watchdog and the lifespan (SIGTERM, Ctrl+C; armed only by `serve`, so a
+  TestClient never exits the test run). 20 s sits above the longest honest
+  landing (End session's 15 s wait) and below verify_sidecar's 30 s. uvicorn
+  gets timeout_graceful_shutdown=5 — its default waits forever on an open
+  WebSocket before the lifespan shutdown even starts.
+- Once the parent is gone, log to the file only. Handlers write to stderr
+  first (cli.py); with no reader a write there can block holding the handler
+  lock and freeze every thread that logs — the 9 h agent's log stopped four
+  minutes after the app closed. The watchdog detaches console handlers.
 - /health must stay unauthenticated and cheap. The window's no-cors probe
   asks it whether ANYTHING is listening after a command got no answer, to
   tell "not running" from "running but this request failed".
@@ -173,5 +190,11 @@ consumed-by       ../desktop/desktop-app.txt
                   /health probe after a failed command; CORS for the window
 
 
+LAST VERIFIED  2026-09-30, the bounded shutdown only: tests/
+test_parent_watchdog.py (a session.end that never returns still exits, via
+the watchdog and via the lifespan; a finished shutdown is not cut short;
+console logging dropped, file kept), each shown failing with its arm removed.
+The incident itself read from ~/Library/Application Support/CropWatcher/logs/
+agent.log. Not yet: a real app quit with a hung link on the frozen build.
 LAST VERIFIED  2026-09-25, against rest.py (LocalCORS, /health) and
 tests/test_api.py — TestCors and TestCorsRefusalLog pass.
