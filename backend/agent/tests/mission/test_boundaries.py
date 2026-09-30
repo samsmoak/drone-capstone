@@ -16,6 +16,7 @@ import sys
 
 from cropwatcher.flight.manual import ControlState, ManualController
 from cropwatcher.mission.controller import MissionController, MissionFlight, MissionState
+from cropwatcher.session import State
 from tests.fakes import FakeClock, FakeCommander
 from tests.mission.plans import mission
 from tests.mission.test_session_missions import make_rig
@@ -79,3 +80,8 @@ def test_the_session_arms_a_mission_and_the_real_controller_takes_off(tmp_path, 
                     .get("kind") == "started")
     flying.abort("the test is over")
     assert flying.state is MissionState.ABORTED
+    # Bring the flight down and let the session's own processing of it finish,
+    # so nothing is still logging from a worker thread after the test ends.
+    manual.state = ControlState.LANDED
+    assert wait_for(lambda: rig.session.snapshot().state is State.READY)
+    assert rig.session.processing.wait_idle()

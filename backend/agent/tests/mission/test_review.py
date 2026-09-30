@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 import math
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -265,6 +266,23 @@ def test_a_flight_longer_than_its_estimate_is_flagged_in_words():
 
 
 # ── the command line, on files ────────────────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def restore_logging():
+    """cli.main() configures the root logger with a handler on the stream
+    pytest has captured for THIS test. Left in place, a later test's worker
+    thread logs into that closed stream ("--- Logging error ---"). Put the
+    root logger back as it was."""
+    root = logging.getLogger()
+    handlers, level = list(root.handlers), root.level
+    yield
+    for handler in root.handlers:
+        if handler not in handlers:
+            handler.close()
+    root.handlers[:] = handlers
+    root.setLevel(level)
+
 
 BASE = datetime(2026, 9, 30, 10, 0, 0, tzinfo=UTC)
 FLIGHT = "a1b2c3d4-0000-4000-8000-000000000001"
