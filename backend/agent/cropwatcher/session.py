@@ -48,7 +48,7 @@ from cropwatcher.flight.checks import CheckResult, ChecksFailed, ReadyReport, co
 from cropwatcher.flight.control import GuardedFlight, PhaseEvent
 from cropwatcher.flight.controls_store import ControlsStore, valid_spot
 from cropwatcher.flight.core import DEFAULT_URI
-from cropwatcher.flight.keyframe import FrameStatus, KeyFrame
+from cropwatcher.flight.keyframe import FrameStatus, KeyFrame, NoseFacing
 from cropwatcher.flight.link import DEFAULT_FENCE_M, DEFAULT_MAX_HEIGHT_M, DroneLink, LinkError
 from cropwatcher.flight.manual import CLIMB_RATE_M_S, MOVE_SPEED_M_S
 from cropwatcher.flight.programs import HoverTest, Outcome, run_hover_test
@@ -1318,7 +1318,8 @@ class Session:
     def _attach_controls(self, controller: Any) -> None:
         """Tell a new flight which way the arrows move it, and listen for
         when that changes — in Manual, and in a mission the keys take over."""
-        controller.set_key_frame(self._controls.key_frame, self._controls.operator)
+        controller.set_key_frame(self._controls.key_frame, self._controls.operator,
+                                 self._controls.nose)
         controller.set_frame_listener(self._frame_changed)
 
     def _frame_changed(self, status: FrameStatus | None) -> None:
@@ -1337,7 +1338,8 @@ class Session:
         self._save_controls()
         controller = self.manual
         if controller is not None:
-            controller.set_key_frame(self._controls.key_frame, self._controls.operator)
+            controller.set_key_frame(self._controls.key_frame, self._controls.operator,
+                                     self._controls.nose)
         self._set(controls=self._controls_dict())
 
     def set_key_frame(self, frame: str) -> None:
@@ -1349,6 +1351,19 @@ class Session:
         except ValueError:
             raise SessionError('The arrow keys follow "operator" or "room".') from None
         self._controls = self._controls.with_frame(chosen)
+        self._apply_controls()
+
+    def set_nose(self, nose: str) -> None:
+        """With no position: which way the drone's nose pointed at takeoff, as
+        the operator stands — "away", "left", "right" or "towards". It is what
+        makes up "away from you" without base stations (keyframe.py). Works in
+        the air: the next tick uses it, still measured from takeoff."""
+        try:
+            facing = NoseFacing(nose)
+        except ValueError:
+            raise SessionError(
+                'Say where the nose points: "away", "left", "right" or "towards".') from None
+        self._controls = self._controls.with_nose(facing)
         self._apply_controls()
 
     def mark_operator(self, *, from_drone: bool = False,

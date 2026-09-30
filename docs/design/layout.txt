@@ -1,8 +1,9 @@
 ================================================================================
 LAYOUT — the rule every screen obeys, in both apps
-Last verified: 2026-09-29 against claude/awesome-carson-eqkt8w — the desktop
-harness (desktop/src/measure.ts) over the Auto sections at the five desktop
-widths, both themes, 2-D and 3-D: 20 runs PASS, the self-test FAIL as it must.
+Last verified: 2026-09-30 against feat/nose-points — the whole desktop harness
+(desktop/src/measure.ts) at the five desktop widths, both themes: 10 runs PASS,
+the self-test FAIL as it must. (2026-09-29: the Auto sections, 2-D and 3-D, 20
+runs PASS.)
 SOURCE: desktop/src/measure.ts
 ================================================================================
 

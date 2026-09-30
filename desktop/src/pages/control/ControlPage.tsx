@@ -906,7 +906,7 @@ export function FlightDeck({ intent, mode, telemetry, session, run, ready, heigh
               </div>
             </Cluster>
 
-            <Cluster caption={movementLive && session ? `Position · ${arrowWords(session.controls).short}` : "Position"}>
+            <Cluster caption={movementLive && session ? `Position · ${arrowWords(session.controls, session.assisted).short}` : "Position"}>
               <div className="grid w-max grid-cols-3 gap-1">
                 <span />
                 <Cap label="↑" field="forward" intent={intent} />

@@ -105,6 +105,7 @@ from typing import Protocol
 from cropwatcher.flight.keyframe import (
     FrameStatus,
     KeyFrame,
+    NoseFacing,
     keys_to_room,
     resolve,
     room_to_body,
@@ -279,6 +280,7 @@ class ManualController:
         heading: Callable[[], float | None] | None = None,
         key_frame: KeyFrame = KeyFrame.OPERATOR,
         operator_xy: tuple[float, float] | None = None,
+        nose: NoseFacing = NoseFacing.AWAY,
         on_frame_change: Callable[[FrameStatus | None], None] | None = None,
         heartbeat_timeout_s: float = HEARTBEAT_TIMEOUT_S,
         tick_s: float = TICK_S,
@@ -294,7 +296,8 @@ class ManualController:
         reported with or without base stations; it is what turns the arrows
         into the drone's own frame when no position can carry them.
         `key_frame` and `operator_xy` say which way the arrows move it
-        (keyframe.py); `on_frame_change` hears whenever what they mean
+        (keyframe.py), and `nose` which way the nose pointed at takeoff, for
+        when there is no position; `on_frame_change` hears whenever what they mean
         changes, outside the lock, so the app can say so.
         """
         self._commander = commander
@@ -310,6 +313,9 @@ class ManualController:
         #: stands in for it, as ArduPilot's home is where the drone armed.
         self._key_frame = key_frame
         self._marked_operator = operator_xy
+        #: With no position: which way the nose pointed at takeoff, as the
+        #: operator stood — what turns the takeoff heading into their forward.
+        self._nose = nose
         self._on_frame_change = on_frame_change
         #: Where and which way this flight lifted off. Reset by arm().
         self._takeoff_xy: tuple[float, float] | None = None
@@ -552,20 +558,24 @@ class ManualController:
             self._last_heartbeat = self._clock()
 
     def set_key_frame(self, key_frame: KeyFrame,
-                      operator_xy: tuple[float, float] | None) -> None:
-        """Which way the arrows move the drone, and the operator's marked spot
-        (None: use where this flight took off). Takes effect on the next tick,
-        in the air or on the ground."""
+                      operator_xy: tuple[float, float] | None,
+                      nose: NoseFacing | None = None) -> None:
+        """Which way the arrows move the drone, the operator's marked spot
+        (None: use where this flight took off) and, for flight with no
+        position, which way the nose pointed at takeoff (None: unchanged).
+        Takes effect on the next tick, in the air or on the ground."""
         with self._lock:
             self._key_frame = key_frame
             self._marked_operator = operator_xy
+            if nose is not None:
+                self._nose = nose
             if self._frame is not None:
                 # Re-resolve at once so the app is told now, not a tick later.
                 self._resolve_frame_locked(self._last_fix[1] if self._last_fix else None)
         self._flush_frame_change()
-        log.info("manual control: arrows %s%s", key_frame,
+        log.info("manual control: arrows %s%s, nose %s at takeoff", key_frame,
                  "" if operator_xy is None else f", operator at ({operator_xy[0]:+.2f}, "
-                 f"{operator_xy[1]:+.2f})")
+                 f"{operator_xy[1]:+.2f})", self._nose)
 
     def set_frame_listener(self,
                            listener: Callable[[FrameStatus | None], None] | None) -> None:
@@ -760,6 +770,7 @@ class ManualController:
             operator_xy=operator, operator_source=source,
             takeoff_heading_deg=self._takeoff_heading,
             was_near=self._frame.near if self._frame is not None else False,
+            nose=self._nose,
         )
         self._set_frame_locked(status)
         return status

@@ -8,7 +8,7 @@ from types import MappingProxyType, SimpleNamespace
 import pytest
 
 from cropwatcher.flight.controls_store import Controls, ControlsStore
-from cropwatcher.flight.keyframe import ActiveFrame, FrameStatus, KeyFrame
+from cropwatcher.flight.keyframe import ActiveFrame, FrameStatus, KeyFrame, NoseFacing
 from cropwatcher.session import Mode, SessionError
 from cropwatcher.telemetry.stream import Snapshot
 from tests.test_session import rig, start_and_confirm  # noqa: F401 — the fixture
@@ -38,6 +38,22 @@ class TestStore:
         loaded = ControlsStore(path).load()
         assert loaded.key_frame is KeyFrame.OPERATOR
         assert loaded.operator is None
+
+    def test_the_nose_is_saved_and_comes_back(self, tmp_path):
+        store = ControlsStore(tmp_path / "controls.json")
+        store.save(Controls().with_nose(NoseFacing.TOWARDS))
+        assert store.load().nose is NoseFacing.TOWARDS
+        assert json.loads((tmp_path / "controls.json").read_text())["nose"] == "towards"
+
+    @pytest.mark.parametrize("content", [
+        '{"key_frame": "room"}', '{"nose": "sideways"}', '{"nose": 3}',
+    ])
+    def test_an_old_or_bad_nose_is_away(self, tmp_path, content):
+        """A file from before the setting, or a bad value: away — exactly what
+        the arrows did before it existed."""
+        path = tmp_path / "controls.json"
+        path.write_text(content)
+        assert ControlsStore(path).load().nose is NoseFacing.AWAY
 
     def test_clearing_the_spot_clears_its_date(self):
         c = Controls().with_operator((1.0, 1.0)).with_operator(None)
@@ -113,6 +129,25 @@ class TestSession:
         rig.session.arm_manual()
         rig.session.set_key_frame("room")
         assert rig.link.manual_controller.key_frame[0] is KeyFrame.ROOM
+
+    def test_the_nose_is_saved_and_reaches_a_flight(self, rig, tmp_path):  # noqa: F811
+        rig.session.set_nose("left")
+        assert json.loads((tmp_path / "controls.json").read_text())["nose"] == "left"
+        assert rig.session.snapshot().controls["nose"] == "left"
+        start_and_confirm(rig)
+        rig.session.arm_manual()
+        assert rig.link.manual_controller.nose is NoseFacing.LEFT
+
+    def test_changing_the_nose_in_the_air_reaches_the_controller(self, rig):  # noqa: F811
+        start_and_confirm(rig)
+        rig.session.arm_manual()
+        rig.session.set_nose("towards")
+        assert rig.link.manual_controller.nose is NoseFacing.TOWARDS
+
+    def test_an_unknown_nose_is_refused_in_words(self, rig):  # noqa: F811
+        with pytest.raises(SessionError, match="towards"):
+            rig.session.set_nose("up")
+        assert rig.session.snapshot().controls["nose"] == "away"
 
     def test_ending_the_session_clears_the_live_frame(self, rig):  # noqa: F811
         start_and_confirm(rig)

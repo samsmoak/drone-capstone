@@ -171,6 +171,12 @@ class KeyFrameRequest(BaseModel):
     frame: str
 
 
+class NoseRequest(BaseModel):
+    #: With no position: which way the nose pointed at takeoff, as the
+    #: operator stands — "away", "left", "right" or "towards". keyframe.py.
+    nose: str
+
+
 class OperatorSpotRequest(BaseModel):
     #: Where the operator stands. Exactly one of: the drone's position now
     #: ("I'm here"), a spot in room metres, or clear (use the takeoff spot).
@@ -777,6 +783,12 @@ def set_processing(request: ProcessingRequest) -> dict:
 def set_key_frame(request: KeyFrameRequest) -> dict:
     """Which way the arrow keys move the drone. Works in the air."""
     return _run(lambda: agent.session.set_key_frame(request.frame))
+
+
+@app.post("/controls/nose", dependencies=[Command])
+def set_nose(request: NoseRequest) -> dict:
+    """With no position: which way the nose pointed at takeoff. Works in the air."""
+    return _run(lambda: agent.session.set_nose(request.nose))
 
 
 @app.post("/controls/operator", dependencies=[Command])

@@ -8,11 +8,16 @@
  *   Room       the room's own directions; ↑ is the forward chosen when the
  *              base stations were set up (`cropwatcher geometry`).
  * and they fall back, said here, when the drone is close to you (room
- * directions), when there is no position (the takeoff direction) or no
- * heading at all (the nose).
+ * directions), when there is no position (away from you as you stood at
+ * takeoff, from where you said its nose pointed) or no heading at all (the
+ * nose).
+ *
+ * WITHOUT A POSITION NOTHING KNOWS WHERE YOU ARE, so it is never implied: the
+ * words say it is measured from how you stood at takeoff, and that turning
+ * round does not turn the arrows. Only base stations can follow you.
  */
 
-import type { Controls, KeyFrameChoice } from "@/lib/agent";
+import type { Controls, KeyFrameChoice, NoseFacing } from "@/lib/agent";
 
 export type ArrowWords = {
   /** After "Position ·" on the keys' caption. */
@@ -25,8 +30,25 @@ export type ArrowWords = {
 
 const CHOICE: Record<KeyFrameChoice, string> = { operator: "from you", room: "room" };
 
-export function arrowWords(controls: Controls): ArrowWords {
+/** The nose choices, in the order they are offered, with their words. */
+export const NOSE_CHOICES: { value: NoseFacing; label: string; where: string }[] = [
+  { value: "away", label: "Away", where: "away from you" },
+  { value: "left", label: "Left", where: "to your left" },
+  { value: "right", label: "Right", where: "to your right" },
+  { value: "towards", label: "At me", where: "at you" },
+];
+
+const NOSE_WHERE: Record<NoseFacing, string> = Object.fromEntries(
+  NOSE_CHOICES.map((c) => [c.value, c.where])) as Record<NoseFacing, string>;
+
+/** `assisted`: the session has a position (base stations). Without one the
+ *  frame choice does nothing — the nose choice is what counts. */
+export function arrowWords(controls: Controls, assisted: boolean): ArrowWords {
   const live = controls.live;
+  if (!live && !assisted) {
+    return { short: "from you", warn: true,
+      line: "No position from the base stations, so the drone cannot tell where you are. Say where its nose points as you stand, and ↑ flies away from you — kept however it turns." };
+  }
   if (!live) {
     if (controls.key_frame === "room") {
       return { short: CHOICE.room, warn: false,
@@ -56,12 +78,12 @@ export function arrowWords(controls: Controls): ArrowWords {
       return { short: CHOICE.room, warn: false,
         line: "↑ is the room's forward, whichever way the nose points." };
     case "takeoff":
-      return { short: "takeoff", warn: true,
+      return { short: "from you", warn: true,
         // Without a position nothing knows where the operator stands, so "away
-        // from you" cannot be computed — only kept, by setting the drone down
-        // the right way round. Saying so is the whole fix available here
-        // (the lab, 2026-09-30: "the arrows go the wrong way", unassisted).
-        line: "No position from the base stations: ↑ keeps the direction its nose faced at takeoff, however it turns. Set it down facing away from you and ↑ is away from you." };
+        // from you" cannot be measured — it is TOLD (the nose choice) and then
+        // kept by the heading. Kept from takeoff, so turning round to follow
+        // the drone does not turn the arrows; said, never implied.
+        line: `No position: ↑ is away from you as you stood at takeoff (nose ${NOSE_WHERE[controls.nose]}), however it turns. If you turn round, ↑ still goes the way you first faced.` };
     case "nose":
       return { short: "nose", warn: true,
         line: "No heading reported: the arrows follow the nose, as the drone sees it." };

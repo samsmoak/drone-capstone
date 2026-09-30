@@ -70,6 +70,10 @@ export type Session = {
 /** "operator": away from you. "room": the room's own directions. */
 export type KeyFrameChoice = "operator" | "room";
 
+/** With no position: which way the drone's nose pointed at takeoff, as the
+ *  operator stands (cropwatcher/flight/keyframe.py NoseFacing). */
+export type NoseFacing = "away" | "left" | "right" | "towards";
+
 /** What the arrows mean on this tick, from the agent. */
 export type ArrowFrame = {
   chosen: KeyFrameChoice;
@@ -88,6 +92,8 @@ export type Controls = {
   /** The operator's marked spot, room metres; null: the takeoff spot is used. */
   operator: [number, number] | null;
   operator_marked_at: string | null;
+  /** With no position, what turns "the nose at takeoff" into "away from you". */
+  nose: NoseFacing;
   /** null on the ground. */
   live: ArrowFrame | null;
 };
@@ -487,6 +493,8 @@ export const api = {
   setProcessing: (on: boolean) => command<Session>("/session/processing", { on }),
   /** Which way the arrow keys move the drone. Works in the air. */
   setKeyFrame: (frame: KeyFrameChoice) => command<Session>("/controls/frame", { frame }),
+  /** With no position: which way the nose pointed at takeoff. Works in the air. */
+  setNose: (nose: NoseFacing) => command<Session>("/controls/nose", { nose }),
   /** "I'm here": the drone's position now becomes the operator's spot. */
   markOperatorHere: () => command<Session>("/controls/operator", { from_drone: true }),
   /** Forget the marked spot; "away" is measured from where it takes off. */
