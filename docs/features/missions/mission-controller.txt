@@ -12,12 +12,14 @@ STATUS  (Last verified: 2026-09-28)
   session    BUILT — Session.run_mission(), POST /session/mission, the room's
              fence to the guard, the plan flown kept, events to the app
   stamping   BUILT — point_id on every telemetry row and frames.csv row
-  controller INTERFACE BUILT, BODY NOT BUILT — Hannah
+  controller EXPERIMENT — on experiment/samuel, not on main. Samuel's body,
+             built to THE SPEC; BUILT = True on this branch only, so the
+             session arms a mission here. Hannah's ticket is still open
              (../../handoffs/sprint-1/undone/mission-controller.txt).
-             BUILT = False, and the session refuses to arm a mission until
-             it is True.
-  proof      NOT BUILT — Yordi: a simulated drone, the mission report, the
-             end-to-end scenarios, the lab rungs, the measured constants
+  proof      EXPERIMENT — on experiment/samuel, not on main. In simulation
+             only: the simulated drone, the scenarios, the mission report.
+             The lab rungs are NOT FLOWN and the constants are still
+             guesses. Yordi's ticket is still open
              (../../handoffs/sprint-1/undone/mission-verification.txt).
   flown      NEVER — no mission has flown.
 
@@ -120,3 +122,67 @@ consumed-by       ../desktop/auto-control.txt
 consumed-by       ../pipeline/data-pipeline.txt
                   point_id groups the readings; the plan flown names the points;
                   POINT_COMPLETE will feed the live runner
+
+--------------------------------------------------------------------------------
+6. THE EXPERIMENT — experiment/samuel ONLY, never main as it stands
+--------------------------------------------------------------------------------
+Samuel's own build of both tickets, to see if it works (2026-09-30). It is
+NOT the build: both tickets stay open. If it ever goes to main, both tickets
+are rewritten in that same PR — one implementation, never two
+(../../PROJECT_PROFILE.txt, SHIP "experiments").
+
+WHERE IT LIVES
+  backend/agent/cropwatcher/mission/controller/mission_controller.py  the body
+  backend/agent/cropwatcher/mission/review.py        the mission report
+  backend/agent/cropwatcher/cli.py                   `cropwatcher mission-report`
+  backend/agent/tests/sim_drone.py                   the simulated drone
+  backend/agent/tests/test_sim_drone.py
+  backend/agent/tests/mission/test_controller.py     one test or more per rule
+  backend/agent/tests/mission/test_mission_sim.py    the end-to-end scenarios
+  backend/agent/tests/mission/test_review.py
+  backend/agent/tests/mission/test_boundaries.py     the session now arms one
+
+DECISIONS
+• EVENTS ARE QUEUED, THEN DELIVERED IN ORDER. One lock guards the state
+  machine and every command given to the flight; events are queued under it
+  and delivered with no lock held, by one caller at a time. Delivering right
+  after unlocking let an abort()'s ABORTED reach the listener before a tick's
+  POINT_COMPLETE — the ordering E1 forbids. A test races the two.
+• WHERE THE SPEC IS SILENT, and what this does (THE SPEC itself is Hannah's
+  and Yordi's to settle, so none of this is written into their ticket):
+    hold_at() refused at start()   FAILED, and start() raises MissionError
+    no commanded point at T6       the exception path: land, FAILED, named
+    tick() before start()          nothing
+    start() after abort()          raises, commands nothing
+    LANDING                        no timeout: the manual landing always ends
+• THE SIMULATOR FLIES IN THREE DIMENSIONS, in the estimator's frame (the
+  floor is ground_z). THE SPEC's arrival (drift_m ≤ ARRIVE_M) is x-y only;
+  the height is the flight system's goal. The scenarios prove both put the
+  drone at the point while it is stamped, and the report shows the height
+  error beside the x-y drift (stateEstimate.z − posCtl.targetZ: no floor
+  needed). ARRIVE_M is suggested from x-y only, as the controller uses it.
+• THE REPORT READS ONLY WHAT AN APP FLIGHT WRITES. `cropwatcher mission`
+  (the terminal) writes no trace and no plan flown, and records under the
+  flight id "cli" — the report says so and exits non-zero. Fly the lab rungs
+  from the app.
+• ONE PLACE KNOWS WHERE A FLIGHT'S FILES ARE: the report finds the flight
+  CSV and session folder through pipeline/sources.py LocalFlightSource (its
+  _find_csv, _find_session), the trace beside the CSV, the plan flown in the
+  session's missions/ folder.
+
+FOUND, NOT FIXED — outside both tickets; Samuel's call
+• `cropwatcher mission` has NO BUILT check: it called start() and was safe
+  only because start() raised. With BUILT = True it flies the drone.
+• T8's timeout treats a 3-D leg as flown at MOVE_SPEED_M_S (0.20 m/s); the
+  height moves at CLIMB_RATE_M_S (0.15 m/s). A 0.7 m climb takes ~4.7 s
+  against 3.5 s + TRANSIT_MARGIN_S — the margin absorbs it.
+  Mission.estimated_duration_s already takes the longer of the two.
+• Mission.estimated_duration_s(settle_s=1.0) is a copy of SETTLE_S.
+• In simulation (lag 0.5 s, a guess) the test room's 3-point mission flies
+  1.7 s longer than its estimate with return_to_start, 1.2 s without. The
+  estimate is the battery budget; the lab will say by how much for real.
+
+LAST VERIFIED: 2026-09-30, on samuel/mission-controller in a cloud session
+with no radio. ruff pass · mypy pass · pytest 1112 passed, 1 failed (the
+root-only chmod test, as on main) — the hardware gates were not run.
+
