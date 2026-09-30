@@ -9,6 +9,7 @@ click in.
     cropwatcher hover --height 0.3 --secs 10 --ambient 74F
     cropwatcher mission --id <mission id> --dry-run
     cropwatcher process --flight <flight id>   # the data pipeline
+    cropwatcher mission-report --flight <flight id> [--json]
     cropwatcher serve                       # the local API for the desktop app
 
 Every flight here goes through the same :class:`DroneLink` the app uses, so the
@@ -124,6 +125,14 @@ def build_parser() -> argparse.ArgumentParser:
     which.add_argument("--flight", help="the flight's id (a session's flights list it)")
     which.add_argument("--fixture", action="store_true",
                        help="run on the test fixture in tests/pipeline (source checkout only)")
+
+    report = sub.add_parser(
+        "mission-report",
+        help="what happened at each inspection point of a mission flight; never connects")
+    report.add_argument("--flight", action="append", required=True,
+                        help="a mission flight's id; repeat it to set the constants from "
+                             "several flights")
+    report.add_argument("--json", action="store_true", help="print the report as JSON")
 
     sub.add_parser("selftest", help="load every library the agent only loads on demand")
     return parser
@@ -503,6 +512,22 @@ def cmd_mission(args: argparse.Namespace) -> int:
         return 0 if str(flying.state) == "done" else 1
 
 
+def cmd_mission_report(args: argparse.Namespace) -> int:
+    """The mission report (mission/review.py): per point, the leg, transit,
+    settle, hold and hold drift; the flown time against the estimate; and what
+    the mission controller's constants should be. Reads files; touches no radio."""
+    from cropwatcher.mission.review import ReportError, as_json, as_text, load, suggest
+
+    try:
+        reviews = [load(paths.data_dir(), flight) for flight in args.flight]
+    except ReportError as e:
+        print(f"  {e}")
+        return 2
+    suggestions = suggest(reviews)
+    print(as_json(reviews, suggestions) if args.json else as_text(reviews, suggestions))
+    return 0
+
+
 def cmd_process(args: argparse.Namespace) -> int:
     """The data pipeline over one recorded flight: load, clean, enhance,
     classify, interpret, save (story 4.5). Reads files; touches no radio."""
@@ -647,6 +672,7 @@ def main(argv: list[str] | None = None) -> int:
         "hover": cmd_hover,
         "mission": cmd_mission,
         "process": cmd_process,
+        "mission-report": cmd_mission_report,
         "serve": cmd_serve,
         "selftest": cmd_selftest,
     }
