@@ -45,6 +45,11 @@ ENDPOINTS
     POST /controls/nose             {"nose": "away" | "left" | "right" |
                                     "towards"} — with no position, where the
                                     nose pointed at takeoff (manual-control.txt)
+    POST /controls/nose/correct     {"went": "away" | "left" | "right" |
+                                    "towards"} — in the air: which way up went;
+                                    turns the arrows to match
+    POST /controls/speed            {"speed": "slow" | "normal"} — how fast the
+                                    KEYS fly it; missions keep their own
     POST /controls/operator         {"from_drone": true} ("I'm here") | {x, y} |
                                     {"clear": true} — the operator's spot
                                     (manual-control.txt, "THE ARROWS FOLLOW YOU")

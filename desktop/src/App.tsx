@@ -34,6 +34,7 @@ import {
   watchAgentExit,
   type Intent,
   type Mode,
+  type NoseFacing,
   type CameraWifi,
   type SetupState,
   type Session,
@@ -65,6 +66,16 @@ export const KEY_MAP: Record<string, keyof Intent> = {
   KeyS: "down",
   KeyA: "yaw_left",
   KeyD: "yaw_right",
+};
+
+/** Shift + an arrow: where things are, as the operator sees them. On the ground
+ *  it is where the drone's NOSE points; in the air, which way ↑ just WENT. Only
+ *  with no position (lib/arrows.ts) — base stations measure it themselves. */
+export const ALIGN_KEYS: Record<string, NoseFacing> = {
+  ArrowUp: "away",
+  ArrowLeft: "left",
+  ArrowRight: "right",
+  ArrowDown: "towards",
 };
 
 export const HISTORY_S = 60;
@@ -237,6 +248,12 @@ export default function App() {
   const flying = session?.activity === "manual" || session?.activity === "program"
     || session?.activity === "mission";
   const manualFlying = session?.activity === "manual";
+  // Shift + arrow aligns the arrows, with no position only: on the ground it
+  // says where the nose points, in the air which way ↑ went (ALIGN_KEYS).
+  const noPosition = session?.mode === "manual"
+    && (!session.assisted || session.controls.live?.active === "takeoff");
+  const align: "set" | "correct" | null = !noPosition ? null
+    : session?.controls.live ? "correct" : "set";
 
   // ── keyboard: key *state*, not the OS repeat stream ────────────────
   useEffect(() => {
@@ -254,6 +271,18 @@ export default function App() {
       if (event.code === "KeyL") {
         event.preventDefault();
         void run(api.land, "Land (L)");
+        return;
+      }
+      // Shift + arrow is never flight: it aligns the arrows, or does nothing.
+      // Checked before the flight keys so it cannot also move the drone.
+      const aligned = ALIGN_KEYS[event.code];
+      if (aligned && event.shiftKey) {
+        event.preventDefault();
+        if (event.repeat || !align) return;
+        void run(align === "set"
+          ? () => api.setNose(aligned)
+          : () => api.correctNose(aligned),
+        align === "set" ? `Nose ${aligned} (Shift+arrow)` : `↑ went ${aligned} (Shift+arrow)`);
         return;
       }
       if (event.repeat || !manualFlying) return;
@@ -303,7 +332,7 @@ export default function App() {
       window.removeEventListener("keyup", onUp);
       window.removeEventListener("blur", onBlur);
     };
-  }, [manualFlying, run]);
+  }, [manualFlying, align, run]);
 
   // Nothing is known yet: the agent has not answered, or it is still trying the
   // saved sign-in. Hold the shape rather than claim "signed out".

@@ -9,6 +9,7 @@ import pytest
 
 from cropwatcher.flight.controls_store import Controls, ControlsStore
 from cropwatcher.flight.keyframe import ActiveFrame, FrameStatus, KeyFrame, NoseFacing
+from cropwatcher.flight.manual import Speed
 from cropwatcher.session import Mode, SessionError
 from cropwatcher.telemetry.stream import Snapshot
 from tests.test_session import rig, start_and_confirm  # noqa: F401 — the fixture
@@ -54,6 +55,18 @@ class TestStore:
         path = tmp_path / "controls.json"
         path.write_text(content)
         assert ControlsStore(path).load().nose is NoseFacing.AWAY
+
+    def test_slow_is_the_default_and_the_choice_is_kept(self, tmp_path):
+        store = ControlsStore(tmp_path / "controls.json")
+        assert store.load().speed is Speed.SLOW
+        store.save(Controls().with_speed(Speed.NORMAL))
+        assert store.load().speed is Speed.NORMAL
+
+    @pytest.mark.parametrize("content", ['{"nose": "left"}', '{"speed": "warp"}', '{"speed": 2}'])
+    def test_an_old_or_bad_speed_is_slow(self, tmp_path, content):
+        path = tmp_path / "controls.json"
+        path.write_text(content)
+        assert ControlsStore(path).load().speed is Speed.SLOW
 
     def test_clearing_the_spot_clears_its_date(self):
         c = Controls().with_operator((1.0, 1.0)).with_operator(None)
@@ -148,6 +161,32 @@ class TestSession:
         with pytest.raises(SessionError, match="towards"):
             rig.session.set_nose("up")
         assert rig.session.snapshot().controls["nose"] == "away"
+
+    def test_the_speed_is_saved_and_reaches_a_flight(self, rig, tmp_path):  # noqa: F811
+        rig.session.set_speed("normal")
+        assert json.loads((tmp_path / "controls.json").read_text())["speed"] == "normal"
+        start_and_confirm(rig)
+        rig.session.arm_manual()
+        assert rig.link.manual_controller.speed is Speed.NORMAL
+        rig.session.set_speed("slow")                       # and in the air
+        assert rig.link.manual_controller.speed is Speed.SLOW
+
+    def test_an_unknown_speed_is_refused_in_words(self, rig):  # noqa: F811
+        with pytest.raises(SessionError, match="slow"):
+            rig.session.set_speed("warp")
+
+    def test_a_correction_turns_the_saved_nose(self, rig, tmp_path):  # noqa: F811
+        rig.session.set_nose("left")
+        start_and_confirm(rig)
+        rig.session.arm_manual()
+        rig.session.correct_nose("left")                    # left of left: towards
+        assert rig.session.snapshot().controls["nose"] == "towards"
+        assert rig.link.manual_controller.nose is NoseFacing.TOWARDS
+        assert json.loads((tmp_path / "controls.json").read_text())["nose"] == "towards"
+
+    def test_an_unknown_correction_is_refused_in_words(self, rig):  # noqa: F811
+        with pytest.raises(SessionError, match="towards"):
+            rig.session.correct_nose("up")
 
     def test_ending_the_session_clears_the_live_frame(self, rig):  # noqa: F811
         start_and_confirm(rig)
