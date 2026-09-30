@@ -25,6 +25,7 @@ import contextlib
 import json
 import logging
 import os
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -82,6 +83,14 @@ STALE_ADDRESS_S = 15.0
 #: range will not come back by being restarted in a loop.
 REJOIN_EVERY_S = 60.0
 DEFAULT_PORT = 8765
+#: How long shutting down may take before the process exits regardless. Above
+#: the longest honest landing (End session waits 15 s for a flight to land,
+#: session.py) and below verify_sidecar.py's 30 s EXIT_TIMEOUT_S. Without it, a
+#: session.end blocked on a dead link kept the agent — and the radio — for 9 h.
+SHUTDOWN_DEADLINE_S = 20.0
+#: How long uvicorn waits for open connections (the window's WebSocket) before
+#: the lifespan shutdown runs. Its default is to wait forever.
+GRACEFUL_SHUTDOWN_S = 5
 
 # The desktop window itself. WebKit serves it from `tauri://localhost` on macOS
 # and `http://tauri.localhost` on Windows; `localhost:1420` is `pnpm tauri dev`.
@@ -336,7 +345,7 @@ def _restore_sign_in() -> None:
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI):
+async def lifespan(api: FastAPI):
     agent.hub.bind(asyncio.get_running_loop())
     agent.syncer.start()
     # Signing back in is a network call; the API must answer /health while it
@@ -350,6 +359,11 @@ async def lifespan(_app: FastAPI):
         threading.Thread(target=agent.watchdog, name="camera-watchdog", daemon=True).start()
     log.info("agent API on %s:%d", DEFAULT_HOST, DEFAULT_PORT)
     yield
+    # A SIGTERM or Ctrl+C ends the session the same way closing the app does,
+    # so it is bounded the same way. Only `serve` arms it: a test's TestClient
+    # runs this shutdown inside the test process, which must not be exited.
+    deadline_s: float | None = getattr(api.state, "exit_deadline_s", None)
+    finished = arm_exit_deadline(deadline_s) if deadline_s else None
     agent.session.stop_standby()
     try:
         agent.session.end("agent shutting down")
@@ -357,6 +371,8 @@ async def lifespan(_app: FastAPI):
         log.exception("could not end the session cleanly")
     agent.syncer.stop()
     agent.session.processing.close()
+    if finished is not None:
+        finished.set()
 
 
 app = FastAPI(title="CropWatcher Agent", version="0.2.0", lifespan=lifespan)
@@ -1157,11 +1173,63 @@ def serve(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT,
     if exit_with_parent:
         exit_when_parent_closes()
 
+    app.state.exit_deadline_s = SHUTDOWN_DEADLINE_S
     logging.getLogger("uvicorn.access").addFilter(QuietHealthFilter())
-    uvicorn.run(app, host=host, port=port, log_level="info")
+    uvicorn.run(app, host=host, port=port, log_level="info",
+                timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_S)
 
 
-def exit_when_parent_closes() -> None:
+def arm_exit_deadline(deadline_s: float) -> threading.Event:
+    """Exit the process in `deadline_s` unless the returned event is set first.
+
+    Shutting down tries to land the drone and end the session, and either can
+    block on a link that has stopped answering. Measured 2026-09-30: the app
+    closed, the parent watchdog fired, `session.end` never returned, and the
+    agent held the radio and the port for 9 h — refusing SIGTERM, because the
+    lifespan shutdown calls the same `session.end` — until it was killed by
+    hand. The next launch and `install.mjs` both found it still running.
+
+    The reaper takes no lock and does not wait on logging: a blocked log
+    handler is one of the things that can hang. Its one line is written from a
+    thread of its own, and the exit does not wait for it.
+    """
+    finished = threading.Event()
+
+    def reap() -> None:
+        if finished.wait(deadline_s):
+            return
+        threading.Thread(
+            target=log.error, daemon=True, name="exit-deadline-log",
+            args=("shutdown did not finish within %.0f s — exiting anyway", deadline_s),
+        ).start()
+        time.sleep(0.2)
+        os._exit(1)
+
+    threading.Thread(target=reap, daemon=True, name="exit-deadline").start()
+    return finished
+
+
+def _detach_console_logging() -> None:
+    """Stop logging to stdout and stderr; the log file carries on.
+
+    Once the parent is gone, nothing reads those pipes. The agent's handlers
+    write to stderr before the file (cli.py), so a write that blocks there
+    holds the handler's lock and freezes every thread that logs after it — the
+    9 h agent's log stopped mid-sentence four minutes after the app closed.
+    """
+    consoles = {sys.stdout, sys.stderr, sys.__stdout__, sys.__stderr__}
+    loggers = [logging.getLogger()] + [
+        found for found in logging.Logger.manager.loggerDict.values()
+        if isinstance(found, logging.Logger)
+    ]
+    for logger in loggers:
+        for handler in list(logger.handlers):
+            # Exactly StreamHandler: a FileHandler is a subclass, and it stays.
+            if type(handler) is logging.StreamHandler and handler.stream in consoles:
+                logger.removeHandler(handler)
+
+
+def exit_when_parent_closes(deadline_s: float = SHUTDOWN_DEADLINE_S) -> None:
     """Shut down when whoever launched us goes away. Used by the desktop app.
 
     Killing the sidecar from the desktop side is not enough, and the reason is
@@ -1180,10 +1248,10 @@ def exit_when_parent_closes() -> None:
     Stdin is the fix because it is the one handle the real process inherits:
     when the parent dies its pipe closes, and the read below returns EOF in the
     process that actually matters. The session is ended first — this path can
-    run while the drone is in the air.
+    run while the drone is in the air — but within `deadline_s`: noticing the
+    parent is gone is only half of it; the exit must happen whatever the
+    session does (arm_exit_deadline).
     """
-    import sys
-    import threading
 
     def watch() -> None:
         try:
@@ -1192,14 +1260,17 @@ def exit_when_parent_closes() -> None:
         except Exception:  # noqa: BLE001 - a closed pipe must not raise here
             pass
 
+        _detach_console_logging()
         log.warning("parent process closed — landing and shutting down")
+        finished = arm_exit_deadline(deadline_s)
         try:
             agent.session.end("the app closed")
         except Exception:
             log.exception("could not end the session; stopping the motors")
+        finished.set()
         os._exit(0)
 
     threading.Thread(target=watch, daemon=True, name="parent-watchdog").start()
 
 
-__all__ = ["app", "serve", "agent", "exit_when_parent_closes"]
+__all__ = ["app", "serve", "agent", "exit_when_parent_closes", "arm_exit_deadline"]
