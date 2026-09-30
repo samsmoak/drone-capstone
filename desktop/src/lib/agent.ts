@@ -70,8 +70,6 @@ export type Session = {
 /** "operator": away from you. "room": the room's own directions. */
 export type KeyFrameChoice = "operator" | "room";
 
-/** Which way the drone went, as the operator sees it (Shift + an arrow). */
-export type SeenDirection = "away" | "left" | "right" | "towards";
 
 /** What the arrows mean on this tick, from the agent. */
 export type ArrowFrame = {
@@ -490,9 +488,6 @@ export const api = {
   setProcessing: (on: boolean) => command<Session>("/session/processing", { on }),
   /** Which way the arrow keys move the drone. Works in the air. */
   setKeyFrame: (frame: KeyFrameChoice) => command<Session>("/controls/frame", { frame }),
-  /** Shift + an arrow, in the air, no base stations: the last arrow flown
-   *  went `went` of you — the arrows turn to match, for this flight. */
-  correctNose: (went: SeenDirection) => command<Session>("/controls/nose/correct", { went }),
   /** "I'm here": the drone's position now becomes the operator's spot. */
   markOperatorHere: () => command<Session>("/controls/operator", { from_drone: true }),
   /** Forget the marked spot; "away" is measured from where it takes off. */

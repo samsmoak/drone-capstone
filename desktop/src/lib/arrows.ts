@@ -9,8 +9,8 @@
  *              base stations were set up (`cropwatcher geometry`).
  * and they fall back, said here, when the drone is close to you (room
  * directions), when there is no position (the way the nose pointed at takeoff,
- * kept however it turns; Shift + an arrow corrects it in the air) or no
- * heading at all (the nose).
+ * kept however it turns) or no heading at all (the nose). Holding Shift
+ * reverses the arrows (lib/keys.ts) — said here, where the arrows are said.
  */
 
 import type { Controls, KeyFrameChoice } from "@/lib/agent";
@@ -32,7 +32,7 @@ export function arrowWords(controls: Controls, assisted: boolean): ArrowWords {
   const live = controls.live;
   if (!live && !assisted) {
     return { short: "nose", warn: false,
-      line: "No base stations: ↑ flies the way the nose points at takeoff, and keeps that way however it turns." };
+      line: "No base stations: ↑ flies the way the nose points at takeoff, and keeps that way however it turns. Hold Shift to reverse the arrows." };
   }
   if (!live) {
     if (controls.key_frame === "room") {
@@ -64,9 +64,7 @@ export function arrowWords(controls: Controls, assisted: boolean): ArrowWords {
         line: "↑ is the room's forward, whichever way the nose points." };
     case "takeoff":
       return { short: "nose", warn: false,
-        // Corrected by what the operator SEES: which way the last arrow
-        // actually went (App.tsx ALIGN_KEYS, flight/manual.py correct_nose).
-        line: "↑ flies the way the nose pointed at takeoff. Went the wrong way? Shift + the arrow for the way it actually went." };
+        line: "↑ flies the way the nose pointed at takeoff. Hold Shift to reverse the arrows — for when it faces you." };
     case "nose":
       return { short: "nose", warn: true,
         line: "No heading reported: the arrows follow the nose, as the drone sees it." };

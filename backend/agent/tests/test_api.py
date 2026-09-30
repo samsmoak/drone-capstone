@@ -27,7 +27,6 @@ COMMANDS = [
     ("post", "/session/health-test", None),
     ("post", "/session/retry", None),
     ("post", "/session/reset-drone", None),
-    ("post", "/controls/nose/correct", {"went": "left"}),
     ("post", "/session/program", {"height_m": 0.3, "hold_s": 5}),
     ("post", "/session/manual/arm", {}),
     ("post", "/session/land", None),
@@ -390,14 +389,10 @@ class TestArrowKeyControls:
         assert body["controls"] == {"key_frame": "operator", "operator": None,
                                     "operator_marked_at": None, "live": None}
 
-    def test_a_correction_on_the_ground_is_a_readable_refusal(self, client):
-        response = client.post("/controls/nose/correct", json={"went": "left"},
-                               headers=auth(client))
-        assert response.status_code == 409 and "Take off first" in response.json()["detail"]
-
-    def test_the_nose_and_speed_settings_are_gone(self, client):
+    def test_the_nose_speed_and_correction_endpoints_are_gone(self, client):
         for path, body in (("/controls/nose", {"nose": "left"}),
-                           ("/controls/speed", {"speed": "slow"})):
+                           ("/controls/speed", {"speed": "slow"}),
+                           ("/controls/nose/correct", {"went": "left"})):
             assert client.post(path, json=body, headers=auth(client)).status_code in (404, 405)
 
     def test_choosing_the_room_frame_is_kept(self, client):

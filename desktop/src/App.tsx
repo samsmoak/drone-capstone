@@ -34,7 +34,6 @@ import {
   watchAgentExit,
   type Intent,
   type Mode,
-  type SeenDirection,
   type CameraWifi,
   type SetupState,
   type Session,
@@ -55,28 +54,9 @@ import { DroneWifiDialog } from "@/components/DroneWifiDialog";
 import { PHASE_LABEL, PHASE_TONE, SHOW_DRONE_WIFI, droneWifi } from "@/lib/droneWifi";
 import { WifiPage } from "@/pages/wifi/WifiPage";
 import { SetupPage } from "@/pages/setup/SetupPage";
+import { intentFromKeys, isShift, KEY_MAP, sameIntent } from "@/lib/keys";
 
-/** Physical key → intent field. `code`, so the keys stay in the same place on AZERTY. */
-export const KEY_MAP: Record<string, keyof Intent> = {
-  ArrowUp: "forward",
-  ArrowDown: "back",
-  ArrowLeft: "left",
-  ArrowRight: "right",
-  KeyW: "up",
-  KeyS: "down",
-  KeyA: "yaw_left",
-  KeyD: "yaw_right",
-};
-
-/** Shift + an arrow, in the air with no base stations: which way the last arrow
- *  you flew actually WENT, as you see it — the arrows turn to match, for this
- *  flight (cropwatcher/flight/manual.py correct_nose). Never a flight key. */
-export const ALIGN_KEYS: Record<string, SeenDirection> = {
-  ArrowUp: "away",
-  ArrowLeft: "left",
-  ArrowRight: "right",
-  ArrowDown: "towards",
-};
+export { KEY_MAP } from "@/lib/keys";
 
 export const HISTORY_S = 60;
 const HISTORY_LIMIT = HISTORY_S * 10;      // 10 Hz
@@ -248,12 +228,24 @@ export default function App() {
   const flying = session?.activity === "manual" || session?.activity === "program"
     || session?.activity === "mission";
   const manualFlying = session?.activity === "manual";
-  // Shift + arrow corrects the arrows: in the air (controls.live is set only
-  // while flying), with no base stations (the agent says "takeoff").
-  const canCorrect = session?.mode === "manual" && session.controls.live?.active === "takeoff";
+  // The flight keys physically held, and whether Shift is — the intent sent is
+  // worked out from these (lib/keys.ts), so Shift can flip a held arrow.
+  const heldKeys = useRef<Set<string>>(new Set());
+  const reversed = useRef(false);
 
   // ── keyboard: key *state*, not the OS repeat stream ────────────────
   useEffect(() => {
+    const held = heldKeys.current;
+    // Send what the held keys now ask for — only when that changed.
+    const apply = () => {
+      const next = intentFromKeys(held, reversed.current);
+      setIntent((current) => {
+        if (sameIntent(current, next)) return current;
+        live.current?.sendIntent(next);
+        return next;
+      });
+    };
+
     const onDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
@@ -270,13 +262,11 @@ export default function App() {
         void run(api.land, "Land (L)");
         return;
       }
-      // Shift + arrow is never flight: it corrects the arrows, or does
-      // nothing. Checked before the flight keys so it cannot move the drone.
-      const went = ALIGN_KEYS[event.code];
-      if (went && event.shiftKey) {
-        event.preventDefault();
-        if (event.repeat || !canCorrect) return;
-        void run(() => api.correctNose(went), `It went ${went} (Shift+arrow)`);
+      // Shift reverses the arrows while held (lib/keys.ts) — a held ↑ flies
+      // ↓ the instant it goes down. Never a command of its own.
+      if (isShift(event.code)) {
+        reversed.current = true;
+        apply();
         return;
       }
       if (event.repeat || !manualFlying) return;
@@ -284,12 +274,9 @@ export default function App() {
       const field = KEY_MAP[event.code];
       if (!field) return;
       event.preventDefault();
-      setIntent((current) => {
-        if (current[field]) return current;
-        const next = { ...current, [field]: true };
-        live.current?.sendIntent(next);
-        return next;
-      });
+      reversed.current = event.shiftKey;
+      held.add(event.code);
+      apply();
     };
 
     const onUp = (event: KeyboardEvent) => {
@@ -297,25 +284,23 @@ export default function App() {
         event.preventDefault();
         return;
       }
-      const field = KEY_MAP[event.code];
-      if (!field) return;
+      if (isShift(event.code)) {
+        reversed.current = false;
+        apply();
+        return;
+      }
+      if (!KEY_MAP[event.code]) return;
       event.preventDefault();
-      setIntent((current) => {
-        if (!current[field]) return current;
-        const next = { ...current, [field]: false };
-        live.current?.sendIntent(next);
-        return next;
-      });
+      held.delete(event.code);
+      apply();
     };
 
     // A window that loses focus never sees keyup. Releasing everything is the
     // safe reading: the drone holds its height instead of drifting on.
     const onBlur = () => {
-      setIntent((current) => {
-        if (!Object.values(current).some(Boolean)) return current;
-        live.current?.sendIntent(EMPTY_INTENT);
-        return EMPTY_INTENT;
-      });
+      held.clear();
+      reversed.current = false;
+      apply();
     };
 
     window.addEventListener("keydown", onDown);
@@ -326,7 +311,7 @@ export default function App() {
       window.removeEventListener("keyup", onUp);
       window.removeEventListener("blur", onBlur);
     };
-  }, [manualFlying, canCorrect, run]);
+  }, [manualFlying, run]);
 
   // Nothing is known yet: the agent has not answered, or it is still trying the
   // saved sign-in. Hold the shape rather than claim "signed out".

@@ -42,10 +42,6 @@ ENDPOINTS
     POST /session/manual/hold       rise to a height and hold it {height_m}
     POST /controls/frame            {"frame": "operator" | "room"} — which way
                                     the arrows move the drone; works in the air
-    POST /controls/nose/correct     {"went": "away" | "left" | "right" |
-                                    "towards"} — Shift + an arrow, in the air,
-                                    no base stations: which way the last arrow
-                                    went; this flight only (manual-control.txt)
     POST /controls/operator         {"from_drone": true} ("I'm here") | {x, y} |
                                     {"clear": true} — the operator's spot
                                     (manual-control.txt, "THE ARROWS FOLLOW YOU")

@@ -48,7 +48,7 @@ from cropwatcher.flight.checks import CheckResult, ChecksFailed, ReadyReport, co
 from cropwatcher.flight.control import GuardedFlight, PhaseEvent
 from cropwatcher.flight.controls_store import ControlsStore, valid_spot
 from cropwatcher.flight.core import DEFAULT_URI
-from cropwatcher.flight.keyframe import FrameStatus, KeyFrame, NoseFacing
+from cropwatcher.flight.keyframe import FrameStatus, KeyFrame
 from cropwatcher.flight.link import DEFAULT_FENCE_M, DEFAULT_MAX_HEIGHT_M, DroneLink, LinkError
 from cropwatcher.flight.manual import CLIMB_RATE_M_S, MOVE_SPEED_M_S
 from cropwatcher.flight.programs import HoverTest, Outcome, run_hover_test
@@ -1350,26 +1350,6 @@ class Session:
             raise SessionError('The arrow keys follow "operator" or "room".') from None
         self._controls = self._controls.with_frame(chosen)
         self._apply_controls()
-
-    def correct_nose(self, went: str) -> None:
-        """Shift + an arrow, in the air, with no position: the last arrow flown
-        moved the drone `went` of the operator — "away", "left", "right" or
-        "towards" them. The arrows turn to match, for this flight only
-        (ManualController.correct_nose). Nothing is saved: the next flight
-        starts along the nose again, as the arrows always have."""
-        try:
-            seen = NoseFacing(went)
-        except ValueError:
-            raise SessionError(
-                'Say which way it went: "away", "left", "right" or "towards".') from None
-        controller = self.manual
-        if controller is None:
-            raise SessionError("Take off first — then fly an arrow and, if it went the "
-                               "wrong way, press Shift + the arrow it went.")
-        try:
-            controller.correct_nose(seen)
-        except RuntimeError as e:
-            raise SessionError(str(e)[:1].upper() + str(e)[1:] + ".") from None
 
     def mark_operator(self, *, from_drone: bool = False,
                       x: float | None = None, y: float | None = None,
