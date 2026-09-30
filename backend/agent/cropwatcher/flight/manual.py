@@ -159,13 +159,14 @@ MAX_UNASSISTED_HEIGHT_M = 0.80
 # Arrows: HALF the old 5° (2026-09-30). With no position a lean is not a speed
 # but an acceleration, g * tan(lean) — 0.43 m/s^2 here, 0.86 at 5° — for as
 # long as it is held, and the drone coasts after: nothing measures its speed,
-# so nothing can hold one. Two things bound it instead: the lean, and...
+# so nothing can hold one. The lean is the only bound.
+#
+# A HELD ARROW LEANS FOR AS LONG AS IT IS HELD. For one build (2026-09-30) a
+# press leaned for at most a second; in the lab the operator held ↓ for 2-5 s
+# to bring back a drone drifting away in a small room, the lean faded to 0
+# under the key (trace_7b36d994, 32:14: 3.4° -> 0.3° with ↓ still held), and
+# the drone kept going: "the keys don't work anymore". Never cut a held key.
 MAX_TILT_DEG = 2.5
-# ...how long one press may lean. Held past this, that arrow eases back to
-# level and the drone coasts on what it has — at most ~0.5 m/s from rest,
-# where a held 5° lean reached 1.7 m/s in two seconds (the lab, 2026-09-30).
-# Let go and press again for more. A change of direction starts a new push.
-MAX_PUSH_S = 1.0
 # The generic z-distance packet and the legacy rpyt packet disagree on the sign
 # of pitch (cfclient negates it for its height-hold mode). VERIFY IN THE LAB:
 # if the up arrow moves the drone backwards, flip this.
@@ -332,8 +333,6 @@ class ManualController:
         #: under — what correct_nose() measures against, so pressing the
         #: correction twice does not turn it twice.
         self._last_arrow: tuple[NoseFacing, NoseFacing] | None = None
-        #: Per axis: the sign being pushed and when that push began (MAX_PUSH_S).
-        self._push: dict[str, tuple[int, float]] = {}
         self._on_frame_change = on_frame_change
         #: Where and which way this flight lifted off. Reset by arm().
         self._takeoff_xy: tuple[float, float] | None = None
@@ -484,7 +483,6 @@ class ManualController:
             self._takeoff_heading = None
             self._nose = NoseFacing.AWAY
             self._last_arrow = None
-            self._push = {}
             self._set_frame_locked(None)
             self._last_heartbeat = self._clock()
             self._last_tick = self._clock()
@@ -1130,10 +1128,8 @@ class ManualController:
         "takeoff"), turned into the drone's frame by its heading now, so
         turning it with A and D does not turn the arrows. With no heading
         reported at all they tilt along the nose, as they always did."""
-        along = (1 if intent.forward else 0) - (1 if intent.back else 0)
-        across = (1 if intent.left else 0) - (1 if intent.right else 0)
-        forward = float(self._pushing_locked("forward", along))
-        left = float(self._pushing_locked("left", across))
+        forward = float((1 if intent.forward else 0) - (1 if intent.back else 0))
+        left = float((1 if intent.left else 0) - (1 if intent.right else 0))
         # Turning left is a positive yaw rate (cflib MotionCommander.start_turn_left).
         yaw = (1 if intent.yaw_left else 0) - (1 if intent.yaw_right else 0)
         # Landing reuses this law with no keys held: nothing to turn, and the
@@ -1150,20 +1146,6 @@ class ManualController:
         z = self._ground_z + self._target_height
         roll, pitch, rate = self._roll, self._pitch, self._yaw_rate
         return lambda: self._commander.send_zdistance_setpoint(roll, pitch, rate, z)
-
-    def _pushing_locked(self, axis: str, sign: int) -> int:
-        """The arrow axis to lean along this tick: `sign` while this push is
-        younger than MAX_PUSH_S, 0 after — the lean eases out and the drone
-        coasts. Releasing, or pressing the other way, starts a fresh push."""
-        if sign == 0:
-            self._push.pop(axis, None)
-            return 0
-        now = self._clock()
-        held = self._push.get(axis)
-        if held is None or held[0] != sign:
-            self._push[axis] = (sign, now)
-            return sign
-        return sign if now - held[1] < MAX_PUSH_S else 0
 
     def _note_arrow_locked(self, intent: Intent) -> None:
         """Remember a single arrow as it flies, with the correction in force —

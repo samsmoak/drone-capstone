@@ -208,14 +208,16 @@ no switch — the Slow / Normal buttons were taken out with the Nose buttons.
                  before     now
   lean, no position    5°     2.5°   half the push: g·tan 2.5° = 0.43 m/s²
   lean builds at    12°/s    8°/s    full lean in ~0.3 s
-  one press pushes for   —     1.0 s   then eases level; press again for more
   arrows, with position  0.20 m/s   0.12 m/s  (KEY_MOVE_SPEED_M_S)
   W / S, A / D     unchanged: 0.15 m/s, 30°/s
 
 With no position a lean is an ACCELERATION for as long as it is held and the
-drone coasts after — nothing measures its speed, so nothing can hold one. A 5°
-lean held two seconds reached ~1.7 m/s. MAX_PUSH_S bounds one press to ~0.5 m/s
-from rest; releasing, or pressing the other way, starts a fresh push. Keys only:
+drone coasts after — nothing measures its speed, so nothing can hold one; the
+lean is the only bound. A HELD ARROW LEANS FOR AS LONG AS IT IS HELD: for one
+build a press leaned at most 1 s, and in the lab ↓ held 2-5 s to bring back a
+drone drifting away faded to nothing under the key (trace_7b36d994, 32:14:
+3.4° -> 0.3°) — "the keys don't work anymore". A test pins a 5 s hold at full
+lean and fails on that build. Keys only:
 fly_to() (missions) and hold_at() ("Hover at") keep MOVE_SPEED_M_S and
 CLIMB_RATE_M_S — tests fail if the keys' numbers leak into a mission.
 
