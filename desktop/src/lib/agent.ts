@@ -61,6 +61,35 @@ export type Session = {
    *  processed when it lands, whether that is the operator's choice or still
    *  the mode's default (on in Auto, off in Manual), and recent jobs. */
   processing: Processing;
+  /** Which way the arrow keys move the drone (cropwatcher/flight/keyframe.py):
+   *  the operator's choice, their marked spot, and — while flying — what the
+   *  arrows mean right now. */
+  controls: Controls;
+};
+
+/** "operator": away from you. "room": the room's own directions. */
+export type KeyFrameChoice = "operator" | "room";
+
+/** What the arrows mean on this tick, from the agent. */
+export type ArrowFrame = {
+  chosen: KeyFrameChoice;
+  /** "takeoff": no position — the direction the nose had at takeoff.
+   *  "nose": not even a heading — the old behaviour. */
+  active: "operator" | "room" | "takeoff" | "nose";
+  reason: "near_operator" | "no_position" | "no_heading" | null;
+  /** The room direction ↑ moves the drone, degrees from +x; null for "nose". */
+  forward_deg: number | null;
+  operator: [number, number] | null;
+  operator_source: "marked" | "takeoff" | null;
+};
+
+export type Controls = {
+  key_frame: KeyFrameChoice;
+  /** The operator's marked spot, room metres; null: the takeoff spot is used. */
+  operator: [number, number] | null;
+  operator_marked_at: string | null;
+  /** null on the ground. */
+  live: ArrowFrame | null;
 };
 
 export type ProcessingJob = {
@@ -453,6 +482,12 @@ export const api = {
       `/missions/${encodeURIComponent(id)}/from-drone`, undefined, "GET"),
   /** The DPP switch for this session. */
   setProcessing: (on: boolean) => command<Session>("/session/processing", { on }),
+  /** Which way the arrow keys move the drone. Works in the air. */
+  setKeyFrame: (frame: KeyFrameChoice) => command<Session>("/controls/frame", { frame }),
+  /** "I'm here": the drone's position now becomes the operator's spot. */
+  markOperatorHere: () => command<Session>("/controls/operator", { from_drone: true }),
+  /** Forget the marked spot; "away" is measured from where it takes off. */
+  clearOperator: () => command<Session>("/controls/operator", { clear: true }),
   flightResult: (flightId: string) =>
     command<FlightResult>(`/flights/${encodeURIComponent(flightId)}/result`, undefined, "GET"),
   processFlight: (flightId: string) =>
@@ -668,8 +703,8 @@ export class LiveConnection {
  * hold-to-activate with no keyboard shortcut at all.
  */
 export const KEY_LABELS: { keys: { label: string; field?: keyof Intent }[]; action: string }[] = [
-  { keys: [{ label: "↑", field: "forward" }, { label: "↓", field: "back" }], action: "Forward / back" },
-  { keys: [{ label: "←", field: "left" }, { label: "→", field: "right" }], action: "Left / right" },
+  { keys: [{ label: "↑", field: "forward" }, { label: "↓", field: "back" }], action: "Away from you / back (Room: the room's forward / back)" },
+  { keys: [{ label: "←", field: "left" }, { label: "→", field: "right" }], action: "Round to your left / right (Room: the room's left / right)" },
   { keys: [{ label: "W", field: "up" }, { label: "S", field: "down" }], action: "Rise / descend, gently" },
   { keys: [{ label: "A", field: "yaw_left" }, { label: "D", field: "yaw_right" }], action: "Rotate left / right" },
   { keys: [{ label: "L" }], action: "Land gracefully" },

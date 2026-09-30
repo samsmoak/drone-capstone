@@ -40,6 +40,8 @@ import { SplitPane } from "@/components/SplitPane";
 import { useMediaQuery, WIDE } from "@/lib/useMediaQuery";
 import { AutoControl } from "./auto/AutoControl";
 import { DataPipelinePanel } from "./DataPipeline";
+import { ArrowFrame } from "./ArrowFrame";
+import { arrowWords } from "@/lib/arrows";
 import type { FlowStart } from "./auto/MissionFlow";
 import { ConsolePane } from "./ConsolePane";
 import { VitalsNow } from "./VitalsNow";
@@ -871,7 +873,7 @@ export function FlightDeck({ intent, mode, telemetry, session, run, ready, heigh
 
           <div className={`flex flex-wrap items-start gap-x-5 gap-y-3 border-t border-[var(--border)] pt-3 ${movementLive ? "" : "opacity-45"}`}>
             <Cluster caption="Height · rotation">
-              <div className="grid grid-cols-3 gap-1">
+              <div className="grid w-max grid-cols-3 gap-1">
                 <span />
                 <Cap label="W" field="up" intent={intent} />
                 <span />
@@ -881,8 +883,8 @@ export function FlightDeck({ intent, mode, telemetry, session, run, ready, heigh
               </div>
             </Cluster>
 
-            <Cluster caption="Position">
-              <div className="grid grid-cols-3 gap-1">
+            <Cluster caption={movementLive && session ? `Position · ${arrowWords(session.controls).short}` : "Position"}>
+              <div className="grid w-max grid-cols-3 gap-1">
                 <span />
                 <Cap label="↑" field="forward" intent={intent} />
                 <span />
@@ -898,6 +900,10 @@ export function FlightDeck({ intent, mode, telemetry, session, run, ready, heigh
               </Cluster>
             )}
           </div>
+
+          {/* Which way the arrows go — never along the nose. On screen with
+              the keys, so it can be read and switched in the air. */}
+          {movementLive && session && <ArrowFrame session={session} run={run} />}
         </div>
 
         {/* The other column: the four things you press with the mouse. */}

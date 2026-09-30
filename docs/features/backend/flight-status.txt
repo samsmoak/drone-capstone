@@ -259,7 +259,9 @@ THE ORDER TO DO IT IN
 
   1  cropwatcher geometry --distance 1.0    fixes the rotated frame
   2  cropwatcher check                      expect settle under 2 cm
-  3  Re-test directions. Forward should go where the nose points.
+  3  Re-test directions. Since 2026-09-30 the arrows ignore the nose
+       (manual-control.txt, "THE ARROWS FOLLOW YOU"): in Room mode ↑ should
+       go along the room's +x whatever the heading; From you, away from you.
        If it is STILL inverted after correct geometry, it is a genuine sign
        bug and the yaw convention needs pinning — sit the drone facing a
        known way, read stabilizer.yaw, rotate it 90 deg left, read again.

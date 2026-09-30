@@ -12,6 +12,13 @@ import math
 
 import pytest
 
+from cropwatcher.flight.keyframe import (
+    FAR_OPERATOR_M,
+    NEAR_OPERATOR_M,
+    ActiveFrame,
+    KeyFrame,
+    Reason,
+)
 from cropwatcher.flight.manual import (
     CLIMB_ACCEL_M_S2,
     CLIMB_RATE_M_S,
@@ -51,23 +58,33 @@ STOPPING_DISTANCE = CLIMB_RATE_M_S**2 / (2 * CLIMB_ACCEL_M_S2)
 
 
 #: An arbitrary spot the estimator reports the drone at, so tests that care
-#: about the commanded point have a number to recognise. Heading 0, so
-#: "forward" is +x and a direction test reads plainly; the body-to-world
-#: rotation is pinned separately at 90 and 180 degrees.
+#: about the commanded point have a number to recognise. Heading 0, so the
+#: nose happens to point +x; that the arrows ignore the nose is pinned
+#: separately, at 90, 180 and -116 degrees (TestArrowsIgnoreTheNose).
 SOMEWHERE = Fix(1.5, -0.5, 0.0)
 
 
 class Rig:
-    def __init__(self, assisted: bool = True, fix: Fix | None = SOMEWHERE):
+    def __init__(self, assisted: bool = True, fix: Fix | None = SOMEWHERE, *,
+                 key_frame: KeyFrame = KeyFrame.OPERATOR,
+                 operator: tuple[float, float] | None = None,
+                 yaw: float | None = None):
         self.clock = FakeClock()
         self.cmd = FakeCommander()
         self.lands: list[tuple[float, float]] = []
         #: What the estimator reports. Moving it simulates the drone drifting.
         self.fix = fix
+        #: The heading the drone reports when there is no fix (the gyro).
+        self.yaw = yaw
+        #: Every change of what the arrows mean, as the app would hear it.
+        self.frames: list = []
         self.ctl = ManualController(
             self.cmd, ground_z=GROUND, land=lambda z, d: self.lands.append((z, d)),
             assisted=assisted, clock=self.clock,
             position=lambda: self.fix,
+            heading=lambda: self.fix.yaw_deg if self.fix is not None else self.yaw,
+            key_frame=key_frame, operator_xy=operator,
+            on_frame_change=self.frames.append,
         )
 
     def run(self, seconds: float, intent: Intent | None = None, heartbeat: bool = True):
@@ -603,35 +620,222 @@ class TestTheCommandedPoint:
         assert (after.x, after.y) == (before.x, before.y)
 
 
-class TestForwardMeansWhereTheNosePoints:
-    """The keys are in the drone's frame, the point is in the room's.
+class TestArrowsIgnoreTheNose:
+    """The arrows move the drone in the ROOM — away from the operator, or
+    along the room's own directions — whatever way its nose points
+    (keyframe.py; the owner, 2026-09-30). Until then ↑ meant "where the nose
+    points", and a drone set down at -116° (flight-log.txt) or turned with A/D
+    went somewhere the operator did not expect."""
 
-    The firmware did this rotation for us when we sent velocities. With a
-    position it is ours, and the sign of the sine term is the difference
-    between forward and backward.
-    """
+    HEADINGS = (0.0, 90.0, 180.0, -116.0, 37.0)
 
-    def test_facing_along_y_sends_forward_along_y(self):
-        rig = Rig(fix=Fix(0.0, 0.0, 90.0))
-        rig.fly_to(0.3)
-        rig.run(1.0, Intent(forward=True))
+    @staticmethod
+    def moved(rig: Rig, before: Fix) -> tuple[float, float]:
         target = rig.ctl.target
-        assert target.y > 0.02                       # nose points +y at yaw 90
-        assert target.x == pytest.approx(0.0, abs=1e-9)
+        return (target.x - before.x, target.y - before.y)
 
-    def test_facing_backwards_sends_forward_along_minus_x(self):
-        rig = Rig(fix=Fix(0.0, 0.0, 180.0))
+    @pytest.mark.parametrize("heading", HEADINGS)
+    def test_room_forward_is_plus_x_whatever_the_heading(self, heading):
+        rig = Rig(fix=Fix(0.0, 0.0, heading), key_frame=KeyFrame.ROOM)
         rig.fly_to(0.3)
+        before = rig.ctl.target
         rig.run(1.0, Intent(forward=True))
-        assert rig.ctl.target.x < -0.02
+        dx, dy = self.moved(rig, before)
+        assert dx > 0.02 and dy == pytest.approx(0.0, abs=1e-9)
 
-    def test_left_is_ninety_degrees_off_the_nose(self):
-        rig = Rig(fix=Fix(0.0, 0.0, 90.0))
+    @pytest.mark.parametrize("heading", HEADINGS)
+    def test_room_left_is_plus_y_whatever_the_heading(self, heading):
+        rig = Rig(fix=Fix(0.0, 0.0, heading), key_frame=KeyFrame.ROOM)
         rig.fly_to(0.3)
+        before = rig.ctl.target
         rig.run(1.0, Intent(left=True))
-        target = rig.ctl.target
-        assert target.x < -0.02                      # facing +y, left is -x
-        assert target.y == pytest.approx(0.0, abs=1e-9)
+        dx, dy = self.moved(rig, before)
+        assert dy > 0.02 and dx == pytest.approx(0.0, abs=1e-9)
+
+    def test_turning_with_a_and_d_does_not_turn_the_arrows(self):
+        rig = Rig(fix=Fix(0.0, 0.0, 0.0), key_frame=KeyFrame.ROOM)
+        rig.fly_to(0.3)
+        rig.run(3.0, Intent(yaw_left=True))           # 90 degrees round
+        assert rig.ctl.target.yaw_deg > 60.0
+        before = rig.ctl.target
+        rig.run(1.0, Intent(forward=True))
+        dx, dy = self.moved(rig, before)
+        assert dx > 0.02 and dy == pytest.approx(0.0, abs=1e-9)
+
+    @pytest.mark.parametrize("heading", HEADINGS)
+    @pytest.mark.parametrize(("where", "away"), [
+        ((1.0, 0.0), (1.0, 0.0)),            # in front of the operator
+        ((0.0, -1.5), (0.0, -1.0)),          # behind them: they turn to face it
+        ((-1.0, 1.0), (-0.7071, 0.7071)),    # off to one side, diagonally
+    ])
+    def test_up_flies_it_away_from_the_operator(self, heading, where, away):
+        rig = Rig(fix=Fix(where[0], where[1], heading), operator=(0.0, 0.0))
+        rig.fly_to(0.3)
+        before = rig.ctl.target
+        rig.run(1.0, Intent(forward=True))
+        dx, dy = self.moved(rig, before)
+        length = math.hypot(dx, dy)
+        assert length > 0.02
+        assert (dx / length, dy / length) == pytest.approx(away, abs=1e-3)
+        assert rig.ctl.frame_status.active is ActiveFrame.OPERATOR
+
+    def test_down_brings_it_back_towards_the_operator(self):
+        rig = Rig(fix=Fix(1.0, 0.0, 145.0), operator=(0.0, 0.0))
+        rig.fly_to(0.3)
+        before = rig.ctl.target
+        rig.run(1.0, Intent(back=True))
+        dx, dy = self.moved(rig, before)
+        assert dx < -0.02 and dy == pytest.approx(0.0, abs=1e-9)
+
+    def test_left_goes_round_to_the_operators_left(self):
+        rig = Rig(fix=Fix(1.0, 0.0, 145.0), operator=(0.0, 0.0))
+        rig.fly_to(0.3)
+        before = rig.ctl.target
+        rig.run(1.0, Intent(left=True))
+        dx, dy = self.moved(rig, before)
+        # Facing the drone along +x, the operator's left is +y.
+        assert dy > 0.02 and dx == pytest.approx(0.0, abs=1e-9)
+
+    def test_without_a_marked_spot_away_is_measured_from_the_takeoff_spot(self):
+        rig = Rig(fix=Fix(0.0, 0.0, 70.0))
+        rig.fly_to(0.3)
+        assert rig.ctl.frame_status.operator == (0.0, 0.0)
+        assert rig.ctl.frame_status.operator_source == "takeoff"
+        rig.drift(0.0, -1.0)                          # it wanders 1 m to -y
+        before = rig.ctl.target
+        rig.run(0.5, Intent(forward=True))
+        dx, dy = self.moved(rig, before)
+        assert dy < -0.01 and abs(dx) < 0.005         # further along -y
+        assert rig.ctl.frame_status.active is ActiveFrame.OPERATOR
+
+    def test_close_to_the_operator_the_arrows_use_the_room(self):
+        rig = Rig(fix=Fix(0.2, 0.1, 150.0), operator=(0.0, 0.0))
+        rig.fly_to(0.3)
+        status = rig.ctl.frame_status
+        assert status.active is ActiveFrame.ROOM
+        assert status.reason is Reason.NEAR_OPERATOR
+        before = rig.ctl.target
+        rig.run(0.5, Intent(forward=True))
+        dx, dy = self.moved(rig, before)
+        assert dx > 0.01 and dy == pytest.approx(0.0, abs=1e-9)
+
+    def test_the_near_circle_has_hysteresis(self):
+        rig = Rig(fix=Fix(NEAR_OPERATOR_M - 0.05, 0.0, 0.0), operator=(0.0, 0.0))
+        rig.fly_to(0.3)
+        assert rig.ctl.frame_status.reason is Reason.NEAR_OPERATOR
+        # Between the two radii it stays near — no flicker at the edge.
+        rig.fix = Fix((NEAR_OPERATOR_M + FAR_OPERATOR_M) / 2, 0.0, 0.0)
+        rig.run(0.1)
+        assert rig.ctl.frame_status.reason is Reason.NEAR_OPERATOR
+        rig.fix = Fix(FAR_OPERATOR_M + 0.05, 0.0, 0.0)
+        rig.run(0.1)
+        assert rig.ctl.frame_status.active is ActiveFrame.OPERATOR
+
+    def test_room_mode_ignores_the_operator(self):
+        rig = Rig(fix=Fix(0.0, -1.5, 0.0), key_frame=KeyFrame.ROOM, operator=(0.0, 0.0))
+        rig.fly_to(0.3)
+        before = rig.ctl.target
+        rig.run(1.0, Intent(forward=True))
+        dx, dy = self.moved(rig, before)
+        assert dx > 0.02 and dy == pytest.approx(0.0, abs=1e-9)
+        assert rig.ctl.frame_status.active is ActiveFrame.ROOM
+        assert rig.ctl.frame_status.reason is None
+
+    def test_switching_frames_in_the_air_takes_effect_and_is_announced(self):
+        rig = Rig(fix=Fix(0.0, -1.5, 0.0), operator=(0.0, 0.0))
+        rig.fly_to(0.3)
+        heard = len(rig.frames)
+        rig.ctl.set_key_frame(KeyFrame.ROOM, (0.0, 0.0))
+        assert len(rig.frames) == heard + 1
+        assert rig.frames[-1].active is ActiveFrame.ROOM
+        before = rig.ctl.target
+        rig.run(1.0, Intent(forward=True))
+        dx, dy = self.moved(rig, before)
+        assert dx > 0.02 and dy == pytest.approx(0.0, abs=1e-9)
+
+    def test_the_app_hears_changes_not_every_tick(self):
+        rig = Rig(fix=Fix(1.0, 0.0, 0.0), operator=(0.0, 0.0))
+        rig.fly_to(0.3)
+        heard = len(rig.frames)
+        rig.run(2.0, Intent(left=True))    # circles round: the angle moves...
+        assert len(rig.frames) == heard    # ...but the frame is the same news
+
+    def test_a_listener_that_raises_does_not_stop_the_loop(self):
+        rig = Rig(fix=Fix(1.0, 0.0, 0.0), operator=(0.0, 0.0))
+
+        def broken(_status):
+            raise RuntimeError("listener bug")
+
+        rig.ctl._on_frame_change = broken
+        rig.fly_to(0.3)
+        rig.run(0.5, Intent(forward=True))
+        assert rig.ctl.state is ControlState.FLYING
+
+    def test_landing_clears_what_the_arrows_mean(self):
+        rig = Rig(fix=Fix(1.0, 0.0, 0.0), operator=(0.0, 0.0))
+        rig.fly_to(0.3)
+        assert rig.ctl.frame_status is not None
+        rig.ctl.land()
+        assert rig.ctl.frame_status is None
+        assert rig.frames[-1] is None
+
+    def test_no_position_keeps_the_takeoff_direction_as_the_drone_turns(self):
+        # Assisted, but the position never arrives: the velocity fallback,
+        # which is in the drone's frame — the arrows are turned into it.
+        rig = Rig(fix=None, yaw=0.0)
+        rig.fly_to(0.3)
+        rig.yaw = 90.0                           # it has turned a quarter left
+        rig.run(1.0, Intent(forward=True))
+        _, vx, vy, _, _ = rig.cmd.last("hover")
+        # Still the takeoff direction (+x), which is now the drone's right.
+        assert vx == pytest.approx(0.0, abs=1e-9)
+        assert vy == pytest.approx(-MOVE_SPEED_M_S)
+        status = rig.ctl.frame_status
+        assert status.active is ActiveFrame.TAKEOFF and status.reason is Reason.NO_POSITION
+
+    def test_no_heading_at_all_falls_back_to_the_nose(self):
+        rig = Rig(fix=None, yaw=None)
+        rig.fly_to(0.3)
+        rig.run(1.0, Intent(forward=True))
+        _, vx, vy, _, _ = rig.cmd.last("hover")
+        assert vx == pytest.approx(MOVE_SPEED_M_S) and vy == 0
+        assert rig.ctl.frame_status.active is ActiveFrame.NOSE
+        assert rig.ctl.frame_status.reason is Reason.NO_HEADING
+
+
+class TestUnassistedArrowsKeepTheTakeoffDirection:
+    """No base stations: no room and no operator to be away from. The arrows
+    keep the way the nose pointed at takeoff, however the drone turns."""
+
+    def test_after_a_quarter_turn_up_still_tilts_towards_the_takeoff_direction(self):
+        rig = Rig(assisted=False, fix=Fix(0.0, 0.0, 0.0))
+        rig.fly_to(0.3)
+        rig.fix = Fix(0.0, 0.0, 90.0)             # turned left a quarter
+        rig.run(1.0, Intent(forward=True))
+        _, roll, pitch, _, _ = rig.cmd.last("zdistance")
+        # The takeoff direction is now the drone's right: roll right, no pitch.
+        assert roll == pytest.approx(MAX_TILT_DEG)
+        assert pitch == pytest.approx(0.0, abs=1e-9)
+        assert rig.ctl.frame_status.active is ActiveFrame.TAKEOFF
+
+    def test_facing_the_takeoff_direction_it_tilts_as_it_always_did(self):
+        rig = Rig(assisted=False, fix=Fix(0.0, 0.0, -116.0))
+        rig.fly_to(0.3)
+        rig.run(1.0, Intent(forward=True))
+        _, roll, pitch, _, _ = rig.cmd.last("zdistance")
+        assert roll == pytest.approx(0.0, abs=1e-9)
+        assert pitch == pytest.approx(MAX_TILT_DEG * -1.0)   # PITCH_SIGN
+
+    def test_with_no_heading_it_tilts_along_the_nose(self):
+        rig = Rig(assisted=False, fix=None, yaw=None)
+        rig.fly_to(0.3)
+        rig.run(1.0, Intent(right=True))
+        _, roll, _, _, _ = rig.cmd.last("zdistance")
+        assert roll == pytest.approx(MAX_TILT_DEG)
+
+
+class TestHeading:
+    """The heading is only the nose: A and D turn it, and it is held."""
 
     def test_the_heading_stays_inside_half_a_turn(self):
         """A heading that accumulates past 180 is still a heading, but the

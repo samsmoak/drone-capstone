@@ -141,6 +141,16 @@ console is the half that needs vertical room.
 Thrust and height came OFF the attitude indicator when the vitals moved, because
 the vitals show them and two places for one number is worse than either.
 
+THE ARROWS ROW, under the keys (2026-09-30, ArrowFrame.tsx): From you / Room,
+I'm here, Use takeoff spot, and one sentence saying what the arrows do RIGHT
+NOW — away from you, or the fallback in force (near you, no position, no
+heading) with a ▲. The keys' caption says it too ("Position · from you"). It
+is in the FlightDeck, not a panel, because it can be switched in the air and
+must be read with the keys. The words are lib/arrows.ts; the decision is the
+agent's (../backend/manual-control.txt, "THE ARROWS FOLLOW YOU"). Captions stay
+short: a long one widened the keypad's cluster and pulled the caps apart
+(fixed with w-max on the key grids).
+
 THE KEYS ARE SHOWN IN AUTO TOO, dimmed and said to be inactive rather than
 removed: a control that disappears between modes is one the operator has to
 relearn. L still lands in both. They were a panel below the action rail, the checks and the
@@ -499,6 +509,9 @@ should stay that way.
 
 RELATED
 
+depends-on        ../backend/manual-control.txt
+                  the Arrows row shows and sets which way the arrow keys move
+                  the drone (keyframe.py), from the session's `controls`
 depends-on        ../../design/layout.txt
                   the standing rule: 720–1600 px, both themes, by container
 shares-data-with  drone-wifi.txt
