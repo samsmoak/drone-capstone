@@ -30,7 +30,6 @@ from cropwatcher.flight.manual import (
     LAND_S,
     LEASH_M,
     MAX_HEIGHT_M,
-    MAX_PUSH_S,
     MAX_TILT_DEG,
     MAX_UNASSISTED_HEIGHT_M,
     MOVE_ACCEL_M_S2,
@@ -1405,7 +1404,7 @@ class TestGentleArrows:
     second. W / S and A / D are as they always were; so are missions."""
 
     def test_the_numbers(self):
-        assert (MAX_TILT_DEG, TILT_RATE_DEG_S, MAX_PUSH_S) == (2.5, 8.0, 1.0)
+        assert (MAX_TILT_DEG, TILT_RATE_DEG_S) == (2.5, 8.0)
         assert (KEY_MOVE_SPEED_M_S, MOVE_SPEED_M_S) == (0.12, 0.20)
         assert (CLIMB_RATE_M_S, YAW_RATE_DEG_S) == (0.15, 30.0)       # unchanged
         # Half the push of the old 5° lean: g*tan(2.5°) / g*tan(5°).
@@ -1425,32 +1424,21 @@ class TestGentleArrows:
         rig.run(0.4)
         assert rig.cmd.last("zdistance")[2] == pytest.approx(-MAX_TILT_DEG)
 
-    def test_one_press_pushes_for_a_second_then_levels(self):
+    def test_a_held_arrow_leans_for_as_long_as_it_is_held(self):
+        """The lab, 2026-09-30 (trace_7b36d994): ↓ held 5 s to bring back a
+        drifting drone. A lean that fades under a held key is lost control."""
         rig = self.airborne()
-        rig.run(0.96, Intent(forward=True))
-        assert rig.cmd.last("zdistance")[2] == pytest.approx(-MAX_TILT_DEG)
-        rig.run(0.6)                                        # still held
+        for _ in range(10):                                  # 5 s, looked at every 0.5 s
+            rig.run(0.5, Intent(back=True))
+        pitches = [c[2] for c in rig.cmd.commands if c[0] == "zdistance"][-200:]
+        assert min(pitches) == pytest.approx(MAX_TILT_DEG)   # 4 s of it, never easing off
+        assert max(pitches) == pytest.approx(MAX_TILT_DEG)
+
+    def test_letting_go_levels_it(self):
+        rig = self.airborne()
+        rig.run(2.0, Intent(forward=True))
+        rig.run(0.5, Intent())
         assert rig.cmd.last("zdistance")[2] == pytest.approx(0.0, abs=1e-9)
-
-    def test_letting_go_and_pressing_again_pushes_again(self):
-        rig = self.airborne()
-        rig.run(1.5, Intent(forward=True))
-        rig.run(0.1, Intent())
-        rig.run(0.6, Intent(forward=True))
-        assert rig.cmd.last("zdistance")[2] == pytest.approx(-MAX_TILT_DEG)
-
-    def test_the_other_way_is_a_new_push(self):
-        rig = self.airborne()
-        rig.run(1.5, Intent(forward=True))
-        rig.run(0.8, Intent(back=True))
-        assert rig.cmd.last("zdistance")[2] == pytest.approx(MAX_TILT_DEG)
-
-    def test_each_arrow_axis_has_its_own_push(self):
-        rig = self.airborne()
-        rig.run(1.5, Intent(forward=True))
-        rig.run(0.6, Intent(forward=True, left=True))
-        _, roll, pitch, _, _ = rig.cmd.last("zdistance")
-        assert roll == pytest.approx(-MAX_TILT_DEG) and pitch == pytest.approx(0.0, abs=1e-9)
 
     def test_assisted_arrows_move_the_point_at_twelve_centimetres_a_second(self):
         rig = Rig()
