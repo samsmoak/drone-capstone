@@ -174,6 +174,39 @@ class TestDuration:
         assert seconds < holds + travel + 30
 
 
+class TestSpeed:
+    """One speed per mission (2026-10-01): Steady 10, Normal 15, Brisk 20 cm/s."""
+
+    def test_a_saved_mission_flies_at_the_speed_it_always_did(self):
+        old = mission().to_dict()
+        del old["speed_m_s"]
+        assert Mission.from_dict(old).speed_m_s == 0.20
+
+    @pytest.mark.parametrize("speed", [0.10, 0.15, 0.20])
+    def test_each_preset_round_trips(self, speed):
+        m = mission(speed_m_s=speed)
+        assert Mission.from_dict(m.to_dict()).speed_m_s == speed
+
+    @pytest.mark.parametrize("speed", [0.0, 0.05, 0.12, 0.25, float("nan")])
+    def test_anything_else_is_refused(self, speed):
+        with pytest.raises(PlanError, match="cm/s"):
+            mission(speed_m_s=speed)
+
+    def test_a_slower_mission_takes_longer_by_its_travel(self):
+        brisk = mission(speed_m_s=0.20)
+        steady = mission(speed_m_s=0.10)
+        fast = brisk.estimated_duration_s(move_speed_m_s=0.2, climb_rate_m_s=0.15)
+        slow = steady.estimated_duration_s(move_speed_m_s=0.2, climb_rate_m_s=0.15)
+        travel = brisk.path_length_m()
+        assert slow - fast == pytest.approx(travel / 0.10 - travel / 0.20, abs=2.0)
+
+    def test_it_is_never_estimated_faster_than_the_flight_system_moves(self):
+        m = mission(speed_m_s=0.20)
+        assert (m.estimated_duration_s(move_speed_m_s=0.1, climb_rate_m_s=0.15)
+                == mission(speed_m_s=0.10).estimated_duration_s(move_speed_m_s=0.2,
+                                                                 climb_rate_m_s=0.15))
+
+
 class TestEndPoint:
     """An end point: the flight flies up to it and lands there. Points after it
     stay in the plan and are not flown — or checked."""

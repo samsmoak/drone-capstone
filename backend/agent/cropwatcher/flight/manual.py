@@ -363,6 +363,9 @@ class ManualController:
         #: A point in the room the agent is gliding the commanded point towards
         #: — fly_to(). None whenever the keys are in charge. See fly_to().
         self._goal_xy: tuple[float, float] | None = None
+        #: How fast the goal is approached: the mission's speed, never more
+        #: than MOVE_SPEED_M_S. Set by fly_to().
+        self._goal_speed = MOVE_SPEED_M_S
         #: Set when a held key cancelled a goal: the operator took the drone
         #: back. The mission controller reads it to stop commanding. Cleared by
         #: the next hold_at() or fly_to().
@@ -515,7 +518,8 @@ class ManualController:
             self._operator_override = False
         log.info("manual control: holding at %.2f m", height_m)
 
-    def fly_to(self, x: float, y: float, height_m: float) -> None:
+    def fly_to(self, x: float, y: float, height_m: float,
+               speed_m_s: float | None = None) -> None:
         """Glide the commanded point to (x, y) in the room, at `height_m` above
         the floor, and hold it there.
 
@@ -541,9 +545,16 @@ class ManualController:
 
         Assisted and airborne only: without a position there is nowhere to fly
         to, and on the ground there is no commanded point yet.
+
+        `speed_m_s` (2026-10-01, Samuel: missions choose a slower, steadier
+        speed): the goal is approached at it instead of MOVE_SPEED_M_S — never
+        faster. None keeps MOVE_SPEED_M_S. It changes nothing the keys do.
         """
         if not all(math.isfinite(v) for v in (x, y, height_m)):
             raise ValueError("fly_to needs finite coordinates")
+        speed = MOVE_SPEED_M_S if speed_m_s is None else speed_m_s
+        if not (math.isfinite(speed) and 0.0 < speed <= MOVE_SPEED_M_S):
+            raise ValueError(f"speed must be above 0 and at most {MOVE_SPEED_M_S:.2f} m/s")
         with self._lock:
             if not self._assisted:
                 raise RuntimeError("the drone has no position estimate, so it cannot fly "
@@ -555,9 +566,11 @@ class ManualController:
             if not 0.0 < height_m <= MAX_HEIGHT_M:
                 raise ValueError(f"height must be above 0 and at most {MAX_HEIGHT_M:.2f} m")
             self._goal_xy = (x, y)
+            self._goal_speed = speed
             self._goal_height = height_m
             self._operator_override = False
-        log.info("manual control: flying to (%+.2f, %+.2f) at %.2f m", x, y, height_m)
+        log.info("manual control: flying to (%+.2f, %+.2f) at %.2f m, %.2f m/s",
+                 x, y, height_m, speed)
 
     def set_intent(self, intent: Intent) -> None:
         with self._lock:
@@ -850,7 +863,7 @@ class ManualController:
             # here; there is no separate hold mode to leave.
             self._goal_xy = None
             return (0.0, 0.0)
-        speed = min(MOVE_SPEED_M_S, math.sqrt(2.0 * MOVE_ACCEL_M_S2 * distance))
+        speed = min(self._goal_speed, math.sqrt(2.0 * MOVE_ACCEL_M_S2 * distance))
         # Already in the room's frame, the frame the arrows now move in too:
         # nothing to turn, whatever the heading.
         return (ex / distance * speed, ey / distance * speed)

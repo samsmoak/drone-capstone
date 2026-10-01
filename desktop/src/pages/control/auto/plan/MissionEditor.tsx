@@ -78,6 +78,15 @@ export type Draft = { room: Room; mission: Mission; roomIsNew: boolean; missionI
 type Placing = null | "point" | "vertex" | Obstacle["kind"];
 type EditorTab = "room" | "path";
 
+
+/** The travel speeds a mission may choose — the agent's SPEED_PRESETS_M_S
+ *  (mission.py), which also refuses anything else. */
+const SPEEDS: { m_s: number; name: string }[] = [
+  { m_s: 0.10, name: "Steady" },
+  { m_s: 0.15, name: "Normal" },
+  { m_s: 0.20, name: "Brisk" },
+];
+
 export function outerOf(room: Room, limits: PlanLimits): OuterBound {
   return room.coverage ? { vertices: room.coverage.vertices, measured: true } : limits.outer;
 }
@@ -731,6 +740,27 @@ function PathForm({ mission, setMission, setPoint, removePoint, box, band, limit
           )}
         </div>
       </ObjectCard>
+
+      <section className="grid gap-2" aria-labelledby="speed-heading">
+        <h3 id="speed-heading" className="eyebrow">Speed between points</h3>
+        {/* One speed per mission (mission.py SPEED_PRESETS_M_S): every change of
+            speed is a lean, and leaning is what makes a hold unsteady. */}
+        <div role="group" aria-labelledby="speed-heading" className="flex border border-[var(--border)]">
+          {SPEEDS.map(({ m_s, name }) => {
+            const on = Math.abs((mission.speed_m_s ?? 0.2) - m_s) < 1e-9;
+            return (
+              <button key={name} type="button" aria-pressed={on}
+                      onClick={() => setMission((m) => ({ ...m, speed_m_s: m_s }))}
+                      className={`min-h-8 flex-1 px-2 text-xs font-semibold ${on
+                        ? "bg-[var(--primary)] text-[var(--on-primary)]"
+                        : "hover:bg-[var(--surface-2)]"}`}>
+                {name} · {Math.round(m_s * 100)} cm/s
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-xs leading-relaxed">Slower is steadier at each point, and the mission takes longer — the battery check counts it.</p>
+      </section>
 
       <section className="grid gap-2" aria-labelledby="finish-heading">
         <h3 id="finish-heading" className="eyebrow">How it ends, and which way round</h3>

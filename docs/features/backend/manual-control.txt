@@ -397,6 +397,11 @@ stopped from — so it arrives instead of coasting past. The goal's velocity is
 computed in the room's frame — the frame the arrows move the point in too —
 and added as it is; the heading never bends it.
 
+fly_to(…, speed_m_s) (2026-10-01, Samuel's ask — re-fingerprinted in
+test_manual_control_lock.py): a mission's own travel speed, refused unless
+0 < speed ≤ MOVE_SPEED_M_S; None keeps MOVE_SPEED_M_S. It is the only thing
+that changed in manual.py — nothing the keys do.
+
   goal_active        True while either goal is still gliding
   operator_override  True once a held key cancelled a goal; hold_at/fly_to
                      clear it
