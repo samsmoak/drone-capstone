@@ -1,0 +1,249 @@
+THE NEW DRONE, AND MISSIONS THAT KNOW THEIR SPACE — the 100 stages
+====================================================================
+
+STATUS (2026-10-01): written; Phase A under way.
+
+Everything Samuel asked for in the 2026-10-01 lab session, in the order it
+must happen. Hardware first: nothing about missions can be proved until a
+drone knows where it is.
+
+WHERE THINGS STOOD (measured, not remembered)
+
+  old drone   cf-002f002a3334471239333335 — Lighthouse deck never detected
+              (deck.bcLighthouse4 = 0, one 1-Wire memory). Retired to spare.
+  new drone   cf-002d00263234511236373639 — built 2026-10-01. AI deck AND
+              Lighthouse deck detected (two 1-Wire memories), BUT the
+              Lighthouse deck sits in its bootloader: fw_upgrade_required =
+              True (required image 104 093 bytes, hash 288081812). Stock
+              firmware 0x80ee72ad — no drone_wifi, stock ESP32.
+  stations    two HTC VIVE Base Station 2.0 (model 2QCJ100) on tripods.
+  received    nothing (lighthouse.status 0) — the deck, not the stations.
+  software    the mission controller is EXPERIMENT on experiment/samuel
+              (BUILT = True there only); main has the session wiring.
+
+THE DECISIONS (Samuel delegated them on 2026-10-01: "you can implement
+everything"; each is reversible and written where it lives)
+
+  D1  A plan is FITTED to the flyable space by moving only the points
+      outside it, each to the nearest spot inside, and labelling the move.
+      Never a silent scale: points mark equipment.
+  D2  No "start at P3" option. The start is the drone; the END point choice
+      already exists.
+  D3  Mission speed is one preset per mission — Steady 10, Normal 15,
+      Brisk 20 cm/s (20 = today, the default). No ranges. fly_to() gains a
+      speed argument in the LOCKED flight/manual.py: its own PR, the
+      fingerprint updated in it, Samuel reviews. The keys are untouched.
+  D4  A session keeps the mode it started in. The agent refuses a mode
+      change while a session is open; the sidebar picks the page you look
+      at, and the other mode's page says which session is open.
+  D5  Branches: the experiment on samuel/mission-controller →
+      experiment/samuel (push only). Everything else: short branch from
+      main → PR → `gh pr merge --squash --admin` after its gates.
+  D6  Flights are Samuel's. No motor spins unless he is there and says go.
+
+
+PHASE A — THE NEW DRONE, BROUGHT UP TO THE OLD ONE'S SOFTWARE  (no motors)
+
+  1   Close DroneDeck; battery ≥ 3.8 V (setup.txt: a flash that loses power
+      can leave a drone unable to start). Read it.
+  2   Record the drone as found: firmware.revision0, both deck params, the
+      deck-memory query (fw_upgrade_required per deck). Into the flight log.
+  3   Verify the bundle's cf2.bin against manifest.json (sha256).
+  4   Flash MAIN (cf2.bin: crazyflie-firmware 2025.12.1 + drone_wifi v2)
+      with cropwatcher.flash_firmware. Reconnect; firmware.revision0 must
+      read 0x252b4134 (2025.12.1) and the cwsetup.fw param must exist.
+  5   Re-query the deck memory: the Lighthouse deck's REQUIRED hash is now
+      the one 2025.12.1 asks for.
+  6   Fetch Bitcraze's official crazyflie-release 2025.12.1 (cf2 zip) from
+      GitHub; record its URL and sha256; take the Lighthouse deck image
+      (lighthouse.bin) from it.
+  7   Confirm the image's length matches the deck's required_length.
+  8   Flash the Lighthouse deck with cflib's own deck flasher (Bootloader,
+      target deck bcLighthouse4). Never through our STM32 flasher (it
+      refuses anything but a cf2 image, by design).
+  9   Restart the drone over the radio; re-query: fw_upgrade_required =
+      False, bootloader_active = False, is_started = True.
+  10  `cropwatcher stations --seconds 12`: lighthouse.status > 0 and
+      bsReceive shows the stations. If none: stations' channels (1 and 2),
+      power LED, line of sight.
+  11  Flash CAMERA (aideck_gap8.bin) then WIFI (aideck_esp.bin) — the
+      Set up order (main → camera → wifi; the GAP8 is written through the
+      ESP32).
+  12  Samuel unplugs the battery ~10 s (the GAP8 does not start otherwise —
+      setup.txt, Bitcraze #1305).
+  13  Verify the camera starts (console "GAP8 running" seen AFTER the
+      reconnect) and write cwsetup.deck, as Set up does.
+  14  `cropwatcher check`: every row ok except geometry-dependent ones.
+  15  Base stations: channels 1 and 2, raised, tilted down, opposite
+      corners, facing the flying area. Re-read reception: both received.
+  16  `cropwatcher geometry --distance 1.0` — Samuel carries the drone.
+  17  `cropwatcher check`: settles under 2 cm. `pytest -m hardware` passes.
+  18  DroneDeck → Drone Wi-Fi page: join the network; frames arrive.
+  19  Flight-log entry: the new drone, every firmware written (with
+      sources and hashes), the deck states before/after, the readings.
+  20  CLAUDE.md / flight-status.txt: the Lighthouse fault was the old
+      drone's deck; the new drone is the lab drone (hardware id).
+
+
+PHASE B — SET UP INSTALLS THE LIGHTHOUSE DECK'S FIRMWARE TOO  (branch from main)
+
+  21  Read drone_setup.py and flash_firmware.py in full; the check/install
+      protocol and its events.
+  22  Add the deck image to firmware_bundle/ as part "lighthouse"
+      (file, chip "lighthouse-deck", sha256, source = the release URL).
+  23  manifest.json: the part, and "bundle" bumped so drones update.
+  24  drone_setup.check(): ask the drone's deck memory whether the
+      Lighthouse deck needs an update (cflib DeckMemoryManager) — read,
+      never assumed; no deck fitted = nothing to do.
+  25  drone_setup.install(): after MAIN, before CAMERA, flash the deck when
+      it needs it, with progress events like the others.
+  26  Refuse below 3.8 V and during a session, as the other parts do.
+  27  Tests: the manifest's new part; check() with a deck that needs an
+      update / does not / is absent; install() order; a failure mid-flash
+      reported in words.
+  28  SetupPage.tsx: the step lists the Lighthouse part with its state.
+  29  Gates: ruff, mypy, pytest; desktop build.
+  30  On the new drone: Set up reports everything installed.
+  31  setup.txt: the bundle table, the order (main → lighthouse → camera →
+      wifi), why (main decides the deck's required image).
+  32  Commit, PR, CI, merge.
+
+
+PHASE C — THE MISSION EXPERIMENT, IN THE LAB  (samuel/mission-controller → experiment/samuel)
+
+  33  If PR #90 has merged: `git merge main` into both branches (never
+      rebase). Otherwise merge it first (owner-only, --admin) — it is a
+      docs-only PR Samuel asked for.
+  34  mission-controller.txt §6: correct "cropwatcher mission has NO BUILT
+      check" — cli.py checks MissionController.BUILT since 0ca26ba
+      (2026-09-28). What is still true: it writes no trace and no plan flown.
+  35  Stage announcements (mission_controller.py, wording only — event
+      kinds and their order unchanged, THE SPEC untouched):
+        POINT_COMPLETE  "P1 complete — flying to P2" / "… — the last point
+                        is done"
+        POINT_ARRIVED   "… — the last point" on the final one
+        landing         "Landing now" in the event that precedes LANDING
+  36  Tests for the new words (the scenario sequences already assert kinds).
+  37  Gates; commit; merge into experiment/samuel; push both.
+  38  Build the app from experiment/samuel (node scripts/install.mjs).
+  39  THE FLIGHT LADDER ON THE NEW AIRFRAME (flight-log rungs 4–10) — the
+      tuning was measured on the old drone. Samuel present, one at a time:
+      proptest, armed idle, 20 cm hover 10 s, W alone, forward and hold,
+      Up+Down, a square. Stop at the first failure.
+  40  Thrust headroom: read the hover thrust from the trace (the old drone
+      needed ~81 % with both decks). Record it; if > 85 %, say so before
+      any mission.
+  41  Make the rung missions in the app (room "Data center", ±1.5 m,
+      0.10–1.00 m): rung 1 one point at the start spot, 0.3 m, hold 5 s.
+  42  Rung 1 from the app. After it: mission-report, flight-log entry.
+  43  Rung 2: two points 0.5 m apart. Report, log.
+  44  Rung 3: a 1 m square. Report, log.
+  45  Rung 4: the square with return_to_start (lands within 10 cm). Report,
+      log.
+  46  Rung 5: an arrow mid-transit → INTERRUPTED, the drone in his hands.
+      Report, log.
+  47  mission-report over all five flights together.
+  48  Propose ARRIVE_M, SETTLE_S, SETTLE_TIMEOUT_S, TRANSIT_MARGIN_S, each
+      with its flights cited — Samuel decides the values.
+  49  Set tests/sim_drone.py lag_s from the same traces.
+  50  Gates; commit; push. Feature doc §6: what was flown and measured.
+
+
+PHASE D — WHAT THE OPERATOR SEES, AND WHO OWNS A SESSION  (branch from main)
+
+  51  FlyStep: the reason Start mission is disabled is a warning Message,
+      not muted text (it is the one thing the operator must read).
+  52  Same for the preset/hover rail reason in ControlPage.
+  53  session.set_mode: refuse while ANY session is open (not only BUSY),
+      in words: "A Manual session is open. End it in Manual first."
+  54  start(): the session records its mode; the snapshot carries it
+      (session_mode) — the mode the session belongs to.
+  55  Every action that is mode-specific already checks the mode
+      (run_program, run_mission, arm_manual …): verify each, add any missing.
+  56  App: the sidebar's mode switch becomes the PAGE you look at (a view),
+      separate from the session's mode.
+  57  The page for the other mode, while a session is open, shows a lock
+      panel naming the open session's mode, with "Go to <mode>" — and its
+      Start is disabled.
+  58  End session works only from the session's own mode page.
+  59  Tests (agent): set_mode refused with a session open in each state;
+      allowed with none; a mission refused in a Manual session; arm refused
+      in an Auto session.
+  60  Gates: ruff, mypy, pytest; desktop build; the layout harness.
+  61  sessions-and-modes.txt: the reversed decision, dated, and why.
+  62  Commit, PR, CI, merge.
+
+
+PHASE E — MISSION SPEED  (branch from main; the locked file)
+
+  63  flight/manual.py fly_to(x, y, height_m, speed_m_s=None): the goal
+      moves at min(speed, MOVE_SPEED_M_S); None keeps today's. No key path,
+      no gain, no lean changed.
+  64  test_manual_control_lock.py: the fingerprint updated IN THIS PR,
+      with the reason; Samuel reviews.
+  65  Mission.speed_m_s (one of 0.10 / 0.15 / 0.20; default 0.20 so every
+      saved mission flies as before); to_dict/from_dict; validation.
+  66  estimated_duration_s and the controller's T8 timeout use the
+      mission's speed; the report's "planned" too.
+  67  MissionEditor: a three-way Speed control (cm/s labels).
+  68  Tests: model round-trip, validation, estimate, timeout; fly_to with a
+      speed in the sim.
+  69  Gates; floor-plans.txt + manual-control.txt; commit, PR, CI, merge.
+  70  The experiment branches merge main.
+
+
+PHASE F — THE FLYABLE SPACE, AND THE PLAN THAT WILL FLY  (branch from main)
+
+  71  Read the base-station poses: from the drone's Lighthouse memory
+      (cflib LighthouseMemHelper read_all_geos) into the agent.
+  72  coverage/predict.py: a 3-D grid over the room's fence, 0.10–1.00 m;
+      a cell is flyable where BOTH stations see it inside their field of
+      view (Valve's published 2.0 spec) and within range. Plain functions,
+      tested without a drone.
+  73  Its outline per height (the 2-D slice) and a mesh (the 3-D blob).
+  74  coverage/survey.py: while the operator carries the drone, keep every
+      position where both stations are received; the measured blob is
+      their hull, per height band.
+  75  Room.coverage is filled from the survey (the slot exists); a room
+      keeps when and how its coverage was measured.
+  76  API: GET /rooms/{id}/coverage (predicted + measured), POST
+      /rooms/{id}/survey/start|stop.
+  77  plan/fit.py: the PLAN THAT WILL FLY — from_start(drone) then every
+      point outside the flyable space moved to the nearest inside spot,
+      clearance kept; returns the plan and the list of moves.
+  78  ONE function: GET /missions/{id}/from-drone returns it; run_mission
+      flies exactly it; the plan flown records the moves.
+  79  Start zone: where the drone may sit (inside, clear, first leg valid).
+  80  Tests: prediction on known poses, survey hull, fit (inside untouched,
+      outside moved, moved labelled), run_mission flies the fitted plan.
+  81  RoomMap: a "flyable space" layer — 2-D shaded outline at a chosen
+      height (slider), 3-D translucent blob you can see through.
+  82  Anything outside it drawn red: points, legs, fence corners.
+  83  CheckStep (②): TOP map = the plan as drawn, editable, blob over it.
+  84  CheckStep: BOTTOM map = the plan that will fly, read-only, re-asked
+      of the agent on every edit; each moved point labelled with its move.
+  85  The start zone shaded; D green inside it, red outside, live.
+  86  The survey control in ② Check: start, carry, stop, saved.
+  87  Both maps 2-D/3-D with the existing switch; each opens full screen.
+  88  Four states on every new async surface (loading, empty, error+retry,
+      content); tokens only; both themes; WCAG contrast measured.
+  89  Gates: ruff, mypy, pytest; desktop build; harness 720–1600 both themes.
+  90  floor-plans.txt, auto-control.txt, mission-controller.txt: what
+      shipped, related edges both ways; router line if a new doc.
+  91  Commit, PR, CI, merge; experiment branches merge main.
+  92  In the lab: survey the room; the blob matches where the drone holds.
+  93  A mission with one point outside: the bottom map moves it; it flies
+      the moved plan; the report shows the move.
+
+
+PHASE G — CLOSE
+
+  94  The flight log: every lab result of the day, newest first.
+  95  The feature docs' STATUS lines and Last verified dates.
+  96  kit.py check: no new DANGLING / ONE-WAY / STALE in the touched area.
+  97  docs/GRAPH_STATE.txt re-run.
+  98  The handoff tickets stay Hannah's and Yordi's; nothing in undone/
+      moves.
+  99  This plan's STATUS: done / changed / owed, honestly.
+  100 Owed by the owner, listed: rotate keys, supabase db push of
+      20260928000012 before missions fly, the constants' values.
