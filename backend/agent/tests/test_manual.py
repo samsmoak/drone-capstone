@@ -1185,6 +1185,30 @@ class TestFlyTo:
             previous = current
         assert worst <= MOVE_SPEED_M_S + 1e-6
 
+    @pytest.mark.parametrize("speed", [0.10, 0.15])
+    def test_a_missions_slower_speed_is_kept_to(self, speed):
+        rig = Rig()
+        self.airborne(rig)
+        rig.ctl.fly_to(SOMEWHERE.x + 2.0, SOMEWHERE.y, 0.40, speed_m_s=speed)
+        previous = rig.cmd.last("position")
+        worst = 0.0
+        for _ in range(round(8.0 / TICK_S)):
+            self.follow(rig, TICK_S)
+            current = rig.cmd.last("position")
+            worst = max(worst, math.hypot(current[1] - previous[1],
+                                          current[2] - previous[2]) / TICK_S)
+            previous = current
+        assert worst <= speed + 1e-6
+        assert worst >= speed * 0.9           # it does travel at it, once eased in
+
+    @pytest.mark.parametrize("speed", [0.0, -0.1, 0.21, math.inf, math.nan])
+    def test_a_speed_outside_zero_to_the_arrow_speed_is_refused(self, speed):
+        rig = Rig()
+        self.airborne(rig)
+        with pytest.raises(ValueError, match="speed"):
+            rig.ctl.fly_to(SOMEWHERE.x + 1.0, SOMEWHERE.y, 0.40, speed_m_s=speed)
+        assert not rig.ctl.goal_active
+
     def test_it_does_not_overshoot(self):
         """The approach profile: the point slows before the goal, so it never
         runs past it by the easing's stopping distance."""

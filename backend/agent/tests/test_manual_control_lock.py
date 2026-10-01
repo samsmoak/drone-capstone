@@ -23,9 +23,12 @@ REPO = Path(__file__).resolve().parents[3]
 
 #: sha256 of each locked file, line endings normalised to \n so a Windows
 #: checkout (CRLF) fingerprints the same. Locked 2026-09-30 at main ecfb3dc.
+#: manual.py re-fingerprinted 2026-10-01 at Samuel's ask (mission speed
+#: presets): fly_to() takes an optional speed_m_s, capped at MOVE_SPEED_M_S.
+#: Nothing the keys do changed — no key path, gain, lean or speed.
 LOCKED: dict[str, str] = {
     "backend/agent/cropwatcher/flight/manual.py":
-        "f3c59f9798b202c65e00f5d99c7a169e2da69f78fd4fe7096910389d79612c62",
+        "750c6b5742a815b458f30243e260122bcd479a7e39223b88dcce91a2aee41521",
     "backend/agent/cropwatcher/flight/keyframe.py":
         "705d999f2d70966aa582e206d81ac06a62a4eae0357008dded17b4c55819fc41",
     "backend/agent/cropwatcher/flight/tuning.py":

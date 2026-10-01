@@ -9,6 +9,7 @@
     end_point_id       optional: the point the flight ends and lands at. Points
                        after it stay in the plan and are not flown.
     cruise_height_m    the height it takes off to
+    speed_m_s          how fast it travels between points: one of SPEED_PRESETS_M_S
     return_to_start    fly back over the start before landing (ignored when an
                        end point is set: the flight lands at the end point)
 
@@ -43,6 +44,15 @@ from cropwatcher.mission.plan.shapes import Point, is_finite
 MIN_HOLD_S = 5.0
 MAX_HOLD_S = 300.0
 MAX_POINTS = 100
+
+#: The travel speeds a mission may choose (2026-10-01, Samuel: "an autonomous
+#: flight must be extra steady"). Steady, Normal, Brisk. One speed per
+#: mission, never a range: every change of speed is a lean, and leaning is
+#: what makes a hold unsteady. Brisk is the manual flight system's own
+#: MOVE_SPEED_M_S — the fastest a mission has ever been flown, and the
+#: default, so every mission saved before this flies exactly as it did.
+SPEED_PRESETS_M_S = (0.10, 0.15, 0.20)
+DEFAULT_SPEED_M_S = 0.20
 
 POINT_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 
@@ -97,6 +107,8 @@ class Mission:
     points: tuple[InspectionPoint, ...]
     cruise_height_m: float = 0.40
     return_to_start: bool = True
+    #: The travel speed between points, one of SPEED_PRESETS_M_S.
+    speed_m_s: float = DEFAULT_SPEED_M_S
     #: The inspection point the flight ends and lands at, or None to fly every
     #: point. Must name a point of this mission (validate.py says so if not).
     end_point_id: str | None = None
@@ -118,6 +130,9 @@ class Mission:
             raise PlanError("the home mark or the cruise height is not a number")
         if self.revision < 1:
             raise PlanError("a mission's revision starts at 1")
+        if not any(abs(self.speed_m_s - s) < 1e-9 for s in SPEED_PRESETS_M_S):
+            choices = ", ".join(f"{s * 100:.0f}" for s in SPEED_PRESETS_M_S)
+            raise PlanError(f"a mission's speed is one of {choices} cm/s")
 
     @property
     def point_ids(self) -> tuple[str, ...]:
@@ -173,9 +188,11 @@ class Mission:
 
         The speeds are the manual flight system's own (manual.py
         MOVE_SPEED_M_S, CLIMB_RATE_M_S), passed in by the caller: a plan does
-        not import the flight code. Heights change during a leg at the climb
-        rate, so each leg costs whichever of the two motions is longer.
+        not import the flight code. The mission travels at its own speed_m_s,
+        never faster than the flight system moves. Heights change during a leg
+        at the climb rate, so each leg costs whichever of the two is longer.
         """
+        move_speed_m_s = min(move_speed_m_s, self.speed_m_s)
         total = self.cruise_height_m / climb_rate_m_s          # takeoff
         height = self.cruise_height_m
         stops = [(self.home, self.cruise_height_m)]
@@ -201,6 +218,7 @@ class Mission:
             "points": [p.to_dict() for p in self.points],
             "cruise_height_m": self.cruise_height_m,
             "return_to_start": self.return_to_start,
+            "speed_m_s": self.speed_m_s,
             "end_point_id": self.end_point_id,
             "revision": self.revision, "flown_revision": self.flown_revision,
             "created_at": self.created_at, "updated_at": self.updated_at,
@@ -224,6 +242,7 @@ class Mission:
                 points=tuple(InspectionPoint.from_dict(p) for p in data.get("points") or []),
                 cruise_height_m=float(data.get("cruise_height_m", 0.40)),
                 return_to_start=bool(data.get("return_to_start", True)),
+                speed_m_s=float(data.get("speed_m_s", DEFAULT_SPEED_M_S)),
                 end_point_id=(str(data["end_point_id"]) if data.get("end_point_id") else None),
                 revision=int(data.get("revision", 1)),
                 flown_revision=int(flown) if flown is not None else None,
