@@ -548,12 +548,12 @@ export type SessionRecord = {
 export type SampleRow = { recorded_at: string } & Record<string, number | string | null>;
 
 /** Set up: installing the camera software on a drone (drone_setup.py). */
-export type SetupPart = "main" | "camera" | "wifi";
+export type SetupPart = "main" | "lighthouse" | "camera" | "wifi";
 export type SetupState = {
   phase: "idle" | "checking" | "ready" | "installing" | "unplug" | "verifying" | "done" | "failed";
   message: string | null;
   facts: { battery_v: number | null; ai_deck: boolean | null } | null;
-  parts: Partial<Record<SetupPart, "installed" | "needed" | "installing" | "done">>;
+  parts: Partial<Record<SetupPart, "installed" | "needed" | "installing" | "done" | "absent">>;
   current: SetupPart | null;
   progress: number;
   labels: Record<SetupPart, string>;
