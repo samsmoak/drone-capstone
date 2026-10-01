@@ -180,6 +180,11 @@ DECISIONS
   over the start, then landing". Words only: THE SPEC's kinds and order are
   unchanged, and it has no event where a landing after a return begins, so
   RETURNING announces it. test_mission_sim.py pins the words.
+• THE MISSION'S SPEED (2026-10-01, with PR #93 merged into this branch):
+  each leg is flown with fly_to(…, speed_m_s=the mission's Steady/Normal/
+  Brisk), and T8's timeout is the leg at THAT speed + TRANSIT_MARGIN_S — a
+  Steady mission is not timed out as if Brisk. test_controller and
+  test_mission_sim pin both.
 • ONE PLACE KNOWS WHERE A FLIGHT'S FILES ARE: the report finds the flight
   CSV and session folder through pipeline/sources.py LocalFlightSource (its
   _find_csv, _find_session), the trace beside the CSV, the plan flown in the

@@ -73,9 +73,11 @@ class ScriptedFlight:
         self.goal_active = True
         self.target_height = height_m
 
-    def fly_to(self, x: float, y: float, height_m: float) -> None:
+    def fly_to(self, x: float, y: float, height_m: float,
+               speed_m_s: float | None = None) -> None:
         self._raise_if("fly_to")
         self.calls.append(("fly_to", x, y, height_m))
+        self.speed = speed_m_s
         self.goal = (x, y, height_m)
         self.goal_active = True
 
@@ -466,6 +468,21 @@ def test_T8_a_leg_times_out_from_its_straight_3d_length():
     leg = math.dist(start, (p1.x_m, p1.y_m, p1.z_m))
     began = h.last(K.TAKEOFF_DONE).at_s
     _times_out_at(h, began + leg / MOVE_SPEED_M_S + TRANSIT_MARGIN_S, "P1", "P1")
+
+
+@pytest.mark.parametrize("speed", [0.10, 0.15, 0.20])
+def test_T8_a_leg_flies_and_times_out_at_the_missions_speed(speed):
+    """Steady / Normal / Brisk (mission.py): fly_to is given the mission's
+    speed, and the leg's timeout is the leg at THAT speed — a Steady mission
+    is not timed out as if it were Brisk."""
+    h = Harness(mission(speed_m_s=speed))
+    h.take_off()
+    assert h.flight.speed == speed
+    p1 = h.mission.points[0]
+    start = (TAKEOFF_SPOT.x, TAKEOFF_SPOT.y, h.mission.cruise_height_m)
+    leg = math.dist(start, (p1.x_m, p1.y_m, p1.z_m))
+    began = h.last(K.TAKEOFF_DONE).at_s
+    _times_out_at(h, began + leg / speed + TRANSIT_MARGIN_S, "P1", "P1")
 
 
 def test_T8_the_second_leg_runs_from_the_first_point():
@@ -991,8 +1008,9 @@ class CooperativeFlight(ScriptedFlight):
         super().hold_at(height_m)
         self.airborne()
 
-    def fly_to(self, x: float, y: float, height_m: float) -> None:
-        super().fly_to(x, y, height_m)
+    def fly_to(self, x: float, y: float, height_m: float,
+               speed_m_s: float | None = None) -> None:
+        super().fly_to(x, y, height_m, speed_m_s)
         self.arrive()
 
     def land(self) -> None:

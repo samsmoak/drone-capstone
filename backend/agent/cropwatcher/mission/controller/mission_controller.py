@@ -366,11 +366,15 @@ class MissionController:
 
     def _fly_leg_locked(self, now: float, to: tuple[float, float, float],
                         what: str) -> None:
-        """fly_to() once, and the leg's timeout from this call (T8)."""
+        """fly_to() once, and the leg's timeout from this call (T8). At the
+        MISSION'S speed (Steady / Normal / Brisk, mission.py — 2026-10-01),
+        never faster than the flight system moves: the timeout is the leg at
+        that speed, so a Steady mission is not timed out as if it were Brisk."""
         assert self._leg_from is not None
         leg = math.dist(self._leg_from, to)
-        self._flight.fly_to(*to)
-        self._set_deadline(now, leg / MOVE_SPEED_M_S + TRANSIT_MARGIN_S, what)
+        speed = min(self.mission.speed_m_s, MOVE_SPEED_M_S)
+        self._flight.fly_to(*to, speed_m_s=speed)
+        self._set_deadline(now, leg / speed + TRANSIT_MARGIN_S, what)
 
     def _begin_settle(self, now: float, what: str) -> None:
         self._settle_began = now
