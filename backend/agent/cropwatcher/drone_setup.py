@@ -4,9 +4,18 @@ A new Crazyflie 2.1 with an AI deck runs stock firmware; the camera needs three
 pieces this project installed by hand on the first drone. They ship inside the
 agent (firmware_bundle/, with a checksummed manifest):
 
-    main    the drone's STM32: stock 2025.12.1 + drone_wifi (Wi-Fi over radio)
-    camera  the AI deck's GAP8: Bitcraze's Wi-Fi image streamer 2025.02
-    wifi    the AI deck's ESP32: Bitcraze 2025.02 + the close-once patch
+    main        the drone's STM32: stock 2025.12.1 + drone_wifi (Wi-Fi over radio)
+    lighthouse  the Lighthouse deck's FPGA: Bitcraze's lighthouse.bin from the
+                SAME 2025.12.1 release (lighthouse-fpga V6)
+    camera      the AI deck's GAP8: Bitcraze's Wi-Fi image streamer 2025.02
+    wifi        the AI deck's ESP32: Bitcraze 2025.02 + the close-once patch
+
+THE LIGHTHOUSE DECK (added 2026-10-01). A new deck can arrive without the image
+its drone's firmware asks for: it is detected, sits in its bootloader, and
+receives nothing — every position reads as lost, and the base stations look
+broken when they are not. The drone SAYS so (its deck memory reports
+fw_upgrade_required), so that is read rather than assumed, and read again
+after main is flashed, because main decides which image the deck needs.
 
 WHAT IS ALREADY INSTALLED is read from the drone, never assumed:
     cwsetup.fw    drone_wifi's version — present only when "main" is ours
@@ -16,6 +25,7 @@ Only what is missing or older is flashed.
 
 ORDER AND THE UNPLUG, both learned the hard way (2026-09-24):
   - main first: it reboots the drone, which resets the deck cleanly
+  - lighthouse straight after main: main names the image it requires
   - camera before wifi: the GAP8 is written THROUGH the ESP32
   - after the ESP32 is flashed the GAP8 does not start until the battery is
     unplugged ~10 s (Bitcraze Discussion #1305; a restart over the radio is
@@ -47,8 +57,9 @@ URI = "radio://0/80/2M"
 MIN_BATTERY_V = 3.8
 #: How long to wait for the operator to unplug and replug the battery.
 UNPLUG_WAIT_S = 300.0
-PART_ORDER = ("main", "camera", "wifi")
-PART_LABEL = {"main": "Drone firmware", "camera": "Camera", "wifi": "Camera Wi-Fi"}
+PART_ORDER = ("main", "lighthouse", "camera", "wifi")
+PART_LABEL = {"main": "Drone firmware", "lighthouse": "Positioning deck",
+              "camera": "Camera", "wifi": "Camera Wi-Fi"}
 
 
 class SetupError(RuntimeError):
@@ -63,6 +74,10 @@ class Facts:
     ai_deck: bool | None
     fw_version: int | None       # cwsetup.fw; None = not our firmware
     deck_bundle: int | None      # cwsetup.deck; None = not our firmware
+    #: deck.bcLighthouse4: the positioning deck is detected. None = not asked.
+    lighthouse_deck: bool | None = None
+    #: The drone's own word that the deck needs its firmware (deck memory).
+    lighthouse_needs_fw: bool = False
 
 
 @dataclass
@@ -105,9 +120,17 @@ def needed_parts(facts: Facts, manifest: dict[str, Any]) -> dict[str, str]:
     deck_ok = facts.deck_bundle is not None and facts.deck_bundle >= manifest["bundle"]
     return {
         "main": "installed" if main_ok else "needed",
+        "lighthouse": lighthouse_part(facts),
         "camera": "installed" if deck_ok else "needed",
         "wifi": "installed" if deck_ok else "needed",
     }
+
+
+def lighthouse_part(facts: Facts) -> str:
+    """The positioning deck reports its own state — no marker is needed."""
+    if facts.lighthouse_needs_fw:
+        return "needed"
+    return "absent" if facts.lighthouse_deck is False else "installed"
 
 
 # ── talking to the drone (replaced in tests) ─────────────────────────────
@@ -157,12 +180,29 @@ def _read_facts(cf: Any) -> Facts:
     time.sleep(0.6)
     conf.stop()
     fw, deck, ai = param("cwsetup.fw"), param("cwsetup.deck"), param("deck.bcAI")
+    lighthouse = param("deck.bcLighthouse4")
     return Facts(
         battery_v=round(got["pm.vbat"], 2) if "pm.vbat" in got else None,
         ai_deck=None if ai is None else ai == "1",
         fw_version=None if fw is None else int(fw),
         deck_bundle=None if deck is None else int(deck),
+        lighthouse_deck=None if lighthouse is None else lighthouse == "1",
+        lighthouse_needs_fw=lighthouse == "1" and _deck_needs_fw(cf, "bcLighthouse4"),
     )
+
+
+def _deck_needs_fw(cf: Any, name: str) -> bool:
+    """The drone's deck memory: does this deck need its firmware written?"""
+    from cflib.crazyflie.mem import MemoryElement
+    from cflib.crazyflie.mem.deck_memory import SyncDeckMemoryManager
+
+    mems = cf.mem.get_mems(MemoryElement.TYPE_DECK_MEMORY)
+    if not mems:
+        return False
+    for deck in SyncDeckMemoryManager(mems[0]).query_decks().values():
+        if deck.name == name:
+            return bool(deck.is_fw_upgrade_required)
+    return False
 
 
 def probe_drone() -> Facts | None:
@@ -206,6 +246,9 @@ def flash_part(part: str, path: Path, on_progress: Callable[[float], None]) -> b
     if part == "main":
         from cropwatcher.flash_firmware import flash as flash_main
         return flash_main(path, URI, on_progress) == 0
+    if part == "lighthouse":
+        from cropwatcher.flash_firmware import flash_lighthouse_deck
+        return flash_lighthouse_deck(path, URI, on_progress) == 0
     from cropwatcher.camera.flash_gap8 import flash as flash_deck
     chip = "gap8" if part == "camera" else "esp"
     return flash_deck(path, URI, chip=chip, on_progress=on_progress) == 0
@@ -285,9 +328,9 @@ class DroneSetup:
         facts = self._facts()
         manifest = load_manifest(self._bundle)
         parts = needed_parts(facts, manifest)
-        if all(v == "installed" for v in parts.values()):
+        if all(v in ("installed", "absent") for v in parts.values()):
             self._set(phase="done", parts=parts,
-                      message="This drone's camera software is already installed.")
+                      message="This drone's software is already installed.")
         else:
             self._set(phase="ready", parts=parts, message=None)
 
@@ -305,6 +348,9 @@ class DroneSetup:
         manifest = load_manifest(self._bundle)
         deck_flashed = False
         for part in PART_ORDER:
+            if part == "lighthouse" and parts["main"] == "done":
+                # Main decides which image the deck needs: ask again now.
+                parts[part] = lighthouse_part(self._facts())
             if parts[part] != "needed":
                 continue
             path = verified_file(self._bundle, part, manifest)
@@ -319,8 +365,11 @@ class DroneSetup:
             parts[part] = "done"
             self._set(parts=dict(parts), progress=1.0)
             deck_flashed = deck_flashed or part in ("camera", "wifi")
-            if part == "main":
+            if part in ("main", "lighthouse"):
                 self._sleep(6.0)          # the drone reboots into the new firmware
+            if part == "lighthouse" and self._facts().lighthouse_needs_fw:
+                raise SetupError("The positioning deck still asks for its firmware after "
+                                 "it was written. Press Install again.")
 
         if deck_flashed:
             self._await_unplug()
@@ -329,11 +378,18 @@ class DroneSetup:
             if not self._started():
                 raise SetupError("The camera did not start. Unplug the battery for 10 "
                                  "seconds again, then press Install to re-check.")
+            # The unplug is also the test that the deck's image SURVIVES a power
+            # cycle — on 2026-10-01 a first write did not.
+            if self._facts().lighthouse_needs_fw:
+                raise SetupError("The positioning deck lost its firmware when the battery "
+                                 "was unplugged. Press Install to write it again.")
             if not self._mark(manifest["bundle"]):
                 raise SetupError("Installed, but the drone did not save the set-up marker. "
                                  "Press Install again to finish.")
-        self._set(phase="done", current=None, parts={p: "installed" for p in PART_ORDER},
-                  message="The drone's camera software is installed.")
+        self._set(phase="done", current=None,
+                  parts={p: "absent" if parts.get(p) == "absent" else "installed"
+                         for p in PART_ORDER},
+                  message="The drone's software is installed.")
 
     def _await_unplug(self) -> None:
         """Wait for the battery to be unplugged AND plugged back in."""

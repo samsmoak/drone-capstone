@@ -139,7 +139,10 @@ export function FlyStep({ session, run, telemetry, mission, ambient, setAmbient,
             </Button>
           </div>
         </div>
-        {why && !flying && <p className="w-full text-xs text-[var(--muted)]">{why}</p>}
+        {/* Why Start is disabled is the one thing the operator must read here:
+            a warning, never muted text (2026-10-01 — a refusal in grey read as
+            "the mission is running"). */}
+        {why && !flying && <div className="w-full"><Message tone="warning" text={why} /></div>}
         <div className="w-full border-t border-[var(--border)] pt-2">
           <ProcessingSwitch session={session} run={run} />
         </div>

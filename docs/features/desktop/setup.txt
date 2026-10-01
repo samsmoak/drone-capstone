@@ -6,7 +6,7 @@ WHAT IT IS
 The Set up page (sidebar). One list, one step open at a time:
 
   1. Connect the drone          Crazyradio in, drone on (ticks itself)
-  2. Install camera software    check → install what is missing → unplug → verified
+  2. Install drone software     check → install what is missing → unplug → verified
   3. Connect the camera to Wi-Fi   → the Drone Wi-Fi page (drone-wifi.txt)
   4. Start a session            → Home
 
@@ -27,10 +27,13 @@ WHERE IT LIVES
 
 THE BUNDLE (manifest.json, sha256 each — a mismatch refuses to flash)
 
-  main    cf2.bin          crazyflie-firmware 2025.12.1 + drone_wifi v2
-  camera  aideck_gap8.bin  Bitcraze aideck-gap8-examples 2025.02, official
+  main        cf2.bin          crazyflie-firmware 2025.12.1 + drone_wifi v2
+  lighthouse  lighthouse.bin   Bitcraze crazyflie-release 2025.12.1's deck image
+                               (lighthouse-fpga V6, 104 093 bytes, crc32
+                               288081812 — what 2025.12.1 asks the deck for)
+  camera      aideck_gap8.bin  Bitcraze aideck-gap8-examples 2025.02, official
                            wifi_img_streamer_with_ap
-  wifi    aideck_esp.bin   Bitcraze aideck-esp-firmware 2025.02 +
+  wifi        aideck_esp.bin   Bitcraze aideck-esp-firmware 2025.02 +
                            firmware/aideck-esp/close-client-once.patch
 Updating one: rebuild it (firmware/*/build.sh), copy it in, regenerate the
 sha256, bump "bundle" (deck parts) or "drone_wifi" (main) so drones update.
@@ -52,7 +55,21 @@ DECISIONS
 
 INVARIANTS
 
-- ORDER: main, then camera (the GAP8 is written THROUGH the ESP32), then wifi.
+- ORDER: main, then lighthouse (main names the image the deck needs, so the
+  deck is asked AGAIN after main), then camera (the GAP8 is written THROUGH
+  the ESP32), then wifi.
+- A POSITIONING DECK WITHOUT ITS IMAGE IS DEAF (2026-10-01, the second lab
+  drone cf-002d00263234511236373639): detected (deck.bcLighthouse4 = 1) but
+  sitting in its bootloader — lighthouse.status 0, nothing received, the
+  position running away — while both base stations were fine. The drone says
+  so itself (deck memory: fw_upgrade_required), so it is read, never assumed,
+  and needs no marker. The first write did NOT survive a battery unplug that
+  day, so the unplug Set up already asks for doubles as the check that it
+  stays; a deck that loses it is reported, not marked done.
+- The deck is flashed with cflib's own deck path (flash_firmware.py
+  flash_lighthouse_deck): only the deck is in the target list, so the STM32
+  and the nRF51 are skipped; cflib leaves the drone in its bootloader, so it
+  is restarted into its firmware after.
 - AFTER THE ESP32 IS FLASHED THE GAP8 DOES NOT START until the battery is
   unplugged ~10 s (Bitcraze Discussion #1305; measured 2026-09-24 — a restart
   over the radio is not enough). The page asks, and the check counts only once
