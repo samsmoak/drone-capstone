@@ -1,6 +1,10 @@
 TICKET — The mission controller: the state machine
 ==================================================
 
+`experiment/samuel` and any `samuel/*` branch are Samuel's private
+experiment. They are not the build: these tickets are still open and
+still yours. Do not read them, build on them, or count them as built.
+
 STATUS: READY TO START. The skeleton this builds on is on main: the
 interface, a controller that refuses to fly, the session wiring. Where this
 ticket and the code disagree, the code wins — tell Samuel so this is fixed.

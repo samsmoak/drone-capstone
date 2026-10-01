@@ -84,6 +84,38 @@ SHIP
                A plain merge being refused is the ruleset working.
   standing     after every build that passes its gates: commit, push, merge —
                without being asked again (owner, 2026-09-16).
+  experiments  Samuel's own experiments (owner, 2026-09-30). This OVERRIDES
+               "standing" above for `samuel/*` and `experiment/samuel`: commit
+               and push only — no PR and no merge — until Samuel says so.
+
+                 main ──▶ samuel/<feature> ──merge──▶ experiment/samuel  (test)
+                               └── PR, gates pass ──▶ main  (Samuel decides)
+
+               1. Every feature gets its own branch, cut from main, named
+                  samuel/<feature>. Never cut one from experiment/samuel: it
+                  would carry every other experiment into the PR to main.
+               2. Test by merging the feature branch into experiment/samuel.
+                  Several features can sit there together.
+               3. Ship a feature by a PR from ITS OWN branch to main, one
+                  feature at a time, when Samuel decides. Run the gates again
+                  on that PR: main is a different mix from the experiment.
+               4. experiment/samuel never merges into main, and no PR is ever
+                  opened from it.
+               5. Keep experiment/samuel current with `git merge main`, never
+                  rebase — it is pushed, so a rebase rewrites shared history.
+               6. Fix on the feature branch, then merge it into
+                  experiment/samuel again. A fix committed on experiment/samuel
+                  has no branch to ship from.
+               7. Both branches are pushed, for backup and so cloud sessions
+                  can continue the work.
+               These branches are NOT the build, for anyone: a doc's STATUS on
+               them says "EXPERIMENT — on experiment/samuel, not on main",
+               never BUILT; tickets stay open; DESIGNED BUT NOT WIRED is not
+               edited there. graph_check lists them as UNMERGED BRANCH and,
+               after a week idle, "LOOKS DONE AND FORGOTTEN" — for these two
+               names that label is wrong: never suggest merging them. Whoever
+               else's ticket they shadow keeps it; if one ships, that ticket is
+               rewritten in the same PR (one implementation, never two).
   CI wait      a PR touching desktop/, backend/agent/ or scripts/ runs the
                desktop-install workflow on three machines: wait for it before
                merging.
