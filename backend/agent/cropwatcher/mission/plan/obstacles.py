@@ -9,14 +9,19 @@ come to me? — and the validation compares the answer with the room's
 clearance. The drone is never allowed to touch an obstacle's outline, and not
 to come within the clearance of it either.
 
-HEIGHT IS DRAWN, NOT FLOWN OVER. An obstacle may carry its height above the
-floor (`height_m`), so the 3-D room map shows a knee-high pot and a
-ceiling-high shelf differently. None means floor to ceiling — every room saved
-before heights existed. The checks treat EVERY obstacle as floor to ceiling
-whatever its height: the drone never plans a leg over one. With the flight
-system's 1.00 m ceiling and 0.25 m clearance, anything taller than about
-0.7 m could never be cleared anyway, and a plan that relied on the height of a
-bench someone measured by eye is a plan that clips it.
+A POINT OR A LEG MAY PASS OVER AN OBSTACLE WITH A HEIGHT (2026-10-01,
+Samuel: "I should be able to put it above the airspace of an object if it is
+not too close"). An obstacle may carry its height above the floor
+(`height_m`); None means floor to ceiling — every room saved before heights
+existed, and any obstacle whose height nobody entered: unknown is unsafe. A
+point is clear of an obstacle when it is the clearance away from it sideways,
+OR the obstacle has a height and the point is at least that height plus the
+clearance above the floor (clears). A leg the same, judged at its LOWER end:
+heights change linearly along a leg, so a leg whose lower end is high enough
+is high enough all along (clears_leg). Until 2026-10-01 every obstacle was
+treated as floor to ceiling. Still true: with the 1.00 m ceiling and 0.25 m
+clearance only obstacles up to 0.75 m can be flown over, and a height entered
+by eye 10 cm wrong is a pass 10 cm closer than planned.
 
 THIS IS A STATIC MAP. It knows what was drawn, not a person who walked in or a
 trolley someone left. The operator still looks at the room before flying.
@@ -60,8 +65,8 @@ class Obstacle:
     points: tuple[Point, ...]
     radius: float = 0.0
     label: str | None = None
-    #: Height above the floor, for the room map; None = floor to ceiling. Never
-    #: used to clear a leg — see the module docstring.
+    #: Height above the floor; None = floor to ceiling. A point or leg may pass
+    #: over the obstacle at this height plus the clearance — see clears().
     height_m: float | None = None
 
     def __post_init__(self) -> None:
@@ -101,6 +106,27 @@ class Obstacle:
         lo_x, hi_x = min(x1, x2), max(x1, x2)
         lo_y, hi_y = min(y1, y2), max(y1, y2)
         return ((lo_x, lo_y), (hi_x, lo_y), (hi_x, hi_y), (lo_x, hi_y))
+
+    def overflight_height(self, clearance: float) -> float | None:
+        """The lowest height a point or leg may pass over this at, or None
+        when it cannot be passed over (no height entered)."""
+        return None if self.height_m is None else self.height_m + clearance
+
+    def clears(self, p: Point, z: float | None, clearance: float) -> bool:
+        """Whether a stop at `p`, `z` m above the floor, keeps clear of this —
+        beside it, or over it. `z` None is a stop on the floor (the start)."""
+        if self.distance_to_point(p) >= clearance:
+            return True
+        over = self.overflight_height(clearance)
+        return over is not None and z is not None and z >= over
+
+    def clears_leg(self, a: Point, za: float, b: Point, zb: float, clearance: float) -> bool:
+        """Whether the straight leg a→b keeps clear of this — beside it all
+        the way, or over it all the way (judged at the leg's lower end)."""
+        if self.distance_to_segment(a, b) >= clearance:
+            return True
+        over = self.overflight_height(clearance)
+        return over is not None and min(za, zb) >= over
 
     def distance_to_point(self, p: Point) -> float:
         """0 inside or on the obstacle."""

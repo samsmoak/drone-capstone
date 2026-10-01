@@ -99,9 +99,14 @@ def plan_to_fly(mission: Mission, room: Room, *, outer: Geofence,
     points: list[InspectionPoint] = []
     moves: list[Move] = []
     unfitted: list[str] = []
+    # The landing spot comes down to the floor: it must be beside every
+    # obstacle, never over one (validate.py says the same).
+    landing = None if from_drone.returns_home else (
+        from_drone.flown_points[-1].id if from_drone.flown_points else None)
     for p in from_drone.points:
         z = min(max(p.z_m, fence.z_min), fence.z_max)
-        xy = p.xy if _fine(p.xy, space) else _nearest_fine(p.xy, space)
+        z_over = None if p.id == landing else z
+        xy = p.xy if _fine(p.xy, z_over, space) else _nearest_fine(p.xy, z_over, space)
         if xy is None:
             unfitted.append(p.id)
             xy = p.xy
@@ -114,16 +119,17 @@ def plan_to_fly(mission: Mission, room: Room, *, outer: Geofence,
     return FlyingPlan(fitted, space, tuple(moves), tuple(problems), tuple(unfitted))
 
 
-def _fine(xy: Point, room: Room) -> bool:
-    """The same point rules validate.py applies: inside, clear of the edge and
-    of every obstacle by the room's clearance."""
+def _fine(xy: Point, z: float | None, room: Room) -> bool:
+    """The same point rules validate.py applies: inside, clear of the edge,
+    and clear of every obstacle — beside it, or over one with a height
+    (obstacles.py clears). `z` None: it must be beside (the landing spot)."""
     fence, clearance = room.geofence, room.clearance_m
     if not fence.contains(*xy) or fence.edge_distance(*xy) < clearance:
         return False
-    return all(o.distance_to_point(xy) >= clearance for o in room.obstacles)
+    return all(o.clears(xy, z, clearance) for o in room.obstacles)
 
 
-def _nearest_fine(xy: Point, room: Room) -> Point | None:
+def _nearest_fine(xy: Point, z: float | None, room: Room) -> Point | None:
     """The nearest fine spot, searched ring by ring outwards."""
     steps = round(SEARCH_RADIUS_M / SEARCH_STEP_M)
     for k in range(1, steps + 1):
@@ -132,7 +138,7 @@ def _nearest_fine(xy: Point, room: Room) -> Point | None:
         for a in range(SEARCH_ANGLES):
             t = 2 * math.pi * a / SEARCH_ANGLES
             c = (round(xy[0] + r * math.cos(t), 4), round(xy[1] + r * math.sin(t), 4))
-            if _fine(c, room) and (best is None or math.dist(c, xy) < math.dist(best, xy)):
+            if _fine(c, z, room) and (best is None or math.dist(c, xy) < math.dist(best, xy)):
                 best = c
         if best is not None:
             return best

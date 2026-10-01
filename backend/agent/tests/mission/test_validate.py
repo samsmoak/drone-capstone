@@ -272,16 +272,54 @@ class TestFromStart:
 
 
 class TestObstacleHeight:
-    """Height is for the room map. The checks treat every obstacle as floor to
-    ceiling, whatever its height."""
+    """A point or a leg may pass OVER an obstacle that has a height, at least
+    height + clearance up (2026-10-01). No height = floor to ceiling."""
 
-    def test_a_low_obstacle_still_blocks_a_leg_above_it(self):
-        low = Obstacle("pot", ObstacleKind.CIRCLE, ((0.0, 0.0),), radius=0.2, height_m=0.1)
-        # A 10 cm pot on the diagonal; the leg flies it at 0.9 m, well above.
-        m = mission(home=(0.9, 0.9), return_to_start=False,
-                    points=(InspectionPoint("P1", -1.0, -1.0, 0.9, 5.0),))
-        problems = validate_mission(m, room(obstacles=(low,)), outer=OUTER)
+    POT = Obstacle("pot", ObstacleKind.CIRCLE, ((0.0, 0.0),), radius=0.2, height_m=0.1)
+    # 0.10 m pot + 0.25 m clearance: 0.35 m is the lowest pass over it.
+
+    def diagonal(self, *, cruise=0.4, z=0.9, returning=False):
+        """A leg from (0.9, 0.9) to (-1.0, -1.0), straight over the pot."""
+        return mission(home=(0.9, 0.9), cruise_height_m=cruise, return_to_start=returning,
+                       points=(InspectionPoint("P1", -1.0, -1.0, z, 5.0),))
+
+    def test_a_leg_high_enough_passes_over_a_low_obstacle(self):
+        problems = validate_mission(self.diagonal(cruise=0.4), room(obstacles=(self.POT,)),
+                                    outer=OUTER)
+        assert "leg_near_obstacle" not in codes(problems)
+
+    def test_a_leg_too_low_over_it_is_refused_and_says_how_high(self):
+        problems = validate_mission(self.diagonal(cruise=0.3), room(obstacles=(self.POT,)),
+                                    outer=OUTER)
+        leg = [p for p in problems if p.code == "leg_near_obstacle"]
+        assert leg and "at least 0.35 m high" in leg[0].message
+
+    def test_an_obstacle_with_no_height_is_still_floor_to_ceiling(self):
+        unknown = Obstacle("pot", ObstacleKind.CIRCLE, ((0.0, 0.0),), radius=0.2)
+        problems = validate_mission(self.diagonal(cruise=0.9), room(obstacles=(unknown,)),
+                                    outer=OUTER)
         assert "leg_near_obstacle" in codes(problems)
+
+    def over_the_pot(self, z: float, returning: bool):
+        return mission(home=(-1.0, -1.0), return_to_start=returning, cruise_height_m=0.4,
+                       points=(InspectionPoint("P1", 0.0, 0.0, z, 5.0),))
+
+    def test_a_point_high_enough_may_hold_over_it(self):
+        problems = validate_mission(self.over_the_pot(0.6, returning=True),
+                                    room(obstacles=(self.POT,)), outer=OUTER)
+        assert "near_obstacle" not in codes(problems)
+
+    def test_a_point_too_low_over_it_says_how_high(self):
+        problems = validate_mission(self.over_the_pot(0.3, returning=True),
+                                    room(obstacles=(self.POT,)), outer=OUTER)
+        near = [p for p in problems if p.code == "near_obstacle"]
+        assert near and "at least 0.35 m high" in near[0].message
+
+    def test_the_landing_spot_must_be_beside_it_not_over_it(self):
+        problems = validate_mission(self.over_the_pot(0.9, returning=False),
+                                    room(obstacles=(self.POT,)), outer=OUTER)
+        near = [p for p in problems if p.code == "near_obstacle"]
+        assert near and "lands here" in near[0].message
 
     def test_it_round_trips_and_old_rooms_are_floor_to_ceiling(self):
         tall = Obstacle("shelf", ObstacleKind.RECTANGLE, ((0, 0), (1, 0.5)), height_m=1.8)

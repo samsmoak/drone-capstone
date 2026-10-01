@@ -14,7 +14,7 @@
  * Both in 2-D or 3-D (the map's own switch), each full screen.
  *
  * THE SURVEY measures the space: carry the drone round the room's edge with
- * both base stations in view; its outline grows on the map; save it and it is
+ * the base stations in view; its outline grows on the map; save it and it is
  * the room's coverage. Until then the agent's default area stands in, and a
  * prediction from the stations' poses (if `cropwatcher geometry` has stored
  * them) shows where to walk.
@@ -244,8 +244,8 @@ function SurveyPanel({ room, survey, run, onStarted, onStopped }: {
            bodyClassName="grid gap-3 px-4 py-3">
       <p className="text-xs leading-relaxed">
         Motors off, drone in your hands: press Start, then walk it slowly round the edge of the space you want to fly
-        in, at about the heights it will fly, with both base stations in view. Only positions where both stations are
-        received count. Save when the outline covers the room.
+        in, at about the heights it will fly, with the base stations in view. Only positions where the drone receives
+        enough stations count (one by default; two where the room insists). Save when the outline covers the room.
       </p>
       {survey.active && (
         <p className="mono text-xs">{survey.kept} of {survey.seen} positions counted · the outline is drawn on the maps above</p>

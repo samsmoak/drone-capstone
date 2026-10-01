@@ -62,8 +62,10 @@ desktop/src/pages/control/auto/FlightPlanCheck.tsx    ② the two plans, the sur
   no walls; Lighthouse tells it where it IS, wherever two base stations reach
   its deck. Room.coverage holds that outline (+ the room's height band).
   MEASURED by the survey — the drone carried round the room, every position
-  with two stations received kept, their convex hull saved (coverage.py
-  Survey). PREDICTED from the stations' poses on the drone and Valve's
+  with enough stations received kept (coverage.py stations_needed: the
+  project's flight_guard policy, ONE by default — it said a fixed two until
+  2026-10-01, which counted nothing in the lab's one-station room), their
+  convex hull saved (Survey). PREDICTED from the stations' poses on the drone and Valve's
   150°x110° field of view (StationPose.sees) — shown to guide the walk, never
   flown on. One station's view is a pyramid; two overlap convexly within a
   height band, so a hull is the right shape (what it cannot show — a cabinet
@@ -113,12 +115,19 @@ desktop/src/pages/control/auto/FlightPlanCheck.tsx    ② the two plans, the sur
   flight system), so the battery refusal counts a slower mission's time; the
   controller hands it to fly_to(…, speed_m_s). The editor: "Speed between
   points".
-• OBSTACLE HEIGHT IS DRAWN, NOT FLOWN OVER (height_m, optional; None = floor
-  to ceiling, which every room saved before 2026-09-29 reads as). Every check
-  still treats every obstacle as floor to ceiling — the drone never plans a
-  leg over one. With the 1.00 m ceiling and 0.25 m clearance, anything taller
-  than ~0.7 m could never be cleared anyway, and a plan leaning on a height
-  measured by eye is a plan that clips it.
+• A POINT OR LEG MAY PASS OVER AN OBSTACLE WITH A HEIGHT (2026-10-01,
+  Samuel: "above the airspace of an object if it is not too close"). Until
+  then every obstacle was floor to ceiling. Now (obstacles.py clears,
+  clears_leg): clear BESIDE it by the clearance, OR — when it has a height —
+  at least height + clearance up. A leg is judged at its LOWER end (heights
+  change linearly along it; the start and a return are at the cruise height).
+  No height entered = floor to ceiling: unknown is unsafe. The START (it
+  takes off from the floor) and the LANDING SPOT (the last point when not
+  returning — it comes down there) must be clear BESIDE every obstacle, or
+  the drone lands on it. The fit applies the same rule. Limits, said where it
+  matters: under the 1.00 m ceiling only obstacles up to 0.75 m can be passed
+  over; a height entered by eye 10 cm wrong is a pass 10 cm closer; the drone
+  has not been tuned or tested hovering over a surface (ground effect).
 • Holds are at least 5 s — story 3.4's "5 seconds of readings".
 • VALIDATION RETURNS PROBLEMS, NOT AN EXCEPTION — every one, with where it is
   (a point id, "home", a leg "P1 → P2"). Errors block flying; warnings
