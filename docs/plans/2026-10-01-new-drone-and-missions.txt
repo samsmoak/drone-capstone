@@ -1,7 +1,36 @@
 THE NEW DRONE, AND MISSIONS THAT KNOW THEIR SPACE — the 100 stages
 ====================================================================
 
-STATUS (2026-10-01): written; Phase A under way.
+STATUS (2026-10-01, end of the first day):
+
+  DONE      A 1–11, 19, 20 — the new drone: main 2025.12.1 + drone_wifi,
+            the Lighthouse deck's image (written twice — it lost the first
+            across a battery unplug), the camera chip; the flight log and
+            flight-status UPDATE 7.
+            B 21–32 — Set up installs the deck's image (PR #92, merged).
+            C 34–37 — the doc correction; the mission commentary
+            (experiment/samuel, pushed).
+            D 51–62 — one mode per session; refusals shown (PR #91, merged).
+            E 63–69 — speed presets (PR #93, OPEN: touches the locked
+            manual.py — Samuel's review; its fingerprint is updated in it).
+            F 71–91 — coverage, the survey, the plan that will fly, the two
+            maps (PR #94, merged when its CI passes — NOT lab-verified).
+  CHANGED   F: the space a mission flies in is the MEASURED coverage only;
+            the prediction is drawn to guide the survey, never flown on.
+            F: "re-asked on every edit" = an unsaved edit is fitted by
+            POST /missions/fit 0.4 s after it settles.
+            C 35: THE SPEC has no event where a landing after a return
+            begins, so RETURNING announces it ("…, then landing").
+  IN PROGRESS  A 11–13: the AI deck's Wi-Fi chip (third write); then the
+            battery unplug and the camera-started check.
+  BLOCKED   A 10, 14–18 and everything after that flies: no base-station
+            sweep decodes yet (sensors 0/1 see light, 2/3 none). Physical:
+            the deck's view, the stations' channels and aim.
+  OWED      C 38–50 (the ladder on the new airframe, rungs 1–5, the
+            constants), F 92–93 (survey the room, fly a moved point) — in the
+            lab, Samuel present. E 70 after #93 merges. G 94–100.
+  FOUND     a test race in test_processing (the queue notifies after it
+            marks done) — fixed in PR #94.
 
 Everything Samuel asked for in the 2026-10-01 lab session, in the order it
 must happen. Hardware first: nothing about missions can be proved until a
