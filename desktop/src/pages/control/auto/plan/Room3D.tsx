@@ -33,7 +33,7 @@ import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "
 import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
 import { Edges, GizmoHelper, GizmoViewport, Line, OrbitControls } from "@react-three/drei";
 import {
-  BufferGeometry, CanvasTexture, Color, Float32BufferAttribute, FrontSide, Plane, Quaternion, Shape,
+  BufferGeometry, CanvasTexture, Color, DoubleSide, Float32BufferAttribute, FrontSide, Plane, Quaternion, Shape,
   SRGBColorSpace, Vector3, type PerspectiveCamera,
 } from "three";
 import type { Geofence, InspectionPoint, Obstacle, OuterBound, Problem, XY } from "@/lib/agent";
@@ -42,6 +42,7 @@ import {
   rectangleFence, rectangleOf, resizeRectangle, type Box,
 } from "./geometry";
 import { landsAt, legsOf, unflownIds, type PathSource } from "./path";
+import { insideOutline, type SpaceLayer } from "./space";
 import { isRoomObject, sameHandle, type Handle, type PointState } from "./PlanCanvas";
 
 /** What of drei's OrbitControls this file uses — the orbit's centre, and
@@ -83,6 +84,8 @@ export type Room3DProps = {
   onSelect?: (handle: Handle | null) => void;
   /** A camera move asked for from outside (the toolbar); `n` repeats it. */
   camera: { preset: CameraPreset; n: number };
+  /** The flyable space (space.ts): a see-through volume the plan sits inside. */
+  space?: SpaceLayer | null;
   label: string;
 };
 
@@ -165,7 +168,7 @@ export default function Room3D(props: Room3DProps) {
 
 function Scene({
   outer, fence, obstacles, path, takeoffHeight, problems, drone, droneHeight, droneYaw,
-  progress, editing, selected: shownSelected, onSelect, camera, palette, box, moved,
+  progress, editing, selected: shownSelected, onSelect, camera, palette, box, moved, space = null,
 }: Room3DProps & { palette: Palette; box: Box; moved: (e: { clientX: number; clientY: number }) => boolean }) {
   const current = editing?.selected ?? shownSelected ?? null;
   const select = editing?.onSelect ?? onSelect;
@@ -209,6 +212,7 @@ function Scene({
                else select?.(null);
              }} />
 
+      {space && <SpaceVolume space={space} path={path} palette={palette} />}
       {fence && (
         <FenceWalls fence={fence} palette={palette} mine={fenceMine} faded={!!focus && !fenceMine}
                     onClick={pick({ kind: "fence" })}
@@ -422,6 +426,44 @@ function FenceWalls({ fence, palette, mine, faded, onClick, onDoubleClick }: {
       {posts.map(([x, y], i) => (
         <Line key={i} points={[[x, y, 0], [x, y, fence.z_max]]} color={palette.primary} lineWidth={1}
               transparent opacity={0.6 * opacity} />
+      ))}
+    </group>
+  );
+}
+
+// ── the flyable space ────────────────────────────────────────────────────
+
+/** Where the drone's position can be trusted, as a see-through green volume:
+ *  faint walls you look through to the room, the plan and the drone, its
+ *  outline at the bottom and top, and — for a prediction — its outline at
+ *  every height, so the blob's shape reads in depth. Any point of the plan
+ *  outside it is ringed red at its height. */
+function SpaceVolume({ space, path, palette }: { space: SpaceLayer; path: PathSource | null; palette: Palette }) {
+  const walls = useMemo(() => wallGeometry(space.vertices, space.z_min, space.z_max),
+    [space.vertices, space.z_min, space.z_max]);
+  useEffect(() => () => walls.dispose(), [walls]);
+  const ring = (vertices: XY[], z: number) =>
+    [...vertices, vertices[0]].map(([x, y]) => [x, y, z] as [number, number, number]);
+  const outside = (path?.points ?? []).filter((p) => !insideOutline([p.x_m, p.y_m], space.vertices));
+  const dashed = space.kind !== "measured";
+  return (
+    <group>
+      <mesh geometry={walls}>
+        <meshBasicMaterial color={palette.good} transparent opacity={0.1} side={DoubleSide} depthWrite={false} />
+      </mesh>
+      <Line points={ring(space.vertices, space.z_min)} color={palette.good} lineWidth={1.6}
+            dashed={dashed} dashSize={0.08} gapSize={0.05} />
+      <Line points={ring(space.vertices, space.z_max)} color={palette.good} lineWidth={1.6}
+            dashed={dashed} dashSize={0.08} gapSize={0.05} />
+      {(space.slices ?? []).filter((sl) => sl.outline.length >= 3).map((sl) => (
+        <Line key={sl.z_m} points={ring(sl.outline, sl.z_m)} color={palette.good} lineWidth={1}
+              transparent opacity={0.45} />
+      ))}
+      {outside.map((p) => (
+        <mesh key={p.id} position={[p.x_m, p.y_m, p.z_m]}>
+          <torusGeometry args={[0.12, 0.012, 8, 32]} />
+          <meshBasicMaterial color={palette.critical} />
+        </mesh>
       ))}
     </group>
   );

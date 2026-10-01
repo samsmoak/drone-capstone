@@ -34,6 +34,7 @@ import { useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode
 import type { Geofence, InspectionPoint, Obstacle, OuterBound, Problem, XY } from "@/lib/agent";
 import { NUDGE_M, mapBox } from "./geometry";
 import { legsOf, landsAt, unflownIds, type PathSource } from "./path";
+import { SPACE_LABEL, insideOutline, type SpaceLayer } from "./space";
 
 export type Handle =
   | { kind: "home" }
@@ -81,8 +82,12 @@ export type Editing = {
 
 export function PlanCanvas({
   outer, fence, obstacles, path, takeoffHeight = 0.4, problems = [], drone = null,
-  editing, label, progress, selected: shownSelected = null, className,
+  editing, label, progress, selected: shownSelected = null, className, space = null, sliceZ = null,
 }: {
+  /** The flyable space (space.ts), drawn under the plan; points outside it are ringed red. */
+  space?: SpaceLayer | null;
+  /** With a prediction: the height whose outline to draw. */
+  sliceZ?: number | null;
   outer: OuterBound;
   fence: Geofence | null;
   obstacles: Obstacle[];
@@ -254,6 +259,8 @@ export function PlanCanvas({
         <text x={box.xMin + 0.03} y={-box.yMin + 0.16} style={{ fill: "var(--muted)", fontSize: 0.1 }}>front</text>
       </g>
 
+      {space && <SpaceArea space={space} sliceZ={sliceZ} path={path} />}
+
       {fence && (
         <g opacity={dim(fenceMine)}>
           <polygon points={polygon(fence.vertices)} {...thin}
@@ -390,3 +397,32 @@ function Arrow({ a, b, colour }: { a: XY; b: XY; colour: string }) {
              style={{ fill: colour }} aria-hidden="true" />
   );
 }
+
+/** The flyable space from above: shaded where the drone's position can be
+ *  trusted, a dashed edge, the predicted outline at the chosen height, and a
+ *  red ring round any point of the plan outside it. */
+function SpaceArea({ space, sliceZ, path }: { space: SpaceLayer; sliceZ: number | null; path: PathSource | null }) {
+  const thin = { vectorEffect: "non-scaling-stroke" as const };
+  const polygon = (vertices: XY[]) => vertices.map(([x, y]) => `${x},${-y}`).join(" ");
+  const slice = sliceZ === null || !space.slices?.length ? null
+    : space.slices.reduce((a, b) => (Math.abs(b.z_m - sliceZ) < Math.abs(a.z_m - sliceZ) ? b : a));
+  const outline = slice && slice.outline.length >= 3 ? slice.outline : space.vertices;
+  const outside = (path?.points ?? []).filter((p) => outline.length >= 3 && !insideOutline([p.x_m, p.y_m], outline));
+  return (
+    <g aria-label={SPACE_LABEL[space.kind]}>
+      {outline.length >= 3 && (
+        <polygon points={polygon(outline)} {...thin}
+                 style={{ fill: "var(--status-good)", fillOpacity: 0.14, stroke: "var(--status-good)",
+                          strokeWidth: 1.6, strokeDasharray: space.kind === "measured" ? undefined : "4 3",
+                          pointerEvents: "none" }} />
+      )}
+      {outside.map((p) => (
+        <circle key={p.id} cx={p.x_m} cy={-p.y_m} r={0.11} {...thin}
+                style={{ fill: "none", stroke: "var(--status-critical)", strokeWidth: 2.2, pointerEvents: "none" }}>
+          <title>{`${p.id} is outside the flyable space`}</title>
+        </circle>
+      ))}
+    </g>
+  );
+}
+
