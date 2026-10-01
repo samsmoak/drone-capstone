@@ -13,6 +13,7 @@
 import { createRoot } from "react-dom/client";
 import { HomePage } from "@/pages/home/HomePage";
 import { ControlPage } from "@/pages/control/ControlPage";
+import { ModeLock } from "@/pages/control/ModeLock";
 import type { FlowStart } from "@/pages/control/auto/MissionFlow";
 import type { Run } from "@/App";
 import { SensorWindow, WINDOWS } from "@/pages/windows/SensorWindow";
@@ -274,6 +275,7 @@ function Shell({ label, children }: { label: string; children: React.ReactNode }
           session={session}
           starting={false}
           flying={false}
+          mode={session.mode}
           onSetMode={() => {}}
           onSignOut={() => {}}
         />
@@ -317,6 +319,9 @@ const control = (label: string, override: Partial<Session>, autoStart?: FlowStar
 createRoot(document.getElementById("root")!).render(
   <div className="bg-[var(--background)] text-[var(--foreground)]">
     <Shell label="Startup"><StartupPage connected={false} /></Shell>
+    <Shell label="Control · Auto page while a Manual session is open">
+      <ModeLock session={{ ...session, mode: "manual", state: "ready" }} looking="auto" onBack={() => {}} />
+    </Shell>
     <Shell label="Home">
       <HomePage session={session} telemetry={telemetry} sync={null} connected run={noop} onGo={() => {}} />
     </Shell>

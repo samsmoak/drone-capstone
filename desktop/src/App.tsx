@@ -42,6 +42,8 @@ import {
 } from "@/lib/agent";
 import { useCommandLog, useSessionNarration } from "@/lib/commandLog";
 import { ControlPage } from "@/pages/control/ControlPage";
+import { ModeLock } from "@/pages/control/ModeLock";
+import { sessionOpen, shownMode } from "@/lib/sessionMode";
 import { HomePage } from "@/pages/home/HomePage";
 import { FlightStrip } from "@/components/FlightStrip";
 import { Sidebar } from "@/components/Sidebar";
@@ -86,6 +88,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
   const [intent, setIntent] = useState<Intent>(EMPTY_INTENT);
+  /** With a session open: the other mode's page, if the operator chose to look at it. */
+  const [lookingAt, setLookingAt] = useState<Mode | null>(null);
   // Drone Wi-Fi: the agent's live account of the deck joining, and the dialog.
   const [cameraWifi, setCameraWifi] = useState<CameraWifi | null>(null);
   const [wifiOpen, setWifiOpen] = useState(false);
@@ -323,7 +327,13 @@ export default function App() {
   // The Auto/Manual toggle also chooses which history every page shows. The
   // fallback matches the AGENT's own default (session.py) so the filter does
   // not flip under the operator when the first frame lands.
-  const viewMode: Mode = session?.mode ?? "manual";
+  // The page shown follows the session's mode — unless, with a session open,
+  // the operator chose to look at the other one (lib/sessionMode.ts).
+  const viewMode: Mode = shownMode(session, lookingAt);
+  const open = sessionOpen(session);
+  // A session that ends forgets where the operator was looking: the next one
+  // opens on its own mode's page.
+  useEffect(() => { if (!open) setLookingAt(null); }, [open]);
 
   return (
     <div className="flex h-screen bg-[var(--background)] text-[var(--foreground)]">
@@ -338,7 +348,14 @@ export default function App() {
         // Hover-to-expand is suppressed while flying: expanded, the rail covers
         // the Control page's console, which is what the operator is watching.
         flying={Boolean(flying)}
-        onSetMode={(mode) => void run(() => api.setMode(mode), `Set mode to ${mode}`)}
+        mode={viewMode}
+        onSetMode={(mode) => {
+          // A session keeps its mode until it ends: the switch then only
+          // changes the page you look at. With none open it sets the mode the
+          // next session opens in.
+          if (open) setLookingAt(mode === session?.mode ? null : mode);
+          else void run(() => api.setMode(mode), `Set mode to ${mode}`);
+        }}
         onSignOut={() => void run(api.signOut, "Sign out")}
         badges={signedIn ? { wifi: wifiBadge } : {}}
       />
@@ -394,6 +411,8 @@ export default function App() {
                 run={run}
                 onGo={setPage}
               />
+            ) : page === "control" && open && session && viewMode !== session.mode ? (
+              <ModeLock session={session} looking={viewMode} onBack={() => setLookingAt(null)} />
             ) : page === "control" ? (
               <ControlPage
                 session={session}

@@ -35,7 +35,7 @@ import { useState, type FormEvent, type InputHTMLAttributes, type ReactNode } fr
 import type { History, Run } from "@/App";
 import { api, KEY_LABELS, type HealthTest, type Intent, type Session, type Telemetry } from "@/lib/agent";
 import type { LogLine } from "@/lib/commandLog";
-import { Button, Message, PageHeader, Panel, Spinner, Stat, StatusDot } from "@/components/ui";
+import { Button, Message, PageHeader, Panel, Spinner, Stat, StatusDot, TONE_COLOR } from "@/components/ui";
 import { SplitPane } from "@/components/SplitPane";
 import { useMediaQuery, WIDE } from "@/lib/useMediaQuery";
 import { AutoControl } from "./auto/AutoControl";
@@ -374,6 +374,13 @@ function ActionRail({ session, run, ready, height, hold, ambient }: {
           {action.label}
         </RailButton>
       ))}
+      {/* The flying action's reason is SHOWN, not only a tooltip: it is the
+          line that explains why nothing happens (2026-10-01). */}
+      {modeSlot.disabled && modeSlot.reason && (
+        <p role="status" className="mt-1 border-l-2 pl-2 text-xs" style={{ borderColor: TONE_COLOR.warning }}>
+          {modeSlot.reason}
+        </p>
+      )}
     </div>
   );
 }
