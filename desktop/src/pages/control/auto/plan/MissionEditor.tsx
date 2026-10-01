@@ -48,6 +48,7 @@ import {
 import { clearEnd, distance, endAt, flownPoints, landsAt, reversed, returnsHome, unflownIds } from "./path";
 import { isRoomObject, sameHandle, type Handle } from "./PlanCanvas";
 import { RoomMap } from "./RoomMap";
+import type { SpaceLayer } from "./space";
 import { SplitPane } from "@/components/SplitPane";
 import { CardState, CARD_ATTR, ObjectCard } from "./ObjectCard";
 import { FenceFields, ObstacleFields, PointFields } from "./shapeFields";
@@ -108,7 +109,11 @@ export function blankMission(room: Room, limits: PlanLimits, drone: XY | null = 
   };
 }
 
-export function MissionEditor({ draft, limits, run, drone, missionsInRoom, onSaved, onCancel, heightClass }: {
+export function MissionEditor({ draft, limits, run, drone, missionsInRoom, onSaved, onCancel, heightClass, onDraft, space }: {
+  /** Every change to the draft, unsaved — the Check step's second map follows it. */
+  onDraft?: (mission: Mission, room: Room) => void;
+  /** The flyable space, drawn on the editor's map (space.ts). */
+  space?: SpaceLayer | null;
   draft: Draft;
   limits: PlanLimits;
   run: Run;
@@ -122,6 +127,9 @@ export function MissionEditor({ draft, limits, run, drone, missionsInRoom, onSav
 }) {
   const [room, setRoom] = useState<Room>(draft.room);
   const [mission, setMission] = useState<Mission>(draft.mission);
+  const draftChanged = useRef(onDraft);
+  draftChanged.current = onDraft;
+  useEffect(() => { draftChanged.current?.(mission, room); }, [mission, room]);
   const [tab, setTab] = useState<EditorTab>(draft.roomIsNew ? "room" : "path");
   const [selected, setSelectedRaw] = useState<Handle | null>(null);
   const [placing, setPlacing] = useState<Placing>(null);
@@ -275,6 +283,7 @@ export function MissionEditor({ draft, limits, run, drone, missionsInRoom, onSav
         label={`Room map of ${room.name}: the geofence, ${room.obstacles.length} obstacles, the start and ${mission.points.length} inspection points`}
         heightClass={heightClass}
         below={below}
+        space={space}
         editing={{
           selected, onSelect: setSelected, onDrag, onPlace, placing,
           onPointMenu: (id, at) => setMenu({ id, ...at }),

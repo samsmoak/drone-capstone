@@ -59,10 +59,12 @@ from cropwatcher.mission.controller import (
     MissionEvent,
     MissionState,
 )
+from cropwatcher.mission.plan.coverage import Prediction, Survey, predict
+from cropwatcher.mission.plan.fit import FlyingPlan, Move, plan_to_fly
 from cropwatcher.mission.plan.floorplan import PlanError, Room
 from cropwatcher.mission.plan.mission import Mission
 from cropwatcher.mission.plan.store import NotFound, PlanStore
-from cropwatcher.mission.plan.validate import errors, outer_bound, validate_mission
+from cropwatcher.mission.plan.validate import errors, outer_bound
 from cropwatcher.paths import flights_dir
 from cropwatcher.processing import Job, ProcessingQueue
 from cropwatcher.safety.flight_guard import Action as GuardAction
@@ -299,6 +301,8 @@ class Session:
         #: The mission controller while a mission flies; None otherwise.
         self.mission: Any = None
         self._mission_plan: Mission | None = None
+        #: The coverage survey in progress: (room id, the survey), or None.
+        self._survey: tuple[str, Survey] | None = None
         self._manual_guard_stop: threading.Event | None = None
         self._recorder: FlightRecorder | None = None
         self._flight_id: str | None = None
@@ -922,6 +926,12 @@ class Session:
                 history.sample(snap)
             except OSError:
                 log.warning("could not write a history sample")
+        surveying = self._survey
+        if surveying is not None:
+            x, y = snap.get("stateEstimate.x"), snap.get("stateEstimate.y")
+            z, mask = snap.get("stateEstimate.z"), snap.get("lighthouse.bsReceive")
+            if None not in (x, y, z, mask):
+                surveying[1].add(float(x), float(y), float(z), int(mask))
 
     # ── confirmation ─────────────────────────────────────────────────────
 
@@ -1071,6 +1081,70 @@ class Session:
         drone's position when one is reported, else as saved), its room, and
         the position used. The same from_start run_mission applies, so the
         page shows exactly what Start will be checked against."""
+        plan, here = self.flying_plan(mission_id)
+        return plan.mission, plan.room, here
+
+    # ── coverage: predicted and surveyed (mission/plan/coverage.py) ─────
+
+    def predicted_coverage(self, room_id: str) -> Prediction | None:
+        """Where the base stations SHOULD reach, from their poses stored on
+        the drone. None with no drone connected or no geometry stored — run
+        `cropwatcher geometry` first. A guide for the survey; never flown on."""
+        try:
+            room = self.plans.room(room_id)
+        except (NotFound, PlanError) as e:
+            raise SessionError(str(e)) from None
+        link = self.link
+        poses = link.station_poses() if link is not None and link.is_open else []
+        if not poses:
+            return None
+        return predict(poses, room.geofence)
+
+    def start_survey(self, room_id: str) -> None:
+        """Start measuring a room's coverage: carry the drone round its edge."""
+        try:
+            self.plans.room(room_id)
+        except (NotFound, PlanError) as e:
+            raise SessionError(str(e)) from None
+        if self.link is None or not self.link.is_open:
+            raise SessionError("Connect the drone first — the survey reads where it is.")
+        if self.snapshot().state is State.BUSY:
+            raise SessionError("Land first: the survey is done with the drone in your hands, "
+                               "motors off.")
+        self._survey = (room_id, Survey())
+
+    def survey_status(self) -> dict[str, Any]:
+        surveying = self._survey
+        if surveying is None:
+            return {"active": False}
+        room_id, survey = surveying
+        return {"active": True, "room_id": room_id, "seen": survey.seen,
+                "kept": len(survey.kept),
+                "outline": [[round(x, 3), round(y, 3)] for x, y in survey.outline()]}
+
+    def stop_survey(self, save: bool) -> Room | None:
+        """Stop the survey; with `save`, its outline becomes the room's coverage."""
+        surveying, self._survey = self._survey, None
+        if surveying is None:
+            raise SessionError("No survey is running.")
+        if not save:
+            return None
+        room_id, survey = surveying
+        room = self.plans.room(room_id)
+        coverage = survey.coverage(z_min=room.geofence.z_min, z_max=room.geofence.z_max)
+        if coverage is None:
+            raise SessionError(
+                f"Only {len(survey.kept)} of {survey.seen} positions had two base stations — "
+                "not enough to enclose an area. Check both stations are on and seen, then "
+                "survey again.")
+        return self.plans.save_room(room.edited(coverage=coverage))
+
+    def flying_plan(self, mission_id: str) -> tuple[FlyingPlan, tuple[float, float] | None]:
+        """THE PLAN THAT WILL FLY (mission/plan/fit.py): from the drone, fitted
+        to the space its position can be trusted in, validated. The Check
+        step's preview and run_mission both come here, so what is shown is
+        what flies. Without a reported position the plan is fitted from its
+        planned start."""
         try:
             mission = self.plans.mission(mission_id)
             room = self.plans.room(mission.room_id)
@@ -1078,10 +1152,21 @@ class Session:
             raise SessionError(str(e)) from None
         except PlanError as e:
             raise SessionError(f"The mission could not be read: {e}") from None
+        return self.plan_for(mission, room)
+
+    def plan_for(self, mission: Mission, room: Room
+                 ) -> tuple[FlyingPlan, tuple[float, float] | None]:
+        """The plan that will fly for any mission and room — a saved one, or
+        the editor's unsaved draft (so the Check step's second map follows the
+        first as it is edited). Same function, same rules."""
         here = self.position()
-        if here is None:
-            return mission, room, None
-        return mission.from_start((here[0], here[1])), room, (here[0], here[1])
+        start = (here[0], here[1]) if here is not None else None
+        try:
+            plan = plan_to_fly(mission, room, start=start,
+                               outer=outer_bound(room, default_half_extent_m=self._fence))
+        except PlanError as e:
+            raise SessionError(str(e)) from None
+        return plan, start
 
     def run_mission(self, mission_id: str, ambient: str = "22C") -> None:
         """Fly a saved mission.
@@ -1110,31 +1195,22 @@ class Session:
                 "A mission needs the drone to know where it is, and it does not right now "
                 "— it would fly blind. Get the base stations seen and run the checks "
                 "again, or switch to Manual to fly it by hand.")
-        try:
-            mission = self.plans.mission(mission_id)
-            room = self.plans.room(mission.room_id)
-        except NotFound as e:
-            raise SessionError(str(e)) from None
-        except PlanError as e:
-            raise SessionError(f"The mission could not be read: {e}") from None
-
-        problems = errors(validate_mission(
-            mission, room, outer=outer_bound(room, default_half_extent_m=self._fence)))
-        if problems:
-            more = f" ({len(problems) - 1} more in the plan.)" if len(problems) > 1 else ""
-            raise SessionError(f"This mission is not safe to fly: {problems[0].message}{more}")
-
-        here = self.position()
-        if here is None:
+        if self.position() is None:
             raise SessionError("The drone's position is not being reported, so the mission "
                                "cannot be checked from where the drone is.")
-        # THE FLIGHT STARTS FROM THE DRONE. The planned start is where the plan
-        # was drawn from; the drone may have been set down anywhere since. The
-        # points never move (they mark equipment) — the legs out of and back to
-        # the drone's real spot are checked again, and the battery against them.
-        mission = mission.from_start((here[0], here[1]))
-        problems = errors(validate_mission(
-            mission, room, outer=outer_bound(room, default_half_extent_m=self._fence)))
+        # THE PLAN THAT WILL FLY (fit.py): the start is the drone, the points
+        # outside the space its position can be trusted in are moved to the
+        # nearest fine spot (the fine ones never move — they mark equipment),
+        # and the result is validated like any mission. The Check step showed
+        # exactly this (flying_plan), and the plan kept with the flight records
+        # every move.
+        plan, _ = self.flying_plan(mission_id)
+        mission, room = plan.mission, plan.room
+        if plan.unfitted:
+            raise SessionError(
+                f"{', '.join(plan.unfitted)} cannot be brought inside the space the drone "
+                f"can fly in. Move {'it' if len(plan.unfitted) == 1 else 'them'} in the plan.")
+        problems = errors(list(plan.problems))
         if problems:
             more = f" ({len(problems) - 1} more.)" if len(problems) > 1 else ""
             raise SessionError(f"From where the drone is now, this mission is not safe to "
@@ -1156,15 +1232,17 @@ class Session:
 
         self._set(state=State.BUSY, activity="mission", message=None,
                   mission=self._mission_summary(mission, MissionState.IDLE, None, (), None))
-        self._start_worker("mission", lambda: self._do_mission(mission, room, ambient))
+        self._start_worker("mission",
+                           lambda: self._do_mission(mission, room, ambient, plan.moves))
 
-    def _do_mission(self, mission: Mission, room: Room, ambient: str) -> None:
+    def _do_mission(self, mission: Mission, room: Room, ambient: str,
+                    moves: tuple[Move, ...] = ()) -> None:
         _, audit = self._require_operator()
         link, report = self._require_link(), self._require_report()
         flight_id = self._begin_flight(
             mode=Mode.AUTO, program=f"mission:{mission.id}@r{mission.revision}",
             ambient=ambient)
-        self._keep_plan_flown(flight_id, mission, room)
+        self._keep_plan_flown(flight_id, mission, room, moves)
 
         controller = link.manual(report)
         self._attach_controls(controller)
@@ -1196,7 +1274,8 @@ class Session:
             self._set(message=f"The mission did not start: {e}")
         self.plans.mark_flown(mission.id, mission.revision)
 
-    def _keep_plan_flown(self, flight_id: str, mission: Mission, room: Room) -> None:
+    def _keep_plan_flown(self, flight_id: str, mission: Mission, room: Room,
+                         moves: tuple[Move, ...] = ()) -> None:
         """Copy the exact plan this flight flies into the session's folder. A
         mission edited later makes a new revision, but the result of THIS flight
         must always point at what actually flew."""
@@ -1206,7 +1285,8 @@ class Session:
             folder = self.history.folder / "missions"
             folder.mkdir(parents=True, exist_ok=True)
             (folder / f"{flight_id}.json").write_text(json.dumps(
-                {"flight_id": flight_id, "mission": mission.to_dict(), "room": room.to_dict()},
+                {"flight_id": flight_id, "mission": mission.to_dict(), "room": room.to_dict(),
+                 "moves": [m.to_dict() for m in moves]},
                 indent=2), encoding="utf-8")
         except OSError:
             log.exception("could not keep the plan flown with the session")

@@ -77,6 +77,73 @@ Rungs 7-10 are what PR #26 changed. They are the test of it.
 
 
 =========================================================================
+2026-10-01 — A SECOND DRONE, AND WHY THE FIRST ONE COULD NEVER SEE A STATION
+=========================================================================
+
+CONDITIONS
+  old drone    cf-002f002a3334471239333335 — retired to spare
+  new drone    cf-002d00263234511236373639, built 2026-10-01: AI deck 1.1 on
+               top, a new Bitcraze Lighthouse deck (bag dated 2025-08-04)
+  stations     two HTC VIVE Base Station 2.0 (model 2QCJ100) on tripods,
+               front LED green (IMG_3709)
+  DroneDeck    closed for every read below (it holds the radio)
+
+OLD DRONE — RE-READ, READ-ONLY
+  MEASURED     deck.bcLighthouse4 0, deck.bcAI 1, 1-Wire memories 1 — unchanged
+               since 09-23. The photos (IMG_3715/3719/3720) showed the
+               Lighthouse deck mounted UNDER the drone, "FRONT ↑ UP" facing the
+               floor: flipped, its pins land on the wrong connections, its ID
+               chip cannot be read, and its sensors face away from the stations.
+  MEANT        the deck was never going to be detected mounted that way.
+  CHANGED      Samuel built a new drone rather than re-stack the old one.
+
+NEW DRONE, AS IT ARRIVED
+  MEASURED     both decks detected, 1-Wire memories 2. firmware.revision0
+               0x80ee72ad (stock; no cwsetup.* params). Deck memory: bcLighthouse4
+               fw_upgrade_required TRUE, bootloader_active TRUE (required image
+               104 093 bytes, crc32 288081812). lighthouse.status 0, nothing
+               received, the estimate running away (+7 → +26 m in 12 s).
+  MEANT        a positioning deck with no image is detected but DEAF. The base
+               stations were never the problem.
+
+WHAT WAS WRITTEN TO IT (no motor spun at any point)
+  DID          python -m cropwatcher.flash_firmware cropwatcher/firmware_bundle/cf2.bin
+  MEASURED     firmware.revision0 0x252b4134 (2025.12.1), cwsetup.fw 2
+  DID          lighthouse.bin from bitcraze/crazyflie-release 2025.12.1
+               (firmware-cf2-2025.12.1.zip sha256 310d6985…db2d; lighthouse-fpga
+               V6, 104 093 bytes, crc32 288081812 — an exact match), written with
+               cflib's deck path, the deck alone in the target list
+  MEASURED     fw_upgrade_required FALSE, started TRUE.
+               THEN: after a battery unplug the deck asked for its image again
+               (started FALSE). Written a second time; reads FALSE since.
+               Whether it now survives an unplug: NOT YET RE-MEASURED.
+  DID          aideck_gap8.bin (camera) — written. aideck_esp.bin (Wi-Fi) — the
+               first write hung >10 min and was stopped; a battery unplug cut the
+               second before it wrote; the ESP32 came back on its stock image
+               (its bootloader is in ROM). Third attempt under way as this was
+               written.
+
+BASE STATIONS → NEW DRONE (deck running)
+  MEASURED     lighthouse.bsCalVal bit 0 set — station 0's calibration data was
+               decoded from its light. width0 ~650, width1 ~390: sensors 0 and 1
+               see pulses. width2, width3 = 0: sensors 2 and 3 see NOTHING.
+               validAngles 0, every angle 0, bsReceive 0, status 0.
+  MEANT        light reaches half the deck and no sweep is decoded. Not measured
+               yet which cause: half the sensors shaded (by the AI deck, a cable,
+               the tripod angle), both stations on the same channel, or the
+               drone outside a station's sweep.
+  CHANGED      nothing flies until two stations are received.
+
+THE SOFTWARE THE DAY PRODUCED (PRs #91–#94, the experiment branch)
+  #91 a session keeps the mode it started in · refusals shown, not greyed
+  #92 Set up installs the positioning deck's image too (the above, automated)
+  #93 mission speed presets — touches the locked manual.py, for Samuel's review
+  #94 the flyable space (survey, prediction) and the plan that will fly
+  experiment/samuel: the mission events say what comes next
+  RE-RUN IT    cd backend/agent && .venv/bin/cropwatcher stations --seconds 12
+
+
+=========================================================================
 2026-09-22 — session in progress
 =========================================================================
 

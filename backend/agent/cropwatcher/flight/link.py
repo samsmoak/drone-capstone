@@ -262,6 +262,36 @@ class DroneLink:
         scf, _ = self._require_open()
         return read_hardware_id(scf.cf), _ai_deck_fitted(scf.cf)
 
+    def station_poses(self, timeout_s: float = 5.0) -> list[Any]:
+        """Where the base stations are and which way they face, as stored on
+        the drone by `cropwatcher geometry` — the input to the predicted
+        coverage (mission/plan/coverage.py). Empty when no geometry is stored,
+        no link is open, or the drone does not answer in time. Read-only."""
+        from cflib.crazyflie.mem import LighthouseMemHelper
+
+        from cropwatcher.mission.plan.coverage import StationPose
+
+        if self.scf is None:
+            return []
+        done, geos = threading.Event(), {}
+
+        def read(found: dict) -> None:
+            geos.update(found)
+            done.set()
+
+        try:
+            LighthouseMemHelper(self.scf.cf).read_all_geos(read)
+        except Exception:                                        # noqa: BLE001
+            log.exception("could not read the base station geometry")
+            return []
+        if not done.wait(timeout_s):
+            return []
+        def vec(v: Any) -> tuple[float, float, float]:
+            return (float(v[0]), float(v[1]), float(v[2]))
+
+        return [StationPose(vec(g.origin), tuple(vec(row) for row in g.rotation_matrix))
+                for _, g in sorted(geos.items()) if getattr(g, "valid", False)]
+
     def camera_cf(self) -> Any:
         """The Crazyflie, for the Wi-Fi hand-off (camera/wifi.py), or None."""
         return self.scf.cf if self.scf is not None else None

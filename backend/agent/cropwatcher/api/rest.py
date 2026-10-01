@@ -56,6 +56,7 @@ from cropwatcher.camera.recording import Recorder
 from cropwatcher.camera.wifi import DeckWifi, Phase, WifiError
 from cropwatcher.drone_setup import DroneSetup, SetupError
 from cropwatcher.flight.manual import CLIMB_RATE_M_S, MAX_HEIGHT_M, MOVE_SPEED_M_S
+from cropwatcher.mission.plan.fit import FlyingPlan
 from cropwatcher.mission.plan.floorplan import DEFAULT_CLEARANCE_M, PlanError, Room
 from cropwatcher.mission.plan.geofence import DEFAULT_Z_MAX_M, DEFAULT_Z_MIN_M
 from cropwatcher.mission.plan.mission import MIN_HOLD_S, Mission
@@ -953,6 +954,46 @@ def save_room(body: dict = Body(...)) -> dict:  # noqa: B008 — FastAPI's own i
         raise _plan_refusal(e) from None
 
 
+@app.get("/rooms/{room_id}/coverage", dependencies=[Command])
+def room_coverage(room_id: str) -> dict:
+    """Where the drone's position can be trusted in this room: MEASURED (the
+    survey — what flies) and PREDICTED (from the base stations' poses on the
+    drone — a guide, never flown on). Either may be null."""
+    try:
+        room = agent.session.plans.room(room_id)
+        predicted = agent.session.predicted_coverage(room_id)
+    except (NotFound, PlanError) as e:
+        raise _plan_refusal(e) from None
+    except SessionError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from None
+    return {"measured": room.coverage.to_dict() if room.coverage else None,
+            "predicted": predicted.to_dict() if predicted else None,
+            "survey": agent.session.survey_status()}
+
+
+@app.post("/rooms/{room_id}/survey/start", dependencies=[Command])
+def start_survey(room_id: str) -> dict:
+    try:
+        agent.session.start_survey(room_id)
+    except SessionError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from None
+    return agent.session.survey_status()
+
+
+@app.get("/survey", dependencies=[Command])
+def survey_status() -> dict:
+    return agent.session.survey_status()
+
+
+@app.post("/survey/stop", dependencies=[Command])
+def stop_survey(body: dict = Body(default={})) -> dict:  # noqa: B008 — FastAPI's own idiom
+    try:
+        room = agent.session.stop_survey(save=bool(body.get("save", False)))
+    except SessionError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from None
+    return {"room": _room_view(room) if room is not None else None}
+
+
 @app.post("/rooms/{room_id}/delete", dependencies=[Command])
 def delete_room(room_id: str) -> dict:
     try:
@@ -1007,11 +1048,36 @@ def mission_from_drone(mission_id: str) -> dict:
     Check step to show first. `position` is null with no drone reporting one;
     the mission then comes back as saved."""
     try:
-        mission, room, here = agent.session.mission_from_drone(mission_id)
+        plan, here = agent.session.flying_plan(mission_id)
     except SessionError as e:
         raise HTTPException(status_code=404, detail=str(e)) from None
+    return _flying_plan_view(plan, here)
+
+
+@app.post("/missions/fit", dependencies=[Command])
+def fit_draft(body: dict = Body(...)) -> dict:  # noqa: B008 — FastAPI's own idiom
+    """The plan that will fly for the editor's UNSAVED draft ({mission, room}):
+    the Check step's second map follows the first as it is edited. Nothing is
+    saved."""
+    try:
+        mission = Mission.from_dict(body["mission"])
+        room = Room.from_dict(body["room"])
+        plan, here = agent.session.plan_for(mission, room)
+    except (KeyError, TypeError, PlanError) as e:
+        raise HTTPException(status_code=422, detail=f"The draft could not be read: {e}") from None
+    except SessionError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from None
+    return _flying_plan_view(plan, here)
+
+
+def _flying_plan_view(plan: FlyingPlan, here: tuple[float, float] | None) -> dict:
+    """THE PLAN THAT WILL FLY (mission/plan/fit.py) — exactly what Start flies:
+    from the drone, fitted to the space, with every point it moved."""
     return {"position": None if here is None else [round(here[0], 4), round(here[1], 4)],
-            "mission": _mission_view(mission, room)}
+            "mission": _mission_view(plan.mission, plan.room),
+            "space": plan.room.geofence.to_dict(),
+            "moves": [m.to_dict() for m in plan.moves],
+            "unfitted": list(plan.unfitted)}
 
 
 @app.post("/missions/{mission_id}/delete", dependencies=[Command])
