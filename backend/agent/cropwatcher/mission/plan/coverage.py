@@ -9,10 +9,11 @@ TWO WAYS TO KNOW IT
 
   PREDICTED  from the base stations' poses (the geometry `cropwatcher
              geometry` measures and stores on the drone) and their field of
-             view: a point is covered when at least two stations see it. A
+             view: a point is covered when enough stations see it (stations_needed:
+             one by default, as the project flies). A
              prediction — shown to guide the survey, never flown on.
   MEASURED   the SURVEY: the operator carries the drone around the room while
-             the agent keeps every position at which two stations were
+             the agent keeps every position at which enough stations were
              received. Their outline is Room.coverage. This is what flies.
 
 WHY AN OUTLINE AND A HEIGHT BAND IS ENOUGH. What one station sees is a
@@ -46,8 +47,16 @@ FOV_HALF_V_DEG = 55.0
 MAX_RANGE_M = 6.0
 #: The prediction's grid.
 GRID_M = 0.10
-#: The crossing-beams method needs two stations at once (lighthouse.method 1).
-MIN_STATIONS = 2
+def stations_needed(override: int | None = None) -> int:
+    """How many stations must see a spot for it to count: the project's own
+    policy (safety/flight_guard.py required_stations — ONE by default, as the
+    lab has flown on one; two with CROPWATCHER_MIN_STATIONS=2). This was a
+    fixed 2 until 2026-10-01, which made the survey count nothing in a
+    one-station room."""
+    if override is not None:
+        return override
+    from cropwatcher.safety.flight_guard import required_stations
+    return required_stations()
 
 
 @dataclass(frozen=True)
@@ -169,8 +178,9 @@ class Prediction:
 
 
 def predict(stations: Sequence[StationPose], fence: Geofence, *,
-            grid_m: float = GRID_M, min_stations: int = MIN_STATIONS) -> Prediction:
+            grid_m: float = GRID_M, min_stations: int | None = None) -> Prediction:
     """Which part of the room's fence (and its height band) the stations cover."""
+    needed = stations_needed(min_stations)
     x0, y0, x1, y1 = fence.bounds()
     nx, ny = max(1, round((x1 - x0) / grid_m)), max(1, round((y1 - y0) / grid_m))
     heights = _band(fence.z_min, fence.z_max, grid_m)
@@ -181,7 +191,7 @@ def predict(stations: Sequence[StationPose], fence: Geofence, *,
     every: set[Point] | None = None
     for z in heights:
         covered = {c for c in cells
-                   if sum(s.sees((c[0], c[1], z)) for s in stations) >= min_stations}
+                   if sum(s.sees((c[0], c[1], z)) for s in stations) >= needed}
         slices.append((z, tuple(simplify(convex_hull(covered))) if len(covered) >= 3 else ()))
         every = covered if every is None else every & covered
     hull = simplify(convex_hull(every or ()))
@@ -202,8 +212,8 @@ class Survey:
     """Positions where enough stations were received, while the drone is
     carried round the room. Plain data in, an outline out — no radio here."""
 
-    def __init__(self, *, min_stations: int = MIN_STATIONS) -> None:
-        self._min = min_stations
+    def __init__(self, *, min_stations: int | None = None) -> None:
+        self._min = stations_needed(min_stations)
         self.kept: list[tuple[float, float, float]] = []
         self.seen = 0
 

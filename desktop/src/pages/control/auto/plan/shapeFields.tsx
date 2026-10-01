@@ -120,10 +120,11 @@ export function HeightField({ value, onChange, locked = false }: {
       {full ? (
         <>
           <span className="eyebrow">Height</span>
-          <span className="flex min-h-9 items-center text-sm">Floor to ceiling</span>
+          <span className="flex min-h-9 items-center text-sm">Floor to ceiling — nothing flies over it</span>
         </>
       ) : (
-        <NumberField readOnly={locked} label="Height" value={value} min={0.05} max={10} hint={formatMetres(value)}
+        <NumberField readOnly={locked} label="Height" value={value} min={0.05} max={10}
+                     hint={`${formatMetres(value)} — points may pass over it at this height plus the room's clearance`}
                      onCommit={(v) => onChange(cm(v))} />
       )}
       <label htmlFor={id} className="flex items-center gap-1.5">
