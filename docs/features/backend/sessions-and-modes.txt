@@ -42,8 +42,27 @@ is kept on the laptop, not per session; see manual-control.txt, "THE ARROWS
 FOLLOW YOU".
 
 MODE is auto or manual, chosen in the desktop app's SIDEBAR, and DEFAULTS TO
-MANUAL (Snapshot.mode). It cannot change while busy: swapping controller mid-air
-would hand the drone to a different command source with no warning. (It sat in a
+MANUAL (Snapshot.mode).
+
+A SESSION BELONGS TO THE MODE IT STARTED IN (2026-10-01, the owner: "nothing
+should bleed between Manual and Auto"). Session.set_mode refuses a change
+while ANY session is open — starting, waiting for confirmation, ready, flying,
+ending, or open after failed checks — in words: "A Manual session is open. It
+stays Manual until it ends". End it, then start one in the other mode. Asking
+for the mode it is already in is harmless. It used to change whenever the
+drone was not flying, so one session could hold both modes; it was checked
+and confirmed under ONE mode's rules (Manual accepts an unassisted drone, Auto
+never does), which is why that was wrong. So while a session is open,
+Snapshot.mode IS that session's mode. History still reads sessions recorded
+in two modes before this date.
+
+In the app the sidebar's switch then only chooses the PAGE you look at
+(desktop/src/lib/sessionMode.ts): the other mode's Control page is a lock
+(pages/control/ModeLock.tsx) that names the open session and offers "Go to
+<mode>". Land, Emergency stop and End session stay in the flight strip and
+rail as always — getting the drone down is never mode-locked. It also cannot
+change while busy: swapping controller mid-air would hand the drone to a
+different command source with no warning. (It sat in a
 top bar until 2026-09-22; the window is a sidebar and a flight strip now — see
 ../desktop/pages-and-windows.txt.)
 
@@ -210,7 +229,8 @@ consumed-by       ../pipeline/data-pipeline.txt
                   the DPP switch: processing_on is read as each flight begins
 
 consumed-by       ../desktop/pages-and-windows.txt
-                  Home's standby row, vitals with no session
+                  Home's standby row, vitals with no session; the mode a
+                  session keeps — the sidebar switch and the lock page
 consumed-by       telemetry-stream.txt
                   published on standby, recorded only in a session
 

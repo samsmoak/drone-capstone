@@ -346,7 +346,7 @@ class TestProgram:
             "cropwatcher.session.run_hover_test",
             lambda flight, program: ProgramResult(Outcome.COMPLETED, Reason.NONE, "done"),
         )
-        start_and_confirm(rig)
+        start_and_confirm(rig, Mode.AUTO)
         run_program(rig, height_m=0.3, hold_s=5)
 
         assert rig.session.snapshot().state is State.READY
@@ -362,7 +362,7 @@ class TestProgram:
             lambda flight, program: ProgramResult(
                 Outcome.LANDED_BY_GUARD, Reason.BATTERY_LOW, "Battery low — landing."),
         )
-        start_and_confirm(rig)
+        start_and_confirm(rig, Mode.AUTO)
         run_program(rig)
         flight = next(rig.outbox.pending(Kind.FLIGHT)).payload
         assert flight["status"] == "aborted" and flight["abort_reason"] == "battery_low"
@@ -376,8 +376,7 @@ class TestProgram:
             hardware_id="cf-lab", vbat=3.48, endurance_s=20.0, ground_z_m=0.0,
             takeoff_xy=(0.0, 0.0), estimate_spread_m=0.005, positioning=REPORT.positioning,
         )
-        start_and_confirm(rig)
-        rig.session.set_mode(Mode.AUTO)
+        start_and_confirm(rig, Mode.AUTO)
         with pytest.raises(SessionError, match="battery"):
             rig.session.run_program(hold_s=30)
 
@@ -392,7 +391,7 @@ class TestProgram:
             raise RuntimeError("radio died")
 
         monkeypatch.setattr("cropwatcher.session.run_hover_test", explode)
-        start_and_confirm(rig)
+        start_and_confirm(rig, Mode.AUTO)
         run_program(rig)
         flight = next(rig.outbox.pending(Kind.FLIGHT)).payload
         assert flight["status"] == "failed" and "radio died" in flight["error"]
@@ -400,10 +399,8 @@ class TestProgram:
 
 class TestManual:
     def test_arming_needs_manual_mode(self, rig):
-        start_and_confirm(rig)
-        # The session starts in MANUAL now, so Auto has to be asked for before
-        # the refusal this test is about can happen at all.
-        rig.session.set_mode(Mode.AUTO)
+        # An Auto session: the refusal this test is about.
+        start_and_confirm(rig, Mode.AUTO)
         with pytest.raises(SessionError, match="Switch to Manual"):
             rig.session.arm_manual()
 
@@ -435,6 +432,61 @@ class TestManual:
         rig.session.arm_manual()
         with pytest.raises(SessionError, match="Finish the current flight"):
             rig.session.set_mode(Mode.AUTO)
+
+
+class TestOneMode:
+    """A session belongs to the mode it started in (2026-10-01): nothing of
+    Manual bleeds into an Auto session, or the other way round."""
+
+    def audited_mode_changes(self, rig):
+        return [r.payload for r in rig.outbox.pending(Kind.AUDIT)
+                if r.payload["action"] == "mode_changed"]
+
+    @pytest.mark.parametrize("opened_in, other", [(Mode.MANUAL, Mode.AUTO),
+                                                  (Mode.AUTO, Mode.MANUAL)])
+    def test_an_open_session_keeps_its_mode(self, rig, opened_in, other):
+        start_and_confirm(rig, opened_in)
+        before = len(self.audited_mode_changes(rig))
+        with pytest.raises(SessionError, match=f"A {str(opened_in).capitalize()} session "
+                                               "is open"):
+            rig.session.set_mode(other)
+        assert rig.session.snapshot().mode is opened_in
+        assert len(self.audited_mode_changes(rig)) == before      # a refusal changes nothing
+
+    def test_it_is_refused_while_waiting_for_the_area_to_be_confirmed(self, rig):
+        sign_in(rig)
+        rig.session.start()
+        rig.session.wait_idle()
+        assert rig.session.snapshot().state is State.AWAITING_CONFIRMATION
+        with pytest.raises(SessionError, match="session is open"):
+            rig.session.set_mode(Mode.AUTO)
+
+    def test_asking_for_the_mode_it_is_already_in_is_harmless(self, rig):
+        start_and_confirm(rig, Mode.MANUAL)
+        rig.session.set_mode(Mode.MANUAL)
+        assert rig.session.snapshot().mode is Mode.MANUAL
+
+    def test_ending_the_session_frees_the_mode(self, rig):
+        start_and_confirm(rig, Mode.MANUAL)
+        rig.session.end()
+        rig.session.set_mode(Mode.AUTO)
+        assert rig.session.snapshot().mode is Mode.AUTO
+
+    def test_with_no_session_the_mode_is_free(self, rig):
+        sign_in(rig)
+        rig.session.set_mode(Mode.AUTO)
+        rig.session.set_mode(Mode.MANUAL)
+        assert rig.session.snapshot().mode is Mode.MANUAL
+
+    def test_an_auto_session_cannot_arm_the_keys_and_a_manual_one_cannot_run_a_program(
+            self, rig):
+        start_and_confirm(rig, Mode.AUTO)
+        with pytest.raises(SessionError, match="Switch to Manual"):
+            rig.session.arm_manual()
+        rig.session.end()
+        start_and_confirm(rig, Mode.MANUAL)
+        with pytest.raises(SessionError, match="Switch to Auto"):
+            rig.session.run_program()
 
 
 class TestLandAndStop:
@@ -494,7 +546,7 @@ class TestUnassisted:
     """
 
     @staticmethod
-    def unassisted(rig):
+    def unassisted(rig, mode: Mode | None = None):
         rig.link.report = ReadyReport(
             hardware_id="cf-lab", vbat=4.05, endurance_s=200.0, ground_z_m=0.0,
             takeoff_xy=(0.0, 0.0), estimate_spread_m=float("inf"),
@@ -502,6 +554,8 @@ class TestUnassisted:
             assisted=False,
         )
         sign_in(rig)
+        if mode is not None:
+            rig.session.set_mode(mode)
         rig.session.start()
         rig.session.wait_idle()
         return rig.session.snapshot()
@@ -522,9 +576,8 @@ class TestUnassisted:
         assert rig.session.snapshot().state is State.READY
 
     def test_a_program_is_still_refused_with_a_reason(self, rig):
-        self.unassisted(rig)
+        self.unassisted(rig, Mode.AUTO)
         rig.session.confirm_area(accept_unassisted=True)
-        rig.session.set_mode(Mode.AUTO)
         with pytest.raises(SessionError, match="fly blind"):
             rig.session.run_program()
 
@@ -600,7 +653,12 @@ class TestManualFinishes:
         flights = [r.payload for r in rig.outbox.pending(Kind.FLIGHT)]
         assert flights[-1]["status"] == "aborted"
         assert flights[-1]["abort_reason"] == "tumbled"
-        rig.session.set_mode(Mode.AUTO)                 # the toggle works again
+        # The session is free again — but it is still a Manual session
+        # (sessions-and-modes.txt): the mode changes only once it has ended.
+        with pytest.raises(SessionError, match="A Manual session is open"):
+            rig.session.set_mode(Mode.AUTO)
+        rig.session.end()
+        rig.session.set_mode(Mode.AUTO)
 
     def test_low_battery_lands_and_then_ends_the_session(self, rig):
         self.fly(rig, Verdict(GuardAction.LAND, Reason.BATTERY_LOW, "Battery low."))
@@ -732,7 +790,7 @@ class TestRetry:
             "cropwatcher.session.run_hover_test",
             lambda flight, program: ProgramResult(Outcome.ABORTED, Reason.TUMBLED, "Tumbled."),
         )
-        start_and_confirm(rig)
+        start_and_confirm(rig, Mode.AUTO)
         run_program(rig, height_m=0.3, hold_s=5)
         assert rig.session.snapshot().retry_required
 
@@ -837,7 +895,9 @@ class TestStaySignedIn:
 class TestHistoryByMode:
     """Auto and Manual history are kept apart — per reading, not per session."""
 
-    def test_a_session_that_switched_mode_lists_under_both_and_splits_its_readings(self, rig):
+    def test_a_session_recorded_in_two_modes_lists_under_both_and_splits_its_readings(self, rig):
+        """Sessions from before 2026-10-01 could switch mode mid-session; the
+        history still reads them. A session cannot switch now (TestOneMode)."""
         from cropwatcher import history
 
         start_and_confirm(rig, Mode.AUTO)
@@ -845,7 +905,7 @@ class TestHistoryByMode:
         log_ = rig.session.history
         log_._clock = lambda: 0.0                       # sample now
         rig.session._publish_telemetry(Snapshot(MappingProxyType({"pm.vbat": 4.10}), 1.0))
-        rig.session.set_mode(Mode.MANUAL)
+        log_.set_mode("manual")
         log_._clock = lambda: 5.0                       # the next second
         rig.session._publish_telemetry(Snapshot(MappingProxyType({"pm.vbat": 4.00}), 2.0))
         rig.session.end()
