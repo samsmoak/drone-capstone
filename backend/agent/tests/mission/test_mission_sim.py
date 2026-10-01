@@ -166,6 +166,25 @@ def test_three_points_in_order_with_exactly_the_specs_events(returning):
     assert s.sim.ctl.state is ControlState.LANDED
 
 
+@pytest.mark.parametrize("returning", [True, False])
+def test_the_commentary_says_what_comes_next(returning):
+    """The Command log reads each event's words as the mission's commentary:
+    where it is going next, which point is the last, and when it lands."""
+    s = Scenario(mission(return_to_start=returning))
+    s.fly()
+    said = {(e.kind, e.point_id): e.detail for e in s.events}
+    assert said[(K.POINT_COMPLETE, "P1")] == "P1 complete — flying to P2"
+    assert said[(K.POINT_COMPLETE, "P2")] == "P2 complete — flying to P3"
+    assert said[(K.POINT_ARRIVED, "P3")].startswith("P3 reached — the last point, ")
+    assert "the last point" not in said[(K.POINT_ARRIVED, "P1")]
+    if returning:
+        assert said[(K.POINT_COMPLETE, "P3")] == (
+            "P3 complete — the last point; returning to the start")
+        assert said[(K.RETURNING, None)] == "Returning over the start, then landing"
+    else:
+        assert said[(K.POINT_COMPLETE, "P3")] == "P3 complete — the last point; landing now"
+
+
 def test_every_hold_lasts_hold_s_and_the_point_is_stamped_only_while_holding_there():
     """C1, T11–T13: sampled every manual tick, in all three dimensions. THE
     SPEC's arrival is x-y (drift_m); the height is the flight system's goal —

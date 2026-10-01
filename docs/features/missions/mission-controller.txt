@@ -165,14 +165,24 @@ DECISIONS
   (the terminal) writes no trace and no plan flown, and records under the
   flight id "cli" — the report says so and exits non-zero. Fly the lab rungs
   from the app.
+• THE EVENTS' WORDS ARE THE OPERATOR'S COMMENTARY (2026-10-01, Samuel's
+  ask): the session puts each event's detail in the Command log, so each
+  says what comes next — "P1 complete — flying to P2", "P3 reached — the
+  last point", "…; landing now" / "…; returning to the start", "Returning
+  over the start, then landing". Words only: THE SPEC's kinds and order are
+  unchanged, and it has no event where a landing after a return begins, so
+  RETURNING announces it. test_mission_sim.py pins the words.
 • ONE PLACE KNOWS WHERE A FLIGHT'S FILES ARE: the report finds the flight
   CSV and session folder through pipeline/sources.py LocalFlightSource (its
   _find_csv, _find_session), the trace beside the CSV, the plan flown in the
   session's missions/ folder.
 
 FOUND, NOT FIXED — outside both tickets; Samuel's call
-• `cropwatcher mission` has NO BUILT check: it called start() and was safe
-  only because start() raised. With BUILT = True it flies the drone.
+• `cropwatcher mission` DOES check BUILT (cli.py, since 0ca26ba, 2026-09-28)
+  — so with BUILT = True on this branch it flies the drone, as designed.
+  (This line said "no BUILT check" until 2026-10-01: wrong, corrected after
+  reading the code.) What is still true: it writes no trace and no plan
+  flown, so the report cannot read its flights — fly the rungs from the app.
 • T8's timeout treats a 3-D leg as flown at MOVE_SPEED_M_S (0.20 m/s); the
   height moves at CLIMB_RATE_M_S (0.15 m/s). A 0.7 m climb takes ~4.7 s
   against 3.5 s + TRANSIT_MARGIN_S — the margin absorbs it.
