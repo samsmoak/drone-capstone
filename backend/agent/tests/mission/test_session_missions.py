@@ -110,7 +110,10 @@ class TestRefusedBeforeAnythingArms:
         assert rig.session.snapshot().state is State.READY
 
     def test_in_manual(self, rig):
+        # A Manual session: end the Auto one, open Manual.
+        rig.session.end()
         rig.session.set_mode(Mode.MANUAL)
+        start_and_confirm(rig, Mode.MANUAL)
         with pytest.raises(SessionError, match="Switch to Auto"):
             rig.session.run_mission("m1")
         self.assert_nothing_armed(rig)

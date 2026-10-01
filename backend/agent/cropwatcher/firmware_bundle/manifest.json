@@ -9,6 +9,12 @@
       "sha256": "ad821d15839165fe0ff12ed17932f11fef8bd56fcf563fce3ca9a65ebf436bc0",
       "source": "crazyflie-firmware 2025.12.1 + firmware/drone-wifi (drone_wifi v2)"
     },
+    "lighthouse": {
+      "file": "lighthouse.bin",
+      "chip": "lighthouse-deck",
+      "sha256": "cb14698f9e53304fc234cd393a730f66bcbd5fb59fc329f64cb6eb0ebd3cea61",
+      "source": "bitcraze/crazyflie-release 2025.12.1 firmware-cf2-2025.12.1.zip (sha256 310d6985e035bebc6e55bd4cd4a2a2cc57af5b6bffdbb8311c52f7d04a96db2d) lighthouse.bin — lighthouse-fpga V6, 104093 bytes, crc32 288081812 (the image 2025.12.1 asks the deck for)"
+    },
     "camera": {
       "file": "aideck_gap8.bin",
       "chip": "gap8",
