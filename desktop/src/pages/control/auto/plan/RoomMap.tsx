@@ -23,6 +23,7 @@ import { PlanCanvas, type Editing, type Handle, type PointState } from "./PlanCa
 import type { CameraPreset, Edit3D } from "./Room3D";
 import { webglAvailable } from "./webgl";
 import type { PathSource } from "./path";
+import { SPACE_LABEL, type SpaceLayer } from "./space";
 
 const Room3D = lazy(() => import("./Room3D"));
 
@@ -38,8 +39,10 @@ export type MapEditing = Editing & Omit<Edit3D, keyof Editing | "onSelect" | "se
 
 export function RoomMap({
   outer, fence, obstacles, path, takeoffHeight = 0.4, problems = [], drone = null, droneHeight, droneYaw,
-  progress, editing, label, below, heightClass = "h-[clamp(18rem,52vh,34rem)]",
+  progress, editing, label, below, heightClass = "h-[clamp(18rem,52vh,34rem)]", space = null,
 }: {
+  /** The flyable space (space.ts): shaded in 2-D, a see-through volume in 3-D. */
+  space?: SpaceLayer | null;
   outer: OuterBound;
   fence: Geofence | null;
   obstacles: Obstacle[];
@@ -71,6 +74,10 @@ export function RoomMap({
   };
   const shown: MapView = canDraw3d ? view : "2d";
   const aim = (preset: CameraPreset) => setCamera((c) => ({ preset, n: c.n + 1 }));
+  // A prediction's outline differs by height: the 2-D view shows one height.
+  const heights = space?.slices?.map((sl) => sl.z_m) ?? [];
+  const [sliceZ, setSliceZ] = useState<number | null>(null);
+  const shownZ = heights.length ? (sliceZ ?? heights[Math.floor(heights.length / 2)]) : null;
 
   return (
     // min-w-0 all the way down: a <canvas> is as wide as its pixels, and a
@@ -111,7 +118,7 @@ export function RoomMap({
           <PlanCanvas
             outer={outer} fence={fence} obstacles={obstacles} path={path} takeoffHeight={takeoffHeight}
             problems={problems} drone={drone} progress={progress} label={label}
-            editing={editing} selected={editing ? undefined : looking}
+            editing={editing} selected={editing ? undefined : looking} space={space} sliceZ={shownZ}
             className="block h-full w-full touch-none select-none bg-[var(--surface-2)]"
           />
         ) : (
@@ -119,7 +126,7 @@ export function RoomMap({
             <Room3D
               outer={outer} fence={fence} obstacles={obstacles} path={path} takeoffHeight={takeoffHeight}
               problems={problems} drone={drone} droneHeight={droneHeight} droneYaw={droneYaw}
-              progress={progress} camera={camera} label={label}
+              progress={progress} camera={camera} label={label} space={space}
               editing={editing ? {
                 selected: editing.selected, onSelect: editing.onSelect, onFence: editing.onFence,
                 onObstacle: editing.onObstacle, onPoint: editing.onPoint, onHome: editing.onHome,
@@ -132,6 +139,26 @@ export function RoomMap({
           </Suspense>
         )}
       </div>
+      {space && (
+        <div className="flex flex-wrap items-center gap-3 border border-t-0 border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs">
+          <span className="inline-flex items-center gap-1.5">
+            <span aria-hidden="true" className="inline-block h-3 w-3 border-2" style={{ borderColor: "var(--status-good)", background: "color-mix(in srgb, var(--status-good) 20%, transparent)" }} />
+            {SPACE_LABEL[space.kind]}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span aria-hidden="true" className="inline-block h-3 w-3 rounded-full border-2" style={{ borderColor: "var(--status-critical)" }} />
+            Outside it
+          </span>
+          {shown === "2d" && shownZ !== null && heights.length > 1 && (
+            <label className="ml-auto inline-flex items-center gap-2">
+              Height {shownZ.toFixed(2)} m
+              <input type="range" min={0} max={heights.length - 1} step={1}
+                     value={heights.indexOf(shownZ)} aria-label="Height of the outline shown"
+                     onChange={(e) => setSliceZ(heights[Number(e.target.value)])} />
+            </label>
+          )}
+        </div>
+      )}
       {below && <div className="border border-t-0 border-[var(--border)] bg-[var(--surface)]">{below}</div>}
 
       <p className="pt-1.5 text-xs leading-relaxed text-[var(--muted)]">

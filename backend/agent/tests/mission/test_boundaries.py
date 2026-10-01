@@ -60,7 +60,8 @@ class FlyableFakeManual(FakeManual):
     def hold_at(self, height_m: float) -> None:
         self.events.append(f"hold_at {height_m:.2f}")
 
-    def fly_to(self, x: float, y: float, height_m: float) -> None:
+    def fly_to(self, x: float, y: float, height_m: float,
+               speed_m_s: float | None = None) -> None:
         self.events.append("fly_to")
 
 

@@ -56,9 +56,10 @@ class RecordedFlight:
         self.calls.append(("hold_at", self._clock()))
         self._ctl.hold_at(height_m)
 
-    def fly_to(self, x: float, y: float, height_m: float) -> None:
+    def fly_to(self, x: float, y: float, height_m: float,
+               speed_m_s: float | None = None) -> None:
         self.calls.append(("fly_to", self._clock()))
-        self._ctl.fly_to(x, y, height_m)
+        self._ctl.fly_to(x, y, height_m, speed_m_s=speed_m_s)
 
     def land(self) -> None:
         self.calls.append(("land", self._clock()))
@@ -183,6 +184,17 @@ def test_the_commentary_says_what_comes_next(returning):
         assert said[(K.RETURNING, None)] == "Returning over the start, then landing"
     else:
         assert said[(K.POINT_COMPLETE, "P3")] == "P3 complete — the last point; landing now"
+
+
+def test_a_steady_mission_completes_and_takes_longer_than_a_brisk_one():
+    """The real manual flight system, at the mission's speed (2026-10-01)."""
+    times = {}
+    for speed in (0.10, 0.20):
+        s = Scenario(mission(return_to_start=True, speed_m_s=speed))
+        s.fly()
+        assert s.mc.state is MissionState.DONE
+        times[speed] = s.events[-1].at_s
+    assert times[0.10] > times[0.20]
 
 
 def test_every_hold_lasts_hold_s_and_the_point_is_stamped_only_while_holding_there():

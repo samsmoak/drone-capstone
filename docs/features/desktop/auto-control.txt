@@ -21,7 +21,10 @@ STATUS  (Last verified: 2026-09-29)
              (room and path), Close, save back to the list, delete, use; end
              point, reverse direction, start at the drone
   ② Check    BUILT — the session flow, Manual's own panels, the DPP switch, and
-             the mission checked FROM WHERE THE DRONE IS
+             YOUR PLAN AND THE PLAN THAT WILL FLY (FlightPlanCheck.tsx,
+             2026-10-01; not lab-verified): two maps over the flyable space,
+             the top editable in place, the bottom what Start flies; the
+             survey that measures the space
   ③ Fly      BUILT — Start mission at the top, the DPP switch, the room map
              with the path from the drone, progress, and the RESULTS after
              landing. Starting is refused until the mission controller is
@@ -157,13 +160,23 @@ desktop/src/lib/agent.ts                           the calls and types
 • THE DRONE IS THE START. It is drawn by default as D (a green ring, the letter
   on --surface in --foreground); a new mission's planned start (S) is put where
   the drone is; "Put the start where the drone is" does it on demand. ② Check
-  asks the agent to check the mission FROM THE DRONE'S POSITION every 2 s
-  (GET /missions/{id}/from-drone) and ③ draws the path from it. The points
-  never move with the drone — they mark equipment (floor-plans.txt).
+  asks the agent for THE PLAN THAT WILL FLY every 2 s (GET /missions/{id}/
+  from-drone; POST /missions/fit while an edit is unsaved) and ③ draws the
+  path from it. Points never move with the drone — they mark equipment; only
+  points OUTSIDE the flyable space are moved in, each named (floor-plans.txt).
+• ② SHOWS TWO PLANS (2026-10-01, Samuel's ask). TOP: the plan as drawn over
+  the flyable space (green: measured, or predicted with a dashed edge and a
+  height slider in 2-D; a see-through volume with its outline at every height
+  in 3-D); points outside it ringed red; "Edit the plan here" opens step ①'s
+  own editor in place. BOTTOM: the plan that will fly, read-only, following
+  every unsaved edit; each moved point listed with how far. Each map opens
+  full screen. Under them, "Measure the flyable space" — the survey.
 • THE END POINT: right-click a point (or its menu key / Shift+F10, or "End
   here" in its row, or the Ends-at list) and the flight lands there; later
   points stay in the plan, faded, "not flown". Making the LAST point the end is
   simply "not returning", so a point added later is still flown.
+• SPEED BETWEEN POINTS: Steady / Normal / Brisk (10 / 15 / 20 cm/s), one per
+  mission, under the start card (floor-plans.txt, ONE SPEED PER MISSION).
 • DIRECTION IS THE ORDER. Every leg carries an arrow; "Reverse direction"
   reverses the order — with an end point set, the drone approaches it from the
   other side. No stored direction field.

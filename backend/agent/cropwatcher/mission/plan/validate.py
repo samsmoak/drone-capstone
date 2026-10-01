@@ -134,11 +134,18 @@ def validate_mission(mission: Mission, room: Room, *, outer: Geofence) -> list[P
             "cruise_height", f"Cruise height {mission.cruise_height_m:.2f} m is outside the "
             f"room's permitted {fence.z_min:.2f}–{fence.z_max:.2f} m."))
 
-    # Home and every point: inside, clear of the fence edge, clear of obstacles.
+    # Home and every point: inside, clear of the fence edge, clear of obstacles
+    # — beside one, or over one that has a height (obstacles.py clears). The
+    # start takes off from the floor and the landing spot comes down to it, so
+    # those two must be clear BESIDE every obstacle: a point over a table that
+    # the flight ends at would land on the table.
+    landing = None if mission.returns_home else (
+        mission.flown_points[-1].id if mission.flown_points else None)
     stops: list[tuple[str, tuple[float, float], float | None, float | None]] = [
         ("home", mission.home, None, None)]
     stops += [(p.id, p.xy, p.z_m, p.hold_s) for p in mission.flown_points]
     for where, (x, y), z, hold in stops:
+        z_over = None if where == landing else z      # None: must be clear beside
         label = "The start" if where == "home" else f"Point {where}"
         if not fence.contains(x, y):
             problems.append(Problem("outside_fence", f"{label} at ({x:+.2f}, {y:+.2f}) m is "
@@ -151,11 +158,19 @@ def validate_mission(mission: Mission, room: Room, *, outer: Geofence) -> list[P
                 f"{clearance:.2f} m, or ordinary drift would trip the fence and land the "
                 f"drone.", where=where))
         for obstacle in room.obstacles:
+            if obstacle.clears((x, y), z_over, clearance):
+                continue
             gap = obstacle.distance_to_point((x, y))
-            if gap < clearance:
-                problems.append(Problem(
-                    "near_obstacle", f"{label} is {gap:.2f} m from obstacle {obstacle.name}; "
-                    f"it needs {clearance:.2f} m.", where=where))
+            over = obstacle.overflight_height(clearance)
+            if where == landing and over is not None:
+                fix = " The flight lands here, so it must be beside the obstacle, not over it."
+            elif over is not None and where != "home":
+                fix = f" Or fly it at least {over:.2f} m high, over the obstacle."
+            else:
+                fix = ""
+            problems.append(Problem(
+                "near_obstacle", f"{label} is {gap:.2f} m from obstacle {obstacle.name}; "
+                f"it needs {clearance:.2f} m.{fix}", where=where))
         if z is not None and not fence.contains_height(z):
             problems.append(Problem(
                 "height", f"{label} height {z:.2f} m is outside the room's permitted "
@@ -166,8 +181,11 @@ def validate_mission(mission: Mission, room: Room, *, outer: Geofence) -> list[P
                 f"{MAX_HOLD_S:.0f} s (at least 5 s of readings and 10 frames — story 3.4).",
                 where=where))
 
-    # Every leg: inside a fence that may not be convex, and clear all the way.
-    for a, b, name in mission.legs():
+    # Every leg: inside a fence that may not be convex, and clear all the way —
+    # beside an obstacle, or over one with a height (at the leg's lower end).
+    heights = {p.id: p.z_m for p in mission.flown_points}
+    for (a, b, name), (za, zb) in zip(mission.legs(), _leg_heights(mission, heights),
+                                      strict=True):
         if a == b:
             continue
         if not fence.contains_leg(a, b):
@@ -180,11 +198,26 @@ def validate_mission(mission: Mission, room: Room, *, outer: Geofence) -> list[P
                 "leg_near_fence", f"The leg {name} passes {edge:.2f} m from the geofence's "
                 f"edge; it needs {clearance:.2f} m.", where=name))
         for obstacle in room.obstacles:
+            if obstacle.clears_leg(a, za, b, zb, clearance):
+                continue
             gap = obstacle.distance_to_segment(a, b)
-            if gap < clearance:
-                problems.append(Problem(
-                    "leg_near_obstacle",
-                    (f"The leg {name} crosses obstacle {obstacle.name}." if gap == 0 else
-                     f"The leg {name} passes {gap:.2f} m from obstacle {obstacle.name}; it "
-                     f"needs {clearance:.2f} m."), where=name))
+            over = obstacle.overflight_height(clearance)
+            fix = (f" To pass over it, both ends must be at least {over:.2f} m high."
+                   if over is not None else "")
+            problems.append(Problem(
+                "leg_near_obstacle",
+                (f"The leg {name} crosses obstacle {obstacle.name}.{fix}" if gap == 0 else
+                 f"The leg {name} passes {gap:.2f} m from obstacle {obstacle.name}; it "
+                 f"needs {clearance:.2f} m.{fix}"), where=name))
     return problems
+
+
+def _leg_heights(mission: Mission, heights: dict[str, float]) -> list[tuple[float, float]]:
+    """Each leg's height at its two ends, in Mission.legs() order. The drone
+    leaves the start, and comes back over it, at the cruise height (it climbs
+    straight up there first, and lands straight down from there)."""
+    cruise = mission.cruise_height_m
+    stops = [cruise] + [heights[p.id] for p in mission.flown_points]
+    if mission.returns_home:
+        stops.append(cruise)
+    return list(zip(stops, stops[1:], strict=False))

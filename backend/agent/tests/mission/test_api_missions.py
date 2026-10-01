@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from cropwatcher.api import rest
 from cropwatcher.api.tokens import HEADER
+from cropwatcher.mission.plan.geofence import Geofence
 from cropwatcher.session import Session
 from cropwatcher.sync.cloud import Operator
 from cropwatcher.sync.outbox import Outbox
@@ -136,3 +137,47 @@ def test_saving_a_mission_with_no_points_is_a_422_in_words(api):
     response = api.post("/missions", json=mission(points=()).to_dict(), headers=token())
     assert response.status_code == 422
     assert "at least one inspection point" in response.json()["detail"]
+
+
+def test_from_drone_names_the_plan_that_will_fly_and_every_move(api):
+    covered = room().edited(coverage=Geofence.rectangle(-2.0, -2.0, 1.0, 2.0))
+    api.post("/rooms", json=covered.to_dict(), headers=token())
+    api.post("/missions", json=mission().to_dict(), headers=token())
+    body = api.get("/missions/m1/from-drone", headers=token()).json()
+    assert {m["point_id"] for m in body["moves"]} == {"P2", "P3"}
+    assert body["unfitted"] == []
+    assert max(x for x, _ in body["space"]["vertices"]) == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize("method, path", [
+    ("get", "/rooms/lab/coverage"), ("post", "/rooms/lab/survey/start"),
+    ("get", "/survey"), ("post", "/survey/stop"),
+])
+def test_the_coverage_routes_need_the_token(api, method, path):
+    response = getattr(api, method)(path, **({"json": {}} if method == "post" else {}))
+    assert response.status_code == 401
+
+
+def test_a_room_with_nothing_measured_or_predicted_says_so(api):
+    api.post("/rooms", json=room().to_dict(), headers=token())
+    body = api.get("/rooms/lab/coverage", headers=token()).json()
+    assert body == {"measured": None, "predicted": None, "survey": {"active": False}}
+
+
+def test_a_survey_without_a_drone_is_a_409_in_words(api):
+    api.post("/rooms", json=room().to_dict(), headers=token())
+    response = api.post("/rooms/lab/survey/start", headers=token())
+    assert response.status_code == 409 and "Connect the drone" in response.json()["detail"]
+
+
+def test_an_unsaved_draft_is_fitted_without_being_saved(api):
+    covered = room().edited(coverage=Geofence.rectangle(-2.0, -2.0, 1.0, 2.0))
+    body = api.post("/missions/fit", json={"mission": mission().to_dict(),
+                                           "room": covered.to_dict()}, headers=token()).json()
+    assert {m["point_id"] for m in body["moves"]} == {"P2", "P3"}
+    assert api.get("/missions", headers=token()).json() == []
+
+
+def test_a_malformed_draft_is_a_422(api):
+    response = api.post("/missions/fit", json={"mission": {}}, headers=token())
+    assert response.status_code == 422 and "could not be read" in response.json()["detail"]

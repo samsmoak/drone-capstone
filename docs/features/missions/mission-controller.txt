@@ -65,6 +65,11 @@ backend/supabase/migrations/20260928000012_telemetry_point_id.sql
   operator's, as in Manual — the arrows away from them, or in the room's
   directions, never along the nose (../backend/manual-control.txt). fly_to's
   own velocity is in the room's frame and no heading bends it.
+• THE MISSION'S SPEED (2026-10-01): MissionFlight.fly_to takes an optional
+  speed_m_s, and the controller passes the mission's (floor-plans.txt, ONE
+  SPEED PER MISSION). Optional, so nothing written against the seam before
+  breaks — but it IS a change to THE SPEC's seam, which is Hannah's to know
+  about (../../handoffs/sprint-1/undone/mission-controller.txt).
 • THE HEARTBEAT STAYS WITH THE APP. The controller never calls heartbeat(): if
   the window goes quiet the drone lands, mission or not.
 • EVERY REFUSAL BEFORE ANYTHING ARMS: Auto, assisted, checks passed, the
@@ -82,6 +87,9 @@ backend/supabase/migrations/20260928000012_telemetry_point_id.sql
   obstacles, the leg to P1 and back clear. That from-start mission is what is
   handed to the controller, kept with the flight and read by the pipeline.
   GET /missions/{id}/from-drone runs the same function for ② Check.
+  SINCE 2026-10-01 it is THE PLAN THAT WILL FLY (floor-plans.txt, fit.py):
+  from the drone AND fitted to the flyable space — points outside it moved
+  to the nearest fine spot, named, and kept with the flight as "moves".
 • THE ROOM'S FENCE FLIES WITH IT: the in-flight guard lands the drone outside
   the room's own polygon, not the ±2 m square Manual uses.
 • The flight is named "mission:<id>@r<revision>" and the exact plan flown —
@@ -172,6 +180,11 @@ DECISIONS
   over the start, then landing". Words only: THE SPEC's kinds and order are
   unchanged, and it has no event where a landing after a return begins, so
   RETURNING announces it. test_mission_sim.py pins the words.
+• THE MISSION'S SPEED (2026-10-01, with PR #93 merged into this branch):
+  each leg is flown with fly_to(…, speed_m_s=the mission's Steady/Normal/
+  Brisk), and T8's timeout is the leg at THAT speed + TRANSIT_MARGIN_S — a
+  Steady mission is not timed out as if Brisk. test_controller and
+  test_mission_sim pin both.
 • ONE PLACE KNOWS WHERE A FLIGHT'S FILES ARE: the report finds the flight
   CSV and session folder through pipeline/sources.py LocalFlightSource (its
   _find_csv, _find_session), the trace beside the CSV, the plan flown in the

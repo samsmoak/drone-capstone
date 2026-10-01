@@ -43,6 +43,9 @@ class TestTheQueue:
         q.submit("f1")
         assert q.wait_idle()
         assert q.job("f1").state == JobState.DONE and q.job("f1").error is None
+        # The worker marks the job done, THEN notifies: wait_idle can return in
+        # between, so wait for the notification itself (this raced ~1 run in 3).
+        assert wait_for(lambda: seen[-1:] == ["done"])
         assert seen == ["queued", "running", "done"]
 
     def test_a_failure_says_why_in_the_pipelines_own_words(self):
