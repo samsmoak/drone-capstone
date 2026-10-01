@@ -463,12 +463,26 @@ class Session:
     # ── mode ─────────────────────────────────────────────────────────────
 
     def set_mode(self, mode: Mode) -> None:
+        """Choose the mode the NEXT session opens in.
+
+        A SESSION BELONGS TO THE MODE IT STARTED IN (2026-10-01, the owner's
+        "nothing should bleed between Manual and Auto"). It was checked and
+        confirmed under that mode's rules — Manual accepts an unassisted drone,
+        Auto never does — so the mode cannot change while one is open, flying
+        or not. End it, and the next session can open in the other mode. While
+        a session is open, Snapshot.mode IS that session's mode.
+        """
         with self._lock:
+            previous = self._snapshot.mode
+            if previous is mode:
+                return
             if self._snapshot.state is State.BUSY:
                 raise SessionError("Finish the current flight before switching mode.")
-            previous = self._snapshot.mode
-        if previous is mode:
-            return
+            if self._session_open_locked():
+                was, to = str(previous).capitalize(), str(mode).capitalize()
+                raise SessionError(
+                    f"A {was} session is open. It stays {was} until it ends — "
+                    f"end it, then start a {to} session.")
         self._set(mode=mode)
         self._refresh_processing()
         if self.history is not None:
@@ -476,6 +490,14 @@ class Session:
         if self.audit is not None:
             self.audit.record(Action.MODE_CHANGED, detail={"from": str(previous), "to": str(mode)},
                               session_id=self._snapshot.session_id)
+
+    def _session_open_locked(self) -> bool:
+        """A session exists: starting, checking, waiting, flying, ending — or
+        open after failed checks (Retry keeps it). A start whose checks failed
+        before a session was opened is not one."""
+        return self._snapshot.session_id is not None or self._snapshot.state in (
+            State.STARTING, State.AWAITING_CONFIRMATION, State.READY, State.BUSY,
+            State.ENDING)
 
     # ── the data pipeline (the DPP switch) ───────────────────────────────
 

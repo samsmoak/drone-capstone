@@ -7,9 +7,10 @@
  * camera.txt), not on the screen.
  *
  * Step 2 is the agent's drone_setup.py: it reads what the drone already has
- * (never assumes), installs only what is missing — drone firmware, camera,
- * camera Wi-Fi, in that order — then asks for the battery unplug the camera
- * needs, and only calls it done once the camera has started.
+ * (never assumes), installs only what is missing — drone firmware, the
+ * positioning deck's firmware, camera, camera Wi-Fi, in that order — then asks
+ * for the battery unplug the camera needs, and only calls it done once the
+ * camera has started and the positioning deck kept its firmware.
  */
 
 import type { ReactNode } from "react";
@@ -53,8 +54,8 @@ export function SetupPage({ session, setup, wifi, run, onGo }: {
           </p>
         </Item>
 
-        <Item n={2} title="Install camera software" done={done("install")} open={current === "install"}
-              summary="Drone firmware, camera and camera Wi-Fi installed">
+        <Item n={2} title="Install drone software" done={done("install")} open={current === "install"}
+              summary="Drone firmware, positioning deck, camera and camera Wi-Fi installed">
           <Install setup={setup} run={run} busy={inSession} />
         </Item>
 
@@ -135,7 +136,7 @@ function Install({ setup, run, busy }: { setup: SetupState | null; run: Run; bus
           {phase === "ready" && needsAny ? (
             <>
               <Button variant="primary" disabled={busy}
-                      onClick={() => void run(api.setupInstall, "Install camera software")}>
+                      onClick={() => void run(api.setupInstall, "Install drone software")}>
                 Install
               </Button>
               <span className="text-xs text-[var(--muted)]">About 5 minutes. Keep the drone on.</span>
@@ -157,7 +158,8 @@ function PartStatus({ status, active, progress }: {
 }) {
   const [tone, label]: [Tone, string] = active ? ["warning", `${Math.round(progress * 100)}%`]
     : status === "installed" || status === "done" ? ["good", "Installed"]
-    : status === "needed" ? ["idle", "To install"] : ["idle", "—"];
+    : status === "needed" ? ["idle", "To install"]
+    : status === "absent" ? ["idle", "No deck fitted"] : ["idle", "—"];
   return <span className="text-xs"><StatusDot tone={tone}>{label}</StatusDot></span>;
 }
 
