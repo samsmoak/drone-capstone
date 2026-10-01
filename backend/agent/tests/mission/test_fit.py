@@ -8,6 +8,7 @@ from cropwatcher.mission.plan.fit import flying_space, plan_to_fly
 from cropwatcher.mission.plan.floorplan import PlanError
 from cropwatcher.mission.plan.geofence import Geofence
 from cropwatcher.mission.plan.mission import InspectionPoint
+from cropwatcher.mission.plan.obstacles import Obstacle, ObstacleKind
 from cropwatcher.mission.plan.validate import errors
 from tests.mission.plans import OUTER, mission, room
 
@@ -71,3 +72,20 @@ class TestTheFit:
         plan = plan_to_fly(mission(), room(), outer=LEFT_COVERAGE, start=(-1.0, -1.0))
         d = plan.moves[0].to_dict()
         assert set(d) == {"point_id", "from", "to", "distance_m"}
+
+
+class TestOverObstacles:
+    """The fit uses the same over-or-beside rule as validation (obstacles.py)."""
+
+    POT = Obstacle("pot", ObstacleKind.CIRCLE, ((0.0, 0.0),), radius=0.2, height_m=0.1)
+
+    def test_a_point_high_over_a_low_obstacle_is_not_moved(self):
+        m = mission(points=(InspectionPoint("P1", 0.0, 0.0, 0.6, 5.0),), return_to_start=True)
+        plan = plan_to_fly(m, room(obstacles=(self.POT,)), outer=OUTER, start=(-1.0, -1.0))
+        assert plan.moves == () and errors(list(plan.problems)) == []
+
+    def test_a_landing_spot_over_it_is_moved_beside_it(self):
+        m = mission(points=(InspectionPoint("P1", 0.0, 0.0, 0.6, 5.0),), return_to_start=False)
+        plan = plan_to_fly(m, room(obstacles=(self.POT,)), outer=OUTER, start=(-1.0, -1.0))
+        (move,) = plan.moves
+        assert self.POT.distance_to_point(move.after[:2]) >= room().clearance_m - 1e-6

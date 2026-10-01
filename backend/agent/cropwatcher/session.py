@@ -1134,9 +1134,9 @@ class Session:
         coverage = survey.coverage(z_min=room.geofence.z_min, z_max=room.geofence.z_max)
         if coverage is None:
             raise SessionError(
-                f"Only {len(survey.kept)} of {survey.seen} positions had two base stations — "
-                "not enough to enclose an area. Check both stations are on and seen, then "
-                "survey again.")
+                f"Only {len(survey.kept)} of {survey.seen} positions had enough base stations "
+                "in view — not enough to enclose an area. Check the stations are on and seen, "
+                "then survey again.")
         return self.plans.save_room(room.edited(coverage=coverage))
 
     def flying_plan(self, mission_id: str) -> tuple[FlyingPlan, tuple[float, float] | None]:

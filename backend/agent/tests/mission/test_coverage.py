@@ -59,12 +59,16 @@ class TestPrediction:
         assert ROOM.contains_fence(p.everywhere)
         assert len(p.slices) == 10                       # 0.10 … 1.00 m, every 0.10 m
 
-    def test_one_station_alone_covers_nothing_a_mission_can_use(self):
-        assert predict(CORNERS[:1], ROOM).everywhere is None
+    def test_one_station_covers_what_it_sees_by_default(self):
+        # The project flies on one station (flight_guard MIN_USABLE_STATIONS).
+        assert predict(CORNERS[:1], ROOM).everywhere is not None
+
+    def test_a_room_that_insists_on_two_needs_both(self):
+        assert predict(CORNERS[:1], ROOM, min_stations=2).everywhere is None
 
     def test_stations_behind_the_room_cover_nothing(self):
         away = (facing((-1.5, -1.5, 2.0), 225, 30), facing((1.5, 1.5, 2.0), 45, 30))
-        assert predict(away, ROOM).everywhere is None
+        assert predict(away, ROOM, min_stations=1).everywhere is None
 
     def test_it_serialises_every_slice(self):
         d = predict(CORNERS, ROOM).to_dict()
@@ -98,8 +102,12 @@ class TestSurvey:
         for x, y in [(-1, -1), (1, -1), (1, 1), (-1, 1), (0, 0)]:
             survey.add(x, y, 1.0, mask)
 
-    def test_two_stations_count_and_one_does_not(self):
-        s = Survey()
+    def test_one_station_counts_by_default(self, monkeypatch):
+        monkeypatch.delenv("CROPWATCHER_MIN_STATIONS", raising=False)
+        assert Survey().add(0, 0, 1, 0b01)
+
+    def test_a_room_that_insists_on_two_counts_only_two(self):
+        s = Survey(min_stations=2)
         assert s.add(0, 0, 1, 0b11)
         assert not s.add(0, 0, 1, 0b01)
         assert not s.add(math.nan, 0, 1, 0b11)
@@ -118,7 +126,7 @@ class TestSurvey:
         s.add(1, 0, 1, 0b11)
         assert s.coverage(z_min=0.1, z_max=1.0) is None
 
-    def test_a_walk_with_one_station_measures_nothing(self):
-        s = Survey()
+    def test_a_walk_with_one_station_measures_nothing_where_two_are_needed(self):
+        s = Survey(min_stations=2)
         self.walk(s, 0b10)
         assert s.coverage(z_min=0.1, z_max=1.0) is None
