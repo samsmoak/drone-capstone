@@ -275,8 +275,9 @@ class MissionController:
         if self._flight.goal_active:                                                # T8
             return
         point = self._point
+        last = " — the last point" if self._is_last_point else ""
         self._queue(EventKind.POINT_ARRIVED, now, point.id,
-                    f"{point.id} reached, {self._flight.drift_m * 100:.0f} cm off")
+                    f"{point.id} reached{last}, {self._flight.drift_m * 100:.0f} cm off")
         self._state = MissionState.ARRIVING
         self._begin_settle(now, f"settling at {point.id}")
 
@@ -298,7 +299,16 @@ class MissionController:
             return
         self._current_point_id = None                                               # T13
         self._completed.append(point.id)
-        self._queue(EventKind.POINT_COMPLETE, now, point.id, f"{point.id} complete")
+        # The operator reads these in the Command log as the mission's running
+        # commentary, so each says what comes NEXT — the event kinds and their
+        # order are THE SPEC's and do not change.
+        if not self._is_last_point:
+            after = f"flying to {self.mission.points[self._index + 1].id}"
+        elif self.mission.return_to_start:
+            after = "the last point; returning to the start"
+        else:
+            after = "the last point; landing now"
+        self._queue(EventKind.POINT_COMPLETE, now, point.id, f"{point.id} complete — {after}")
         self._leg_from = (point.x_m, point.y_m, point.z_m)
         # Each branch sets its state BEFORE commanding, so a command that
         # raises is reported from the state it was entering (E3).
@@ -308,7 +318,10 @@ class MissionController:
         elif self.mission.return_to_start:                                          # T14
             assert self._takeoff_xy is not None
             x, y = self._takeoff_xy
-            self._queue(EventKind.RETURNING, now, None, "Returning over the start")
+            # THE SPEC has no event where the landing begins after a return,
+            # so this one says it is coming.
+            self._queue(EventKind.RETURNING, now, None,
+                        "Returning over the start, then landing")
             self._state = MissionState.RETURNING
             self._returning_settle = False
             self._fly_leg_locked(now, (x, y, self.mission.cruise_height_m),
@@ -346,6 +359,10 @@ class MissionController:
     @property
     def _point(self) -> InspectionPoint:
         return self.mission.points[self._index]
+
+    @property
+    def _is_last_point(self) -> bool:
+        return self._index + 1 >= len(self.mission.points)
 
     def _fly_leg_locked(self, now: float, to: tuple[float, float, float],
                         what: str) -> None:
