@@ -82,16 +82,36 @@ backend/supabase/migrations/20260928000012_telemetry_point_id.sql
 • THE FLIGHT STARTS FROM THE DRONE (2026-09-29; it was "within 0.30 m of
   home, or refused"). The owner's ask: a saved mission is flown later, from
   wherever the drone was set down, and the drone is the start. The session
-  applies Mission.from_start(position): the start moves to the drone, the
-  POINTS DO NOT (they mark equipment — shifting them would put P2 beside the
-  wrong pump), points after an END POINT are dropped, and the result is
-  validated like any mission: the drone inside the fence and clear of
-  obstacles, the leg to P1 and back clear. That from-start mission is what is
+  applies Mission.from_start(position): THE WHOLE PATH MOVES WITH THE START
+  (2026-10-05, Samuel — until then the start moved and the points stayed,
+  "tied to equipment"; but the room was never measured on the floor and
+  (0, 0, 0) is wherever the drone sat when the station was measured, so a
+  drawn absolute position named no real place). Every point shifts by
+  (drone − planned start), shape, spacing and heights kept, no rotation;
+  the landing spot is the next flight's start. The room's fence and
+  obstacles do NOT move: the shifted path is checked against them where
+  they are. Points after an END POINT are dropped, and the result is
+  validated like any mission. That from-start mission is what is
   handed to the controller, kept with the flight and read by the pipeline.
   GET /missions/{id}/from-drone runs the same function for ② Check.
   SINCE 2026-10-01 it is THE PLAN THAT WILL FLY (floor-plans.txt, fit.py):
   from the drone AND fitted to the flyable space — points outside it moved
   to the nearest fine spot, named, and kept with the flight as "moves".
+• EVERY REASON START WOULD REFUSE IS ONE LIST (Session.mission_blockers,
+  GET /missions/{id}/blockers, 2026-10-05): Start refuses on the first, ⑤ Fly
+  shows them all with what to do. It includes THE DRONE'S OWN MOTOR LOCK: on
+  2026-10-05 a mission landed, the supervisor then read 580 = LOCKED (0x0040,
+  Bitcraze supervisor.c — cleared only by a restart), and three re-flights
+  ran armed → flying → landing with thrust 0 the whole way, reported as
+  started and landed. supervisor.info is read before every mission (Reset
+  drone is the fix offered), and in flight the guard ends a flight whose
+  supervisor is LOCKED, or whose four motors read zero 1.5 s after arming,
+  as "the motors did not start — nothing flew" (Reason.MOTORS_NOT_SPINNING).
+  WHAT LOCKS IT — FOUND, NOT FIXED (Samuel's call): flight 0fca5fb4 was
+  declared "landed" by flight/manual.py at z 0.055 m with motors ~60 %, then
+  cut; within six minutes supervisor.info read LOCKED. The landing is in the
+  locked manual.py, so it is recorded, not changed; whether that cut is what
+  trips the lock is NOT YET MEASURED.
 • THE ROOM'S FENCE FLIES WITH IT: the in-flight guard lands the drone outside
   the room's own polygon, not the ±2 m square Manual uses.
 • The flight is named "mission:<id>@r<revision>" and the exact plan flown —

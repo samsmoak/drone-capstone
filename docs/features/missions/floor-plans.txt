@@ -72,13 +72,20 @@ desktop/src/pages/control/auto/FlightPlanCheck.tsx    ② the two plans, the sur
   pyramid; two overlap convexly within a height band, so a hull is the right
   shape (what it cannot show — a cabinet shading part of the room — the
   walked edge does).
-• THE PREDICTED SPACE CAN BE FLOWN ON (2026-10-05, Samuel: no walking the
-  drone about). Until then it was "shown to guide the walk, never flown on".
-  ③ Flyable space › "Use the predicted space" saves the prediction's
-  `everywhere` (covered at every height of the band) as Room.coverage —
-  Session.use_predicted_coverage, POST /rooms/{id}/coverage/predicted. What
-  it cannot see (a cabinet shading part of the room) the walked survey still
-  can; the survey stays, optional.
+• THE GREEN IS THE STATIONS' PREDICTED REACH, COMPUTED, NEVER WALKED
+  (2026-10-05, Samuel: no walking the drone about). Until then it was
+  "shown to guide the walk, never flown on", and it was computed INSIDE the
+  room's fence, so it came out as the room's own box. Now Session._prediction
+  computes it over the WHOLE MAP (the agent's ±2 m flying area) in the
+  room's height band, and the plan that will fly is fitted into its
+  `everywhere` automatically (Session._flyable: the prediction, else a
+  walked survey saved on the room, else the default area). No button: a
+  one-build "Use the predicted space" (saving it as Room.coverage) was
+  removed the same night. The stations' poses are read once per link and
+  re-read after ② Position measures again. What a prediction cannot see (a
+  cabinet shading part of the room) a walked survey can; the survey's agent
+  API remains (POST /rooms/{id}/survey/start, /survey/stop), with no app
+  screen — DEBT: delete it, or give it a screen, when next touched.
 • A SURVEY COUNTS ONLY POSITIONS THE DRONE STANDS BEHIND (2026-10-05):
   enough stations received AND flight_guard.position_trusted. Received alone
   was the rule until then, and a survey walked before the station was

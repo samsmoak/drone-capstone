@@ -87,6 +87,17 @@ SHIP
   CI wait      a PR touching desktop/, backend/agent/ or scripts/ runs the
                desktop-install workflow on three machines: wait for it before
                merging.
+  experiments  PRIVATE, in a second repo (owner, 2026-10-05): this repo is
+               public and GitHub cannot hide a branch from readers, so
+               experiment/* lives in samsmoak/drone-capstone-lab (private,
+               the same history), remote `lab`. Build and test there; when a
+               feature is solid, push ITS branch to `origin` and land it by
+               PR as above — its doc edits go in the same PR. Merge
+               origin/main into the experiment branch regularly (teammates'
+               code and docs). Never push experiment/* to origin. A cloud
+               session needs the Claude GitHub app granted the lab repo.
+               One implementation, never two: an experiment that replaces a
+               teammate's ticket rewrites that ticket in the PR that lands it.
   deploy       web: Vercel on push to main, Root Directory = web (never give
                the agent a FastAPI entrypoint). desktop: nothing is published —
                every machine builds its own from main with

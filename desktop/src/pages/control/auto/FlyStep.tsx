@@ -1,15 +1,17 @@
 /**
- * Step ③ of the Auto flow: fly the mission.
+ * Step ⑤ of the Auto flow: fly the mission (the session and its checks come
+ * first, in CheckStep, until the drone is ready and knows where it is).
  *
- * START MISSION IS AT THE TOP, disabled with its reason until it can act. The
- * agent refuses a mission in words for everything the page cannot see (the
- * drone off its home mark, a battery too low for the plan, a controller not
- * built yet), and those words land in the page's message — this button never
- * pretends to know more than the agent.
+ * START MISSION IS AT THE TOP, disabled until it can act — and under it EVERY
+ * reason it cannot, each with what to do, asked of the agent (GET …/blockers,
+ * Session.mission_blockers — the very list Start refuses on). 2026-10-05: a
+ * drone locked after a landing was "flown" three times with thrust 0, the app
+ * saying started and landing; now the lock is a named reason with Reset drone.
  *
  * Below it: the room map (2-D or 3-D, RoomMap) with the mission loaded — the
- * room, its obstacles, the path FROM WHERE THE DRONE IS (the flight's real
- * start: the points never move, the first leg does), each point done,
+ * room, its obstacles, THE AUTO-CORRECTED PLAN the agent will fly (GET
+ * …/from-drone: the whole path moved to start at the drone, fitted into the
+ * green; kept as it was at takeoff while flying), each point done,
  * current or ahead, the drone live at its height and heading — and the mission
  * controller's progress. While the mission flies the start stays where it took
  * off. The flow is locked here while it flies: a plan cannot be edited in the
@@ -22,8 +24,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { History, Run } from "@/App";
 import {
-  api, AgentError, type MissionProgress, type MissionView, type RoomView, type Session,
-  type Telemetry, type XY,
+  api, AgentError, type FlyingPlan, type MissionBlocker, type MissionProgress, type MissionView,
+  type RoomView, type Session, type Telemetry, type XY,
 } from "@/lib/agent";
 import { formatDuration } from "@/lib/format";
 import { Button, Message, Panel, Spinner, StatusDot, type Tone } from "@/components/ui";
@@ -54,9 +56,21 @@ export function progressOf(mission: MissionView, progress: MissionProgress | nul
 
 /** The mission as it will fly from `start` — Mission.from_start, drawn: the
  *  start moved, the points kept, the end point applied. */
+/** The plan as it will be flown from `start` — the whole path moves with it,
+ *  as the agent's Mission.from_start does (2026-10-05). Shown only until the
+ *  agent's own auto-corrected plan arrives. */
 export function fromStart(mission: MissionView, start: XY): PathSource {
-  return { home: start, points: flownPoints(mission), return_to_start: returnsHome(mission), end_point_id: null };
+  const dx = start[0] - mission.home[0];
+  const dy = start[1] - mission.home[1];
+  return {
+    home: start,
+    points: flownPoints(mission).map((p) => ({ ...p, x_m: p.x_m + dx, y_m: p.y_m + dy })),
+    return_to_start: returnsHome(mission), end_point_id: null,
+  };
 }
+
+/** How often the agent is asked for the plan and the reasons, before takeoff. */
+const ASK_EVERY_MS = 2000;
 
 export function FlyStep({ session, run, telemetry, mission, ambient, setAmbient, onPlanAnother, heightClass }: {
   heightClass?: string;
@@ -96,7 +110,29 @@ export function FlyStep({ session, run, telemetry, mission, ambient, setAmbient,
     wasFlying.current = flying;
   }, [flying, drone]);
   const start = (flying || finished) ? tookOff ?? drone : drone;
-  const path = start ? fromStart(mission, start) : mission;
+
+  // The agent's auto-corrected plan and every reason it would refuse, asked
+  // every 2 s until takeoff; while flying the last plan stays on the map.
+  const [agentPlan, setAgentPlan] = useState<FlyingPlan | null>(null);
+  const [blockers, setBlockers] = useState<MissionBlocker[] | null>(null);
+  const [askError, setAskError] = useState<string | null>(null);
+  useEffect(() => {
+    if (flying) return;
+    let live = true;
+    const ask = () => {
+      api.missionBlockers(mission.id)
+        .then((b) => { if (live) { setBlockers(b.blockers); setAskError(null); } })
+        .catch((e: unknown) => { if (live) setAskError(e instanceof AgentError ? e.message : "Could not ask the agent whether the mission can start."); });
+      api.missionFromDrone(mission.id)
+        .then((p) => { if (live) setAgentPlan(p); })
+        .catch(() => { if (live) setAgentPlan(null); });
+    };
+    ask();
+    const timer = window.setInterval(ask, ASK_EVERY_MS);
+    return () => { live = false; window.clearInterval(timer); };
+  }, [mission.id, flying, session.state, session.assisted]);
+  const path: PathSource = agentPlan?.position ? agentPlan.mission
+    : start ? fromStart(mission, start) : mission;
   const lands = landsAt(mission);
 
   const reason = (): string | null => {
@@ -110,6 +146,7 @@ export function FlyStep({ session, run, telemetry, mission, ambient, setAmbient,
     if (session.state === "busy") return "The drone is busy. Wait for it to finish.";
     if (!checkComplete(session)) return "The session is not ready.";
     if (!session.assisted) return `The drone does not know where it is, so it cannot fly a mission. ${session.unassisted_reason ?? ""} Measure it in ② Position, then Check again.`;
+    if (blockers && blockers.length) return blockers[0].message;
     return null;
   };
   const why = reason();
@@ -142,7 +179,24 @@ export function FlyStep({ session, run, telemetry, mission, ambient, setAmbient,
         {/* Why Start is disabled is the one thing the operator must read here:
             a warning, never muted text (2026-10-01 — a refusal in grey read as
             "the mission is running"). */}
-        {why && !flying && <div className="w-full"><Message tone="warning" text={why} /></div>}
+        {!flying && blockers && blockers.length > 0 && (
+          <div className="grid w-full gap-2" role="status" aria-label="Why the mission cannot start">
+            <p className="text-sm font-semibold">The mission cannot start yet:</p>
+            <ul className="grid gap-2">
+              {blockers.map((b) => (
+                <li key={b.code} className="grid gap-1 border-l-2 border-[var(--status-warning)] pl-3 text-sm">
+                  <span>{b.message}</span>
+                  <span className="text-xs">→ {b.fix}</span>
+                  {b.code === "motors" && (
+                    <span><Button onClick={() => void run(api.resetDrone, "Reset drone")}>Reset drone</Button></span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {!flying && (!blockers || blockers.length === 0) && why && <div className="w-full"><Message tone="warning" text={why} /></div>}
+        {!flying && askError && <div className="w-full"><Message tone="critical" text={askError} /></div>}
         <div className="w-full border-t border-[var(--border)] pt-2">
           <ProcessingSwitch session={session} run={run} />
         </div>
@@ -181,7 +235,7 @@ export function FlyStep({ session, run, telemetry, mission, ambient, setAmbient,
             <div className="border border-[var(--border)] p-4"><Spinner label="Loading the room…" /></div>
           )}
           {!flying && start && (
-            <p className="pt-1 text-xs">The path starts from where the drone is (D) — the points stay where they were planned.</p>
+            <p className="pt-1 text-xs">The path starts from where the drone is (D): the whole plan moves with it, fitted into the green.</p>
           )}
         </div>
 

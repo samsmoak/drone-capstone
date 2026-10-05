@@ -121,9 +121,10 @@ def test_from_drone_with_no_drone_is_the_mission_as_saved(api):
 def test_from_drone_checks_the_path_from_the_drones_own_position(api, monkeypatch):
     api.post("/rooms", json=room().to_dict(), headers=token())
     api.post("/missions", json=mission().to_dict(), headers=token())
-    monkeypatch.setattr(rest.agent.session, "position", lambda: (0.8, -1.0, 0.0))
+    # The path moves +0.5 in x with the drone; home → P1 then runs past the table.
+    monkeypatch.setattr(rest.agent.session, "position", lambda: (-0.5, -1.0, 0.0))
     body = api.get("/missions/m1/from-drone", headers=token()).json()
-    assert body["position"] == [0.8, -1.0]
+    assert body["position"] == [-0.5, -1.0]
     assert body["mission"]["valid"] is False
     assert any(p["where"] == "home → P1" for p in body["mission"]["problems"])
 

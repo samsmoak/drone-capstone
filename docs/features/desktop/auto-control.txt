@@ -26,15 +26,19 @@ STATUS  (Last verified: 2026-09-29)
                   where the drone sits" (Session.measure_station). Lab: base
                   station 2.64 m away, 1.49 m up; still drone held to ~3 mm,
                   spread 3.2 cm; every check passed
-  ③ Flyable space BUILT — the plan over the green (FlightPlanCheck mode
-                  "space"): Use the predicted space, walk a survey
-                  (optional), Forget the measured space
-  ④ Auto-correct  BUILT — your plan and the plan that will fly (mode "fit");
-                  the Auto-correct button marks it done only when the fitted
-                  copy is flyable, and undoes that if it stops being so
+  ③ Flyable space BUILT — the green, where the measured base station
+                  reaches over the whole map, with its size in words; your
+                  room, path and obstacles over it (FlightPlanCheck "space").
+                  Computed — no button, no survey screen
+  ④ Auto-correct  BUILT — your plan (editable here, the green on its map,
+                  points outside it ringed red) above the auto-corrected plan
+                  the agent will fly (mode "fit"). It corrects itself; the
+                  step is done while the corrected plan can fly
   ⑤ Fly           BUILT — first the session, its checks and the area
                   (CheckStep.tsx, moved here from ②), then Start mission, the
-                  room map, progress and the RESULTS after landing
+                  room map, progress and the RESULTS after landing;
+                  under Start, EVERY reason it cannot start with what to do
+                  (GET …/blockers), Reset drone beside a motor lock
   NOT BUILT  live per-point verdicts while flying (story 4.9 — results arrive
              after landing); resizing obstacles by dragging in 2-D (3-D and
              the numbers do it)
@@ -264,6 +268,11 @@ desktop/src/lib/agent.ts                           the calls and types
   geometry`) for that case. Done = the drone says positioning is ready
   (/station), never "a press happened". The camera watchdog never restarts
   the drone mid-measurement (Session.measuring_station).
+• THE STEP BAR IS NEVER SQUEEZED (StepBar.tsx, 2026-10-05): full labels;
+  wide, the steps share the width; narrow, it scrolls sideways.
+• THE FLY MAP SHOWS THE AGENT'S AUTO-CORRECTED PLAN (GET …/from-drone every
+  2 s before takeoff, kept while flying), not a copy worked out in the page;
+  the page's own fromStart (whole path shifted) shows only until it arrives.
 • THE SESSION STARTS IN ⑤ FLY, not its own step (Samuel). A session opened
   before ② sees no position until its checks run again: ② and ⑤ offer
   Check again (Session.retry, allowed while READY).

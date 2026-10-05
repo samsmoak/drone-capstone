@@ -262,12 +262,19 @@ class TestEndPoint:
 
 
 class TestFromStart:
-    """The drone's position is the start. The points never move with it."""
+    """The drone's position is the start, and the whole path moves with it
+    (2026-10-05, Samuel): the drawn shape is flown from wherever the drone is."""
 
-    def test_the_start_moves_and_the_points_do_not(self):
-        m = mission().from_start((-1.0, -0.4))
+    def test_the_whole_path_moves_with_the_start(self):
+        m = mission().from_start((-1.0, -0.4))                 # home (-1, -1): +0.6 in y
         assert m.home == (-1.0, -0.4)
-        assert [p.xy for p in m.points] == [p.xy for p in mission().points]
+        assert [p.xy for p in m.points] == [
+            pytest.approx((x, y + 0.6)) for x, y in (p.xy for p in mission().points)]
+
+    def test_the_shape_and_heights_are_kept(self):
+        before, after = mission(), mission().from_start((0.3, -0.2))
+        assert after.path_length_m() == pytest.approx(before.path_length_m())
+        assert [p.z_m for p in after.points] == [p.z_m for p in before.points]
 
     def test_it_returns_to_where_it_actually_started(self):
         legs = mission().from_start((-1.0, -0.4)).legs()
@@ -278,8 +285,10 @@ class TestFromStart:
         assert m.point_ids == ("P1", "P2")
         assert m.end_point_id is None and m.return_to_start is False
 
-    def test_a_start_whose_first_leg_crosses_the_table_is_an_error(self):
-        m = mission().from_start((0.8, -1.0))
+    def test_a_shifted_path_that_runs_past_the_table_is_an_error(self):
+        # The room and its table stay where they are; the path moves +0.5 in x,
+        # so home → P1 runs up x = -0.5, inside the table's 0.25 m clearance.
+        m = mission().from_start((-0.5, -1.0))
         assert "leg_near_obstacle" in codes(validate_mission(m, room(), outer=OUTER))
 
 

@@ -229,6 +229,9 @@ export type StationStatus =
       ready: boolean;
     };
 
+/** One reason a mission cannot start now, and what to do about it. */
+export type MissionBlocker = { code: string; message: string; fix: string };
+
 /** A base station plugged into this laptop by USB (Bitcraze's "Set BS channel"). */
 export type BaseStation = {
   port: string;
@@ -561,8 +564,10 @@ export const api = {
     command<{ port: string; channel: number }>("/basestations/channel", { port, channel }),
   stationStatus: () => command<StationStatus>("/station", undefined, "GET"),
   measureStation: () => command<{ message: string }>("/station/measure"),
-  usePredictedCoverage: (roomId: string) =>
-    command<RoomView>(`/rooms/${encodeURIComponent(roomId)}/coverage/predicted`),
+  /** Every reason Start would refuse this mission now, with what to do —
+   *  the same list Start refuses on (agent Session.mission_blockers). */
+  missionBlockers: (missionId: string) =>
+    command<{ blockers: MissionBlocker[] }>(`/missions/${encodeURIComponent(missionId)}/blockers`, undefined, "GET"),
   /** The DPP switch for this session. */
   setProcessing: (on: boolean) => command<Session>("/session/processing", { on }),
   /** Which way the arrow keys move the drone. Works in the air. */
