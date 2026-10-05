@@ -45,35 +45,6 @@ class TestNotMoved:
         assert result.converged
 
 
-class TestStationMeasurement:
-    def test_start_then_forward_solves(self):
-        measure = geometry.StationMeasurement()
-        assert measure.step == "origin"
-        measure.record_origin(still_at_origin(), 10.0)
-        assert measure.step == "forward"
-        result = measure.finish(SimpleNamespace(), one_m_forward(), 11.0, write=False)
-        assert result.converged
-        assert result.stations[0].translation.tolist() == [2.0, 0.0, 2.0]
-        assert measure.step == "origin"                 # ready for another go
-
-    def test_a_turned_drone_is_named(self):
-        measure = geometry.StationMeasurement()
-        measure.record_origin(still_at_origin(), 0.0)
-        result = measure.finish(SimpleNamespace(), FakeSample(
-            {0: (FakePose(9, 9, 9), FakePose(-7, -7, -7))}), 60.0, write=False)
-        assert "turned about 60 degrees" in result.message
-
-    def test_a_refusal_starts_again_from_the_start_mark(self):
-        measure = geometry.StationMeasurement()
-        measure.record_origin(still_at_origin(), 0.0)
-        measure.finish(SimpleNamespace(), still_at_origin(), 0.0, write=False)
-        assert measure.step == "origin"
-
-    def test_forward_before_the_start_is_a_bug_not_a_guess(self):
-        with pytest.raises(RuntimeError):
-            geometry.StationMeasurement().finish(SimpleNamespace(), one_m_forward(), 0.0)
-
-
 @pytest.fixture
 def rig(tmp_path, monkeypatch):
     rig = make_rig(tmp_path, monkeypatch)
@@ -95,36 +66,40 @@ def rig(tmp_path, monkeypatch):
     return rig
 
 
-class TestTheSessionWalk:
-    def test_two_records_store_the_station_on_the_drone(self, rig):
-        rig.samples[:] = [still_at_origin(), one_m_forward()]
-        first = rig.session.record_station()
-        assert first["step"] == "forward" and not first["done"]
-        assert "1.00 m straight forward" in first["message"]
-        assert rig.written == []                        # nothing stored on one record
+def upside_down():
+    import numpy as np
+    a, b = FakePose(2, 0, 2), FakePose(-2, 0, 2)
+    a.rot_matrix = b.rot_matrix = np.diag([1.0, -1.0, -1.0])
+    return FakeSample({0: (a, b)})
 
-        second = rig.session.record_station()
-        assert second["done"] and second["step"] == "origin"
+
+class TestMeasuringFromWhereTheDroneSits:
+    """One record, no walking (2026-10-05): estimate_quick, the mirror settled
+    by the station standing upright."""
+
+    def test_one_press_stores_the_station_and_restarts_the_estimate(self, rig):
+        rig.samples[:] = [still_at_origin()]
+        out = rig.session.measure_station()
         assert list(rig.written[0]) == [0]
         # The estimate ran on no geometry until now: started again from it.
         assert rig.resets == [rig.link.scf.cf]
+        assert "(0, 0, 0)" in out["message"]
         # The rig's session checked before the store: it is told to check again.
-        assert "Check again" in second["message"]
+        assert "check again" in out["message"]
+        assert rig.session.measuring_station is False
 
-    def test_an_unmoved_drone_is_refused_and_stores_nothing(self, rig):
-        rig.samples[:] = [still_at_origin(), still_at_origin()]
-        rig.session.record_station()
-        with pytest.raises(SessionError, match="did not move"):
-            rig.session.record_station()
+    def test_a_station_upside_down_both_ways_is_refused_and_stores_nothing(self, rig):
+        rig.samples[:] = [upside_down()]
+        with pytest.raises(SessionError, match="upright"):
+            rig.session.measure_station()
         assert rig.written == [] and rig.resets == []
-        assert rig.session.station_status()["step"] == "origin"
 
     def test_a_write_the_drone_did_not_confirm_is_a_failure(self, rig, monkeypatch):
         monkeypatch.setattr(geometry, "_write", lambda cf, poses: False)
-        rig.samples[:] = [still_at_origin(), one_m_forward()]
-        rig.session.record_station()
+        rig.samples[:] = [still_at_origin()]
         with pytest.raises(SessionError, match="did not confirm"):
-            rig.session.record_station()
+            rig.session.measure_station()
+        assert rig.resets == []
 
     def test_no_beams_is_said_in_words(self, rig, monkeypatch):
         class Deaf:
@@ -133,24 +108,36 @@ class TestTheSessionWalk:
                 raise TimeoutError("No base station beams reached the drone here.")
         monkeypatch.setattr(session_module, "SweepAngles", Deaf)
         with pytest.raises(SessionError, match="No base station beams"):
-            rig.session.record_station()
+            rig.session.measure_station()
+        assert rig.session.measuring_station is False
 
     def test_never_while_flying(self, rig):
         rig.session._set(state=State.BUSY)
         with pytest.raises(SessionError, match="Land first"):
-            rig.session.record_station()
+            rig.session.measure_station()
 
     def test_never_without_a_drone(self, rig):
         rig.link.is_open = False
         with pytest.raises(SessionError, match="Not connected"):
-            rig.session.record_station()
+            rig.session.measure_station()
 
-    def test_reset_forgets_the_start(self, rig):
-        rig.samples[:] = [still_at_origin()]
-        rig.session.record_station()
-        assert rig.session.station_status()["step"] == "forward"
-        rig.session.reset_station()
-        assert rig.session.station_status()["step"] == "origin"
+
+class TestThePredictedSpace:
+    """The flyable space from where the stored station reaches — no walk."""
+
+    def test_it_becomes_the_rooms_flyable_space(self, rig):
+        from tests.mission.test_coverage import CORNERS
+        rig.link.station_poses = lambda: list(CORNERS)
+        room = rig.session.use_predicted_coverage("lab")
+        assert room.coverage is not None
+        saved = rig.plans.room("lab").coverage
+        assert saved is not None
+        assert saved.bounds() == pytest.approx(room.coverage.bounds(), abs=1e-3)
+
+    def test_no_station_stored_says_measure_first(self, rig):
+        rig.link.station_poses = lambda: []
+        with pytest.raises(SessionError, match="Measure it first"):
+            rig.session.use_predicted_coverage("lab")
 
 
 class TestStatus:
@@ -240,18 +227,16 @@ class TestAPositionIsOnlyAPlaceWhenTheDroneStandsBehindIt:
 
 
 class TestNothingRestartsTheDroneMidMeasurement:
-    def test_the_camera_watchdog_waits(self, rig, monkeypatch):
+    def test_the_camera_watchdog_waits(self, rig):
         from cropwatcher.api import rest
 
         restarts = []
         rig.session.restart_drone = lambda *, reason: restarts.append(reason)
         agent = SimpleNamespace(session=rig.session, _last_rejoin=0.0)
-        rig.samples[:] = [still_at_origin()]
-        rig.session.record_station()                    # between the two records
-        assert rig.session.measuring_station
+        rig.session._measuring = True                   # mid-measurement
         assert rest.Agent.rejoin(agent, reason="no frames") is False
         assert restarts == []
 
-        rig.session.reset_station()
+        rig.session._measuring = False
         assert rest.Agent.rejoin(agent, reason="no frames") is True
         assert restarts == ["no frames"]

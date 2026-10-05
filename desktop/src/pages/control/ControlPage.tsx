@@ -25,7 +25,7 @@
  * the same checks and need the same confirmation, because the risk is the same.
  *
  * AUTO HAS ITS OWN LAYOUT (auto/AutoControl.tsx, since 2026-09-28): the Mission
- * flow — ① Mission → ② Check → ③ Fly — on the left, where the operator works,
+ * flow — ① Plan → ② Position → ③ Flyable space → ④ Auto-correct → ⑤ Fly — on the left, where the operator works,
  * and the monitor on the right. Everything below this comment is Manual's, and
  * Auto reuses its panels (FlightDeck, Checklist, RetryPanel, HealthTestPanel,
  * Field) rather than copying them.

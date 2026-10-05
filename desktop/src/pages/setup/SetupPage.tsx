@@ -1,5 +1,5 @@
 /**
- * Set up — from a drone out of the box to a session, in five steps.
+ * Set up — from a drone out of the box to a session.
  *
  * ONE LIST, ONE STEP OPEN. The step in front of the operator is open; finished
  * steps shrink to a line with a check; later steps are titles only. Words are
@@ -20,11 +20,9 @@
  * the calibration but decodes no angles (measured 2026-10-05). It reads done
  * once the drone decodes angles.
  *
- * Step 4 measures where the base station stands (agent: Session.record_station,
- * flight/geometry.py's one-station walk): two records on the floor, motors off.
- * Without it the drone receives the station but cannot turn it into a
- * position, and Auto refuses every mission. It comes before the camera's
- * Wi-Fi because flying needs it and the camera does not.
+ * Measuring where the base station stands is NOT here: it is part of flying,
+ * Control › Auto › ② Position, where the operator already is (2026-10-05 —
+ * it sat here as step 4 and could not be found).
  */
 
 import { useEffect, useState, type ReactNode } from "react";
@@ -32,12 +30,10 @@ import type { Page, Run } from "@/App";
 import {
   AgentError, api, type BaseStation, type CameraWifi, type Session, type SetupState, type StationStatus,
 } from "@/lib/agent";
+import { StationStages, useStation } from "@/components/StationStages";
 import { Button, Message, PageHeader, Spinner, StatusDot, type Tone } from "@/components/ui";
 
-type Step = "connect" | "install" | "channels" | "measure" | "wifi" | "session";
-
-/** How often the base station's status is re-read while Set up is open. */
-const STATION_EVERY_MS = 1000;
+type Step = "connect" | "install" | "channels" | "wifi" | "session";
 
 export function SetupPage({ session, setup, wifi, run, onGo }: {
   session: Session | null;
@@ -55,7 +51,6 @@ export function SetupPage({ session, setup, wifi, run, onGo }: {
   const station = useStation(radio === "connected");
   // A step the operator opened by its button, over the one the list chose.
   const [opened, setOpened] = useState<Step | null>(null);
-  const measured = station?.connected === true && station.ready && opened !== "measure";
   // Decoding: the drone turns sweeps into angles — what the channels are for.
   // bsReceive is the firmware's own word for it (lighthouse_core.c sets it
   // only when a sweep yields angles); validAngles is not (2026-10-05).
@@ -74,11 +69,10 @@ export function SetupPage({ session, setup, wifi, run, onGo }: {
   }, [opened, installed]);
 
   const listed: Step = !connected ? "connect" : installPending ? "install"
-    : !decoding && !measured ? "channels" : !measured ? "measure" : !wifiDone ? "wifi" : "session";
+    : !decoding ? "channels" : !wifiDone ? "wifi" : "session";
   const current: Step = connected && opened !== null ? opened : listed;
   const done = (s: Step) => ({
-    connect: connected, install: installed, channels: decoding || measured, measure: measured,
-    wifi: wifiDone, session: inSession,
+    connect: connected, install: installed, channels: decoding, wifi: wifiDone, session: inSession,
   })[s];
 
   return (
@@ -107,23 +101,16 @@ export function SetupPage({ session, setup, wifi, run, onGo }: {
           <Channels station={station} run={run} onDone={() => setOpened(null)} />
         </Item>
 
-        <Item n={4} title="Measure the base station" done={done("measure")} open={current === "measure"}
-              summary="The drone knows where it is"
-              onReopen={() => setOpened("measure")}
-              reopenLabel={done("measure") ? "Measure again" : "Measure"}>
-          <Measure station={station} run={run} onMeasured={() => setOpened(null)} />
-        </Item>
-
-        <Item n={5} title="Connect the camera to Wi-Fi" done={done("wifi")} open={current === "wifi"}
+        <Item n={4} title="Connect the camera to Wi-Fi" done={done("wifi")} open={current === "wifi"}
               summary={wifi?.ssid ? `On ${wifi.ssid}` : "Connected"}>
           <p className="text-sm">Choose the Wi-Fi network this laptop is on. The drone joins it and the camera streams over it.</p>
           <div><Button variant="primary" onClick={() => onGo("wifi")}>Open Drone Wi-Fi</Button></div>
         </Item>
 
-        <Item n={6} title="Start a session" done={done("session")} open={current === "session"}
+        <Item n={5} title="Fly" done={done("session")} open={current === "session"}
               summary="Session running">
-          <p className="text-sm">Everything is ready. Start a session to fly and record.</p>
-          <div><Button variant="primary" onClick={() => onGo("home")}>Go to Home</Button></div>
+          <p className="text-sm">The drone is set up. In Control › Auto, ② Position measures where the base station stands from where the drone sits, then the flyable space, the plan, and Fly.</p>
+          <div><Button variant="primary" onClick={() => onGo("control")}>Go to Control</Button></div>
         </Item>
       </ol>
     </div>
@@ -208,34 +195,6 @@ function Install({ setup, run, busy }: { setup: SetupState | null; run: Run; bus
   );
 }
 
-/** From the station's light to a position, one row per stage: the first
- *  row that is not ✓ is the one to fix. */
-function Stages({ station }: { station: StationStatus & { connected: true } }) {
-  const rows: [string, boolean, string][] = [
-    ["Light on the deck's sensors", station.light_sensors > 0, `${station.light_sensors} of 4`],
-    ["Base station's data read", station.calibrated.length > 0,
-      station.calibrated.length ? `station ${station.calibrated.join(", ")}` : "none"],
-    ["Sweeps decoded into angles", station.received.length > 0,
-      station.received.length ? `station ${station.received.join(", ")}` : "no — set the channels (step 3)"],
-    ["Station's place stored", station.measured.length > 0,
-      station.measured.length ? "yes" : "no — measure it (step 4)"],
-    ["In use by the drone", station.active.length > 0,
-      station.active.length ? `station ${station.active.join(", ")}` : "no"],
-    ["Position settled", station.ready,
-      station.uncertainty_cm == null ? "—" : `within ${station.uncertainty_cm} cm (under 5 needed)`],
-  ];
-  return (
-    <ul className="grid border border-[var(--border)] text-xs" aria-label="From the base station's light to a position">
-      {rows.map(([label, ok, detail]) => (
-        <li key={label} className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-3 py-1.5 last:border-b-0">
-          <span>{label}</span>
-          <StatusDot tone={ok ? "good" : "warning"}>{detail}</StatusDot>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 /** Each base station on its own channel, set over its USB cable. */
 function Channels({ station, run, onDone }: {
   station: StationStatus | null; run: Run; onDone: () => void;
@@ -271,7 +230,7 @@ function Channels({ station, run, onDone }: {
   const decoding = station?.connected === true && station.received.length > 0;
   return (
     <div className="grid gap-3">
-      {station?.connected === true && <Stages station={station} />}
+      {station?.connected === true && <StationStages station={station} />}
       <ol className="grid gap-1 text-sm">
         <li>1. Keep the base station on its power block. Connect it to this laptop with a micro-USB cable — one station at a time.</li>
         <li>2. Press Look for base stations, then give the first station channel 1 and the second channel 2.</li>
@@ -303,87 +262,6 @@ function Channels({ station, run, onDone }: {
       <div className="flex flex-wrap gap-2">
         <Button variant="primary" disabled={working} onClick={scan}>Look for base stations</Button>
         {decoding && <Button onClick={onDone}>Decoding — continue</Button>}
-      </div>
-    </div>
-  );
-}
-
-/** The base station's status, re-read every second while the drone is connected. */
-function useStation(connected: boolean): StationStatus | null {
-  const [status, setStatus] = useState<StationStatus | null>(null);
-  useEffect(() => {
-    if (!connected) { setStatus(null); return; }
-    let live = true;
-    const ask = () => {
-      api.stationStatus().then((s) => { if (live) setStatus(s); }).catch(() => {});
-    };
-    ask();
-    const timer = window.setInterval(ask, STATION_EVERY_MS);
-    return () => { live = false; window.clearInterval(timer); };
-  }, [connected]);
-  return status;
-}
-
-function Measure({ station, run, onMeasured }: {
-  station: StationStatus | null; run: Run; onMeasured: () => void;
-}) {
-  const [working, setWorking] = useState(false);
-  const [outcome, setOutcome] = useState<{ tone: Tone; text: string } | null>(null);
-
-  if (station === null || !station.connected) {
-    return <Spinner label="Waiting for the drone…" />;
-  }
-  const received = station.received.length > 0;
-  const step = station.step;
-  const metres = station.distance_m.toFixed(2);
-
-  const record = () => {
-    setWorking(true);
-    void run(async () => {
-      try {
-        const r = await api.recordStation();
-        setOutcome({ tone: "good", text: r.message });
-        if (r.done) onMeasured();
-      } catch (e) {
-        setOutcome({ tone: "critical", text: e instanceof AgentError ? e.message : "That did not work." });
-        throw e;
-      }
-    }, step === "origin" ? "Record the start" : `Record ${metres} m forward`)
-      .finally(() => setWorking(false));
-  };
-  const startOver = () => {
-    setOutcome(null);
-    void run(api.resetStation, "Start the measurement over");
-  };
-
-  const [tone, live]: [Tone, string] = !received
-    ? ["warning", "No base station received. Check its front light is solid green and nothing blocks the top of the drone."]
-    : station.ready
-      ? ["good", `Base station ${station.usable.join(", ")} received and measured · position within ${station.uncertainty_cm ?? "?"} cm`]
-      : station.usable.length > 0
-        ? ["warning", `Base station ${station.usable.join(", ")} measured · position settling (${station.uncertainty_cm ?? "?"} cm, under 5 cm needed). Keep the drone still.`]
-        : ["warning", `Base station ${station.received.join(", ")} received, not measured yet.`];
-
-  return (
-    <div className="grid gap-3">
-      <p className="text-sm"><StatusDot tone={tone}>{live}</StatusDot></p>
-      <Stages station={station} />
-      <ol className="grid gap-1 text-sm">
-        <li className={step === "origin" ? "font-semibold" : "text-[var(--muted)]"}>
-          1. Put the drone flat on the floor where missions will start, facing the way you want to call forward. Press Record.
-        </li>
-        <li className={step === "forward" ? "font-semibold" : "text-[var(--muted)]"}>
-          2. Move it exactly {metres} m straight forward (measure it), facing the same way. Press Record again.
-        </li>
-      </ol>
-      <p className="text-xs text-[var(--muted)]">Motors stay off. Keep yourself out of the line between the base station and the drone.</p>
-      {working && <Spinner label="Recording — hold the drone still…" />}
-      {outcome && !working && <Message tone={outcome.tone} text={outcome.text} />}
-      <div className="flex flex-wrap items-center gap-2">
-        <Button variant="primary" disabled={working || !received} onClick={record}>
-          {step === "origin" ? "Record the start" : `Record ${metres} m forward`}
-        </Button>
-        {step === "forward" && <Button disabled={working} onClick={startOver}>Start over</Button>}
       </div>
     </div>
   );

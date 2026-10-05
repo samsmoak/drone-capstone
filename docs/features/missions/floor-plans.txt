@@ -68,10 +68,17 @@ desktop/src/pages/control/auto/FlightPlanCheck.tsx    ② the two plans, the sur
   project's flight_guard policy, ONE by default — it said a fixed two until
   2026-10-01, which counted nothing in the lab's one-station room), their
   convex hull saved (Survey). PREDICTED from the stations' poses on the drone and Valve's
-  150°x110° field of view (StationPose.sees) — shown to guide the walk, never
-  flown on. One station's view is a pyramid; two overlap convexly within a
-  height band, so a hull is the right shape (what it cannot show — a cabinet
-  shading part of the room — the walked edge does).
+  150°x110° field of view (StationPose.sees). One station's view is a
+  pyramid; two overlap convexly within a height band, so a hull is the right
+  shape (what it cannot show — a cabinet shading part of the room — the
+  walked edge does).
+• THE PREDICTED SPACE CAN BE FLOWN ON (2026-10-05, Samuel: no walking the
+  drone about). Until then it was "shown to guide the walk, never flown on".
+  ③ Flyable space › "Use the predicted space" saves the prediction's
+  `everywhere` (covered at every height of the band) as Room.coverage —
+  Session.use_predicted_coverage, POST /rooms/{id}/coverage/predicted. What
+  it cannot see (a cabinet shading part of the room) the walked survey still
+  can; the survey stays, optional.
 • A SURVEY COUNTS ONLY POSITIONS THE DRONE STANDS BEHIND (2026-10-05):
   enough stations received AND flight_guard.position_trusted. Received alone
   was the rule until then, and a survey walked before the station was

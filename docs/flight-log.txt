@@ -176,10 +176,24 @@ GEOMETRY, FIRST TRY (terminal)
                check message names only the missing stage; ② Check has
                Check again.
 
-  NEXT         Set up step 4: drone on the floor at the start → Record → exactly
-               1.00 m forward → Record → "Position settled" ✓ (< 5 cm) → ②
-               Check › Check again (or a new session) → 20 cm hover → the 1 m
-               square. Step 3 (channels) only if "Sweeps decoded" is not ✓.
+  THE STATION MEASURED FROM WHERE THE DRONE SAT — NO WALKING
+  DID          one 50-sweep sample, IPPE, both answers printed (three samples,
+               identical to 1 cm): (-1.33, +1.74, +1.49) station up-z +0.89 ·
+               (+1.33, -1.74, +1.49) station up-z -0.74 (upside down). Stored
+               the upright one (geometry.estimate_quick), estimator reset.
+  MEASURED     base station 0: 2.64 m away, 1.49 m above the drone. Still drone
+               over 15 s: x +0.006..+0.009, y -0.012..-0.008, z -0.010..-0.007
+               m; Kalman spread 3.2 cm; bsGeoVal 1, bsActive 1, trusted.
+               ./cropwatcher check: every check ok, base stations ok, position
+               settled 0.0 cm, ground z -0.009 m, READY. Battery 3.82 V.
+  MEANT        the decoded angles became a position the moment the station's
+               place was known. Nothing else was missing.
+  CHANGED      ② Position: one press, the upright rule (MIN_UPRIGHT); the Auto
+               flow is Plan → Position → Flyable space → Auto-correct → Fly;
+               the predicted space can be used as the green.
+
+  NEXT         ③ Use the predicted space → ④ Auto-correct → ⑤ start session,
+               checks → 20 cm hover → the 1 m square. NOT YET FLOWN.
 
 
 =========================================================================

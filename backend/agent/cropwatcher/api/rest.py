@@ -260,8 +260,7 @@ class Agent:
         say it again. False when a session runs, or no one is signed in.
         """
         if self.session.measuring_station:
-            # A restart between the two records resets the heading the second
-            # one is checked against and drops the link mid-measurement.
+            # A restart mid-measurement drops the link it is reading.
             log.info("not restarting the drone (%s): the base station is being measured",
                      reason)
             return False
@@ -1039,20 +1038,25 @@ def station_status() -> dict:
     return agent.session.station_status()
 
 
-@app.post("/station/record", dependencies=[Command])
-def record_station() -> dict:
-    """The next record of the one-station measurement: the start, then 1.00 m
-    forward, which solves and stores the station's place on the drone."""
+@app.post("/station/measure", dependencies=[Command])
+def measure_station() -> dict:
+    """Measure where the base station stands from where the drone sits, and
+    store it on the drone (one record; that spot becomes the origin)."""
     try:
-        return agent.session.record_station()
+        return agent.session.measure_station()
     except SessionError as e:
         raise HTTPException(status_code=409, detail=str(e)) from None
 
 
-@app.post("/station/reset", dependencies=[Command])
-def reset_station() -> dict:
-    agent.session.reset_station()
-    return agent.session.station_status()
+@app.post("/rooms/{room_id}/coverage/predicted", dependencies=[Command])
+def use_predicted_coverage(room_id: str) -> dict:
+    """Save the stations' predicted reach as the room's flyable space."""
+    try:
+        return _room_view(agent.session.use_predicted_coverage(room_id))
+    except (NotFound, PlanError) as e:
+        raise _plan_refusal(e) from None
+    except SessionError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from None
 
 
 @app.post("/rooms/{room_id}/delete", dependencies=[Command])

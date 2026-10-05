@@ -253,8 +253,8 @@ class PositioningStatus:
                 out.append(
                     f"Base station {ids} is received and its sweeps decoded, but the "
                     f"drone does not know where the station stands, so it cannot turn "
-                    f"them into a position. Do Set up › Measure the base station once: "
-                    f"two records on the floor, no motors."
+                    f"them into a position. Measure it once in Control › Auto › ② Position: "
+                    f"one press, the drone where it sits, no motors."
                 )
             if waiting:
                 ids = ", ".join(str(s) for s in waiting)
