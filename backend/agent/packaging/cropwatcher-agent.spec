@@ -34,6 +34,8 @@ hiddenimports = [
     "uvicorn.loops.auto",
     "uvicorn.loops.uvloop",
     "uvicorn.loops.asyncio",
+    # pyserial picks its port lister per platform at import time.
+    *collect_submodules("serial.tools"),
     # cflib registers drivers from its own package at init_drivers() time.
     *collect_submodules("cflib.crtp"),
     *collect_submodules("cflib.drivers"),

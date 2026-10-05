@@ -149,7 +149,7 @@ export function FlightPlanCheck({ mission, run }: { mission: MissionView; run: R
           </div>
         )}
         {plan && !plan.position && (
-          <Message tone="warning" text="The drone does not know where it is yet, so the flight cannot be checked from it. Measure the base station in Set up (step 3) with the drone on the floor, then come back." />
+          <Message tone="warning" text="The drone does not know where it is yet, so the flight cannot be checked from it. In Set up, set the base station channels and measure the base station (steps 3 and 4) with the drone on the floor, then come back." />
         )}
         {!coverage?.measured && (
           <Message tone="warning" text={coverage?.predicted?.everywhere
@@ -259,7 +259,7 @@ function SurveyPanel({ room, survey, run, positioned, measured, onStarted, onSto
         drone knows where it is count. Not needed for a small flight — without it the agent&apos;s default area stands in.
       </p>
       {!positioned && !survey.active && (
-        <p className="text-xs"><StatusDot tone="warning">Measure the base station first (Set up, step 3) — until the drone knows where it is, a survey records nothing true.</StatusDot></p>
+        <p className="text-xs"><StatusDot tone="warning">Measure the base station first (Set up, step 4) — until the drone knows where it is, a survey records nothing true.</StatusDot></p>
       )}
       {survey.active && (
         <p className="mono text-xs">{survey.spots} spots counted · {survey.seen - survey.kept} readings left out (no trusted position) · the outline is drawn on both maps</p>

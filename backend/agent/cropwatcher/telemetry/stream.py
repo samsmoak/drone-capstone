@@ -67,6 +67,12 @@ WINDOWS: dict[str, tuple[str, ...]] = {
         "lighthouse.bsReceive", "lighthouse.bsActive",
         "lighthouse.bsCalVal", "lighthouse.bsGeoVal", "lighthouse.bsAvailable",
         "kalman.varPX", "kalman.varPY", "kalman.varPZ",
+        # Each stage between the station's light and a position, so Set up can
+        # say WHICH one stops (2026-10-05: light on all four sensors and the
+        # calibration decoded, yet validAngles 0 — the channels): light on a
+        # sensor (its pulse width), then sweeps decoded into angles.
+        "lighthouse.width0", "lighthouse.width1", "lighthouse.width2", "lighthouse.width3",
+        "lighthouse.validAngles",
     ),
 }
 

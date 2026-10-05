@@ -151,9 +151,20 @@ GEOMETRY, FIRST TRY (terminal)
                forgotten; the no-signal message says a station can reach a
                drone held up and miss it on the floor.
 
-  NEXT         station on and aimed down at the start spot → Set up step 3
-               reads "received" with the drone ON THE FLOOR → two records →
-               check settles < 2 cm → 20 cm hover → the 1 m square.
+  WHERE IT STOPS (read straight off the drone, app closed, deck on top)
+  MEASURED     deck.bcLighthouse4 1 · lighthouse.systemType 2 (V2) ·
+               width0-3 nonzero 99/99 samples (241-322) · bsCalVal 1 ·
+               bsReceive 10/99 · validAngles 0/99 · decoded sweeps: none in 8 s
+  MEANT        the light arrives and the station's data is read; the sweeps
+               are not decoded. Bitcraze: "Every V2 base station in the system
+               must be set to a unique channel" (channel 0 "not supported").
+  CHANGED      Set up step 3 sets each station's channel over USB, as
+               Bitcraze's client does; steps 3-4 show every stage from light to
+               position. The green no longer limits the plan (floor-plans.txt).
+
+  NEXT         Set up step 3: each station on USB → channel 1 and 2 → the
+               "Sweeps decoded" row turns ✓ → step 4, two records → settles
+               < 2 cm → 20 cm hover → the 1 m square.
 
 
 =========================================================================

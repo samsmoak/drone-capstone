@@ -41,7 +41,9 @@ backend/agent/cropwatcher/mission/plan/geofence.py    Geofence (closed polygon;
 backend/agent/cropwatcher/mission/plan/obstacles.py   line, rectangle, circle
 backend/agent/cropwatcher/mission/plan/floorplan.py   Room, clearance, ids
 backend/agent/cropwatcher/mission/plan/mission.py     Mission, InspectionPoint
-backend/agent/cropwatcher/mission/plan/validate.py    every check; outer_bound
+backend/agent/cropwatcher/mission/plan/validate.py    every check; outer_bound (the
+                                                      room's map), flyable_bound
+                                                      (the green, for the fit)
 backend/agent/cropwatcher/mission/plan/store.py       rooms/, missions/ on disk
 backend/agent/cropwatcher/mission/plan/coverage.py    predicted + surveyed coverage
 backend/agent/cropwatcher/mission/plan/fit.py         THE PLAN THAT WILL FLY
@@ -95,11 +97,18 @@ desktop/src/pages/control/auto/FlightPlanCheck.tsx    ② the two plans, the sur
   line has no inside; a bow-tie has no single one. A circle is stored as a
   32-sided polygon, so every check handles one shape.
 • THE LAYERS NEST, and each is checked against the one outside it: the ROOM'S
-  MAP (measured coverage, or the agent's default ±2 m area until measured) ⊃
-  the geofence ⊃ obstacles, home, points and every LEG between them. The map is
-  where the drone's position can be trusted — this drone senses no walls
-  (no distance sensor), so "the map of the room" can only mean that. The
-  editor clamps every typed or dragged dimension to it.
+  MAP (the agent's default ±2 m area — validate.py outer_bound) ⊃ the
+  geofence ⊃ obstacles, home, points and every LEG between them. The editor
+  clamps every typed or dragged dimension to it.
+• THE PLAN IS THE OPERATOR'S; THE GREEN NEVER EDITS IT (2026-10-05, Samuel:
+  "the flyable space is not my architecture"). Until then the room's map WAS
+  the measured coverage, so a survey saved from a drifting estimate (-100 m
+  to +100 m) became a 102 m room map, put the fence 99 m out and refused the
+  room. Now the measured flyable space (Room.coverage, drawn green) is read
+  ONLY by the plan that will fly (validate.py flyable_bound → fit.py), which
+  fits a COPY into it. The saved room and mission are never changed: opened
+  again, they are exactly as drawn, and each flight keeps the fitted copy it
+  flew (mission-controller.txt, "the plan flown").
 • CLEARANCE, 0.25 m by default per room, applies to obstacles AND the fence's
   own edge. Derived, not guessed: half-span ~0.05 m + the manual system's drift
   notice 0.15 m + estimator noise ~0.05 m. A point on the fence line would be

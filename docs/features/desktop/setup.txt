@@ -1,4 +1,4 @@
-SET UP — a drone out of the box to a session, in five steps
+SET UP — a drone out of the box to a session, in six steps
 ============================================================
 
 WHAT IT IS
@@ -7,13 +7,15 @@ The Set up page (sidebar). One list, one step open at a time:
 
   1. Connect the drone          Crazyradio in, drone on (ticks itself)
   2. Install drone software     check → install what is missing → unplug → verified
-  3. Measure the base station   record the start → 1.00 m forward → record
-  4. Connect the camera to Wi-Fi   → the Drone Wi-Fi page (drone-wifi.txt)
-  5. Start a session            → Home
+  3. Base stations: one channel each   each station on USB → channel 1 / 2
+  4. Measure the base station   record the start → 1.00 m forward → record
+  5. Connect the camera to Wi-Fi   → the Drone Wi-Fi page (drone-wifi.txt)
+  6. Start a session            → Home
 
 Step 2 puts on a new drone exactly what the first drone was given by hand.
-Step 3 tells the drone where the base station stands, so it can turn the
-station's beams into a position — without it Auto refuses every mission.
+Step 3 puts every base station on its own channel, so the drone can decode
+their sweeps. Step 4 tells the drone where the station stands, so it can
+turn the sweeps into a position — without both, Auto refuses every mission.
 
 
 WHERE IT LIVES
@@ -28,6 +30,11 @@ WHERE IT LIVES
   GET /setup · POST /setup/check · POST /setup/install · event "setup"
 
   step 3:
+  backend/agent/cropwatcher/flight/basestation.py    find, set_channel (pyserial)
+  GET /basestations · POST /basestations/channel
+  backend/agent/tests/test_basestation.py
+
+  step 4:
   backend/agent/cropwatcher/session.py               station_status, record_station,
                                                      reset_station
   backend/agent/cropwatcher/flight/geometry.py       StationMeasurement, the
@@ -62,7 +69,22 @@ DECISIONS
 - The agent does the flashing: it is the radio's only owner (standby paused,
   resumed after). Refused during a session.
 - Words on the page are instructions; the why is here.
-- STEP 3 IS `cropwatcher geometry`'s ONE-STATION WALK, NOT A SECOND ONE
+- STEP 3 SETS CHANNELS THE WAY BITCRAZE'S CLIENT DOES (cfclient
+  basestation_mode_dialog.py, "Set BS channel"): a Base Station 2.0 on USB is
+  a serial console (vid 0x28de pid 0x2500); "mode" reads "Current mode: N",
+  "mode N" + "param save" sets and keeps it; the reply is read back and a
+  channel the station does not confirm is a failure in words. WHY, measured
+  2026-10-05 with the deck on top: light on all four sensors every sample
+  (width0-3 241-322), the station's calibration decoded (bsCalVal 1), and
+  validAngles 0 with no sweep in 8 s — Bitcraze: "Every V2 base station in
+  the system must be set to a unique channel"; channel 0 is "not
+  supported". The step reads done once the drone decodes angles.
+- EVERY STAGE FROM LIGHT TO POSITION IS SHOWN (steps 3 and 4): light on the
+  sensors (lighthouse.width0-3), the station's data (bsCalVal), sweeps
+  decoded (validAngles), received, measured, settled — the first row that is
+  not ✓ is the one to fix. The telemetry stream carries them (stream.py,
+  six log blocks since; the firmware allows 16).
+- STEP 4 IS `cropwatcher geometry`'s ONE-STATION WALK, NOT A SECOND ONE
   (2026-10-05, Samuel: "everything has to run in the software").
   StationMeasurement hands the two button-press records to estimate_single()
   as the samples it would have collected, so the app and the terminal solve,
@@ -70,14 +92,14 @@ DECISIONS
   STATION). Motors off, over whichever link is open — standby or a session —
   and refused while flying. A refusal forgets the start record: the start
   mark is the one place the operator knows the drone still is.
-- STEP 3 IS DONE WHEN THE DRONE SAYS SO: /station reads the drone's own
+- STEP 4 IS DONE WHEN THE DRONE SAYS SO: /station reads the drone's own
   bsReceive / bsGeoVal / Kalman variance (assess_positioning, the checks'
   rule), polled each second. Done = positioning ready, not "a record was
   taken". "Measure again" reopens it — after a station is moved, the stored
   place is wrong and nothing on the drone can tell.
 - STEP 2 HOLDS THE LIST ONLY WHILE IT HAS WORK (2026-10-05). Its state is
   the agent's and starts "idle" every launch, so "done" required pressing
-  Check the drone again each run — and that hid step 3 from an operator whose
+  Check the drone again each run — and that hid the measuring step from an operator whose
   drone was fully installed: the station was never measured and ② Check
   showed the drone "92 m from the start". Step 2 now leads only while
   checking, installing, unplugging, failed, or with parts to install; its
@@ -134,18 +156,19 @@ INVARIANTS
 RELATED
 
 depends-on        drone-wifi.txt
-                  step 3; drone_wifi is what "main" installs
+                  step 5; drone_wifi is what "main" installs
 depends-on        camera.txt
                   the patched ESP32 and the GAP8 streamer
 shares-data-with  ../backend/sessions-and-modes.txt
                   pauses and resumes standby
 depends-on        ../backend/flight-safety.txt
-                  step 3: the one-station geometry solve, and the positioning
+                  steps 3-4: the one-station geometry solve, and the positioning
                   rule that decides when it is done
 
 
-LAST VERIFIED  2026-10-05 (step 3): tests/test_station_measure.py (16),
-test_geometry.py; desktop build; the full agent suite 1219 passed. Step 3 on
+LAST VERIFIED  2026-10-05 (steps 3-4): tests/test_basestation.py,
+test_station_measure.py, test_geometry.py; desktop build; the full agent suite
+1237 passed. Channels not yet set on the lab's stations; steps 3-4 on
 the lab drone: see ../../flight-log.txt 2026-10-05.
 2026-09-24: agent tests (16 for setup: parts chosen, order,
 skip-installed, low battery, real unplug, damaged file, marker only after the
