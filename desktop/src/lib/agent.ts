@@ -213,6 +213,12 @@ export type StationStatus =
   | { connected: false; step: "origin" | "forward" }
   | {
       connected: true;
+      /** The chain from light to position, stage by stage: how many of the
+       *  deck's four sensors see light, which stations' calibration was read,
+       *  and how many sweeps became angles (0 = not decoding). */
+      light_sensors: number;
+      calibrated: number[];
+      angles: number | null;
       received: number[];
       measured: number[];
       usable: number[];
@@ -221,6 +227,15 @@ export type StationStatus =
       step: "origin" | "forward";
       distance_m: number;
     };
+
+/** A base station plugged into this laptop by USB (Bitcraze's "Set BS channel"). */
+export type BaseStation = {
+  port: string;
+  serial_number: string | null;
+  /** null: it did not answer. 0: a channel the drone cannot decode. */
+  channel: number | null;
+  supported: boolean;
+};
 
 /** One record of the two-record measurement. `sensors`: per station, how many of the deck's four saw it. */
 export type StationRecord = {
@@ -547,6 +562,9 @@ export const api = {
   forgetCoverage: (roomId: string) =>
     command<RoomView>(`/rooms/${encodeURIComponent(roomId)}/coverage/forget`),
   stopSurvey: (save: boolean) => command<{ room: RoomView | null }>("/survey/stop", { save }),
+  baseStations: () => command<{ stations: BaseStation[] }>("/basestations", undefined, "GET"),
+  setBaseStationChannel: (port: string, channel: number) =>
+    command<{ port: string; channel: number }>("/basestations/channel", { port, channel }),
   stationStatus: () => command<StationStatus>("/station", undefined, "GET"),
   recordStation: () => command<StationRecord>("/station/record"),
   resetStation: () => command<StationStatus>("/station/reset"),

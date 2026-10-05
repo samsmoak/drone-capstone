@@ -38,7 +38,7 @@ from cropwatcher.flight.programs import HoverTest, run_hover_test
 from cropwatcher.mission.controller import TERMINAL_STATES, MissionController, MissionEvent
 from cropwatcher.mission.plan.floorplan import PlanError
 from cropwatcher.mission.plan.store import NotFound, PlanStore
-from cropwatcher.mission.plan.validate import errors, outer_bound, validate_mission
+from cropwatcher.mission.plan.validate import errors, flyable_bound, outer_bound, validate_mission
 from cropwatcher.paths import flights_dir
 from cropwatcher.safety.flight_guard import Action as GuardAction
 from cropwatcher.safety.flight_guard import assess_positioning
@@ -443,7 +443,7 @@ def cmd_mission(args: argparse.Namespace) -> int:
         # The flight starts from the drone, as in the app (Session.run_mission).
         mission = mission.from_start((float(x), float(y)))
         from_here = errors(validate_mission(
-            mission, room, outer=outer_bound(room, default_half_extent_m=args.fence)))
+            mission, room, outer=flyable_bound(room, default_half_extent_m=args.fence)))
         if from_here:
             print(f"\n  from where the drone is ({x:+.2f}, {y:+.2f}) m: "
                   f"{from_here[0].message}")

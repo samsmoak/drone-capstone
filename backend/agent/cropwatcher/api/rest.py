@@ -55,6 +55,7 @@ from cropwatcher.camera.deck import parse_addr
 from cropwatcher.camera.recording import Recorder
 from cropwatcher.camera.wifi import DeckWifi, Phase, WifiError
 from cropwatcher.drone_setup import DroneSetup, SetupError
+from cropwatcher.flight import basestation
 from cropwatcher.flight.manual import CLIMB_RATE_M_S, MAX_HEIGHT_M, MOVE_SPEED_M_S
 from cropwatcher.mission.plan.fit import FlyingPlan
 from cropwatcher.mission.plan.floorplan import DEFAULT_CLEARANCE_M, PlanError, Room
@@ -975,6 +976,29 @@ def room_coverage(room_id: str) -> dict:
     return {"measured": room.coverage.to_dict() if room.coverage else None,
             "predicted": predicted.to_dict() if predicted else None,
             "survey": agent.session.survey_status()}
+
+
+@app.get("/basestations", dependencies=[Command])
+def base_stations() -> dict:
+    """Every base station plugged into this laptop by USB, with its channel."""
+    return {"stations": [s.to_dict() for s in basestation.find()]}
+
+
+@app.post("/basestations/channel", dependencies=[Command])
+def set_base_station_channel(body: dict = Body(...)) -> dict:  # noqa: B008 — FastAPI's own idiom
+    """Set one base station's channel (Bitcraze's "Set BS channel")."""
+    try:
+        port, channel = str(body["port"]), int(body["channel"])
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="Say which port and which channel.") from None
+    if port not in {s.port for s in basestation.find()}:
+        raise HTTPException(status_code=404,
+                            detail="That base station is no longer plugged in. Scan again.")
+    try:
+        confirmed = basestation.set_channel(port, channel)
+    except basestation.BaseStationError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from None
+    return {"port": port, "channel": confirmed}
 
 
 @app.post("/rooms/{room_id}/coverage/forget", dependencies=[Command])

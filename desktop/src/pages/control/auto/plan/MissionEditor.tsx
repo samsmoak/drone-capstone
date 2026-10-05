@@ -87,8 +87,11 @@ const SPEEDS: { m_s: number; name: string }[] = [
   { m_s: 0.20, name: "Brisk" },
 ];
 
-export function outerOf(room: Room, limits: PlanLimits): OuterBound {
-  return room.coverage ? { vertices: room.coverage.vertices, measured: true } : limits.outer;
+/** The room's map — the agent's flying area, never the measured flyable
+ *  space: the plan is the operator's, and only the plan that will fly is
+ *  fitted into the green (agent validate.py outer_bound, 2026-10-05). */
+export function outerOf(_room: Room, limits: PlanLimits): OuterBound {
+  return { ...limits.outer, measured: false };
 }
 
 /** A new room: the map, less a margin, as a rectangle. */
@@ -732,7 +735,7 @@ function PathForm({ mission, setMission, setPoint, removePoint, box, band, limit
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <SmallButton disabled={!drone} onClick={() => drone && setHome(drone)}
-                       title={drone ? undefined : "The drone does not know where it is yet. Measure the base station in Set up (step 3)."}>
+                       title={drone ? undefined : "The drone does not know where it is yet. Measure the base station in Set up (step 4)."}>
             Put the start where the drone is
           </SmallButton>
           {off !== null && off > 0.3 && (

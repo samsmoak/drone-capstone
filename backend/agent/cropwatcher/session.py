@@ -66,7 +66,7 @@ from cropwatcher.mission.plan.fit import FlyingPlan, Move, plan_to_fly
 from cropwatcher.mission.plan.floorplan import PlanError, Room
 from cropwatcher.mission.plan.mission import Mission
 from cropwatcher.mission.plan.store import NotFound, PlanStore
-from cropwatcher.mission.plan.validate import errors, outer_bound
+from cropwatcher.mission.plan.validate import errors, flyable_bound
 from cropwatcher.paths import flights_dir
 from cropwatcher.processing import Job, ProcessingQueue
 from cropwatcher.safety.flight_guard import Action as GuardAction
@@ -1080,7 +1080,7 @@ class Session:
     @property
     def fence_half_extent_m(self) -> float:
         """The agent's default flying area — a room's outer bound until its
-        coverage is measured (mission/plan/validate.py outer_bound)."""
+        coverage is measured (mission/plan/validate.py flyable_bound)."""
         return self._fence
 
     def mission_from_drone(self, mission_id: str) -> tuple[Mission, Room,
@@ -1123,7 +1123,7 @@ class Session:
         if self.position() is None:
             raise SessionError(
                 "The drone does not know where it is yet, so a survey would record nothing "
-                "true. Measure the base station first (Set up, step 3), with the drone on "
+                "true. Measure the base station first (Set up, step 4), with the drone on "
                 "the floor where the station can see it.")
         self._survey = (room_id, Survey())
 
@@ -1166,10 +1166,15 @@ class Session:
         link = self.link
         if link is None or not link.is_open:
             return {"connected": False, "step": self._station_measure.step}
-        status = assess_positioning(link.snapshot())
+        snap = link.snapshot()
+        status = assess_positioning(snap)
         variances = [v for v in status.variance_m2 if v is not None]
         return {
             "connected": True,
+            # The chain from light to position, stage by stage (stream.py).
+            "light_sensors": sum(1 for i in range(4) if snap.get(f"lighthouse.width{i}")),
+            "calibrated": list(status.calibrated),
+            "angles": snap.get("lighthouse.validAngles"),
             "received": list(status.received),
             "measured": list(status.with_geometry),
             "usable": list(status.usable),
@@ -1260,7 +1265,7 @@ class Session:
         start = (here[0], here[1]) if here is not None else None
         try:
             plan = plan_to_fly(mission, room, start=start,
-                               outer=outer_bound(room, default_half_extent_m=self._fence))
+                               outer=flyable_bound(room, default_half_extent_m=self._fence))
         except PlanError as e:
             raise SessionError(str(e)) from None
         return plan, start

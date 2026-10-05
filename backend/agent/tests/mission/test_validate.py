@@ -12,6 +12,7 @@ from cropwatcher.mission.plan.obstacles import Obstacle, ObstacleError, Obstacle
 from cropwatcher.mission.plan.validate import (
     Severity,
     errors,
+    flyable_bound,
     outer_bound,
     validate_mission,
     validate_room,
@@ -41,10 +42,21 @@ class TestTheLayersNest:
         assert "fence_outside_coverage" in codes(errors(
             validate_mission(mission(), wide, outer=OUTER)))
 
-    def test_the_outer_bound_is_the_coverage_when_measured(self):
+    def test_the_rooms_map_is_never_the_flyable_space(self):
+        """The plan is the operator's: the green never limits the room."""
         measured = room(coverage=Geofence.square(1.6))
-        assert outer_bound(measured, default_half_extent_m=2.0) is measured.coverage
+        assert outer_bound(measured, default_half_extent_m=2.0).bounds() == (-2, -2, 2, 2)
         assert outer_bound(room(), default_half_extent_m=2.0).bounds() == (-2, -2, 2, 2)
+
+    def test_a_wrong_flyable_space_never_refuses_the_room(self):
+        """2026-10-05: a survey saved from a drifting estimate ran to 100 m."""
+        junk = room(coverage=Geofence.polygon([(-2.4, -11.9), (99.9, -99.9), (0.0, 0.0)]))
+        assert not errors(validate_room(junk, outer=outer_bound(junk, default_half_extent_m=2.0)))
+
+    def test_only_the_plan_that_will_fly_reads_the_flyable_space(self):
+        measured = room(coverage=Geofence.square(1.6))
+        assert flyable_bound(measured, default_half_extent_m=2.0) is measured.coverage
+        assert flyable_bound(room(), default_half_extent_m=2.0).bounds() == (-2, -2, 2, 2)
 
     def test_an_obstacle_outside_the_fence_is_only_a_warning(self):
         stray = room(obstacles=(Obstacle("x", ObstacleKind.CIRCLE, ((1.7, 0.0),), 0.2),))

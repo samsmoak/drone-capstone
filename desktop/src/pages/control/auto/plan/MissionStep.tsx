@@ -162,7 +162,7 @@ export function MissionStep({ run, telemetry, selectedId, onUse, openEditor, hei
   );
 }
 
-function MissionList({ missions, rooms, limits, selectedId, justSaved, onView, onEdit, onNew }: {
+function MissionList({ missions, rooms, selectedId, justSaved, onView, onEdit, onNew }: {
   missions: MissionView[];
   rooms: RoomView[];
   limits: PlanLimits;
@@ -198,8 +198,7 @@ function MissionList({ missions, rooms, limits, selectedId, justSaved, onView, o
           New mission
         </Button>
         <p className="w-full text-xs text-[var(--muted)]">
-          {limits.outer.measured ? "Rooms are drawn inside the measured Lighthouse coverage."
-            : "Coverage is not measured yet, so rooms are drawn inside the agent's default area (±2 m)."}
+          Rooms are drawn inside the agent&apos;s flying area (±2 m). The measured flyable space never changes your plan — ② Check shows the plan that will fly inside it.
         </p>
       </div>
 
