@@ -642,6 +642,12 @@ def _start_logging(*, verbose: bool) -> None:
             paths.log_file(), maxBytes=2_000_000, backupCount=3, encoding="utf-8"))
     except Exception:                       # a read-only home must not stop a flight
         pass
+    # One line per repeating message (logfilter.py): the 50 Hz flight loop and
+    # the camera watchdog otherwise rotate the useful lines out of the file.
+    from cropwatcher.logfilter import RepeatFilter
+    repeats = RepeatFilter()
+    for handler in handlers:
+        handler.addFilter(repeats)
     logging.basicConfig(
         level=logging.DEBUG if verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",

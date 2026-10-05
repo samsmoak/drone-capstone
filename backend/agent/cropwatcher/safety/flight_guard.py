@@ -346,6 +346,7 @@ class Reason(StrEnum):
     HEIGHT_ERROR = "height_error"
     OUTSIDE_FENCE = "outside_fence"
     TELEMETRY_STALE = "telemetry_stale"
+    MOTORS_NOT_SPINNING = "motors_not_spinning"
 
 
 @dataclass(frozen=True)

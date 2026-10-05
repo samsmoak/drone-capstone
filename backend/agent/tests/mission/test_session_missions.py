@@ -140,10 +140,11 @@ class TestRefusedBeforeAnythingArms:
         self.assert_nothing_armed(rig)
 
     def test_a_path_that_is_unsafe_from_where_the_drone_is(self, tmp_path, monkeypatch):
-        # (0.8, -1.0): the leg from there to P1 (-1.0, 0.9) crosses the table.
-        rig = make_rig(tmp_path, monkeypatch, at=(0.8, -1.0))
-        with pytest.raises(SessionError, match=r"From where the drone is now.*crosses "
-                                               r"obstacle Table"):
+        # (-0.5, -1.0): the path moves +0.5 in x, and home → P1 runs up
+        # x = -0.5, past the table, which stays where it is.
+        rig = make_rig(tmp_path, monkeypatch, at=(-0.5, -1.0))
+        with pytest.raises(SessionError, match=r"From where the drone is now.*home → P1 "
+                                               r"passes .* from obstacle Table"):
             rig.session.run_mission("m1")
         self.assert_nothing_armed(rig)
 
@@ -188,18 +189,21 @@ class TestStartsFromTheDrone:
         assert wait_for(lambda: STARTED and STARTED[0].state is MissionState.HOLDING)
         return STARTED[0]
 
-    def test_off_the_planned_start_it_flies_from_where_it_is(self, tmp_path, monkeypatch):
-        rig = make_rig(tmp_path, monkeypatch, at=(-1.0, -0.4))   # 0.60 m off: once refused
+    def test_off_the_planned_start_the_whole_path_moves_with_it(self, tmp_path, monkeypatch):
+        rig = make_rig(tmp_path, monkeypatch, at=(-1.1, -1.1))   # 0.1 m off in x and y
         flying = self.fly(rig)
-        assert flying.plan.home == (-1.0, -0.4)
-        assert [p.xy for p in flying.plan.points] == [(-1.0, 0.9), (0.9, 0.9), (0.9, -1.0)]
+        assert flying.plan.home == (-1.1, -1.1)
+        assert [p.xy for p in flying.plan.points] == [
+            pytest.approx(xy) for xy in [(-1.1, 0.8), (0.8, 0.8), (0.8, -1.1)]]
 
     def test_the_plan_kept_with_the_flight_has_the_real_start(self, tmp_path, monkeypatch):
-        rig = make_rig(tmp_path, monkeypatch, at=(-1.0, -0.4))
+        rig = make_rig(tmp_path, monkeypatch, at=(-1.1, -1.1))
         self.fly(rig)
         flight_id = rig.session.snapshot().flight["id"]
         kept = rig.session.history.folder / "missions" / f"{flight_id}.json"
-        assert json.loads(kept.read_text())["mission"]["home"] == [-1.0, -0.4]
+        flown = json.loads(kept.read_text())["mission"]
+        assert flown["home"] == [-1.1, -1.1]
+        assert flown["points"][0]["x_m"] == pytest.approx(-1.1)
 
     def test_an_end_point_trims_what_is_flown_and_lands_there(self, rig):
         rig.plans.save_mission(mission(id="short", end_point_id="P2"))

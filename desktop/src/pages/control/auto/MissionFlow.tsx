@@ -12,8 +12,8 @@
  *                   (/station ready) — measured here from where it sits
  *   ③ Flyable space the green: predicted from the base station, walked, or
  *                   the default area; never changes the plan
- *   ④ Auto-correct  done when Auto-correct was pressed and the plan that will
- *                   fly was flyable; undone if it stops being so
+ *   ④ Auto-correct  the agent corrects the plan on its own; done while the
+ *                   corrected plan can fly, undone the moment it cannot
  *   ⑤ Fly           the session, its checks and the area first (CheckStep),
  *                   then Start mission; LOCKED here while a mission flies
  *
@@ -66,8 +66,8 @@ export function MissionFlow({ session, run, telemetry, history, ambient, setAmbi
   const flying = session.activity === "mission";
   const [chosen, setChosen] = useState<MissionView | null>(null);
   const [step, setStep] = useState<FlowStep>(flying ? 5 : start?.step ?? 1);
-  // ④ Auto-correct pressed, and the plan that will fly was flyable then.
-  const [corrected, setCorrected] = useState(false);
+  // ④: the auto-corrected plan can fly (reported by FlightPlanCheck, live).
+  const [flyable, setFlyable] = useState(false);
   const station = useStation(session.radio?.state === "connected" || session.session_id != null);
   const positioned = station?.connected === true && station.ready;
 
@@ -83,7 +83,7 @@ export function MissionFlow({ session, run, telemetry, history, ambient, setAmbi
 
   const choose = (mission: MissionView) => {
     setChosen(mission);
-    setCorrected(false);
+    setFlyable(false);
     remember(mission.id);
     setStep(2);
   };
@@ -97,14 +97,14 @@ export function MissionFlow({ session, run, telemetry, history, ambient, setAmbi
     { step: 3, label: "Flyable space", done: positioned,
       blocked: inFlight ?? (!chosen ? "Choose a mission first."
         : !positioned ? "Measure the drone's position first (②)." : null) },
-    { step: 4, label: "Auto-correct", done: corrected,
+    { step: 4, label: "Auto-correct", done: flyable,
       blocked: inFlight ?? (!chosen ? "Choose a mission first."
         : !chosen.valid ? "The chosen mission has problems to fix."
         : !positioned ? "Measure the drone's position first (②)." : null) },
     { step: 5, label: "Fly", done: false,
       blocked: flying ? null
         : !chosen ? "Choose a mission first."
-        : !corrected ? "Auto-correct the plan first (④)." : null },
+        : !flyable ? "The auto-corrected plan cannot fly yet — see ④." : null },
   ];
 
   return (
@@ -128,8 +128,8 @@ export function MissionFlow({ session, run, telemetry, history, ambient, setAmbi
         <FlightPlanCheck mission={chosen} run={run} mode="space" onContinue={() => setStep(4)} />
       )}
       {step === 4 && chosen && (
-        <FlightPlanCheck mission={chosen} run={run} mode="fit" corrected={corrected}
-                         onCorrected={setCorrected} onContinue={() => setStep(5)} />
+        <FlightPlanCheck mission={chosen} run={run} mode="fit" onFlyable={setFlyable}
+                         onContinue={() => setStep(5)} />
       )}
       {step === 5 && chosen && (flying || (ready && session.assisted)
         ? <FlyStep session={session} run={run} telemetry={telemetry} history={history} mission={chosen}

@@ -1048,17 +1048,6 @@ def measure_station() -> dict:
         raise HTTPException(status_code=409, detail=str(e)) from None
 
 
-@app.post("/rooms/{room_id}/coverage/predicted", dependencies=[Command])
-def use_predicted_coverage(room_id: str) -> dict:
-    """Save the stations' predicted reach as the room's flyable space."""
-    try:
-        return _room_view(agent.session.use_predicted_coverage(room_id))
-    except (NotFound, PlanError) as e:
-        raise _plan_refusal(e) from None
-    except SessionError as e:
-        raise HTTPException(status_code=409, detail=str(e)) from None
-
-
 @app.post("/rooms/{room_id}/delete", dependencies=[Command])
 def delete_room(room_id: str) -> dict:
     try:
@@ -1103,6 +1092,13 @@ def validate_draft(body: dict = Body(...)) -> dict:  # noqa: B008
     except (NotFound, PlanError) as e:
         raise _plan_refusal(e) from None
     return _mission_view(mission, room)
+
+
+@app.get("/missions/{mission_id}/blockers", dependencies=[Command])
+def mission_blockers(mission_id: str) -> dict:
+    """Every reason Start would refuse this mission now, with what to do —
+    the same list Start refuses on (Session.mission_blockers)."""
+    return {"blockers": agent.session.mission_blockers(mission_id)}
 
 
 @app.get("/missions/{mission_id}/from-drone", dependencies=[Command])

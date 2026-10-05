@@ -31,6 +31,7 @@ import { mapBox, placeOf } from "./geometry";
 import { blankMission, blankRoom, MissionEditor, outerOf, ProblemList, type Draft } from "./MissionEditor";
 import { landsAt, returnsHome, unflownIds } from "./path";
 import { RoomMap } from "./RoomMap";
+import { spaceOf, type SpaceLayer } from "./space";
 
 type View = { kind: "list" } | { kind: "view"; id: string } | { kind: "edit"; draft: Draft };
 
@@ -72,6 +73,17 @@ export function MissionStep({ run, telemetry, selectedId, onUse, openEditor, hei
     }
   }, []);
   useEffect(() => { void load(); }, [load]);
+  // The green (where the base station reaches) on the editor's map, so a
+  // point drawn outside it is ringed red while it is drawn (2026-10-05).
+  const [space, setSpace] = useState<SpaceLayer | null>(null);
+  const editingRoom = view.kind === "edit" && !view.draft.roomIsNew ? view.draft.room.id : null;
+  useEffect(() => {
+    if (!editingRoom) { setSpace(null); return; }
+    let live = true;
+    api.roomCoverage(editingRoom).then((c) => { if (live) setSpace(spaceOf(c)); })
+      .catch(() => { if (live) setSpace(null); });
+    return () => { live = false; };
+  }, [editingRoom]);
   const [opened, setOpened] = useState(false);
   useEffect(() => {
     if (!openEditor || opened || !loaded) return;
@@ -105,6 +117,7 @@ export function MissionStep({ run, telemetry, selectedId, onUse, openEditor, hei
     return (
       <MissionEditor
         draft={view.draft} limits={limits} run={run} drone={drone} missionsInRoom={others} heightClass={heightClass}
+        space={space}
         onCancel={() => { setJustSaved(null); setView({ kind: "list" }); }}
         onSaved={(saved) => {
           void load();

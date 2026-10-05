@@ -104,6 +104,10 @@ class FakeLink:
     def snapshot(self) -> Snapshot:
         return self.stream.snapshot()
 
+    def station_poses(self) -> list:
+        """No base station measured: the plan fits the agent's default area."""
+        return []
+
     def checks(self):
         self.checks_runs += 1
         yield CheckResult(CheckKey.IDENTITY, CheckStatus.PASSED, "cf-lab")

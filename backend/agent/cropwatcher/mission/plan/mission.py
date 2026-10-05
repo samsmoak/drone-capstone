@@ -158,15 +158,26 @@ class Mission:
         """The mission as it will actually be flown from `start` — the drone's
         own position when it is started.
 
-        The inspection points are NOT moved. They are absolute Lighthouse
-        positions tied to the equipment they inspect; shifting them with the
-        drone would put a point beside the wrong pump, or inside a bench. What
-        changes is the start: the first leg runs from where the drone really
-        is, the return leg (if any) comes back there, and the points after an
-        end point are dropped. The result is re-validated like any mission.
+        THE WHOLE PATH MOVES WITH THE START (2026-10-05, Samuel). The plan is
+        drawn relative to its start: every inspection point is shifted by
+        (start − home), so the drawn shape, spacing and heights are flown
+        exactly, beginning wherever the drone was set down — a 1 m square
+        stays a 1 m square. Until then only the start moved and the points
+        stayed put as "absolute positions tied to equipment"; but the room was
+        never measured on the floor, and (0, 0, 0) is wherever the drone sat
+        when the base station was measured, so a drawn absolute position named
+        no real place. The room's fence and obstacles do NOT move: they are
+        checked against the shifted path where they are (fit.py), and the
+        flyable space (where the station reaches) is real.
+
+        No rotation: the plan keeps its directions in the room's frame. Points
+        after an end point are dropped; a landing at the end point makes that
+        spot the next flight's start.
         """
+        dx, dy = float(start[0]) - self.home[0], float(start[1]) - self.home[1]
+        points = tuple(replace(p, x_m=p.x_m + dx, y_m=p.y_m + dy) for p in self.flown_points)
         return replace(self, home=(float(start[0]), float(start[1])),
-                       points=self.flown_points, end_point_id=None,
+                       points=points, end_point_id=None,
                        return_to_start=self.returns_home)
 
     def legs(self) -> list[tuple[Point, Point, str]]:

@@ -122,22 +122,37 @@ class TestMeasuringFromWhereTheDroneSits:
             rig.session.measure_station()
 
 
-class TestThePredictedSpace:
-    """The flyable space from where the stored station reaches — no walk."""
+class TestTheGreenIsTheStationsReach:
+    """Computed over the whole map, not inside the room's fence (2026-10-05:
+    inside the fence it came out as the room's own box), and used by the plan
+    that will fly automatically — no button, no walk."""
 
-    def test_it_becomes_the_rooms_flyable_space(self, rig):
+    def test_it_reaches_beyond_the_rooms_fence(self, rig):
         from tests.mission.test_coverage import CORNERS
         rig.link.station_poses = lambda: list(CORNERS)
-        room = rig.session.use_predicted_coverage("lab")
-        assert room.coverage is not None
-        saved = rig.plans.room("lab").coverage
-        assert saved is not None
-        assert saved.bounds() == pytest.approx(room.coverage.bounds(), abs=1e-3)
+        prediction = rig.session.predicted_coverage("lab")
+        assert prediction is not None and prediction.everywhere is not None
+        x0, y0, x1, y1 = prediction.everywhere.bounds()
+        fx0, fy0, fx1, fy1 = rig.plans.room("lab").geofence.bounds()
+        assert x0 < fx0 or y0 < fy0 or x1 > fx1 or y1 > fy1
 
-    def test_no_station_stored_says_measure_first(self, rig):
-        rig.link.station_poses = lambda: []
-        with pytest.raises(SessionError, match="Measure it first"):
-            rig.session.use_predicted_coverage("lab")
+    def test_the_plan_that_will_fly_is_fitted_to_it(self, rig):
+        from tests.mission.test_coverage import CORNERS
+        rig.link.station_poses = lambda: list(CORNERS)
+        room = rig.plans.room("lab")
+        assert rig.session._flyable(room) == rig.session._prediction(room).everywhere
+
+    def test_no_station_measured_falls_back_to_the_default_area(self, rig):
+        room = rig.plans.room("lab")
+        assert rig.session._flyable(room).bounds() == (-2.0, -2.0, 2.0, 2.0)
+
+    def test_the_poses_are_read_once_per_link(self, rig):
+        from tests.mission.test_coverage import CORNERS
+        reads = []
+        rig.link.station_poses = lambda: reads.append(1) or list(CORNERS)
+        rig.session.predicted_coverage("lab")
+        rig.session.predicted_coverage("lab")
+        assert len(reads) == 1
 
 
 class TestStatus:
