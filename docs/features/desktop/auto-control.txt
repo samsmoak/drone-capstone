@@ -17,18 +17,24 @@ STATUS  (Last verified: 2026-09-29)
   layout     BUILT — the flow left, the monitor right (side by side from
              1280 px, stacked below), its own divider; FULL SCREEN for the flow
   room map   BUILT — 2D and 3D (RoomMap), one switch, one selection
-  ① Mission  BUILT — list (home: Edit on every row, New mission), view, edit
-             (room and path), Close, save back to the list, delete, use; end
-             point, reverse direction, start at the drone
-  ② Check    BUILT — the session flow, Manual's own panels, the DPP switch, and
-             YOUR PLAN AND THE PLAN THAT WILL FLY (FlightPlanCheck.tsx,
-             2026-10-01; not lab-verified): two maps over the flyable space,
-             the top editable in place, the bottom what Start flies; the
-             survey that measures the space
-  ③ Fly      BUILT — Start mission at the top, the DPP switch, the room map
-             with the path from the drone, progress, and the RESULTS after
-             landing. Starting is refused until the mission controller is
-             built (../missions/mission-controller.txt) — the agent says so
+  FIVE STEPS since 2026-10-05 (Samuel: in the order the operator works) —
+  ① Plan          BUILT — list (home: Edit on every row, New mission), view,
+                  edit (room and path), Close, save, delete, use; end point,
+                  reverse direction, start at the drone
+  ② Position      BUILT 2026-10-05 (PositionStep.tsx) — the stages from the
+                  station's light to a position, and ONE press: "Measure from
+                  where the drone sits" (Session.measure_station). Lab: base
+                  station 2.64 m away, 1.49 m up; still drone held to ~3 mm,
+                  spread 3.2 cm; every check passed
+  ③ Flyable space BUILT — the plan over the green (FlightPlanCheck mode
+                  "space"): Use the predicted space, walk a survey
+                  (optional), Forget the measured space
+  ④ Auto-correct  BUILT — your plan and the plan that will fly (mode "fit");
+                  the Auto-correct button marks it done only when the fitted
+                  copy is flyable, and undoes that if it stops being so
+  ⑤ Fly           BUILT — first the session, its checks and the area
+                  (CheckStep.tsx, moved here from ②), then Start mission, the
+                  room map, progress and the RESULTS after landing
   NOT BUILT  live per-point verdicts while flying (story 4.9 — results arrive
              after landing); resizing obstacles by dragging in 2-D (3-D and
              the numbers do it)
@@ -36,12 +42,14 @@ STATUS  (Last verified: 2026-09-29)
 --------------------------------------------------------------------------------
 1. WHAT IT IS
 --------------------------------------------------------------------------------
-In Auto the Control page is for missions. The left column is a three-step flow,
-adapted from the Zoomaa booking flow: ① Mission — pick a saved mission, view
-it, edit its room and path, or plan a new one; ② Check — start the session, run
-the checks, confirm the area, and see the mission checked from where the drone
-actually is; ③ Fly — Start mission, the mission drawn on the room map, the
-points ticking off, and each point's verdict once it lands. The whole left
+In Auto the Control page is for missions. The left column is a five-step flow,
+adapted from the Zoomaa booking flow: ① Plan — pick a saved mission, view it,
+edit its room and path, or plan a new one; ② Position — the drone learns where
+it is, one press from where it sits; ③ Flyable space — the green, predicted
+from the base station or walked; ④ Auto-correct — a copy of the plan fitted
+into the green beside the plan as drawn, which is never changed; ⑤ Fly — start
+the session, the checks, confirm the area, then Start mission, the mission on
+the room map, the points ticking off, and each point's verdict once it lands. The whole left
 section can go full screen. The right column is the monitor: the vitals, keys
 and actions (FlightDeck), then the Vitals and Camera tabs. Manual is unchanged
 except for the shared fixes in pages-and-windows.txt and its own DPP panel.
@@ -244,6 +252,22 @@ desktop/src/lib/agent.ts                           the calls and types
   and keeps what is saved for the page's life (Save → the list can be driven:
   its Control page actions really run, against that fake).
 
+• ② POSITION MEASURES FROM WHERE THE DRONE SITS — ONE PRESS (2026-10-05,
+  Samuel: "no walking the drone back and forth"). Session.measure_station →
+  geometry.estimate_quick: one 50-sweep sample, IPPE on the deck's four
+  sensors, stored on the drone (it survives a power cycle), the estimator
+  restarted from it; that spot becomes (0, 0, 0). IPPE's two answers are
+  mirror images; the one whose STATION STANDS UPRIGHT wins (MIN_UPRIGHT
+  0.5) — measured: (-1.33, +1.74, 1.49) up-z +0.89 against the mirror
+  (+1.33, -1.74, 1.49) up-z -0.74. Neither upright is refused, never
+  guessed; the two-record walk stays in the terminal (`cropwatcher
+  geometry`) for that case. Done = the drone says positioning is ready
+  (/station), never "a press happened". The camera watchdog never restarts
+  the drone mid-measurement (Session.measuring_station).
+• THE SESSION STARTS IN ⑤ FLY, not its own step (Samuel). A session opened
+  before ② sees no position until its checks run again: ② and ⑤ offer
+  Check again (Session.retry, allowed while READY).
+
 --------------------------------------------------------------------------------
 5. RELATED
 --------------------------------------------------------------------------------
@@ -262,6 +286,9 @@ depends-on        ../pipeline/data-pipeline.txt
                   GET /flights/{id}/result
 depends-on        desktop-app.txt
                   the bundle measurement the three.js decision is argued from
+depends-on        setup.txt
+                  ② Position shares the station stages (StationStages.tsx)
+                  with Set up's channels step, which must come first
 depends-on        ../backend/flight-safety.txt
                   the drone (D), "Put the start where the drone is" and the
                   from-the-drone check use a position only when telemetry's

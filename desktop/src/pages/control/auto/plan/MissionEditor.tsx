@@ -19,7 +19,7 @@
  * here" in its row) and the flight lands there, whatever comes after it.
  * Reverse direction flies the points the other way round. The drone (D) is
  * the real start of every flight: a new mission starts where it is, and
- * ② Check tests the path from wherever it has been put since.
+ * ④ Auto-correct tests the path from wherever it has been put since.
  *
  * THE AGENT CHECKS THE PLAN, NOT THIS FILE. A moment after every change the
  * draft goes to POST /missions/validate and the agent's own answer — every
@@ -717,7 +717,7 @@ function PathForm({ mission, setMission, setPoint, removePoint, box, band, limit
           <CardState selected={startSelected} />
         </div>
         <p className="text-xs leading-relaxed">
-          Every flight starts from <strong>wherever the drone is</strong> (D on the map) when you press Start — ② Check tests the path from there. The planned start (S) is what the plan is drawn and checked from until then.
+          Every flight starts from <strong>wherever the drone is</strong> (D on the map) when you press Start — ④ Auto-correct tests the path from there. The planned start (S) is what the plan is drawn and checked from until then.
         </p>
         <div className="flex flex-wrap items-end gap-3">
           <NumberField label="From left" value={left} min={0} max={cm(box.xMax - box.xMin)} hint="" readOnly={!startSelected}

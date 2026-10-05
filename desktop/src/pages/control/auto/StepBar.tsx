@@ -1,5 +1,6 @@
 /**
- * The Auto flow's step bar: ① Mission ─ ② Check ─ ③ Fly.
+ * The Auto flow's step bar: ① Plan ─ ② Position ─ ③ Flyable space ─
+ * ④ Auto-correct ─ ⑤ Fly.
  *
  * Adapted from the Zoomaa booking flow's stepper (booking_flow_screen.dart,
  * "An animated, tappable stepper"): each step is a real button, completed steps
@@ -10,7 +11,7 @@
  * aria-current="step" marks where the operator is (WAI-ARIA 1.2).
  */
 
-export type FlowStep = 1 | 2 | 3;
+export type FlowStep = 1 | 2 | 3 | 4 | 5;
 
 export type StepState = {
   step: FlowStep;

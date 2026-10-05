@@ -90,7 +90,7 @@ class TestSurvey:
             "stateEstimate.x": -91.6, "stateEstimate.y": -8.2, "stateEstimate.z": 1.2,
             "lighthouse.bsReceive": 0b1, "kalman.varPX": 48.0, "kalman.varPY": 48.0,
             "kalman.varPZ": 0.5}), 1.0)
-        with pytest.raises(SessionError, match="Measure the base station first"):
+        with pytest.raises(SessionError, match="Measure it first"):
             rig.session.start_survey("lab")
 
     def test_a_wrong_space_can_be_forgotten(self, rig):

@@ -84,7 +84,7 @@ class TestPositioningReadiness:
         assert status.received_without_geometry == (2,)
         said = " ".join(status.problems())
         # Names the app step that fixes it, not a terminal command.
-        assert "Set up › Measure the base station" in said
+        assert "② Position" in said
         # 2026-10-05: one cause, said once — not also "wait for the
         # calibration" (already read) or "blocked or off" (it was received).
         assert "calibration" not in said and "blocked or off" not in said
@@ -95,7 +95,7 @@ class TestPositioningReadiness:
         }))
         said = " ".join(status.problems())
         assert "calibration has not arrived" in said
-        assert "Measure the base station" not in said
+        assert "② Position" not in said
 
     def test_one_station_is_enough_to_fly(self):
         """Lighthouse V2 resolves a pose from a single unit's two sweeps.

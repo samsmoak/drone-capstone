@@ -208,11 +208,13 @@ export type SurveyStatus =
   | { active: false }
   | { active: true; room_id: string; seen: number; kept: number; spots: number; outline: XY[] };
 
-/** The base station as the drone sees it (Set up › Measure the base station). */
+/** The base station as the drone sees it (Auto › ② Position, Set up step 3). */
 export type StationStatus =
-  | { connected: false; step: "origin" | "forward" }
+  | { connected: false; measuring: boolean }
   | {
       connected: true;
+      /** A measurement is reading the drone right now. */
+      measuring: boolean;
       /** The chain from light to position, stage by stage: how many of the
        *  deck's four sensors see light, which stations' data was read. */
       light_sensors: number;
@@ -225,8 +227,6 @@ export type StationStatus =
       usable: number[];
       uncertainty_cm: number | null;
       ready: boolean;
-      step: "origin" | "forward";
-      distance_m: number;
     };
 
 /** A base station plugged into this laptop by USB (Bitcraze's "Set BS channel"). */
@@ -238,13 +238,6 @@ export type BaseStation = {
   supported: boolean;
 };
 
-/** One record of the two-record measurement. `sensors`: per station, how many of the deck's four saw it. */
-export type StationRecord = {
-  step: "origin" | "forward";
-  done: boolean;
-  sensors: Record<string, number>;
-  message: string;
-};
 
 /** Where the drone's position can be trusted: measured (flies) and predicted (a guide). */
 export type RoomCoverage = {
@@ -567,8 +560,9 @@ export const api = {
   setBaseStationChannel: (port: string, channel: number) =>
     command<{ port: string; channel: number }>("/basestations/channel", { port, channel }),
   stationStatus: () => command<StationStatus>("/station", undefined, "GET"),
-  recordStation: () => command<StationRecord>("/station/record"),
-  resetStation: () => command<StationStatus>("/station/reset"),
+  measureStation: () => command<{ message: string }>("/station/measure"),
+  usePredictedCoverage: (roomId: string) =>
+    command<RoomView>(`/rooms/${encodeURIComponent(roomId)}/coverage/predicted`),
   /** The DPP switch for this session. */
   setProcessing: (on: boolean) => command<Session>("/session/processing", { on }),
   /** Which way the arrow keys move the drone. Works in the air. */

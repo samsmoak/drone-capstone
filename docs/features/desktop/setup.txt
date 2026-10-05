@@ -1,4 +1,4 @@
-SET UP — a drone out of the box to a session, in six steps
+SET UP — a drone out of the box, ready to fly, in five steps
 ============================================================
 
 WHAT IT IS
@@ -8,14 +8,14 @@ The Set up page (sidebar). One list, one step open at a time:
   1. Connect the drone          Crazyradio in, drone on (ticks itself)
   2. Install drone software     check → install what is missing → unplug → verified
   3. Base stations: one channel each   each station on USB → channel 1 / 2
-  4. Measure the base station   record the start → 1.00 m forward → record
-  5. Connect the camera to Wi-Fi   → the Drone Wi-Fi page (drone-wifi.txt)
-  6. Start a session            → Home
+  4. Connect the camera to Wi-Fi   → the Drone Wi-Fi page (drone-wifi.txt)
+  5. Fly                        → Control › Auto (auto-control.txt)
 
 Step 2 puts on a new drone exactly what the first drone was given by hand.
 Step 3 puts every base station on its own channel, so the drone can decode
-their sweeps. Step 4 tells the drone where the station stands, so it can
-turn the sweeps into a position — without both, Auto refuses every mission.
+their sweeps. Telling the drone where the station stands is part of flying,
+not set-up: Control › Auto › ② Position (auto-control.txt) — it was step 4
+here until 2026-10-05, where the operator could not find it.
 
 
 WHERE IT LIVES
@@ -34,13 +34,9 @@ WHERE IT LIVES
   GET /basestations · POST /basestations/channel
   backend/agent/tests/test_basestation.py
 
-  step 4:
-  backend/agent/cropwatcher/session.py               station_status, record_station,
-                                                     reset_station
-  backend/agent/cropwatcher/flight/geometry.py       StationMeasurement, the
-                                                     not-moved refusal
-  GET /station · POST /station/record · POST /station/reset
-  backend/agent/tests/test_station_measure.py
+  shared with Auto › ② Position (auto-control.txt):
+  desktop/src/components/StationStages.tsx           useStation, the stage rows
+  GET /station (session.py station_status)
 
 
 THE BUNDLE (manifest.json, sha256 each — a mismatch refuses to flash)
@@ -79,7 +75,7 @@ DECISIONS
   station's data still is. The step reads done once the drone decodes
   sweeps (bsReceive). Measured 2026-10-05: one spot, no sweep in 8 s and
   bsReceive 10 % of samples; later, station 0 decoded on every reading.
-- EVERY STAGE FROM LIGHT TO POSITION IS SHOWN (steps 3 and 4): light on the
+- EVERY STAGE FROM LIGHT TO POSITION IS SHOWN (step 3, and ② Position): light on the
   sensors (lighthouse.width0-3) → the station's data read (bsCalVal) →
   sweeps decoded into angles (bsReceive) → its place stored (bsGeoVal) → in
   use by the drone (bsActive: calibration, place and sweeps together) →
@@ -99,19 +95,6 @@ DECISIONS
   ② Check shows the agent's own reason and a Check again button
   (Session.retry, allowed while READY), so a station measured mid-session
   is picked up without ending it.
-- STEP 4 IS `cropwatcher geometry`'s ONE-STATION WALK, NOT A SECOND ONE
-  (2026-10-05, Samuel: "everything has to run in the software").
-  StationMeasurement hands the two button-press records to estimate_single()
-  as the samples it would have collected, so the app and the terminal solve,
-  refuse and explain identically (flight-safety.txt, WHEN THERE IS ONLY ONE
-  STATION). Motors off, over whichever link is open — standby or a session —
-  and refused while flying. A refusal forgets the start record: the start
-  mark is the one place the operator knows the drone still is.
-- STEP 4 IS DONE WHEN THE DRONE SAYS SO: /station reads the drone's own
-  bsReceive / bsGeoVal / Kalman variance (assess_positioning, the checks'
-  rule), polled each second. Done = positioning ready, not "a record was
-  taken". "Measure again" reopens it — after a station is moved, the stored
-  place is wrong and nothing on the drone can tell.
 - STEP 2 HOLDS THE LIST ONLY WHILE IT HAS WORK (2026-10-05). Its state is
   the agent's and starts "idle" every launch, so "done" required pressing
   Check the drone again each run — and that hid the measuring step from an operator whose
@@ -119,47 +102,8 @@ DECISIONS
   showed the drone "92 m from the start". Step 2 now leads only while
   checking, installing, unplugging, failed, or with parts to install; its
   "Check" button opens it any time. Every step reopens by its button.
-- AFTER A SUCCESSFUL STORE THE ESTIMATOR IS RESET (preflight.reset_estimator)
-  with the drone still on the floor: it ran on no geometry until then, metres
-  off, and a filter that far out can reject the beams that would correct it.
-  The step then reads done only when the drone says positioning is ready.
-- NOTHING RESTARTS THE DRONE BETWEEN THE TWO RECORDS: the camera watchdog
-  (api/rest.py Agent.rejoin) waits while Session.measuring_station — a
-  restart drops the link and resets the heading the second record is checked
-  against.
-- IT COMES BEFORE THE CAMERA'S WI-FI: flying needs a position, the camera is
-  diagnostic only (CLAUDE.md, Out of scope).
-- ONE STATION: only the first station seen in both records is measured. With
-  two received, the second stays unmeasured and is not used; the two-station
-  walk (ten records, by hand in the air) stays in the terminal for now.
-
-
-INVARIANTS
-
-- ORDER: main, then lighthouse (main names the image the deck needs, so the
-  deck is asked AGAIN after main), then camera (the GAP8 is written THROUGH
-  the ESP32), then wifi.
-- A POSITIONING DECK WITHOUT ITS IMAGE IS DEAF (2026-10-01, the second lab
-  drone cf-002d00263234511236373639): detected (deck.bcLighthouse4 = 1) but
-  sitting in its bootloader — lighthouse.status 0, nothing received, the
-  position running away — while both base stations were fine. The drone says
-  so itself (deck memory: fw_upgrade_required), so it is read, never assumed,
-  and needs no marker. The first write did NOT survive a battery unplug that
-  day, so the unplug Set up already asks for doubles as the check that it
-  stays; a deck that loses it is reported, not marked done.
-- The deck is flashed with cflib's own deck path (flash_firmware.py
-  flash_lighthouse_deck): only the deck is in the target list, so the STM32
-  and the nRF51 are skipped; cflib leaves the drone in its bootloader, so it
-  is restarted into its firmware after.
-- AFTER THE ESP32 IS FLASHED THE GAP8 DOES NOT START until the battery is
-  unplugged ~10 s (Bitcraze Discussion #1305; measured 2026-09-24 — a restart
-  over the radio is not enough). The page asks, and the check counts only once
-  the drone has left the radio AND come back: the drone's console keeps old
-  lines, and "GAP8 running" from before the flash must not pass for after it.
-- NOT BELOW 3.8 V: a flash that loses power can leave a drone unable to start.
-- The marker is written only after the camera is seen starting.
-- AN UNMOVED DRONE IS NAMED, NOT CALLED A DISAGREEMENT (NOT_MOVED_M 0.10 m,
-  2026-10-05): two records whose station positions match are the same place.
+- AN UNMOVED DRONE IS NAMED, NOT CALLED A DISAGREEMENT in the terminal's
+  two-record walk (`cropwatcher geometry`; NOT_MOVED_M 0.10 m, 2026-10-05): two records whose station positions match are the same place.
   That day's terminal run read "disagree by 100 cm … 2.45 m away from both" —
   an unmoved drone — and a still drone's 50-sweep averages agree to 1e-5 rad.
   The guard also exposed a test (test_geometry.py, the mirror test) that had
@@ -176,8 +120,10 @@ depends-on        camera.txt
                   the patched ESP32 and the GAP8 streamer
 shares-data-with  ../backend/sessions-and-modes.txt
                   pauses and resumes standby
+consumed-by       auto-control.txt
+                  ② Position, after the channels step, with the same stages
 depends-on        ../backend/flight-safety.txt
-                  steps 3-4: the one-station geometry solve, and the positioning
+                  step 3 and ② Position: the one-station geometry solve, and the positioning
                   rule that decides when it is done
 
 

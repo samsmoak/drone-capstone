@@ -102,14 +102,14 @@ export function FlyStep({ session, run, telemetry, mission, ambient, setAmbient,
   const reason = (): string | null => {
     if (flying) return "The mission is flying.";
     if (!mission.valid) return "This mission has problems to fix first (step ①).";
-    if (session.state === "idle" || session.state === "signed_out") return "Start the session first (step ②).";
+    if (session.state === "idle" || session.state === "signed_out") return "Start the session first (step ⑤).";
     if (session.state === "starting") return "The checks are still running.";
-    if (session.state === "checks_failed") return "The checks did not pass (step ②).";
-    if (session.state === "awaiting_confirmation") return "Confirm the area is clear first (step ②).";
-    if (session.retry_required) return "Retry the checks — the last flight ended early (step ②).";
+    if (session.state === "checks_failed") return "The checks did not pass (step ⑤).";
+    if (session.state === "awaiting_confirmation") return "Confirm the area is clear first (step ⑤).";
+    if (session.retry_required) return "Retry the checks — the last flight ended early (step ⑤).";
     if (session.state === "busy") return "The drone is busy. Wait for it to finish.";
     if (!checkComplete(session)) return "The session is not ready.";
-    if (!session.assisted) return `The drone does not know where it is, so it cannot fly a mission. ${session.unassisted_reason ?? ""} Fix it in Set up, then Check again (step ②).`;
+    if (!session.assisted) return `The drone does not know where it is, so it cannot fly a mission. ${session.unassisted_reason ?? ""} Measure it in ② Position, then Check again.`;
     return null;
   };
   const why = reason();
