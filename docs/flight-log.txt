@@ -192,8 +192,28 @@ GEOMETRY, FIRST TRY (terminal)
                flow is Plan → Position → Flyable space → Auto-correct → Fly;
                the predicted space can be used as the green.
 
-  NEXT         ③ Use the predicted space → ④ Auto-correct → ⑤ start session,
-               checks → 20 cm hover → the 1 m square. NOT YET FLOWN.
+  FLOWN       the 1 m square from the app (flight 0fca5fb4, 62 s, up to ~1 m) —
+               the first autonomous mission on this drone.
+
+  RE-FLIGHTS THAT NEVER FLEW
+  MEASURED     flights d0514a2b, e9f4eddc, b81e71a3: supervisor.info 580 (LOCKED,
+               0x0040) from the first sample, stabilizer.thrust 0 and z 0 the
+               whole way, while the flight system went armed → flying →
+               landing; the app said started, then landing. Flight 0fca5fb4
+               read 542 (armed, can fly, flying) and ended "landed" at z 0.055
+               m with motors ~60 % before the cut.
+  MEANT        a landing left the drone LOCKED (cleared only by a restart) and
+               nothing read the lock between missions.
+  CHANGED      the lock is read before every mission (a named reason, with
+               Reset drone); in flight, LOCKED or four motors at zero 1.5 s
+               after arming ends it as "the motors did not start". Verified
+               through the rebuilt app: the drone, still locked, is refused by
+               name. What locks it (manual.py's landing, locked code) is
+               recorded in mission-controller.txt, not changed.
+
+  NEXT         Reset drone (or switch it off and on) → ② Position shows settled
+               → ⑤ start session, checks → the square again; a second mission
+               straight after, to see whether the landing locks it again.
 
 
 =========================================================================
