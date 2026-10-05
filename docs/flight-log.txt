@@ -155,16 +155,31 @@ GEOMETRY, FIRST TRY (terminal)
   MEASURED     deck.bcLighthouse4 1 · lighthouse.systemType 2 (V2) ·
                width0-3 nonzero 99/99 samples (241-322) · bsCalVal 1 ·
                bsReceive 10/99 · validAngles 0/99 · decoded sweeps: none in 8 s
-  MEANT        the light arrives and the station's data is read; the sweeps
-               are not decoded. Bitcraze: "Every V2 base station in the system
-               must be set to a unique channel" (channel 0 "not supported").
+  MEANT        at that spot the light arrived and the station's data was read,
+               but almost no sweep decoded (bsReceive 10 %, 0 sweeps in 8 s).
+               Bitcraze: "Every V2 base station in the system must be set to a
+               unique channel" (channel 0 "not supported"). validAngles was
+               then read as the decode signal — WRONG, see below.
   CHANGED      Set up step 3 sets each station's channel over USB, as
                Bitcraze's client does; steps 3-4 show every stage from light to
                position. The green no longer limits the plan (floor-plans.txt).
 
-  NEXT         Set up step 3: each station on USB → channel 1 and 2 → the
-               "Sweeps decoded" row turns ✓ → step 4, two records → settles
-               < 2 cm → 20 cm hover → the 1 m square.
+  LATER, IN THE APP (GET /station, 8 readings, drone on the floor)
+  MEASURED     light 4/4 · calibrated [0] · received [0] on EVERY reading ·
+               measured [] · validAngles 0 · uncertainty 334 → 457 cm, rising
+  MEANT        decoding works there: the firmware sets bsReceive only when a
+               sweep yields angles (lighthouse_core.c usePulseResult). The one
+               missing stage is the station's PLACE (bsGeoVal) — never stored,
+               so the decoded angles cannot become a position. validAngles is
+               not the decode signal; the app now reads bsReceive.
+  CHANGED      decode row reads bsReceive; bsActive added ("in use"); the
+               check message names only the missing stage; ② Check has
+               Check again.
+
+  NEXT         Set up step 4: drone on the floor at the start → Record → exactly
+               1.00 m forward → Record → "Position settled" ✓ (< 5 cm) → ②
+               Check › Check again (or a new session) → 20 cm hover → the 1 m
+               square. Step 3 (channels) only if "Sweeps decoded" is not ✓.
 
 
 =========================================================================

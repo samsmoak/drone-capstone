@@ -30,7 +30,6 @@ LAB_TYPES = {name: "float" for name in ALL_VARIABLES} | {
     "lighthouse.bsAvailable": "uint16_t",
     "lighthouse.width0": "uint16_t", "lighthouse.width1": "uint16_t",
     "lighthouse.width2": "uint16_t", "lighthouse.width3": "uint16_t",
-    "lighthouse.validAngles": "uint8_t",
 }
 
 

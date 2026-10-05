@@ -73,7 +73,13 @@ export function CheckStep({ session, run, mission, onContinue }: {
         <Panel title="Ready" action={<StatusDot tone="good">Checks passed · area confirmed</StatusDot>}>
           <div className="grid gap-3">
             {!session.assisted && (
-              <Message tone="warning" text="The drone cannot see the base stations. A mission needs to know where it is, so the agent will refuse it — get the stations seen and start the session again." />
+              <div className="grid gap-2">
+                {/* The agent's own reason names the stage that is missing
+                    (flight_guard.py problems) — "cannot see" was said on
+                    2026-10-05 while the station was seen and decoded. */}
+                <Message tone="warning" text={`A mission needs the drone to know where it is, so the agent will refuse it. ${session.unassisted_reason ?? "The position is not usable."} After fixing it in Set up, check again.`} />
+                <div><Button onClick={() => void run(api.retry, "Check the drone again")}>Check again</Button></div>
+              </div>
             )}
             <ProcessingSwitch session={session} run={run} />
             <div>

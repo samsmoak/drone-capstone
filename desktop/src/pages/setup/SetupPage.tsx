@@ -57,8 +57,10 @@ export function SetupPage({ session, setup, wifi, run, onGo }: {
   const [opened, setOpened] = useState<Step | null>(null);
   const measured = station?.connected === true && station.ready && opened !== "measure";
   // Decoding: the drone turns sweeps into angles — what the channels are for.
-  const decoding = station?.connected === true
-    && ((station.angles ?? 0) > 0 || station.usable.length > 0) && opened !== "channels";
+  // bsReceive is the firmware's own word for it (lighthouse_core.c sets it
+  // only when a sweep yields angles); validAngles is not (2026-10-05).
+  const decoding = station?.connected === true && station.received.length > 0
+    && opened !== "channels";
   // Step 2 holds the list only while it has something to do. Its state is the
   // agent's and starts "idle" every launch — never checked this run is not the
   // same as missing, and it once hid step 3 from an operator whose drone was
@@ -213,12 +215,12 @@ function Stages({ station }: { station: StationStatus & { connected: true } }) {
     ["Light on the deck's sensors", station.light_sensors > 0, `${station.light_sensors} of 4`],
     ["Base station's data read", station.calibrated.length > 0,
       station.calibrated.length ? `station ${station.calibrated.join(", ")}` : "none"],
-    ["Sweeps decoded into angles", (station.angles ?? 0) > 0,
-      (station.angles ?? 0) > 0 ? "yes" : "no — set the channels (step 3)"],
-    ["Station received", station.received.length > 0,
-      station.received.length ? `station ${station.received.join(", ")}` : "no"],
-    ["Station's place measured", station.measured.length > 0,
-      station.measured.length ? "yes" : "no — record below"],
+    ["Sweeps decoded into angles", station.received.length > 0,
+      station.received.length ? `station ${station.received.join(", ")}` : "no — set the channels (step 3)"],
+    ["Station's place stored", station.measured.length > 0,
+      station.measured.length ? "yes" : "no — measure it (step 4)"],
+    ["In use by the drone", station.active.length > 0,
+      station.active.length ? `station ${station.active.join(", ")}` : "no"],
     ["Position settled", station.ready,
       station.uncertainty_cm == null ? "—" : `within ${station.uncertainty_cm} cm (under 5 needed)`],
   ];
@@ -266,7 +268,7 @@ function Channels({ station, run, onDone }: {
       }
     }, `Set base station channel ${channel}`).finally(() => setWorking(false));
   };
-  const decoding = station?.connected === true && (station.angles ?? 0) > 0;
+  const decoding = station?.connected === true && station.received.length > 0;
   return (
     <div className="grid gap-3">
       {station?.connected === true && <Stages station={station} />}
