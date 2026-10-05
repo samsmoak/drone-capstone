@@ -11,6 +11,10 @@ dependencies = [
     "pydantic>=2.9",
     "supabase>=2.9",
     "python-dotenv>=1.0",
+    # The data pipeline's cleaner (pipeline/stages/clean/hampel.py). Already
+    # installed through cflib (numpy~=2.2); declared so the stage does not
+    # depend on another package's choice.
+    "numpy>=2.2",
     # Intel Macs only. cryptography 49+ publishes macOS wheels for Apple silicon
     # alone, so on Intel pip COMPILES it, against Homebrew's OpenSSL — and the
     # frozen agent then carries two libssl.3.dylib under one name, keeps
