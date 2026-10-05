@@ -258,6 +258,12 @@ class Agent:
         one reliable source is the drone saying it over the radio; this makes it
         say it again. False when a session runs, or no one is signed in.
         """
+        if self.session.measuring_station:
+            # A restart between the two records resets the heading the second
+            # one is checked against and drops the link mid-measurement.
+            log.info("not restarting the drone (%s): the base station is being measured",
+                     reason)
+            return False
         try:
             self.session.restart_drone(reason=reason)
         except SessionError as e:
@@ -971,6 +977,15 @@ def room_coverage(room_id: str) -> dict:
             "survey": agent.session.survey_status()}
 
 
+@app.post("/rooms/{room_id}/coverage/forget", dependencies=[Command])
+def forget_coverage(room_id: str) -> dict:
+    """Drop the room's measured flyable space; the default area stands in."""
+    try:
+        return _room_view(agent.session.forget_coverage(room_id))
+    except SessionError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from None
+
+
 @app.post("/rooms/{room_id}/survey/start", dependencies=[Command])
 def start_survey(room_id: str) -> dict:
     try:
@@ -992,6 +1007,28 @@ def stop_survey(body: dict = Body(default={})) -> dict:  # noqa: B008 — FastAP
     except SessionError as e:
         raise HTTPException(status_code=409, detail=str(e)) from None
     return {"room": _room_view(room) if room is not None else None}
+
+
+@app.get("/station", dependencies=[Command])
+def station_status() -> dict:
+    """The base station as the drone sees it: received, measured, usable."""
+    return agent.session.station_status()
+
+
+@app.post("/station/record", dependencies=[Command])
+def record_station() -> dict:
+    """The next record of the one-station measurement: the start, then 1.00 m
+    forward, which solves and stores the station's place on the drone."""
+    try:
+        return agent.session.record_station()
+    except SessionError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from None
+
+
+@app.post("/station/reset", dependencies=[Command])
+def reset_station() -> dict:
+    agent.session.reset_station()
+    return agent.session.station_status()
 
 
 @app.post("/rooms/{room_id}/delete", dependencies=[Command])

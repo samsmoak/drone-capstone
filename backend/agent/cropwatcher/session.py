@@ -48,9 +48,11 @@ from cropwatcher.flight.checks import CheckResult, ChecksFailed, ReadyReport, co
 from cropwatcher.flight.control import GuardedFlight, PhaseEvent
 from cropwatcher.flight.controls_store import ControlsStore, valid_spot
 from cropwatcher.flight.core import DEFAULT_URI
+from cropwatcher.flight.geometry import StationMeasurement, SweepAngles
 from cropwatcher.flight.keyframe import FrameStatus, KeyFrame
 from cropwatcher.flight.link import DEFAULT_FENCE_M, DEFAULT_MAX_HEIGHT_M, DroneLink, LinkError
 from cropwatcher.flight.manual import CLIMB_RATE_M_S, MOVE_SPEED_M_S
+from cropwatcher.flight.preflight import reset_estimator
 from cropwatcher.flight.programs import HoverTest, Outcome, run_hover_test
 from cropwatcher.history import SessionLog, SessionMeta, sessions_dir, set_flight_processing
 from cropwatcher.mission.controller import (
@@ -69,6 +71,7 @@ from cropwatcher.paths import flights_dir
 from cropwatcher.processing import Job, ProcessingQueue
 from cropwatcher.safety.flight_guard import Action as GuardAction
 from cropwatcher.safety.flight_guard import Reason as GuardReason
+from cropwatcher.safety.flight_guard import assess_positioning, position_trusted
 from cropwatcher.sync import auth_store
 from cropwatcher.sync.cloud import AuthError, Cloud, CloudTimeout, Operator
 from cropwatcher.sync.outbox import Kind, Outbox, new_id
@@ -303,6 +306,8 @@ class Session:
         self._mission_plan: Mission | None = None
         #: The coverage survey in progress: (room id, the survey), or None.
         self._survey: tuple[str, Survey] | None = None
+        #: The base station measurement, between its two records.
+        self._station_measure = StationMeasurement()
         self._manual_guard_stop: threading.Event | None = None
         self._recorder: FlightRecorder | None = None
         self._flight_id: str | None = None
@@ -918,6 +923,9 @@ class Session:
             # No height without a reference: unassisted, before the barometer
             # ground is read, the Kalman z is noise and is not shown as height.
             "height_m": None if z is None or ground is None else round(z - ground, 3),
+            # Whether x and y are a place (flight_guard.position_trusted): the
+            # maps and the editor show the drone only when they are.
+            "positioned": position_trusted(snap),
             "at": time.time(),
         })
         history = self.history
@@ -931,7 +939,8 @@ class Session:
             x, y = snap.get("stateEstimate.x"), snap.get("stateEstimate.y")
             z, mask = snap.get("stateEstimate.z"), snap.get("lighthouse.bsReceive")
             if None not in (x, y, z, mask):
-                surveying[1].add(float(x), float(y), float(z), int(mask))
+                surveying[1].add(float(x), float(y), float(z), int(mask),
+                                 trusted=position_trusted(snap))
 
     # ── confirmation ─────────────────────────────────────────────────────
 
@@ -1111,6 +1120,11 @@ class Session:
         if self.snapshot().state is State.BUSY:
             raise SessionError("Land first: the survey is done with the drone in your hands, "
                                "motors off.")
+        if self.position() is None:
+            raise SessionError(
+                "The drone does not know where it is yet, so a survey would record nothing "
+                "true. Measure the base station first (Set up, step 3), with the drone on "
+                "the floor where the station can see it.")
         self._survey = (room_id, Survey())
 
     def survey_status(self) -> dict[str, Any]:
@@ -1119,7 +1133,7 @@ class Session:
             return {"active": False}
         room_id, survey = surveying
         return {"active": True, "room_id": room_id, "seen": survey.seen,
-                "kept": len(survey.kept),
+                "kept": len(survey.kept), "spots": survey.spots,
                 "outline": [[round(x, 3), round(y, 3)] for x, y in survey.outline()]}
 
     def stop_survey(self, save: bool) -> Room | None:
@@ -1138,6 +1152,89 @@ class Session:
                 "in view — not enough to enclose an area. Check the stations are on and seen, "
                 "then survey again.")
         return self.plans.save_room(room.edited(coverage=coverage))
+
+    # ── the base station: where it is, measured from the floor ───────────
+    #
+    # The drone turns a station's beams into a position only once it knows
+    # where the station stands (its geometry, stored on the drone). This is
+    # `cropwatcher geometry`'s one-station walk (flight/geometry.py), a record
+    # per button press on the Set up page: the drone on the start mark, then
+    # 1.00 m straight forward. Motors off, over whichever link is open.
+
+    def station_status(self) -> dict[str, Any]:
+        """What the drone receives and whether it can turn it into a position."""
+        link = self.link
+        if link is None or not link.is_open:
+            return {"connected": False, "step": self._station_measure.step}
+        status = assess_positioning(link.snapshot())
+        variances = [v for v in status.variance_m2 if v is not None]
+        return {
+            "connected": True,
+            "received": list(status.received),
+            "measured": list(status.with_geometry),
+            "usable": list(status.usable),
+            "uncertainty_cm": (round(max(variances) ** 0.5 * 100, 1)
+                               if len(variances) == 3 else None),
+            "ready": status.ready,
+            "step": self._station_measure.step,
+            "distance_m": self._station_measure.reference_distance_m,
+        }
+
+    def record_station(self) -> dict[str, Any]:
+        """Take the next record: the start, or 1.00 m forward (which solves
+        and, when the two agree, stores the station's place on the drone)."""
+        if self.snapshot().state is State.BUSY:
+            raise SessionError("Land first: the base station is measured with the drone "
+                               "on the floor, motors off.")
+        link = self._require_link()
+        cf = link.scf.cf
+        try:
+            sample = SweepAngles(cf, min_stations=1).record()
+        except (TimeoutError, ValueError) as e:
+            raise SessionError(str(e)) from None
+        yaw = link.snapshot().get("stabilizer.yaw")
+        heading = None if yaw is None else float(yaw)
+        sensors = {bs: len(vectors) for bs, vectors in sample.angles_calibrated.items()}
+        measure = self._station_measure
+        if measure.step == "origin":
+            measure.record_origin(sample, heading)
+            return {"step": "forward", "done": False, "sensors": sensors,
+                    "message": f"Start recorded. Move the drone "
+                               f"{measure.reference_distance_m:.2f} m straight forward, "
+                               f"facing the same way, then record again."}
+        result = measure.finish(cf, sample, heading)
+        if result.converged and not result.written:
+            raise SessionError("The drone did not confirm it stored the base station's "
+                               "place. Record the start again.")
+        if not result.converged:
+            raise SessionError(result.message)
+        log.info("base station geometry stored: %s", result.message)
+        # The estimate ran on no geometry until now — metres away and
+        # climbing — and a filter that far off can reject the very beams that
+        # would correct it. Start it again from the stored geometry, the drone
+        # still on the floor at the forward mark (CLAUDE.md invariant 3: the
+        # settle is then read, never slept on — station_status does).
+        reset_estimator(cf)
+        return {"step": "origin", "done": True, "sensors": sensors,
+                "message": f"{result.message} Stored on the drone."}
+
+    def reset_station(self) -> None:
+        """Forget a start record, to begin the measurement again."""
+        self._station_measure = StationMeasurement()
+
+    @property
+    def measuring_station(self) -> bool:
+        """Between the two records: nothing may restart the drone now."""
+        return self._station_measure.step == "forward"
+
+    def forget_coverage(self, room_id: str) -> Room:
+        """Drop a room's measured flyable space; the agent's default area
+        stands in again. For a survey that recorded the wrong thing."""
+        try:
+            room = self.plans.room(room_id)
+        except (NotFound, PlanError) as e:
+            raise SessionError(str(e)) from None
+        return self.plans.save_room(room.edited(coverage=None))
 
     def flying_plan(self, mission_id: str) -> tuple[FlyingPlan, tuple[float, float] | None]:
         """THE PLAN THAT WILL FLY (mission/plan/fit.py): from the drone, fitted
@@ -1701,13 +1798,18 @@ class Session:
         self._refresh_processing()
 
     def position(self) -> tuple[float, float, float] | None:
-        """The drone's position estimate now, or None — for tagging frames."""
+        """The drone's position now, or None when it has none it can stand
+        behind (flight_guard.position_trusted) — the plan that will fly, Start,
+        "I'm here" and the frames all read this, and none of them may treat an
+        estimate running away with no station measured as a place."""
         link = self.link
         if link is None or not link.is_open:
             return None
         try:
             snap = link.snapshot()
         except Exception:
+            return None
+        if not position_trusted(snap):
             return None
         xyz = (snap.get("stateEstimate.x"), snap.get("stateEstimate.y"),
                snap.get("stateEstimate.z"))

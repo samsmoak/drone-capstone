@@ -67,7 +67,7 @@ const session: Session = {
   can_fly: false,
   restoring: false,
   assisted: false,
-  unassisted_reason: "No base station signal is reaching the drone. Check both base stations are on (front LED solid green), the drone is upright, and nothing blocks the line of sight.",
+  unassisted_reason: "No base station signal is reaching the drone where it is now. Check the station is on (front LED solid green) and can see the top of the drone from where it sits.",
 };
 
 const values: Record<string, number> = {
@@ -85,7 +85,7 @@ const values: Record<string, number> = {
   "lighthouse.bsAvailable": 0b1111,
   "kalman.varPX": 0.004, "kalman.varPY": 0.003, "kalman.varPZ": 0.001,
 };
-const telemetry: Telemetry = { values, height_m: 0.31, at: 0 };
+const telemetry: Telemetry = { values, height_m: 0.31, positioned: true, at: 0 };
 const history: History = Array.from({ length: 120 }, (_, i) => ({
   t: i / 10, values, height_m: 0.3 + Math.sin(i / 8) * 0.02,
 }));

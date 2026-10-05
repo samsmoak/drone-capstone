@@ -25,10 +25,16 @@ def rig(tmp_path, monkeypatch):
     return make_rig(tmp_path, monkeypatch)
 
 
-def sample(rig, x, y, mask=0b11):
+def sample(rig, x, y, mask=0b11, trusted=True):
+    """One reading while the drone is carried: the stations in `mask`
+    received and, when `trusted`, measured with a 1 cm Kalman spread."""
+    known = mask if trusted else 0
+    spread = 0.0001 if trusted else 40.0
     rig.session._publish_telemetry(Snapshot(MappingProxyType({
         "stateEstimate.x": x, "stateEstimate.y": y, "stateEstimate.z": 1.0,
-        "lighthouse.bsReceive": mask}), 1.0))
+        "lighthouse.bsReceive": mask, "lighthouse.bsCalVal": known,
+        "lighthouse.bsGeoVal": known,
+        "kalman.varPX": spread, "kalman.varPY": spread, "kalman.varPZ": spread}), 1.0))
 
 
 class TestSurvey:
@@ -60,6 +66,37 @@ class TestSurvey:
         sample(rig, 0.0, 0.0)
         with pytest.raises(SessionError, match="not enough to enclose an area"):
             rig.session.stop_survey(save=True)
+
+    def test_received_but_untrusted_readings_never_count(self, rig):
+        """2026-10-05: the station's light arrived, the station was never
+        measured, and every drifting reading was counted — an outline from
+        -100 m to +100 m saved as the flyable space."""
+        rig.session.start_survey("lab")
+        for x in (-1.9, 1.0, 40.0, 95.0):
+            sample(rig, x, -1.9, trusted=False)
+        status = rig.session.survey_status()
+        assert status["seen"] == 4 and status["kept"] == 0 and status["spots"] == 0
+
+    def test_readings_are_counted_as_places_not_ticks(self, rig):
+        rig.session.start_survey("lab")
+        for _ in range(10):                             # 1 s still: one place
+            sample(rig, 0.50, 0.50)
+        sample(rig, 0.90, 0.50)
+        status = rig.session.survey_status()
+        assert status["kept"] == 11 and status["spots"] == 2
+
+    def test_no_survey_until_the_drone_knows_where_it_is(self, rig):
+        rig.link.snapshot = lambda: Snapshot(MappingProxyType({
+            "stateEstimate.x": -91.6, "stateEstimate.y": -8.2, "stateEstimate.z": 1.2,
+            "lighthouse.bsReceive": 0b1, "kalman.varPX": 48.0, "kalman.varPY": 48.0,
+            "kalman.varPZ": 0.5}), 1.0)
+        with pytest.raises(SessionError, match="Measure the base station first"):
+            rig.session.start_survey("lab")
+
+    def test_a_wrong_space_can_be_forgotten(self, rig):
+        rig.plans.save_room(rig.plans.room("lab").edited(coverage=LEFT))
+        room = rig.session.forget_coverage("lab")
+        assert room.coverage is None and rig.plans.room("lab").coverage is None
 
     def test_no_survey_without_a_drone(self, rig):
         rig.link.is_open = False

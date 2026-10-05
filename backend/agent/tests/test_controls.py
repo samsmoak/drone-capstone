@@ -11,6 +11,7 @@ from cropwatcher.flight.controls_store import Controls, ControlsStore
 from cropwatcher.flight.keyframe import ActiveFrame, FrameStatus, KeyFrame
 from cropwatcher.session import Mode, SessionError
 from cropwatcher.telemetry.stream import Snapshot
+from tests.mission.test_session_missions import POSITIONED
 from tests.test_session import rig, start_and_confirm  # noqa: F401 — the fixture
 
 
@@ -54,7 +55,7 @@ class TestStore:
 
 
 def position(rig, x, y):  # noqa: F811 — `rig` is the fixture's name
-    values = {"stateEstimate.x": x, "stateEstimate.y": y, "stateEstimate.z": 0.01}
+    values = {**POSITIONED, "stateEstimate.x": x, "stateEstimate.y": y, "stateEstimate.z": 0.01}
     rig.link.stream.snapshot = lambda: Snapshot(MappingProxyType(values), 1.0)
 
 

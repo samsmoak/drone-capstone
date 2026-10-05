@@ -21,7 +21,11 @@ STATUS  (Last verified: 2026-09-28)
              The lab rungs are NOT FLOWN and the constants are still
              guesses. Yordi's ticket is still open
              (../../handoffs/sprint-1/undone/mission-verification.txt).
-  flown      NEVER — no mission has flown.
+  flown      NEVER — no mission has flown. 2026-10-05 lab: the 1 m square
+             (0.40 m, Steady, 5 s holds, return) flies in simulation in 72.6 s;
+             on the drone it is blocked on station reception with the drone
+             on the floor (../../flight-log.txt 2026-10-05). The app path to
+             it: Set up step 3 → ② Check → ③ Fly (../desktop/setup.txt).
 
 --------------------------------------------------------------------------------
 1. WHAT IT IS

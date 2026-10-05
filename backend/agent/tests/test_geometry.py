@@ -157,8 +157,9 @@ class TestOneBaseStationAlone:
     def test_the_mirror_is_refused_when_nothing_agrees(self):
         at_origin = FakeSample({0: (FakePose(2, 0, 2), FakePose(-2, 0, 2))})
         one_m_on = FakeSample({0: (FakePose(9, 9, 9), FakePose(-9, 9, 9))})
+        samples = iter([at_origin, one_m_on])
         result = geometry.estimate_single(
-            SimpleNamespace(), lambda step, i: iter([at_origin, one_m_on]).__next__(),
+            SimpleNamespace(), lambda step, i: next(samples),
             reference_distance_m=1.0, write=False)
         assert not result.converged
         assert "disagree" in result.message
