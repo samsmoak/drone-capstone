@@ -108,6 +108,8 @@ class TestTheSessionWalk:
         assert list(rig.written[0]) == [0]
         # The estimate ran on no geometry until now: started again from it.
         assert rig.resets == [rig.link.scf.cf]
+        # The rig's session checked before the store: it is told to check again.
+        assert "Check again" in second["message"]
 
     def test_an_unmoved_drone_is_refused_and_stores_nothing(self, rig):
         rig.samples[:] = [still_at_origin(), still_at_origin()]
@@ -170,6 +172,21 @@ class TestStatus:
         status = rig.session.station_status()
         assert status["received"] == [0] and status["measured"] == []
         assert not status["ready"]
+
+    def test_every_stage_is_reported_as_the_drone_read_it(self, rig):
+        """2026-10-05, the lab: light on four sensors, the data read, sweeps
+        decoded (bsReceive) — and the place never stored."""
+        rig.link.snapshot = lambda: Snapshot(MappingProxyType({
+            "lighthouse.width0": 246, "lighthouse.width1": 251,
+            "lighthouse.width2": 253, "lighthouse.width3": 0,
+            "lighthouse.bsCalVal": 0b1, "lighthouse.bsReceive": 0b1,
+            "lighthouse.bsActive": 0b0,
+            "kalman.varPX": 40.0, "kalman.varPY": 40.0, "kalman.varPZ": 1.0}), 1.0)
+        status = rig.session.station_status()
+        assert status["light_sensors"] == 3
+        assert status["calibrated"] == [0] and status["received"] == [0]
+        assert status["measured"] == [] and status["active"] == []
+        assert "angles" not in status                   # validAngles is not the signal
 
     def test_no_drone(self, rig):
         rig.link.is_open = False

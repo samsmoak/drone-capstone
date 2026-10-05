@@ -214,11 +214,12 @@ export type StationStatus =
   | {
       connected: true;
       /** The chain from light to position, stage by stage: how many of the
-       *  deck's four sensors see light, which stations' calibration was read,
-       *  and how many sweeps became angles (0 = not decoding). */
+       *  deck's four sensors see light, which stations' data was read. */
       light_sensors: number;
       calibrated: number[];
-      angles: number | null;
+      /** Calibration, stored place and live sweeps together: in use (bsActive). */
+      active: number[];
+      /** Sweeps decoded into angles — the firmware sets bsReceive only then. */
       received: number[];
       measured: number[];
       usable: number[];

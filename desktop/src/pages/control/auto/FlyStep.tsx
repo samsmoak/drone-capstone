@@ -109,7 +109,7 @@ export function FlyStep({ session, run, telemetry, mission, ambient, setAmbient,
     if (session.retry_required) return "Retry the checks — the last flight ended early (step ②).";
     if (session.state === "busy") return "The drone is busy. Wait for it to finish.";
     if (!checkComplete(session)) return "The session is not ready.";
-    if (!session.assisted) return "The drone cannot see the base stations, so it cannot fly a mission.";
+    if (!session.assisted) return `The drone does not know where it is, so it cannot fly a mission. ${session.unassisted_reason ?? ""} Fix it in Set up, then Check again (step ②).`;
     return null;
   };
   const why = reason();

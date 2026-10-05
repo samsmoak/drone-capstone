@@ -242,16 +242,28 @@ class PositioningStatus:
             # This used to say "re-run geometry estimation in cfclient", naming
             # a tool this project replaced and does not install. An instruction
             # an operator cannot follow is worse than none.
-            ids = ", ".join(str(s) for s in self.received_without_geometry)
-            out.append(
-                f"Base station {ids} is being received, but the drone cannot turn its "
-                f"beams into a position yet. Give it a few seconds of clear line of "
-                f"sight to pick up the station's calibration; if it stays like this, "
-                f"the room has not been measured — do Set up › Measure the base "
-                f"station once: two records on the floor, no motors."
-            )
+            # Name the stage that is actually missing — not both at once: on
+            # 2026-10-05 the calibration was already read and the operator was
+            # told to wait for it AND that a station "may be blocked or off".
+            waiting = [s for s in self.received_without_geometry if s not in self.calibrated]
+            unmeasured = [s for s in self.received_without_geometry
+                          if s in self.calibrated and s not in self.with_geometry]
+            if unmeasured:
+                ids = ", ".join(str(s) for s in unmeasured)
+                out.append(
+                    f"Base station {ids} is received and its sweeps decoded, but the "
+                    f"drone does not know where the station stands, so it cannot turn "
+                    f"them into a position. Do Set up › Measure the base station once: "
+                    f"two records on the floor, no motors."
+                )
+            if waiting:
+                ids = ", ".join(str(s) for s in waiting)
+                out.append(
+                    f"Base station {ids} is received; its calibration has not arrived "
+                    f"yet. Give it a few seconds of clear line of sight."
+                )
         wanted = required_stations()
-        if self.received and len(self.usable) < wanted:
+        if self.received and not self.received_without_geometry and len(self.usable) < wanted:
             out.append(
                 f"Only {len(self.usable)} usable base station(s); "
                 f"{wanted} are needed. One may be blocked or off."

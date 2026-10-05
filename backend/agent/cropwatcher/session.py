@@ -71,7 +71,7 @@ from cropwatcher.paths import flights_dir
 from cropwatcher.processing import Job, ProcessingQueue
 from cropwatcher.safety.flight_guard import Action as GuardAction
 from cropwatcher.safety.flight_guard import Reason as GuardReason
-from cropwatcher.safety.flight_guard import assess_positioning, position_trusted
+from cropwatcher.safety.flight_guard import assess_positioning, position_trusted, station_ids
 from cropwatcher.sync import auth_store
 from cropwatcher.sync.cloud import AuthError, Cloud, CloudTimeout, Operator
 from cropwatcher.sync.outbox import Kind, Outbox, new_id
@@ -1171,10 +1171,13 @@ class Session:
         variances = [v for v in status.variance_m2 if v is not None]
         return {
             "connected": True,
-            # The chain from light to position, stage by stage (stream.py).
+            # The chain from light to position, stage by stage (stream.py):
+            # light on the sensors → the station's data read (calibrated) →
+            # sweeps decoded (received) → its place stored (measured) → in use
+            # by the drone (active) → settled.
             "light_sensors": sum(1 for i in range(4) if snap.get(f"lighthouse.width{i}")),
             "calibrated": list(status.calibrated),
-            "angles": snap.get("lighthouse.validAngles"),
+            "active": list(station_ids(snap.get("lighthouse.bsActive"))),
             "received": list(status.received),
             "measured": list(status.with_geometry),
             "usable": list(status.usable),
@@ -1220,8 +1223,12 @@ class Session:
         # still on the floor at the forward mark (CLAUDE.md invariant 3: the
         # settle is then read, never slept on — station_status does).
         reset_estimator(cf)
+        # A session's checks ran before this: they still say "no position"
+        # until they run again (② Check › Check again — Session.retry).
+        then = (" The session's checks ran before this — press Check again in ② Check."
+                if self.snapshot().session_id is not None else "")
         return {"step": "origin", "done": True, "sensors": sensors,
-                "message": f"{result.message} Stored on the drone."}
+                "message": f"{result.message} Stored on the drone.{then}"}
 
     def reset_station(self) -> None:
         """Forget a start record, to begin the measurement again."""
