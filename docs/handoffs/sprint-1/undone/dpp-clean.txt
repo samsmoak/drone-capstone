@@ -1,8 +1,11 @@
 TICKET — Data pipeline stage 1: clean the sensor readings
 =========================================================
 
-STATUS: READY TO START (2026-09-28). The skeleton your stage plugs into is on
-the branch feat/missions-and-pipeline; the code is the authority.
+STATUS: IN PROGRESS (2026-10-03, branch feat/dpp-clean). Built and plugged
+in for the MUST columns: stages/clean/hampel.py (hampel@1), its tests, the
+fault planter and the evaluator in ml/sensor-faults/, and MEASUREMENTS.txt —
+measured on the one real flight in the repo (the pipeline fixture). What is
+left is what needs more flights: see ACCEPTANCE. The code is the authority.
 
   Owner           Kevin
   Story           4.2: "As an inspector, I want erroneous sensor readings
@@ -189,18 +192,29 @@ ACCEPTANCE — what "done" means
 The PDF's criterion, made measurable. Adjust the numbers with Samuel if the
 data argues otherwise.
 
-  [ ] EVERY PLANTED FAULT IS FLAGGED, with the right `kind` and `column`
+  [~] EVERY PLANTED FAULT IS FLAGGED, with the right `kind` and `column`
       (100 % of planted faults, over at least 3 real flights).
-  [ ] CLEAN ROWS STAY CLEAN: at most 1 % of unplanted values flagged. Report
-      the exact rate.
-  [ ] THE HAND-WARMER RAMP GETS ZERO FLAGS.
-  [ ] A Fahrenheit flight and a Celsius flight give the same flags for the
+      2026-10-03: 54/54, seeds 0–7, on ONE flight (the fixture). Owed: two
+      more flights — `ml/sensor-faults/evaluate.py <csv>...`.
+  [~] CLEAN ROWS STAY CLEAN: at most 1 % of unplanted values flagged. Report
+      the exact rate.  2026-10-03: 0 of 1188 (0.00 %), one flight.
+  [~] THE HAND-WARMER RAMP GETS ZERO FLAGS.  2026-10-03: 0, on a PLANTED
+      ramp (+5 °C over 10 s). Owed: a real hand-warmer flight.
+  [x] A Fahrenheit flight and a Celsius flight give the same flags for the
       same physical signal.
-  [ ] Every conformance check passes (tests/pipeline/conformance.py).
-  [ ] An empty point (no readings) returns an empty result, not an error.
-  [ ] Every threshold cites ml/sensor-faults/MEASUREMENTS.txt.
-  [ ] Time per point measured and reported.
-  [ ] Gates pass: ruff check . && mypy cropwatcher && pytest
+  [x] Every conformance check passes (tests/pipeline/conformance.py).
+  [x] An empty point (no readings) returns an empty result, not an error.
+  [x] Every threshold cites ml/sensor-faults/MEASUREMENTS.txt. Spike and stuck
+      are PROVISIONAL there until the flights above confirm them.
+  [~] Time per point measured and reported.  2026-10-03: 31–44 ms for the
+      whole 400-row flight, on a dev machine. Owed: the lab laptop.
+  [x] Gates pass: ruff check . && mypy cropwatcher && pytest (pytest: one
+      known failure, test_recording, root in a container — also on main).
+  [ ] Owed, beyond the PDF: the SHOULD columns (x_m, y_m, z_m, battery_v).
+      The fixture never had a Lighthouse lock, so its position is 0, 0,
+      −91 m throughout — measure on a flight with one (MEASUREMENTS.txt).
+      For Samuel (recording — outside this ticket): the −91 m z means no
+      ground reference was captured on that flight.
 
 
 OUT OF SCOPE
