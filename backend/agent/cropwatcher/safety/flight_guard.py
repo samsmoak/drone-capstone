@@ -226,9 +226,11 @@ class PositioningStatus:
         out: list[str] = []
         if not self.received:
             out.append(
-                "No base station signal is reaching the drone. Check both base "
-                "stations are on (front LED solid green), the drone is upright, "
-                "and nothing blocks the line of sight."
+                "No base station signal is reaching the drone where it is now. "
+                "Check the station is on (front LED solid green) and can see the "
+                "top of the drone from where it sits: a station can reach a drone "
+                "held up and miss it on the floor — raise it (about 1.5–2 m) and "
+                "tilt it down at the spot, with nothing in between."
             )
         elif self.received_without_geometry:
             # Two different things are missing here and only one needs a person.
@@ -245,8 +247,8 @@ class PositioningStatus:
                 f"Base station {ids} is being received, but the drone cannot turn its "
                 f"beams into a position yet. Give it a few seconds of clear line of "
                 f"sight to pick up the station's calibration; if it stays like this, "
-                f"the room has not been measured — run `./cropwatcher geometry` once, "
-                f"which takes two samples on the floor and spins no motors."
+                f"the room has not been measured — do Set up › Measure the base "
+                f"station once: two records on the floor, no motors."
             )
         wanted = required_stations()
         if self.received and len(self.usable) < wanted:
@@ -292,6 +294,24 @@ def assess_positioning(snap: Snapshot) -> PositioningStatus:
             snap.get("kalman.varPZ"),
         ),
     )
+
+
+def position_trusted(snap: Snapshot) -> bool:
+    """Is the drone's x-y a position, or a number? A station the drone can USE
+    (received, calibrated, measured) and the Kalman filter's own x-y spread
+    within MAX_HOLD_VARIANCE_M2 — the bound at which manual flight stops
+    moving its commanded point (flight/link.py _fix).
+
+    Every screen that shows "where the drone is" asks this first. Without it
+    a still drone with no station measured read as 92 m from the mission's
+    start and climbing (2026-10-05): the estimate integrating the
+    accelerometer, offered to the operator as a place.
+    """
+    status = assess_positioning(snap)
+    if not status.usable:
+        return False
+    spread = [v for v in status.variance_m2[:2] if v is not None]
+    return len(spread) == 2 and max(spread) <= MAX_HOLD_VARIANCE_M2
 
 
 # ── in-flight guard ──────────────────────────────────────────────────────

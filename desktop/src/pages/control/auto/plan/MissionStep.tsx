@@ -36,7 +36,11 @@ type View = { kind: "list" } | { kind: "view"; id: string } | { kind: "edit"; dr
 
 type Loaded = { missions: MissionView[]; rooms: RoomView[]; limits: PlanLimits };
 
+/** Where the drone is — only when the agent says x and y are a place. A still
+ *  drone with no base station measured once read 92 m from the start, and
+ *  climbing: the estimate drifting, which is a number, not a position. */
 export function dronePosition(telemetry: Telemetry | null): XY | null {
+  if (telemetry?.positioned !== true) return null;
   const x = telemetry?.values["stateEstimate.x"];
   const y = telemetry?.values["stateEstimate.y"];
   return x === undefined || y === undefined ? null : [x, y];

@@ -55,6 +55,14 @@ SPACE_SAMPLES = 6
 #: than that while staying loose enough for a hand-carried 1 m step.
 SINGLE_STATION_AGREEMENT_M = 0.25
 
+#: Two single-station samples whose solved station positions are both this
+#: close are the SAME position: the drone was not moved between them. Measured
+#: 2026-10-05: a still drone's 50-sweep averages agree to 1e-5 rad, millimetres
+#: at 2.45 m; a real 1 m step moves the station 1 m in the drone's frame. That
+#: day's failed run read "disagree by 100 cm … 2.45 m away from both", which is
+#: what an unmoved drone produces — and it was reported as a disagreement.
+NOT_MOVED_M = 0.10
+
 
 @dataclass
 class GeometryStep:
@@ -349,6 +357,17 @@ def estimate_single(
         )
     station = sorted(seen)[0]
 
+    if _not_moved(origin.ippe_solutions[station], forward.ippe_solutions[station]):
+        return GeometryResult(
+            converged=False,
+            message=(
+                f"The drone did not move between the two records: both saw base "
+                f"station {station} from exactly the same place. Record the first "
+                f"with the drone at the start, then move it {reference_distance_m:.2f} m "
+                f"straight forward, facing the same way, and record the second."
+            ),
+        )
+
     # The drone faced the same way for both samples, so the second one sits at
     # (distance, 0, 0) in the frame being defined. Whichever pairing of the two
     # candidates agrees about where the station is, is the true one.
@@ -387,6 +406,54 @@ def estimate_single(
     if write:
         result.written = _write(cf, {station: best_pose})
     return result
+
+
+def _not_moved(at_origin: Any, at_forward: Any) -> bool:
+    """Both IPPE answers put the station in the same place from both samples."""
+    import numpy as np
+
+    return all(
+        float(np.linalg.norm(a.translation - b.translation)) < NOT_MOVED_M
+        for a, b in zip(at_origin, at_forward, strict=False)
+    )
+
+
+class StationMeasurement:
+    """The one-station measurement taken one record at a time — the desktop's
+    Set up page, where each record is a button press rather than an Enter key.
+
+    It is estimate_single() unchanged: the two records are handed to it as the
+    samples it would have collected, with the heading read at each, so the app
+    and `cropwatcher geometry` solve, refuse and explain identically.
+    """
+
+    def __init__(self, reference_distance_m: float = 1.0) -> None:
+        self.reference_distance_m = reference_distance_m
+        self._origin: Any = None
+        self._origin_yaw: float | None = None
+
+    @property
+    def step(self) -> str:
+        """"origin" until the first record is taken, then "forward"."""
+        return "origin" if self._origin is None else "forward"
+
+    def record_origin(self, sample: Any, yaw: float | None) -> None:
+        self._origin, self._origin_yaw = sample, yaw
+
+    def finish(self, cf: Any, forward: Any, yaw: float | None, *,
+               write: bool = True) -> GeometryResult:
+        """Solve from the origin record and this one. A refusal keeps nothing:
+        the operator starts again from the start mark, which is the one place
+        they can be sure the drone still is."""
+        if self._origin is None:
+            raise RuntimeError("record the start first")
+        samples = iter([self._origin, forward])
+        yaws = iter([self._origin_yaw, yaw])
+        self._origin, self._origin_yaw = None, None
+        return estimate_single(
+            cf, lambda _step, _i: next(samples),
+            reference_distance_m=self.reference_distance_m,
+            write=write, heading=lambda: next(yaws))
 
 
 def _turned_by(before: float | None, after: float | None) -> float | None:

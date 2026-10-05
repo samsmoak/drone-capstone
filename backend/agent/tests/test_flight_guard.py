@@ -81,7 +81,8 @@ class TestPositioningReadiness:
         }))
         assert not status.ready
         assert status.received_without_geometry == (2,)
-        assert "geometry" in " ".join(status.problems())
+        # Names the app step that fixes it, not a terminal command.
+        assert "Set up › Measure the base station" in " ".join(status.problems())
 
     def test_one_station_is_enough_to_fly(self):
         """Lighthouse V2 resolves a pose from a single unit's two sweeps.

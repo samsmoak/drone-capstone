@@ -212,7 +212,8 @@ desktop/src/lib/agent.ts                           the calls and types
 4. INVARIANTS
 --------------------------------------------------------------------------------
 • Every async surface has its four states: the mission list; the room on Fly;
-  the from-the-drone check (checking, no position yet, error with Try again,
+  the from-the-drone check (checking, no position yet — which now says to
+  measure the base station in Set up step 3 — error with Try again,
   the answer); the results (processing, failed with the reason, not processed
   with Process this flight, the verdicts).
 • Plan handles are real controls: focusable, named with where they are, moved
@@ -261,5 +262,9 @@ depends-on        ../pipeline/data-pipeline.txt
                   GET /flights/{id}/result
 depends-on        desktop-app.txt
                   the bundle measurement the three.js decision is argued from
+depends-on        ../backend/flight-safety.txt
+                  the drone (D), "Put the start where the drone is" and the
+                  from-the-drone check use a position only when telemetry's
+                  `positioned` / position_trusted says it is one
 depends-on        ../../design/layout.txt
                   the standing rule every change here is measured against

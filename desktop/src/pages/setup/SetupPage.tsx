@@ -1,5 +1,5 @@
 /**
- * Set up — from a drone out of the box to a session, in four steps.
+ * Set up — from a drone out of the box to a session, in five steps.
  *
  * ONE LIST, ONE STEP OPEN. The step in front of the operator is open; finished
  * steps shrink to a line with a check; later steps are titles only. Words are
@@ -11,14 +11,27 @@
  * positioning deck's firmware, camera, camera Wi-Fi, in that order — then asks
  * for the battery unplug the camera needs, and only calls it done once the
  * camera has started and the positioning deck kept its firmware.
+ *
+ * Step 2 holds the list only while it has something to do (see listed below).
+ *
+ * Step 3 measures where the base station stands (agent: Session.record_station,
+ * flight/geometry.py's one-station walk): two records on the floor, motors off.
+ * Without it the drone receives the station but cannot turn it into a
+ * position, and Auto refuses every mission. It comes before the camera's
+ * Wi-Fi because flying needs it and the camera does not.
  */
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { Page, Run } from "@/App";
-import { api, type CameraWifi, type Session, type SetupState } from "@/lib/agent";
+import {
+  AgentError, api, type CameraWifi, type Session, type SetupState, type StationStatus,
+} from "@/lib/agent";
 import { Button, Message, PageHeader, Spinner, StatusDot, type Tone } from "@/components/ui";
 
-type Step = "connect" | "install" | "wifi" | "session";
+type Step = "connect" | "install" | "measure" | "wifi" | "session";
+
+/** How often the base station's status is re-read while Set up is open. */
+const STATION_EVERY_MS = 1000;
 
 export function SetupPage({ session, setup, wifi, run, onGo }: {
   session: Session | null;
@@ -33,11 +46,27 @@ export function SetupPage({ session, setup, wifi, run, onGo }: {
     && setup.phase !== "failed" && setup.facts !== null);
   const wifiDone = wifi?.phase === "joined";
   const inSession = session?.session_id != null;
+  const station = useStation(radio === "connected");
+  // A step the operator opened by its button, over the one the list chose.
+  const [opened, setOpened] = useState<Step | null>(null);
+  const measured = station?.connected === true && station.ready && opened !== "measure";
+  // Step 2 holds the list only while it has something to do. Its state is the
+  // agent's and starts "idle" every launch — never checked this run is not the
+  // same as missing, and it once hid step 3 from an operator whose drone was
+  // fully installed (2026-10-05). "Check" opens it whenever it is wanted.
+  const phase = setup?.phase ?? "idle";
+  const installPending = ["checking", "installing", "verifying", "unplug", "failed"].includes(phase)
+    || (phase === "ready" && setup !== null && Object.values(setup.parts).some((p) => p === "needed"));
 
-  const current: Step = !connected ? "connect" : !installed ? "install"
-    : !wifiDone ? "wifi" : "session";
+  useEffect(() => {
+    if (opened === "install" && installed) setOpened(null);
+  }, [opened, installed]);
+
+  const listed: Step = !connected ? "connect" : installPending ? "install"
+    : !measured ? "measure" : !wifiDone ? "wifi" : "session";
+  const current: Step = connected && opened !== null ? opened : listed;
   const done = (s: Step) => ({
-    connect: connected, install: installed, wifi: wifiDone, session: inSession,
+    connect: connected, install: installed, measure: measured, wifi: wifiDone, session: inSession,
   })[s];
 
   return (
@@ -55,17 +84,25 @@ export function SetupPage({ session, setup, wifi, run, onGo }: {
         </Item>
 
         <Item n={2} title="Install drone software" done={done("install")} open={current === "install"}
-              summary="Drone firmware, positioning deck, camera and camera Wi-Fi installed">
+              summary="Drone firmware, positioning deck, camera and camera Wi-Fi installed"
+              onReopen={() => setOpened("install")} reopenLabel="Check">
           <Install setup={setup} run={run} busy={inSession} />
         </Item>
 
-        <Item n={3} title="Connect the camera to Wi-Fi" done={done("wifi")} open={current === "wifi"}
+        <Item n={3} title="Measure the base station" done={done("measure")} open={current === "measure"}
+              summary="The drone knows where it is"
+              onReopen={() => setOpened("measure")}
+              reopenLabel={done("measure") ? "Measure again" : "Measure"}>
+          <Measure station={station} run={run} onMeasured={() => setOpened(null)} />
+        </Item>
+
+        <Item n={4} title="Connect the camera to Wi-Fi" done={done("wifi")} open={current === "wifi"}
               summary={wifi?.ssid ? `On ${wifi.ssid}` : "Connected"}>
           <p className="text-sm">Choose the Wi-Fi network this laptop is on. The drone joins it and the camera streams over it.</p>
           <div><Button variant="primary" onClick={() => onGo("wifi")}>Open Drone Wi-Fi</Button></div>
         </Item>
 
-        <Item n={4} title="Start a session" done={done("session")} open={current === "session"}
+        <Item n={5} title="Start a session" done={done("session")} open={current === "session"}
               summary="Session running">
           <p className="text-sm">Everything is ready. Start a session to fly and record.</p>
           <div><Button variant="primary" onClick={() => onGo("home")}>Go to Home</Button></div>
@@ -153,6 +190,86 @@ function Install({ setup, run, busy }: { setup: SetupState | null; run: Run; bus
   );
 }
 
+/** The base station's status, re-read every second while the drone is connected. */
+function useStation(connected: boolean): StationStatus | null {
+  const [status, setStatus] = useState<StationStatus | null>(null);
+  useEffect(() => {
+    if (!connected) { setStatus(null); return; }
+    let live = true;
+    const ask = () => {
+      api.stationStatus().then((s) => { if (live) setStatus(s); }).catch(() => {});
+    };
+    ask();
+    const timer = window.setInterval(ask, STATION_EVERY_MS);
+    return () => { live = false; window.clearInterval(timer); };
+  }, [connected]);
+  return status;
+}
+
+function Measure({ station, run, onMeasured }: {
+  station: StationStatus | null; run: Run; onMeasured: () => void;
+}) {
+  const [working, setWorking] = useState(false);
+  const [outcome, setOutcome] = useState<{ tone: Tone; text: string } | null>(null);
+
+  if (station === null || !station.connected) {
+    return <Spinner label="Waiting for the drone…" />;
+  }
+  const received = station.received.length > 0;
+  const step = station.step;
+  const metres = station.distance_m.toFixed(2);
+
+  const record = () => {
+    setWorking(true);
+    void run(async () => {
+      try {
+        const r = await api.recordStation();
+        setOutcome({ tone: "good", text: r.message });
+        if (r.done) onMeasured();
+      } catch (e) {
+        setOutcome({ tone: "critical", text: e instanceof AgentError ? e.message : "That did not work." });
+        throw e;
+      }
+    }, step === "origin" ? "Record the start" : `Record ${metres} m forward`)
+      .finally(() => setWorking(false));
+  };
+  const startOver = () => {
+    setOutcome(null);
+    void run(api.resetStation, "Start the measurement over");
+  };
+
+  const [tone, live]: [Tone, string] = !received
+    ? ["warning", "No base station received. Check its front light is solid green and nothing blocks the top of the drone."]
+    : station.ready
+      ? ["good", `Base station ${station.usable.join(", ")} received and measured · position within ${station.uncertainty_cm ?? "?"} cm`]
+      : station.usable.length > 0
+        ? ["warning", `Base station ${station.usable.join(", ")} measured · position settling (${station.uncertainty_cm ?? "?"} cm, under 5 cm needed). Keep the drone still.`]
+        : ["warning", `Base station ${station.received.join(", ")} received, not measured yet.`];
+
+  return (
+    <div className="grid gap-3">
+      <p className="text-sm"><StatusDot tone={tone}>{live}</StatusDot></p>
+      <ol className="grid gap-1 text-sm">
+        <li className={step === "origin" ? "font-semibold" : "text-[var(--muted)]"}>
+          1. Put the drone flat on the floor where missions will start, facing the way you want to call forward. Press Record.
+        </li>
+        <li className={step === "forward" ? "font-semibold" : "text-[var(--muted)]"}>
+          2. Move it exactly {metres} m straight forward (measure it), facing the same way. Press Record again.
+        </li>
+      </ol>
+      <p className="text-xs text-[var(--muted)]">Motors stay off. Keep yourself out of the line between the base station and the drone.</p>
+      {working && <Spinner label="Recording — hold the drone still…" />}
+      {outcome && !working && <Message tone={outcome.tone} text={outcome.text} />}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="primary" disabled={working || !received} onClick={record}>
+          {step === "origin" ? "Record the start" : `Record ${metres} m forward`}
+        </Button>
+        {step === "forward" && <Button disabled={working} onClick={startOver}>Start over</Button>}
+      </div>
+    </div>
+  );
+}
+
 function PartStatus({ status, active, progress }: {
   status: string | undefined; active: boolean; progress: number;
 }) {
@@ -163,8 +280,9 @@ function PartStatus({ status, active, progress }: {
   return <span className="text-xs"><StatusDot tone={tone}>{label}</StatusDot></span>;
 }
 
-function Item({ n, title, done, open, summary, children }: {
+function Item({ n, title, done, open, summary, children, onReopen, reopenLabel }: {
   n: number; title: string; done: boolean; open: boolean; summary: string; children: ReactNode;
+  onReopen?: () => void; reopenLabel?: string;
 }) {
   return (
     <li
@@ -187,6 +305,7 @@ function Item({ n, title, done, open, summary, children }: {
           {done && !open && <span className="block text-xs text-[var(--muted)]">{summary}</span>}
         </span>
         {done && <span className="sr-only">done</span>}
+        {!open && onReopen && <Button onClick={onReopen}>{reopenLabel ?? "Open"}</Button>}
       </div>
       {open && <div className="grid gap-3 border-t border-[var(--border)] px-4 py-3">{children}</div>}
     </li>

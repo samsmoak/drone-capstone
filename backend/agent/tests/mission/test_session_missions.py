@@ -60,6 +60,15 @@ class NotBuilt(StandInController):
 STARTED: list[StandInController] = []
 
 
+#: What a positioned drone reports beside x and y: a station it can use, and
+#: a Kalman spread of 1 cm. Without these a position is not one
+#: (flight_guard.position_trusted).
+POSITIONED = {
+    "lighthouse.bsReceive": 0b1, "lighthouse.bsCalVal": 0b1, "lighthouse.bsGeoVal": 0b1,
+    "kalman.varPX": 0.0001, "kalman.varPY": 0.0001, "kalman.varPZ": 0.0001,
+}
+
+
 class PositionedLink(FakeLink):
     """The fake link, with the drone sitting at `at` — on the mission's home."""
 
@@ -70,7 +79,7 @@ class PositionedLink(FakeLink):
 
     def snapshot(self) -> Snapshot:
         return Snapshot(MappingProxyType({
-            "baro.temp": 30.0, "baro.pressure": 1013.0,
+            **POSITIONED, "baro.temp": 30.0, "baro.pressure": 1013.0,
             "stateEstimate.x": self.at[0], "stateEstimate.y": self.at[1],
             "stateEstimate.z": 0.012}), 1.0)
 

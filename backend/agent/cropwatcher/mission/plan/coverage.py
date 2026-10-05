@@ -209,23 +209,38 @@ def _band(lo: float, hi: float, step: float) -> list[float]:
 
 
 class Survey:
-    """Positions where enough stations were received, while the drone is
-    carried round the room. Plain data in, an outline out — no radio here."""
+    """Positions the drone stood behind, while it is carried round the room.
+    Plain data in, an outline out — no radio here.
+
+    A reading counts only when enough stations were received AND the drone
+    trusted its position (flight_guard.position_trusted, passed in as
+    `trusted`). Received alone is not enough: on 2026-10-05 a survey taken
+    before the station was measured counted every reading — the station's
+    light was arriving — and saved the drifting estimate as the flyable
+    space, an outline from -100 m to +100 m that moved every point."""
 
     def __init__(self, *, min_stations: int | None = None) -> None:
         self._min = stations_needed(min_stations)
         self.kept: list[tuple[float, float, float]] = []
         self.seen = 0
 
-    def add(self, x: float, y: float, z: float, received_mask: int) -> bool:
-        """One telemetry sample. True when it counts (enough stations)."""
+    def add(self, x: float, y: float, z: float, received_mask: int, *,
+            trusted: bool = True) -> bool:
+        """One telemetry sample. True when it counts (enough stations, and a
+        position the drone stands behind)."""
         self.seen += 1
-        if not all(math.isfinite(v) for v in (x, y, z)):
+        if not trusted or not all(math.isfinite(v) for v in (x, y, z)):
             return False
         if bin(int(received_mask) & 0xFFFF).count("1") < self._min:
             return False
         self.kept.append((x, y, z))
         return True
+
+    @property
+    def spots(self) -> int:
+        """Distinct places counted, GRID_M apart. Telemetry arrives at 10 Hz,
+        so "171 positions" was 17 s of readings, not 171 places."""
+        return len({(round(x / GRID_M), round(y / GRID_M)) for x, y, _ in self.kept})
 
     def outline(self) -> list[Point]:
         return convex_hull((round(x, 3), round(y, 3)) for x, y, _ in self.kept)

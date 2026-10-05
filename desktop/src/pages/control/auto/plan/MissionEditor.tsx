@@ -732,7 +732,7 @@ function PathForm({ mission, setMission, setPoint, removePoint, box, band, limit
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <SmallButton disabled={!drone} onClick={() => drone && setHome(drone)}
-                       title={drone ? undefined : "No drone is reporting a position."}>
+                       title={drone ? undefined : "The drone does not know where it is yet. Measure the base station in Set up (step 3)."}>
             Put the start where the drone is
           </SmallButton>
           {off !== null && off > 0.3 && (

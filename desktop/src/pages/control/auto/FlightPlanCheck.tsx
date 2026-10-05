@@ -148,10 +148,13 @@ export function FlightPlanCheck({ mission, run }: { mission: MissionView; run: R
             <div><Button onClick={() => setAttempt((n) => n + 1)}>Try again</Button></div>
           </div>
         )}
+        {plan && !plan.position && (
+          <Message tone="warning" text="The drone does not know where it is yet, so the flight cannot be checked from it. Measure the base station in Set up (step 3) with the drone on the floor, then come back." />
+        )}
         {!coverage?.measured && (
           <Message tone="warning" text={coverage?.predicted?.everywhere
-            ? "The flyable space shown is PREDICTED from the base stations. Measure it with the survey below before trusting its edges — until then the agent's default area is what flies."
-            : "This room's flyable space has not been measured. Until it is, the agent's default area stands in. Measure it with the survey below."} />
+            ? "The flyable space shown is PREDICTED from the base stations. Measure it with the survey before trusting its edges — until then the agent's default area is what flies."
+            : "This room's flyable space has not been measured. Until it is, the agent's default area stands in. You can fly without it."} />
         )}
 
         <section className="grid gap-2" aria-labelledby="drawn-heading">
@@ -172,6 +175,11 @@ export function FlightPlanCheck({ mission, run }: { mission: MissionView; run: R
             />
           ) : room ? drawnMap("h-72") : <Spinner label="Loading the room…" />}
         </section>
+
+        <SurveyPanel room={room} survey={survey} run={run} positioned={!!plan?.position}
+                     measured={!!coverage?.measured}
+                     onStarted={setSurvey}
+                     onStopped={() => { setSurvey({ active: false }); setAttempt((n) => n + 1); }} />
 
         <section className="grid gap-2" aria-labelledby="flying-heading">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -210,10 +218,6 @@ export function FlightPlanCheck({ mission, run }: { mission: MissionView; run: R
         </section>
       </Panel>
 
-      <SurveyPanel room={room} survey={survey} run={run}
-                   onStarted={setSurvey}
-                   onStopped={() => { setSurvey({ active: false }); setAttempt((n) => n + 1); }} />
-
       {full && (
         <FullScreenOverlay label={full === "drawn" ? `${drawn.name} — your plan` : `${drawn.name} — the plan that will fly`}
                            onClose={() => setFull(null)}>
@@ -224,11 +228,16 @@ export function FlightPlanCheck({ mission, run }: { mission: MissionView; run: R
   );
 }
 
-/** Measure the flyable space: carry the drone round the room's edge. */
-function SurveyPanel({ room, survey, run, onStarted, onStopped }: {
+/** Measure the flyable space: carry the drone round the room's edge. Sits
+ *  between the two maps, so the outline can be watched growing on both. */
+function SurveyPanel({ room, survey, run, positioned, measured, onStarted, onStopped }: {
   room: RoomView | null;
   survey: SurveyStatus;
   run: Run;
+  /** The drone trusts its position now: a survey can record something true. */
+  positioned: boolean;
+  /** The room already has a measured flyable space. */
+  measured: boolean;
   onStarted: (s: SurveyStatus) => void;
   onStopped: () => void;
 }) {
@@ -239,23 +248,36 @@ function SurveyPanel({ room, survey, run, onStarted, onStopped }: {
     void run(action, label).finally(() => { busy.current = false; after(); });
   };
   return (
-    <Panel title="Measure the flyable space"
-           action={survey.active ? <StatusDot tone="warning">{`Surveying · ${survey.kept} positions`}</StatusDot> : undefined}
-           bodyClassName="grid gap-3 px-4 py-3">
+    <section className="grid gap-2 border border-[var(--border)] p-3" aria-labelledby="survey-heading">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 id="survey-heading" className="eyebrow">Measure the flyable space (optional)</h3>
+        {survey.active && <StatusDot tone="warning">{`Surveying · ${survey.spots} spots`}</StatusDot>}
+      </div>
       <p className="text-xs leading-relaxed">
-        Motors off, drone in your hands: press Start, then walk it slowly round the edge of the space you want to fly
-        in, at about the heights it will fly, with the base stations in view. Only positions where the drone receives
-        enough stations count (one by default; two where the room insists). Save when the outline covers the room.
+        Where in this room the drone can trust its position. Motors off, drone in your hands: press Start, then walk it
+        slowly round the edge of the space you want to fly in, at about the heights it will fly. Only spots where the
+        drone knows where it is count. Not needed for a small flight — without it the agent&apos;s default area stands in.
       </p>
+      {!positioned && !survey.active && (
+        <p className="text-xs"><StatusDot tone="warning">Measure the base station first (Set up, step 3) — until the drone knows where it is, a survey records nothing true.</StatusDot></p>
+      )}
       {survey.active && (
-        <p className="mono text-xs">{survey.kept} of {survey.seen} positions counted · the outline is drawn on the maps above</p>
+        <p className="mono text-xs">{survey.spots} spots counted · {survey.seen - survey.kept} readings left out (no trusted position) · the outline is drawn on both maps</p>
       )}
       <div className="flex flex-wrap gap-2">
         {!survey.active ? (
-          <Button variant="primary" disabled={!room}
-                  onClick={() => room && act(() => api.startSurvey(room.id).then(onStarted), "Start the survey", () => {})}>
-            Start the survey
-          </Button>
+          <>
+            <Button variant="primary" disabled={!room || !positioned}
+                    onClick={() => room && act(() => api.startSurvey(room.id).then(onStarted), "Start the survey", () => {})}>
+              Start the survey
+            </Button>
+            {measured && (
+              <Button disabled={!room}
+                      onClick={() => room && act(() => api.forgetCoverage(room.id), "Forget the measured space", onStopped)}>
+                Forget the measured space
+              </Button>
+            )}
+          </>
         ) : (
           <>
             <Button variant="primary" onClick={() => act(() => api.stopSurvey(true), "Save the flyable space", onStopped)}>
@@ -265,6 +287,6 @@ function SurveyPanel({ room, survey, run, onStarted, onStopped }: {
           </>
         )}
       </div>
-    </Panel>
+    </section>
   );
 }

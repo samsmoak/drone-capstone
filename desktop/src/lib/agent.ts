@@ -206,7 +206,29 @@ export type CoverageSlice = { z_m: number; outline: XY[] };
 
 export type SurveyStatus =
   | { active: false }
-  | { active: true; room_id: string; seen: number; kept: number; outline: XY[] };
+  | { active: true; room_id: string; seen: number; kept: number; spots: number; outline: XY[] };
+
+/** The base station as the drone sees it (Set up › Measure the base station). */
+export type StationStatus =
+  | { connected: false; step: "origin" | "forward" }
+  | {
+      connected: true;
+      received: number[];
+      measured: number[];
+      usable: number[];
+      uncertainty_cm: number | null;
+      ready: boolean;
+      step: "origin" | "forward";
+      distance_m: number;
+    };
+
+/** One record of the two-record measurement. `sensors`: per station, how many of the deck's four saw it. */
+export type StationRecord = {
+  step: "origin" | "forward";
+  done: boolean;
+  sensors: Record<string, number>;
+  message: string;
+};
 
 /** Where the drone's position can be trusted: measured (flies) and predicted (a guide). */
 export type RoomCoverage = {
@@ -309,6 +331,9 @@ export type SyncStatus = {
 export type Telemetry = {
   values: Record<string, number>;
   height_m: number | null;
+  /** x and y are a place: a station the drone can use and a tight Kalman
+   *  spread (agent flight_guard.position_trusted). False = a number only. */
+  positioned?: boolean;
   at: number;
 };
 
@@ -519,7 +544,12 @@ export const api = {
   startSurvey: (roomId: string) =>
     command<SurveyStatus>(`/rooms/${encodeURIComponent(roomId)}/survey/start`),
   surveyStatus: () => command<SurveyStatus>("/survey", undefined, "GET"),
+  forgetCoverage: (roomId: string) =>
+    command<RoomView>(`/rooms/${encodeURIComponent(roomId)}/coverage/forget`),
   stopSurvey: (save: boolean) => command<{ room: RoomView | null }>("/survey/stop", { save }),
+  stationStatus: () => command<StationStatus>("/station", undefined, "GET"),
+  recordStation: () => command<StationRecord>("/station/record"),
+  resetStation: () => command<StationStatus>("/station/reset"),
   /** The DPP switch for this session. */
   setProcessing: (on: boolean) => command<Session>("/session/processing", { on }),
   /** Which way the arrow keys move the drone. Works in the air. */

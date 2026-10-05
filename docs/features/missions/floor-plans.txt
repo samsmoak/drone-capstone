@@ -70,6 +70,16 @@ desktop/src/pages/control/auto/FlightPlanCheck.tsx    ② the two plans, the sur
   flown on. One station's view is a pyramid; two overlap convexly within a
   height band, so a hull is the right shape (what it cannot show — a cabinet
   shading part of the room — the walked edge does).
+• A SURVEY COUNTS ONLY POSITIONS THE DRONE STANDS BEHIND (2026-10-05):
+  enough stations received AND flight_guard.position_trusted. Received alone
+  was the rule until then, and a survey walked before the station was
+  measured counted every drifting reading and saved an outline from -100 m
+  to +100 m as the lab room's coverage — every point "moved" 1.5 m. So:
+  start_survey refuses until the drone has a trusted position; the count is
+  SPOTS (distinct GRID_M cells), not 10 Hz readings ("171 positions" was
+  17 s); and a wrong space is dropped with Forget the measured space (POST
+  /rooms/{id}/coverage/forget — the default area stands in again). The
+  panel sits between the two maps on ② Check, marked optional.
 • THE PLAN THAT WILL FLY is ONE function (fit.py plan_to_fly) used by BOTH the
   Check step's preview (GET …/from-drone, POST /missions/fit for an unsaved
   edit) and Session.run_mission, so what is shown is what flies. The fence is

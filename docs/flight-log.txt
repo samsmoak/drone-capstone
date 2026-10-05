@@ -77,6 +77,86 @@ Rungs 7-10 are what PR #26 changed. They are the test of it.
 
 
 =========================================================================
+2026-10-05 — THE DECK BELONGS ON TOP; THE STATION IS MEASURED IN THE APP
+=========================================================================
+
+CONDITIONS
+  drone        cf-002d00263234511236373639
+  stations     one in use (station 0); DroneDeck closed for the reads below
+  code         experiment/samuel (mission controller BUILT)
+
+LIGHTHOUSE DECK UNDER THE DRONE
+  DID          ./cropwatcher stations --seconds 12 ; ./cropwatcher check
+  MEASURED     deck detected, deck image loaded (lighthouse_needs_fw False),
+               received none, geometry none. Sitting still on the bench the
+               estimate ran +2.51 → +14.86 m in 12 s. check: "uncertain by
+               about 694 cm".
+  MEANT        under the drone the deck's sensors face the floor and the
+               stations shine down: no light. Nothing in software could fly a
+               mission on this — "skip the base station check" would have been
+               the 2026-09-16 crash again.
+
+DECK MOVED ON TOP OF THE AI DECK (Samuel). Its LED lit; the drone did not
+detect it until a power cycle (decks are only detected at power-on).
+  MEASURED     after the power cycle: Lighthouse deck fitted, image loaded,
+               battery 4.16 V. stations: received 0 from the third second on.
+               All FOUR sensors see station 0; 50-sweep averages of a still
+               drone agree to 1e-5 rad across three reads (sensor 0
+               x +0.30340 y +0.07732).
+  MEANT        THE DECK GOES ON TOP. The 10-01 reading (sensors 2 and 3
+               dark) was the deck underneath.
+
+GEOMETRY, FIRST TRY (terminal)
+  DID          ./cropwatcher geometry --distance 1.0
+  MEASURED     "disagree by 100 cm … 2.45 m away from the first, 2.45 m from
+               the second", heading held to 0 degrees.
+  MEANT        two records of the same place: the drone was not moved
+               between them (a 1 m step moves the station 1 m in the drone's
+               frame). The tool called it a disagreement.
+  CHANGED      Set up › Measure the base station (desktop/setup.txt step 3):
+               the walk in the app, and an unmoved drone named as such
+               (geometry.py NOT_MOVED_M).
+
+  A 1 m SQUARE IN SIMULATION (the real controller, tests/sim_drone.py): home
+  (0,0), P1 (0,0) P2 (1,0) P3 (1,1) P4 (0,1) at 0.40 m, Steady 0.10 m/s, 5 s
+  holds, return: every event in order, arrivals within 6 cm, 72.6 s against a
+  71.3 s estimate.
+
+  IN THE APP (first build of step 3)
+  MEASURED     ② Check: "The drone is 0.92 m from the planned start", then
+               climbing to 91.97 m — the drone still. Agent log: no geometry
+               ever stored; the drone restarted once by the camera watchdog
+               (no frames 17 s).
+  MEANT        two faults. Step 3 never opened: it waited for step 2's "done",
+               which resets every launch. And every planning screen showed the
+               raw estimate as the drone's place, trusted or not.
+  CHANGED      step 2 leads only while it has work; flight_guard.position_
+               trusted gates Session.position() and telemetry `positioned`;
+               the estimator is reset after the store; no watchdog restart
+               mid-measurement.
+
+  SURVEY AND RECEPTION, LATER THE SAME NIGHT
+  MEASURED     a survey walked by hand counted "171 of 171" and was saved:
+               the room's coverage ran -100 m to +100 m (the drifting track).
+               The checks, drone on the floor, then said no signal. Through
+               the app (GET /station): received none. App closed, drone NOT
+               moved, terminal: received in 1 of 10 s; per-sensor read: zero
+               sweeps in 24 s (01:51, earlier spot: 50 sweeps in < 1 s, all
+               four sensors).
+  MEANT        not the app and not the software: where the drone sat, almost
+               no station light reached the deck. The survey "worked" because
+               it counted reception, held up in the hand, not position.
+  CHANGED      the survey counts trusted positions only, refuses before the
+               station is measured, counts spots, and a wrong space can be
+               forgotten; the no-signal message says a station can reach a
+               drone held up and miss it on the floor.
+
+  NEXT         station on and aimed down at the start spot → Set up step 3
+               reads "received" with the drone ON THE FLOOR → two records →
+               check settles < 2 cm → 20 cm hover → the 1 m square.
+
+
+=========================================================================
 2026-10-01 — A SECOND DRONE, AND WHY THE FIRST ONE COULD NEVER SEE A STATION
 =========================================================================
 
