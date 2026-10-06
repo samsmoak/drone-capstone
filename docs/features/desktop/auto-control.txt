@@ -175,6 +175,8 @@ desktop/src/lib/agent.ts                           the calls and types
   here" in its row, or the Ends-at list) and the flight lands there; later
   points stay in the plan, faded, "not flown". Making the LAST point the end is
   simply "not returning", so a point added later is still flown.
+• SPEED BETWEEN POINTS: Steady / Normal / Brisk (10 / 15 / 20 cm/s), one per
+  mission, under the start card (floor-plans.txt, ONE SPEED PER MISSION).
 • DIRECTION IS THE ORDER. Every leg carries an arrow; "Reverse direction"
   reverses the order — with an end point set, the drone approaches it from the
   other side. No stored direction field.

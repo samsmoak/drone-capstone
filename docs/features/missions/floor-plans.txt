@@ -106,6 +106,15 @@ desktop/src/pages/control/auto/FlightPlanCheck.tsx    ② the two plans, the sur
   NOT held to the flying rules (validate checks flown_points only). It must
   name one of the mission's points ("end_point" error otherwise), and it wins
   over return_to_start (Mission.returns_home). Older missions read as None.
+• ONE SPEED PER MISSION (speed_m_s, 2026-10-01, Samuel: "an autonomous
+  flight must be extra steady"): Steady 0.10, Normal 0.15 or Brisk 0.20 m/s
+  (SPEED_PRESETS_M_S); anything else is refused. Never a range: every change
+  of speed is a lean, and leaning is what makes a hold unsteady. Brisk is
+  manual.py MOVE_SPEED_M_S and the default, so every mission saved before
+  flies as it did. estimated_duration_s travels at it (never faster than the
+  flight system), so the battery refusal counts a slower mission's time; the
+  controller hands it to fly_to(…, speed_m_s). The editor: "Speed between
+  points".
 • A POINT OR LEG MAY PASS OVER AN OBSTACLE WITH A HEIGHT (2026-10-01,
   Samuel: "above the airspace of an object if it is not too close"). Until
   then every obstacle was floor to ceiling. Now (obstacles.py clears,

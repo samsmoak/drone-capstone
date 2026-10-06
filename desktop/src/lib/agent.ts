@@ -250,6 +250,8 @@ export type Mission = {
   points: InspectionPoint[];
   cruise_height_m: number;
   return_to_start: boolean;
+  /** Travel speed between points, m/s: 0.10, 0.15 or 0.20 (the default). */
+  speed_m_s?: number;
   /** The point the flight ends and lands at; later points are not flown. */
   end_point_id?: string | null;
   revision: number;
