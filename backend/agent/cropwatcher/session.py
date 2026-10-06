@@ -681,6 +681,12 @@ class Session:
                 ),
                 height_reference=lambda: self._height_reference,
             )
+            # Its 1 Hz vitals go up too (sync/samples.py → session_samples):
+            # a session with no flight is still a record on the web.
+            self._outbox.put(Kind.SAMPLES, session_id, {
+                "session_id": session_id, "folder": str(self.history.folder),
+                "uploaded_through": 0, "ended": False,
+            })
         except OSError:
             log.exception("could not open the session history; flying without it")
             self.history = None
@@ -1904,6 +1910,8 @@ class Session:
                 self.history.close(reason)
             except OSError:
                 log.warning("could not close the session history")
+            ended_id = self.history.meta.id
+            self._outbox.update(Kind.SAMPLES, ended_id, lambda p: p.__setitem__("ended", True))
             self.history = None
         if self._on_session_close is not None:
             try:
