@@ -31,12 +31,17 @@ import { mapBox, placeOf } from "./geometry";
 import { blankMission, blankRoom, MissionEditor, outerOf, ProblemList, type Draft } from "./MissionEditor";
 import { landsAt, returnsHome, unflownIds } from "./path";
 import { RoomMap } from "./RoomMap";
+import { spaceOf, type SpaceLayer } from "./space";
 
 type View = { kind: "list" } | { kind: "view"; id: string } | { kind: "edit"; draft: Draft };
 
 type Loaded = { missions: MissionView[]; rooms: RoomView[]; limits: PlanLimits };
 
+/** Where the drone is — only when the agent says x and y are a place. A still
+ *  drone with no base station measured once read 92 m from the start, and
+ *  climbing: the estimate drifting, which is a number, not a position. */
 export function dronePosition(telemetry: Telemetry | null): XY | null {
+  if (telemetry?.positioned !== true) return null;
   const x = telemetry?.values["stateEstimate.x"];
   const y = telemetry?.values["stateEstimate.y"];
   return x === undefined || y === undefined ? null : [x, y];
@@ -68,6 +73,17 @@ export function MissionStep({ run, telemetry, selectedId, onUse, openEditor, hei
     }
   }, []);
   useEffect(() => { void load(); }, [load]);
+  // The green (where the base station reaches) on the editor's map, so a
+  // point drawn outside it is ringed red while it is drawn (2026-10-05).
+  const [space, setSpace] = useState<SpaceLayer | null>(null);
+  const editingRoom = view.kind === "edit" && !view.draft.roomIsNew ? view.draft.room.id : null;
+  useEffect(() => {
+    if (!editingRoom) { setSpace(null); return; }
+    let live = true;
+    api.roomCoverage(editingRoom).then((c) => { if (live) setSpace(spaceOf(c)); })
+      .catch(() => { if (live) setSpace(null); });
+    return () => { live = false; };
+  }, [editingRoom]);
   const [opened, setOpened] = useState(false);
   useEffect(() => {
     if (!openEditor || opened || !loaded) return;
@@ -101,6 +117,7 @@ export function MissionStep({ run, telemetry, selectedId, onUse, openEditor, hei
     return (
       <MissionEditor
         draft={view.draft} limits={limits} run={run} drone={drone} missionsInRoom={others} heightClass={heightClass}
+        space={space}
         onCancel={() => { setJustSaved(null); setView({ kind: "list" }); }}
         onSaved={(saved) => {
           void load();
@@ -158,7 +175,7 @@ export function MissionStep({ run, telemetry, selectedId, onUse, openEditor, hei
   );
 }
 
-function MissionList({ missions, rooms, limits, selectedId, justSaved, onView, onEdit, onNew }: {
+function MissionList({ missions, rooms, selectedId, justSaved, onView, onEdit, onNew }: {
   missions: MissionView[];
   rooms: RoomView[];
   limits: PlanLimits;
@@ -194,8 +211,7 @@ function MissionList({ missions, rooms, limits, selectedId, justSaved, onView, o
           New mission
         </Button>
         <p className="w-full text-xs text-[var(--muted)]">
-          {limits.outer.measured ? "Rooms are drawn inside the measured Lighthouse coverage."
-            : "Coverage is not measured yet, so rooms are drawn inside the agent's default area (±2 m)."}
+          Rooms are drawn inside the agent&apos;s flying area (±2 m). The measured flyable space never changes your plan — ② Check shows the plan that will fly inside it.
         </p>
       </div>
 

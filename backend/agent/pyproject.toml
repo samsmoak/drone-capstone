@@ -11,6 +11,9 @@ dependencies = [
     "pydantic>=2.9",
     "supabase>=2.9",
     "python-dotenv>=1.0",
+    # Setting a base station's channel over its micro-USB port (flight/
+    # basestation.py) — what Bitcraze's client does in "Set BS channel".
+    "pyserial>=3.5",
     # Intel Macs only. cryptography 49+ publishes macOS wheels for Apple silicon
     # alone, so on Intel pip COMPILES it, against Homebrew's OpenSSL — and the
     # frozen agent then carries two libssl.3.dylib under one name, keeps
@@ -73,5 +76,5 @@ warn_return_any = true
 warn_unused_ignores = true
 # cflib ships no type stubs.
 [[tool.mypy.overrides]]
-module = ["cflib.*", "supabase.*"]
+module = ["cflib.*", "supabase.*", "serial.*"]
 ignore_missing_imports = true

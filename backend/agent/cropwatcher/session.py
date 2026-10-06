@@ -44,13 +44,16 @@ from pathlib import Path
 from typing import Any
 
 from cropwatcher.audit import Action, AuditLog, Result
+from cropwatcher.flight import supervisor as motor_supervisor
 from cropwatcher.flight.checks import CheckResult, ChecksFailed, ReadyReport, collect
 from cropwatcher.flight.control import GuardedFlight, PhaseEvent
 from cropwatcher.flight.controls_store import ControlsStore, valid_spot
 from cropwatcher.flight.core import DEFAULT_URI
+from cropwatcher.flight.geometry import SweepAngles, estimate_quick
 from cropwatcher.flight.keyframe import FrameStatus, KeyFrame
 from cropwatcher.flight.link import DEFAULT_FENCE_M, DEFAULT_MAX_HEIGHT_M, DroneLink, LinkError
 from cropwatcher.flight.manual import CLIMB_RATE_M_S, MOVE_SPEED_M_S
+from cropwatcher.flight.preflight import reset_estimator
 from cropwatcher.flight.programs import HoverTest, Outcome, run_hover_test
 from cropwatcher.history import SessionLog, SessionMeta, sessions_dir, set_flight_processing
 from cropwatcher.mission.controller import (
@@ -62,13 +65,16 @@ from cropwatcher.mission.controller import (
 from cropwatcher.mission.plan.coverage import Prediction, Survey, predict
 from cropwatcher.mission.plan.fit import FlyingPlan, Move, plan_to_fly
 from cropwatcher.mission.plan.floorplan import PlanError, Room
+from cropwatcher.mission.plan.geofence import Geofence
 from cropwatcher.mission.plan.mission import Mission
 from cropwatcher.mission.plan.store import NotFound, PlanStore
-from cropwatcher.mission.plan.validate import errors, outer_bound
+from cropwatcher.mission.plan.validate import errors, flyable_bound
 from cropwatcher.paths import flights_dir
 from cropwatcher.processing import Job, ProcessingQueue
 from cropwatcher.safety.flight_guard import Action as GuardAction
 from cropwatcher.safety.flight_guard import Reason as GuardReason
+from cropwatcher.safety.flight_guard import Verdict as GuardVerdict
+from cropwatcher.safety.flight_guard import assess_positioning, position_trusted, station_ids
 from cropwatcher.sync import auth_store
 from cropwatcher.sync.cloud import AuthError, Cloud, CloudTimeout, Operator
 from cropwatcher.sync.outbox import Kind, Outbox, new_id
@@ -126,6 +132,41 @@ class State(StrEnum):
     READY = "ready"                             # confirmed; may fly
     BUSY = "busy"                               # prop test, program or manual
     ENDING = "ending"
+
+
+#: How long a flight may be "armed or flying" with the motors at zero before it
+#: is called what it is. Arming ramps the props within ~0.3 s (trace, 2026-10-05).
+MOTORS_START_GRACE_S = 1.5
+
+
+def _motors_not_spinning(snap: Any, armed_for_s: float) -> str | None:
+    """Why a flight that says it is flying is not, or None.
+
+    2026-10-05: three missions ran "armed → flying → landing" in the flight
+    system while the drone's supervisor was LOCKED and thrust stayed 0 — the
+    app said started and landed; the drone never moved. LOCKED is said at
+    once; zero thrust on every motor past MOTORS_START_GRACE_S otherwise."""
+    info = snap.get("supervisor.info")
+    if info is not None and int(info) & motor_supervisor.IS_LOCKED:
+        return ("The motors did not start: the drone's supervisor is LOCKED (it locks "
+                "after some landings). Nothing flew. Press Reset drone, then start again.")
+    motors = [snap.get(f"motor.m{i}") for i in range(1, 5)]
+    if armed_for_s >= MOTORS_START_GRACE_S and all(m is not None and m <= 0 for m in motors):
+        return ("The motors did not start: all four read zero after arming. Nothing flew. "
+                "Press Reset drone, then start again.")
+    return None
+
+
+@dataclass(frozen=True)
+class Blocker:
+    """One reason a mission cannot start now, and what to do about it."""
+
+    code: str
+    message: str
+    fix: str
+
+    def to_dict(self) -> dict[str, str]:
+        return {"code": self.code, "message": self.message, "fix": self.fix}
 
 
 class SessionError(RuntimeError):
@@ -303,6 +344,10 @@ class Session:
         self._mission_plan: Mission | None = None
         #: The coverage survey in progress: (room id, the survey), or None.
         self._survey: tuple[str, Survey] | None = None
+        #: A base station measurement is reading the drone right now.
+        self._measuring = False
+        #: The stations' stored poses for the link that read them (_station_poses).
+        self._poses_cache: tuple[Any, list[Any]] | None = None
         self._manual_guard_stop: threading.Event | None = None
         self._recorder: FlightRecorder | None = None
         self._flight_id: str | None = None
@@ -918,6 +963,9 @@ class Session:
             # No height without a reference: unassisted, before the barometer
             # ground is read, the Kalman z is noise and is not shown as height.
             "height_m": None if z is None or ground is None else round(z - ground, 3),
+            # Whether x and y are a place (flight_guard.position_trusted): the
+            # maps and the editor show the drone only when they are.
+            "positioned": position_trusted(snap),
             "at": time.time(),
         })
         history = self.history
@@ -931,7 +979,8 @@ class Session:
             x, y = snap.get("stateEstimate.x"), snap.get("stateEstimate.y")
             z, mask = snap.get("stateEstimate.z"), snap.get("lighthouse.bsReceive")
             if None not in (x, y, z, mask):
-                surveying[1].add(float(x), float(y), float(z), int(mask))
+                surveying[1].add(float(x), float(y), float(z), int(mask),
+                                 trusted=position_trusted(snap))
 
     # ── confirmation ─────────────────────────────────────────────────────
 
@@ -1071,7 +1120,7 @@ class Session:
     @property
     def fence_half_extent_m(self) -> float:
         """The agent's default flying area — a room's outer bound until its
-        coverage is measured (mission/plan/validate.py outer_bound)."""
+        coverage is measured (mission/plan/validate.py flyable_bound)."""
         return self._fence
 
     def mission_from_drone(self, mission_id: str) -> tuple[Mission, Room,
@@ -1087,18 +1136,48 @@ class Session:
     # ── coverage: predicted and surveyed (mission/plan/coverage.py) ─────
 
     def predicted_coverage(self, room_id: str) -> Prediction | None:
-        """Where the base stations SHOULD reach, from their poses stored on
-        the drone. None with no drone connected or no geometry stored — run
-        `cropwatcher geometry` first. A guide for the survey; never flown on."""
+        """Where the measured base stations reach — over the WHOLE map (the
+        agent's flying area), in the room's height band, so the green is the
+        stations' real reach and not the room's own outline (2026-10-05: it
+        was computed inside the fence and came out as the room's box). None
+        with no drone connected or no station measured (② Position)."""
         try:
             room = self.plans.room(room_id)
         except (NotFound, PlanError) as e:
             raise SessionError(str(e)) from None
-        link = self.link
-        poses = link.station_poses() if link is not None and link.is_open else []
+        return self._prediction(room)
+
+    def _prediction(self, room: Room) -> Prediction | None:
+        poses = self._station_poses()
         if not poses:
             return None
-        return predict(poses, room.geofence)
+        canvas = Geofence.square(self._fence, z_min=room.geofence.z_min,
+                                 z_max=room.geofence.z_max)
+        return predict(poses, canvas)
+
+    def _station_poses(self) -> list[Any]:
+        """The stations' stored poses, read once per link (a radio round trip
+        each time; the plan preview asks every 2 s). Cleared when the station
+        is measured again or the link changes."""
+        link = self.link
+        if link is None or not link.is_open:
+            return []
+        cached = self._poses_cache
+        if cached is not None and cached[0] is link:
+            return cached[1]
+        poses = list(link.station_poses())
+        if poses:
+            self._poses_cache = (link, poses)
+        return poses
+
+    def _flyable(self, room: Room) -> Geofence:
+        """Where the drone may fly: the stations' predicted reach (the green),
+        else a walked survey saved on the room, else the agent's default area.
+        Read only by the plan that will fly — never by the plan as drawn."""
+        prediction = self._prediction(room)
+        if prediction is not None and prediction.everywhere is not None:
+            return prediction.everywhere
+        return flyable_bound(room, default_half_extent_m=self._fence)
 
     def start_survey(self, room_id: str) -> None:
         """Start measuring a room's coverage: carry the drone round its edge."""
@@ -1111,6 +1190,11 @@ class Session:
         if self.snapshot().state is State.BUSY:
             raise SessionError("Land first: the survey is done with the drone in your hands, "
                                "motors off.")
+        if self.position() is None:
+            raise SessionError(
+                "The drone does not know where it is yet, so a survey would record nothing "
+                "true. Measure it first (② Position), with the drone on "
+                "the floor where the station can see it.")
         self._survey = (room_id, Survey())
 
     def survey_status(self) -> dict[str, Any]:
@@ -1119,7 +1203,7 @@ class Session:
             return {"active": False}
         room_id, survey = surveying
         return {"active": True, "room_id": room_id, "seen": survey.seen,
-                "kept": len(survey.kept),
+                "kept": len(survey.kept), "spots": survey.spots,
                 "outline": [[round(x, 3), round(y, 3)] for x, y in survey.outline()]}
 
     def stop_survey(self, save: bool) -> Room | None:
@@ -1138,6 +1222,91 @@ class Session:
                 "in view — not enough to enclose an area. Check the stations are on and seen, "
                 "then survey again.")
         return self.plans.save_room(room.edited(coverage=coverage))
+
+    # ── the base station: where it is, measured from where the drone sits ─
+    #
+    # The drone turns a station's beams into a position only once it knows
+    # where the station stands (its geometry, stored on the drone). ONE record,
+    # the drone wherever it sits in the station's view (2026-10-05, Samuel: no
+    # walking the drone back and forth): flight/geometry.py estimate_quick,
+    # which settles IPPE's mirror by the station standing upright. That spot
+    # becomes (0, 0, 0). Motors off, over whichever link is open.
+
+    def station_status(self) -> dict[str, Any]:
+        """What the drone receives and whether it can turn it into a position."""
+        link = self.link
+        if link is None or not link.is_open:
+            return {"connected": False, "measuring": self._measuring}
+        snap = link.snapshot()
+        status = assess_positioning(snap)
+        variances = [v for v in status.variance_m2 if v is not None]
+        return {
+            "connected": True,
+            "measuring": self._measuring,
+            # The chain from light to position, stage by stage (stream.py):
+            # light on the sensors → the station's data read (calibrated) →
+            # sweeps decoded (received) → its place stored (measured) → in use
+            # by the drone (active) → settled.
+            "light_sensors": sum(1 for i in range(4) if snap.get(f"lighthouse.width{i}")),
+            "calibrated": list(status.calibrated),
+            "active": list(station_ids(snap.get("lighthouse.bsActive"))),
+            "received": list(status.received),
+            "measured": list(status.with_geometry),
+            "usable": list(status.usable),
+            "uncertainty_cm": (round(max(variances) ** 0.5 * 100, 1)
+                               if len(variances) == 3 else None),
+            "ready": status.ready,
+        }
+
+    def measure_station(self) -> dict[str, Any]:
+        """Measure where the base station stands from where the drone sits, and
+        store it on the drone. The drone's spot becomes the room's origin."""
+        if self.snapshot().state is State.BUSY:
+            raise SessionError("Land first: the base station is measured with the drone "
+                               "on the floor, motors off.")
+        link = self._require_link()
+        cf = link.scf.cf
+        reader = SweepAngles(cf, min_stations=1)
+        self._measuring = True
+        try:
+            result = estimate_quick(cf, lambda _step, _i: reader.record())
+        except (TimeoutError, ValueError) as e:
+            raise SessionError(str(e)) from None
+        finally:
+            self._measuring = False
+        if not result.converged:
+            raise SessionError(result.message)
+        if not result.written:
+            raise SessionError("The drone did not confirm it stored the base station's "
+                               "place. Measure again.")
+        log.info("base station geometry stored: %s", result.message)
+        self._poses_cache = None                    # the green follows the new place
+        # The estimate ran on no geometry until now — metres away and
+        # climbing — and a filter that far off can reject the very beams that
+        # would correct it. Start it again from the stored geometry, the drone
+        # still where it was measured (CLAUDE.md invariant 3: the settle is
+        # then read, never slept on — station_status does).
+        reset_estimator(cf)
+        # A session's checks ran before this: they still say "no position"
+        # until they run again (Session.retry).
+        then = (" This session's checks ran before it — check again before flying."
+                if self.snapshot().session_id is not None else "")
+        return {"message": f"{result.message} Stored on the drone; this spot is now "
+                           f"(0, 0, 0).{then}"}
+
+    @property
+    def measuring_station(self) -> bool:
+        """A measurement is reading the drone: nothing may restart it now."""
+        return self._measuring
+
+    def forget_coverage(self, room_id: str) -> Room:
+        """Drop a room's measured flyable space; the agent's default area
+        stands in again. For a survey that recorded the wrong thing."""
+        try:
+            room = self.plans.room(room_id)
+        except (NotFound, PlanError) as e:
+            raise SessionError(str(e)) from None
+        return self.plans.save_room(room.edited(coverage=None))
 
     def flying_plan(self, mission_id: str) -> tuple[FlyingPlan, tuple[float, float] | None]:
         """THE PLAN THAT WILL FLY (mission/plan/fit.py): from the drone, fitted
@@ -1162,8 +1331,7 @@ class Session:
         here = self.position()
         start = (here[0], here[1]) if here is not None else None
         try:
-            plan = plan_to_fly(mission, room, start=start,
-                               outer=outer_bound(room, default_half_extent_m=self._fence))
+            plan = plan_to_fly(mission, room, start=start, outer=self._flyable(room))
         except PlanError as e:
             raise SessionError(str(e)) from None
         return plan, start
@@ -1186,54 +1354,113 @@ class Session:
         flight system — the same 50 Hz loop, leash, guards and dead-man as
         Manual — with the room's own geofence as the guard's fence.
         """
-        self._require_ready("a mission")
-        if self.snapshot().mode is not Mode.AUTO:
-            raise SessionError("Switch to Auto to fly a mission.")
-        report = self._require_report()
-        if not report.assisted:
-            raise SessionError(
-                "A mission needs the drone to know where it is, and it does not right now "
-                "— it would fly blind. Get the base stations seen and run the checks "
-                "again, or switch to Manual to fly it by hand.")
-        if self.position() is None:
-            raise SessionError("The drone's position is not being reported, so the mission "
-                               "cannot be checked from where the drone is.")
-        # THE PLAN THAT WILL FLY (fit.py): the start is the drone, the points
-        # outside the space its position can be trusted in are moved to the
-        # nearest fine spot (the fine ones never move — they mark equipment),
-        # and the result is validated like any mission. The Check step showed
-        # exactly this (flying_plan), and the plan kept with the flight records
-        # every move.
+        found = self._mission_blockers(mission_id)
+        if found:
+            raise SessionError(found[0].message)
         plan, _ = self.flying_plan(mission_id)
         mission, room = plan.mission, plan.room
-        if plan.unfitted:
-            raise SessionError(
-                f"{', '.join(plan.unfitted)} cannot be brought inside the space the drone "
-                f"can fly in. Move {'it' if len(plan.unfitted) == 1 else 'them'} in the plan.")
-        problems = errors(list(plan.problems))
-        if problems:
-            more = f" ({len(problems) - 1} more.)" if len(problems) > 1 else ""
-            raise SessionError(f"From where the drone is now, this mission is not safe to "
-                               f"fly: {problems[0].message}{more} Move the drone, or the "
-                               f"plan.")
-
-        needed = mission.estimated_duration_s(move_speed_m_s=MOVE_SPEED_M_S,
-                                              climb_rate_m_s=CLIMB_RATE_M_S)
-        if needed > report.budget_s():
-            raise SessionError(
-                f"This battery has about {report.budget_s():.0f} s of flying left, and the "
-                f"mission, from where the drone is, needs about {needed:.0f} s. Charge the "
-                f"battery or shorten the mission.")
-
-        if not getattr(self._mission_controller, "BUILT", False):
-            raise SessionError(
-                "The mission controller is not built yet (docs/handoffs/sprint-1/undone/"
-                "mission-controller.txt), so this mission cannot fly. Nothing was armed.")
-
         self._set(state=State.BUSY, activity="mission", message=None,
                   mission=self._mission_summary(mission, MissionState.IDLE, None, (), None))
         self._start_worker("mission",
                            lambda: self._do_mission(mission, room, ambient, plan.moves))
+
+    def mission_blockers(self, mission_id: str) -> list[dict[str, str]]:
+        """EVERY reason Start would refuse this mission now, in the order Start
+        checks them, each with what to do — ⑤ Fly lists them all (2026-10-05,
+        Samuel: say why, never "started" and then nothing). Start refuses on
+        the first, so the two can never disagree."""
+        return [b.to_dict() for b in self._mission_blockers(mission_id)]
+
+    def _mission_blockers(self, mission_id: str) -> list[Blocker]:
+        found: list[Blocker] = []
+        try:
+            self._require_ready("a mission")
+        except SessionError as e:
+            found.append(Blocker("session", str(e),
+                                 "Start the session and confirm the area (⑤ Fly)."))
+        if self.snapshot().mode is not Mode.AUTO:
+            found.append(Blocker("mode", "Switch to Auto to fly a mission.",
+                                 "Choose Auto in the sidebar."))
+        report = self.report
+        if report is not None and not report.assisted:
+            found.append(Blocker(
+                "position",
+                "A mission needs the drone to know where it is, and it does not right now "
+                "— it would fly blind. Get the base stations seen and run the checks "
+                "again, or switch to Manual to fly it by hand.",
+                "Measure the drone's position (② Position), then Check again."))
+        locked = self._motors_held()
+        if locked is not None:
+            found.append(Blocker("motors", locked,
+                                 "Press Reset drone: it restarts and checks itself again."))
+        if self.position() is None:
+            found.append(Blocker(
+                "no_position",
+                "The drone's position is not being reported, so the mission cannot be "
+                "checked from where the drone is.",
+                "Measure the drone's position (② Position)."))
+            return found
+        # THE PLAN THAT WILL FLY (fit.py): moved to start at the drone, fitted
+        # into the space its position can be trusted in, validated — what ④
+        # shows and what Start flies.
+        try:
+            plan, _ = self.flying_plan(mission_id)
+        except SessionError as e:
+            found.append(Blocker("mission", str(e), "Choose or fix the mission (① Plan)."))
+            return found
+        if plan.unfitted:
+            found.append(Blocker(
+                "unfitted",
+                f"{', '.join(plan.unfitted)} cannot be brought inside the space the drone "
+                f"can fly in. Move {'it' if len(plan.unfitted) == 1 else 'them'} in the plan.",
+                "Edit the plan (④ Auto-correct › Edit the plan)."))
+        problems = errors(list(plan.problems))
+        if problems:
+            more = f" ({len(problems) - 1} more.)" if len(problems) > 1 else ""
+            found.append(Blocker(
+                "plan",
+                f"From where the drone is now, this mission is not safe to fly: "
+                f"{problems[0].message}{more} Move the drone, or the plan.",
+                "See ④ Auto-correct for each problem."))
+        if report is not None:
+            needed = plan.mission.estimated_duration_s(move_speed_m_s=MOVE_SPEED_M_S,
+                                                       climb_rate_m_s=CLIMB_RATE_M_S)
+            if needed > report.budget_s():
+                found.append(Blocker(
+                    "battery",
+                    f"This battery has about {report.budget_s():.0f} s of flying left, and "
+                    f"the mission, from where the drone is, needs about {needed:.0f} s. "
+                    f"Charge the battery or shorten the mission.",
+                    "Fit a charged battery, then Check again."))
+        if not getattr(self._mission_controller, "BUILT", False):
+            found.append(Blocker(
+                "controller",
+                "The mission controller is not built yet (docs/handoffs/sprint-1/undone/"
+                "mission-controller.txt), so this mission cannot fly. Nothing was armed.",
+                "Build the mission controller."))
+        return found
+
+    def _motors_held(self) -> str | None:
+        """Why the drone's own supervisor will not spin the motors, or None.
+
+        2026-10-05: after a mission landed, supervisor.info read 580 — LOCKED
+        (0x0040; Bitcraze supervisor.c). Three missions were then "flown"
+        with thrust 0 the whole way, the app saying started and landing. The
+        firmware clears LOCKED only by a restart, so this is read before every
+        mission, never assumed from the session's opening checks."""
+        link = self.link
+        if link is None or not link.is_open:
+            return None
+        value = link.snapshot().get("supervisor.info")
+        if value is None:
+            return None
+        bits = int(value)
+        if bits & motor_supervisor.IS_LOCKED:
+            return ("The drone has locked its motors (its supervisor reports LOCKED — it "
+                    "does after some landings), so they would not spin.")
+        if bits & (motor_supervisor.IS_CRASHED | motor_supervisor.IS_TUMBLED):
+            return "The drone is holding its motors after a crash or tumble."
+        return None
 
     def _do_mission(self, mission: Mission, room: Room, ambient: str,
                     moves: tuple[Move, ...] = ()) -> None:
@@ -1512,6 +1739,7 @@ class Session:
 
         def watch() -> None:
             verdict_seen: Any = None
+            spinning_since: float | None = None     # first tick armed/flying
             while not stop.wait(MANUAL_GUARD_PERIOD_S):
                 controller = self.manual
                 if controller is None:
@@ -1526,7 +1754,12 @@ class Session:
                     return
                 if verdict_seen is not None or state not in ("armed", "flying"):
                     continue
-                verdict = guard.check(link.snapshot(), time.monotonic())
+                now = time.monotonic()
+                spinning_since = spinning_since if spinning_since is not None else now
+                snap = link.snapshot()
+                dead = _motors_not_spinning(snap, now - spinning_since)
+                verdict = (GuardVerdict(GuardAction.LAND, GuardReason.MOTORS_NOT_SPINNING, dead)
+                           if dead else guard.check(snap, now))
                 if verdict.ok:
                     continue
                 verdict_seen = verdict
@@ -1701,13 +1934,18 @@ class Session:
         self._refresh_processing()
 
     def position(self) -> tuple[float, float, float] | None:
-        """The drone's position estimate now, or None — for tagging frames."""
+        """The drone's position now, or None when it has none it can stand
+        behind (flight_guard.position_trusted) — the plan that will fly, Start,
+        "I'm here" and the frames all read this, and none of them may treat an
+        estimate running away with no station measured as a place."""
         link = self.link
         if link is None or not link.is_open:
             return None
         try:
             snap = link.snapshot()
         except Exception:
+            return None
+        if not position_trusted(snap):
             return None
         xyz = (snap.get("stateEstimate.x"), snap.get("stateEstimate.y"),
                snap.get("stateEstimate.z"))

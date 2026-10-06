@@ -67,6 +67,15 @@ WINDOWS: dict[str, tuple[str, ...]] = {
         "lighthouse.bsReceive", "lighthouse.bsActive",
         "lighthouse.bsCalVal", "lighthouse.bsGeoVal", "lighthouse.bsAvailable",
         "kalman.varPX", "kalman.varPY", "kalman.varPZ",
+        # Light on each of the deck's four sensors (its last pulse width), the
+        # first stage between a station and a position, so Set up can say
+        # WHICH stage stops. The later stages are bits above: bsCalVal (the
+        # station's data read), bsReceive (sweeps decoded into angles — the
+        # firmware sets it only then: lighthouse_core.c usePulseResult),
+        # bsGeoVal (its place stored), bsActive (all three, in use).
+        # NOT validAngles: it read 0 while bsReceive showed decoding
+        # (2026-10-05) and was briefly, wrongly, shown as the decode signal.
+        "lighthouse.width0", "lighthouse.width1", "lighthouse.width2", "lighthouse.width3",
     ),
 }
 

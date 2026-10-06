@@ -41,7 +41,9 @@ backend/agent/cropwatcher/mission/plan/geofence.py    Geofence (closed polygon;
 backend/agent/cropwatcher/mission/plan/obstacles.py   line, rectangle, circle
 backend/agent/cropwatcher/mission/plan/floorplan.py   Room, clearance, ids
 backend/agent/cropwatcher/mission/plan/mission.py     Mission, InspectionPoint
-backend/agent/cropwatcher/mission/plan/validate.py    every check; outer_bound
+backend/agent/cropwatcher/mission/plan/validate.py    every check; outer_bound (the
+                                                      room's map), flyable_bound
+                                                      (the green, for the fit)
 backend/agent/cropwatcher/mission/plan/store.py       rooms/, missions/ on disk
 backend/agent/cropwatcher/mission/plan/coverage.py    predicted + surveyed coverage
 backend/agent/cropwatcher/mission/plan/fit.py         THE PLAN THAT WILL FLY
@@ -66,10 +68,34 @@ desktop/src/pages/control/auto/FlightPlanCheck.tsx    ② the two plans, the sur
   project's flight_guard policy, ONE by default — it said a fixed two until
   2026-10-01, which counted nothing in the lab's one-station room), their
   convex hull saved (Survey). PREDICTED from the stations' poses on the drone and Valve's
-  150°x110° field of view (StationPose.sees) — shown to guide the walk, never
-  flown on. One station's view is a pyramid; two overlap convexly within a
-  height band, so a hull is the right shape (what it cannot show — a cabinet
-  shading part of the room — the walked edge does).
+  150°x110° field of view (StationPose.sees). One station's view is a
+  pyramid; two overlap convexly within a height band, so a hull is the right
+  shape (what it cannot show — a cabinet shading part of the room — the
+  walked edge does).
+• THE GREEN IS THE STATIONS' PREDICTED REACH, COMPUTED, NEVER WALKED
+  (2026-10-05, Samuel: no walking the drone about). Until then it was
+  "shown to guide the walk, never flown on", and it was computed INSIDE the
+  room's fence, so it came out as the room's own box. Now Session._prediction
+  computes it over the WHOLE MAP (the agent's ±2 m flying area) in the
+  room's height band, and the plan that will fly is fitted into its
+  `everywhere` automatically (Session._flyable: the prediction, else a
+  walked survey saved on the room, else the default area). No button: a
+  one-build "Use the predicted space" (saving it as Room.coverage) was
+  removed the same night. The stations' poses are read once per link and
+  re-read after ② Position measures again. What a prediction cannot see (a
+  cabinet shading part of the room) a walked survey can; the survey's agent
+  API remains (POST /rooms/{id}/survey/start, /survey/stop), with no app
+  screen — DEBT: delete it, or give it a screen, when next touched.
+• A SURVEY COUNTS ONLY POSITIONS THE DRONE STANDS BEHIND (2026-10-05):
+  enough stations received AND flight_guard.position_trusted. Received alone
+  was the rule until then, and a survey walked before the station was
+  measured counted every drifting reading and saved an outline from -100 m
+  to +100 m as the lab room's coverage — every point "moved" 1.5 m. So:
+  start_survey refuses until the drone has a trusted position; the count is
+  SPOTS (distinct GRID_M cells), not 10 Hz readings ("171 positions" was
+  17 s); and a wrong space is dropped with Forget the measured space (POST
+  /rooms/{id}/coverage/forget — the default area stands in again). The
+  panel sits between the two maps on ② Check, marked optional.
 • THE PLAN THAT WILL FLY is ONE function (fit.py plan_to_fly) used by BOTH the
   Check step's preview (GET …/from-drone, POST /missions/fit for an unsaved
   edit) and Session.run_mission, so what is shown is what flies. The fence is
@@ -85,11 +111,18 @@ desktop/src/pages/control/auto/FlightPlanCheck.tsx    ② the two plans, the sur
   line has no inside; a bow-tie has no single one. A circle is stored as a
   32-sided polygon, so every check handles one shape.
 • THE LAYERS NEST, and each is checked against the one outside it: the ROOM'S
-  MAP (measured coverage, or the agent's default ±2 m area until measured) ⊃
-  the geofence ⊃ obstacles, home, points and every LEG between them. The map is
-  where the drone's position can be trusted — this drone senses no walls
-  (no distance sensor), so "the map of the room" can only mean that. The
-  editor clamps every typed or dragged dimension to it.
+  MAP (the agent's default ±2 m area — validate.py outer_bound) ⊃ the
+  geofence ⊃ obstacles, home, points and every LEG between them. The editor
+  clamps every typed or dragged dimension to it.
+• THE PLAN IS THE OPERATOR'S; THE GREEN NEVER EDITS IT (2026-10-05, Samuel:
+  "the flyable space is not my architecture"). Until then the room's map WAS
+  the measured coverage, so a survey saved from a drifting estimate (-100 m
+  to +100 m) became a 102 m room map, put the fence 99 m out and refused the
+  room. Now the measured flyable space (Room.coverage, drawn green) is read
+  ONLY by the plan that will fly (validate.py flyable_bound → fit.py), which
+  fits a COPY into it. The saved room and mission are never changed: opened
+  again, they are exactly as drawn, and each flight keeps the fitted copy it
+  flew (mission-controller.txt, "the plan flown").
 • CLEARANCE, 0.25 m by default per room, applies to obstacles AND the fence's
   own edge. Derived, not guessed: half-span ~0.05 m + the manual system's drift
   notice 0.15 m + estimator noise ~0.05 m. A point on the fence line would be

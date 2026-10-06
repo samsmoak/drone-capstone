@@ -28,6 +28,8 @@ LAB_TYPES = {name: "float" for name in ALL_VARIABLES} | {
     "lighthouse.bsReceive": "uint16_t", "lighthouse.bsActive": "uint16_t",
     "lighthouse.bsCalVal": "uint16_t", "lighthouse.bsGeoVal": "uint16_t",
     "lighthouse.bsAvailable": "uint16_t",
+    "lighthouse.width0": "uint16_t", "lighthouse.width1": "uint16_t",
+    "lighthouse.width2": "uint16_t", "lighthouse.width3": "uint16_t",
 }
 
 
@@ -94,9 +96,11 @@ class TestPackBlocks:
         assert blocks == [[("pm.vbat", "float")]]
         assert missing == ["flow.deltaX"]
 
-    def test_the_lab_drone_needs_five_blocks(self):
+    def test_the_lab_drone_needs_six_blocks(self):
+        """Six since 2026-10-05 (the Lighthouse decoding stages); the
+        firmware allows 16 log blocks."""
         blocks, _ = pack_blocks(ALL_VARIABLES, make_toc(LAB_TYPES).toc)
-        assert len(blocks) == 5
+        assert len(blocks) == 6
 
 
 class TestStream:

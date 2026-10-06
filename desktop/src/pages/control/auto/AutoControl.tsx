@@ -1,7 +1,8 @@
 /**
  * The Control page in Auto: the mission on the left, the monitor on the right.
  *
- *   left    the Mission flow — ① Mission → ② Check → ③ Fly. In Auto this is
+ *   left    the Mission flow — ① Plan → ② Position → ③ Flyable space →
+ *           ④ Auto-correct → ⑤ Fly. In Auto this is
  *           where the operator works, so it takes the larger share.
  *   right   the monitor: FlightDeck (the vitals, the keys and the action rail —
  *           never behind a tab, pages-and-windows.txt) above the console's

@@ -55,6 +55,7 @@ from cropwatcher.camera.deck import parse_addr
 from cropwatcher.camera.recording import Recorder
 from cropwatcher.camera.wifi import DeckWifi, Phase, WifiError
 from cropwatcher.drone_setup import DroneSetup, SetupError
+from cropwatcher.flight import basestation
 from cropwatcher.flight.manual import CLIMB_RATE_M_S, MAX_HEIGHT_M, MOVE_SPEED_M_S
 from cropwatcher.mission.plan.fit import FlyingPlan
 from cropwatcher.mission.plan.floorplan import DEFAULT_CLEARANCE_M, PlanError, Room
@@ -258,6 +259,11 @@ class Agent:
         one reliable source is the drone saying it over the radio; this makes it
         say it again. False when a session runs, or no one is signed in.
         """
+        if self.session.measuring_station:
+            # A restart mid-measurement drops the link it is reading.
+            log.info("not restarting the drone (%s): the base station is being measured",
+                     reason)
+            return False
         try:
             self.session.restart_drone(reason=reason)
         except SessionError as e:
@@ -971,6 +977,38 @@ def room_coverage(room_id: str) -> dict:
             "survey": agent.session.survey_status()}
 
 
+@app.get("/basestations", dependencies=[Command])
+def base_stations() -> dict:
+    """Every base station plugged into this laptop by USB, with its channel."""
+    return {"stations": [s.to_dict() for s in basestation.find()]}
+
+
+@app.post("/basestations/channel", dependencies=[Command])
+def set_base_station_channel(body: dict = Body(...)) -> dict:  # noqa: B008 — FastAPI's own idiom
+    """Set one base station's channel (Bitcraze's "Set BS channel")."""
+    try:
+        port, channel = str(body["port"]), int(body["channel"])
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="Say which port and which channel.") from None
+    if port not in {s.port for s in basestation.find()}:
+        raise HTTPException(status_code=404,
+                            detail="That base station is no longer plugged in. Scan again.")
+    try:
+        confirmed = basestation.set_channel(port, channel)
+    except basestation.BaseStationError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from None
+    return {"port": port, "channel": confirmed}
+
+
+@app.post("/rooms/{room_id}/coverage/forget", dependencies=[Command])
+def forget_coverage(room_id: str) -> dict:
+    """Drop the room's measured flyable space; the default area stands in."""
+    try:
+        return _room_view(agent.session.forget_coverage(room_id))
+    except SessionError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from None
+
+
 @app.post("/rooms/{room_id}/survey/start", dependencies=[Command])
 def start_survey(room_id: str) -> dict:
     try:
@@ -992,6 +1030,22 @@ def stop_survey(body: dict = Body(default={})) -> dict:  # noqa: B008 — FastAP
     except SessionError as e:
         raise HTTPException(status_code=409, detail=str(e)) from None
     return {"room": _room_view(room) if room is not None else None}
+
+
+@app.get("/station", dependencies=[Command])
+def station_status() -> dict:
+    """The base station as the drone sees it: received, measured, usable."""
+    return agent.session.station_status()
+
+
+@app.post("/station/measure", dependencies=[Command])
+def measure_station() -> dict:
+    """Measure where the base station stands from where the drone sits, and
+    store it on the drone (one record; that spot becomes the origin)."""
+    try:
+        return agent.session.measure_station()
+    except SessionError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from None
 
 
 @app.post("/rooms/{room_id}/delete", dependencies=[Command])
@@ -1038,6 +1092,13 @@ def validate_draft(body: dict = Body(...)) -> dict:  # noqa: B008
     except (NotFound, PlanError) as e:
         raise _plan_refusal(e) from None
     return _mission_view(mission, room)
+
+
+@app.get("/missions/{mission_id}/blockers", dependencies=[Command])
+def mission_blockers(mission_id: str) -> dict:
+    """Every reason Start would refuse this mission now, with what to do —
+    the same list Start refuses on (Session.mission_blockers)."""
+    return {"blockers": agent.session.mission_blockers(mission_id)}
 
 
 @app.get("/missions/{mission_id}/from-drone", dependencies=[Command])

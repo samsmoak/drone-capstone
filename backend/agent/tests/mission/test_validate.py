@@ -12,6 +12,7 @@ from cropwatcher.mission.plan.obstacles import Obstacle, ObstacleError, Obstacle
 from cropwatcher.mission.plan.validate import (
     Severity,
     errors,
+    flyable_bound,
     outer_bound,
     validate_mission,
     validate_room,
@@ -41,10 +42,21 @@ class TestTheLayersNest:
         assert "fence_outside_coverage" in codes(errors(
             validate_mission(mission(), wide, outer=OUTER)))
 
-    def test_the_outer_bound_is_the_coverage_when_measured(self):
+    def test_the_rooms_map_is_never_the_flyable_space(self):
+        """The plan is the operator's: the green never limits the room."""
         measured = room(coverage=Geofence.square(1.6))
-        assert outer_bound(measured, default_half_extent_m=2.0) is measured.coverage
+        assert outer_bound(measured, default_half_extent_m=2.0).bounds() == (-2, -2, 2, 2)
         assert outer_bound(room(), default_half_extent_m=2.0).bounds() == (-2, -2, 2, 2)
+
+    def test_a_wrong_flyable_space_never_refuses_the_room(self):
+        """2026-10-05: a survey saved from a drifting estimate ran to 100 m."""
+        junk = room(coverage=Geofence.polygon([(-2.4, -11.9), (99.9, -99.9), (0.0, 0.0)]))
+        assert not errors(validate_room(junk, outer=outer_bound(junk, default_half_extent_m=2.0)))
+
+    def test_only_the_plan_that_will_fly_reads_the_flyable_space(self):
+        measured = room(coverage=Geofence.square(1.6))
+        assert flyable_bound(measured, default_half_extent_m=2.0) is measured.coverage
+        assert flyable_bound(room(), default_half_extent_m=2.0).bounds() == (-2, -2, 2, 2)
 
     def test_an_obstacle_outside_the_fence_is_only_a_warning(self):
         stray = room(obstacles=(Obstacle("x", ObstacleKind.CIRCLE, ((1.7, 0.0),), 0.2),))
@@ -250,12 +262,19 @@ class TestEndPoint:
 
 
 class TestFromStart:
-    """The drone's position is the start. The points never move with it."""
+    """The drone's position is the start, and the whole path moves with it
+    (2026-10-05, Samuel): the drawn shape is flown from wherever the drone is."""
 
-    def test_the_start_moves_and_the_points_do_not(self):
-        m = mission().from_start((-1.0, -0.4))
+    def test_the_whole_path_moves_with_the_start(self):
+        m = mission().from_start((-1.0, -0.4))                 # home (-1, -1): +0.6 in y
         assert m.home == (-1.0, -0.4)
-        assert [p.xy for p in m.points] == [p.xy for p in mission().points]
+        assert [p.xy for p in m.points] == [
+            pytest.approx((x, y + 0.6)) for x, y in (p.xy for p in mission().points)]
+
+    def test_the_shape_and_heights_are_kept(self):
+        before, after = mission(), mission().from_start((0.3, -0.2))
+        assert after.path_length_m() == pytest.approx(before.path_length_m())
+        assert [p.z_m for p in after.points] == [p.z_m for p in before.points]
 
     def test_it_returns_to_where_it_actually_started(self):
         legs = mission().from_start((-1.0, -0.4)).legs()
@@ -266,8 +285,10 @@ class TestFromStart:
         assert m.point_ids == ("P1", "P2")
         assert m.end_point_id is None and m.return_to_start is False
 
-    def test_a_start_whose_first_leg_crosses_the_table_is_an_error(self):
-        m = mission().from_start((0.8, -1.0))
+    def test_a_shifted_path_that_runs_past_the_table_is_an_error(self):
+        # The room and its table stay where they are; the path moves +0.5 in x,
+        # so home → P1 runs up x = -0.5, inside the table's 0.25 m clearance.
+        m = mission().from_start((-0.5, -1.0))
         assert "leg_near_obstacle" in codes(validate_mission(m, room(), outer=OUTER))
 
 

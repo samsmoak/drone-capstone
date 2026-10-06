@@ -226,9 +226,11 @@ class PositioningStatus:
         out: list[str] = []
         if not self.received:
             out.append(
-                "No base station signal is reaching the drone. Check both base "
-                "stations are on (front LED solid green), the drone is upright, "
-                "and nothing blocks the line of sight."
+                "No base station signal is reaching the drone where it is now. "
+                "Check the station is on (front LED solid green) and can see the "
+                "top of the drone from where it sits: a station can reach a drone "
+                "held up and miss it on the floor — raise it (about 1.5–2 m) and "
+                "tilt it down at the spot, with nothing in between."
             )
         elif self.received_without_geometry:
             # Two different things are missing here and only one needs a person.
@@ -240,16 +242,28 @@ class PositioningStatus:
             # This used to say "re-run geometry estimation in cfclient", naming
             # a tool this project replaced and does not install. An instruction
             # an operator cannot follow is worse than none.
-            ids = ", ".join(str(s) for s in self.received_without_geometry)
-            out.append(
-                f"Base station {ids} is being received, but the drone cannot turn its "
-                f"beams into a position yet. Give it a few seconds of clear line of "
-                f"sight to pick up the station's calibration; if it stays like this, "
-                f"the room has not been measured — run `./cropwatcher geometry` once, "
-                f"which takes two samples on the floor and spins no motors."
-            )
+            # Name the stage that is actually missing — not both at once: on
+            # 2026-10-05 the calibration was already read and the operator was
+            # told to wait for it AND that a station "may be blocked or off".
+            waiting = [s for s in self.received_without_geometry if s not in self.calibrated]
+            unmeasured = [s for s in self.received_without_geometry
+                          if s in self.calibrated and s not in self.with_geometry]
+            if unmeasured:
+                ids = ", ".join(str(s) for s in unmeasured)
+                out.append(
+                    f"Base station {ids} is received and its sweeps decoded, but the "
+                    f"drone does not know where the station stands, so it cannot turn "
+                    f"them into a position. Measure it once in Control › Auto › ② Position: "
+                    f"one press, the drone where it sits, no motors."
+                )
+            if waiting:
+                ids = ", ".join(str(s) for s in waiting)
+                out.append(
+                    f"Base station {ids} is received; its calibration has not arrived "
+                    f"yet. Give it a few seconds of clear line of sight."
+                )
         wanted = required_stations()
-        if self.received and len(self.usable) < wanted:
+        if self.received and not self.received_without_geometry and len(self.usable) < wanted:
             out.append(
                 f"Only {len(self.usable)} usable base station(s); "
                 f"{wanted} are needed. One may be blocked or off."
@@ -294,6 +308,24 @@ def assess_positioning(snap: Snapshot) -> PositioningStatus:
     )
 
 
+def position_trusted(snap: Snapshot) -> bool:
+    """Is the drone's x-y a position, or a number? A station the drone can USE
+    (received, calibrated, measured) and the Kalman filter's own x-y spread
+    within MAX_HOLD_VARIANCE_M2 — the bound at which manual flight stops
+    moving its commanded point (flight/link.py _fix).
+
+    Every screen that shows "where the drone is" asks this first. Without it
+    a still drone with no station measured read as 92 m from the mission's
+    start and climbing (2026-10-05): the estimate integrating the
+    accelerometer, offered to the operator as a place.
+    """
+    status = assess_positioning(snap)
+    if not status.usable:
+        return False
+    spread = [v for v in status.variance_m2[:2] if v is not None]
+    return len(spread) == 2 and max(spread) <= MAX_HOLD_VARIANCE_M2
+
+
 # ── in-flight guard ──────────────────────────────────────────────────────
 
 
@@ -314,6 +346,7 @@ class Reason(StrEnum):
     HEIGHT_ERROR = "height_error"
     OUTSIDE_FENCE = "outside_fence"
     TELEMETRY_STALE = "telemetry_stale"
+    MOTORS_NOT_SPINNING = "motors_not_spinning"
 
 
 @dataclass(frozen=True)

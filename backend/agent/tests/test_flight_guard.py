@@ -77,11 +77,25 @@ class TestPositioningReadiness:
 
     def test_a_received_station_without_geometry_blocks_flight(self):
         status = assess_positioning(snap(**{
-            "lighthouse__bsReceive": 0b111, "lighthouse__bsGeoVal": 0b011,
+            "lighthouse__bsReceive": 0b111, "lighthouse__bsCalVal": 0b111,
+            "lighthouse__bsGeoVal": 0b011,
         }))
         assert not status.ready
         assert status.received_without_geometry == (2,)
-        assert "geometry" in " ".join(status.problems())
+        said = " ".join(status.problems())
+        # Names the app step that fixes it, not a terminal command.
+        assert "② Position" in said
+        # 2026-10-05: one cause, said once — not also "wait for the
+        # calibration" (already read) or "blocked or off" (it was received).
+        assert "calibration" not in said and "blocked or off" not in said
+
+    def test_a_station_still_sending_its_calibration_is_waited_for(self):
+        status = assess_positioning(snap(**{
+            "lighthouse__bsReceive": 0b1, "lighthouse__bsCalVal": 0b0,
+        }))
+        said = " ".join(status.problems())
+        assert "calibration has not arrived" in said
+        assert "② Position" not in said
 
     def test_one_station_is_enough_to_fly(self):
         """Lighthouse V2 resolves a pose from a single unit's two sweeps.

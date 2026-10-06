@@ -77,6 +77,147 @@ Rungs 7-10 are what PR #26 changed. They are the test of it.
 
 
 =========================================================================
+2026-10-05 — THE DECK BELONGS ON TOP; THE STATION IS MEASURED IN THE APP
+=========================================================================
+
+CONDITIONS
+  drone        cf-002d00263234511236373639
+  stations     one in use (station 0); DroneDeck closed for the reads below
+  code         experiment/samuel — the private lab build, mission controller
+               BUILT (its body is not on main; there it is still Hannah's ticket)
+
+LIGHTHOUSE DECK UNDER THE DRONE
+  DID          ./cropwatcher stations --seconds 12 ; ./cropwatcher check
+  MEASURED     deck detected, deck image loaded (lighthouse_needs_fw False),
+               received none, geometry none. Sitting still on the bench the
+               estimate ran +2.51 → +14.86 m in 12 s. check: "uncertain by
+               about 694 cm".
+  MEANT        under the drone the deck's sensors face the floor and the
+               stations shine down: no light. Nothing in software could fly a
+               mission on this — "skip the base station check" would have been
+               the 2026-09-16 crash again.
+
+DECK MOVED ON TOP OF THE AI DECK (Samuel). Its LED lit; the drone did not
+detect it until a power cycle (decks are only detected at power-on).
+  MEASURED     after the power cycle: Lighthouse deck fitted, image loaded,
+               battery 4.16 V. stations: received 0 from the third second on.
+               All FOUR sensors see station 0; 50-sweep averages of a still
+               drone agree to 1e-5 rad across three reads (sensor 0
+               x +0.30340 y +0.07732).
+  MEANT        THE DECK GOES ON TOP. The 10-01 reading (sensors 2 and 3
+               dark) was the deck underneath.
+
+GEOMETRY, FIRST TRY (terminal)
+  DID          ./cropwatcher geometry --distance 1.0
+  MEASURED     "disagree by 100 cm … 2.45 m away from the first, 2.45 m from
+               the second", heading held to 0 degrees.
+  MEANT        two records of the same place: the drone was not moved
+               between them (a 1 m step moves the station 1 m in the drone's
+               frame). The tool called it a disagreement.
+  CHANGED      Set up › Measure the base station (desktop/setup.txt step 3):
+               the walk in the app, and an unmoved drone named as such
+               (geometry.py NOT_MOVED_M).
+
+  A 1 m SQUARE IN SIMULATION (the lab build's controller and simulated drone): home
+  (0,0), P1 (0,0) P2 (1,0) P3 (1,1) P4 (0,1) at 0.40 m, Steady 0.10 m/s, 5 s
+  holds, return: every event in order, arrivals within 6 cm, 72.6 s against a
+  71.3 s estimate.
+
+  IN THE APP (first build of step 3)
+  MEASURED     ② Check: "The drone is 0.92 m from the planned start", then
+               climbing to 91.97 m — the drone still. Agent log: no geometry
+               ever stored; the drone restarted once by the camera watchdog
+               (no frames 17 s).
+  MEANT        two faults. Step 3 never opened: it waited for step 2's "done",
+               which resets every launch. And every planning screen showed the
+               raw estimate as the drone's place, trusted or not.
+  CHANGED      step 2 leads only while it has work; flight_guard.position_
+               trusted gates Session.position() and telemetry `positioned`;
+               the estimator is reset after the store; no watchdog restart
+               mid-measurement.
+
+  SURVEY AND RECEPTION, LATER THE SAME NIGHT
+  MEASURED     a survey walked by hand counted "171 of 171" and was saved:
+               the room's coverage ran -100 m to +100 m (the drifting track).
+               The checks, drone on the floor, then said no signal. Through
+               the app (GET /station): received none. App closed, drone NOT
+               moved, terminal: received in 1 of 10 s; per-sensor read: zero
+               sweeps in 24 s (01:51, earlier spot: 50 sweeps in < 1 s, all
+               four sensors).
+  MEANT        not the app and not the software: where the drone sat, almost
+               no station light reached the deck. The survey "worked" because
+               it counted reception, held up in the hand, not position.
+  CHANGED      the survey counts trusted positions only, refuses before the
+               station is measured, counts spots, and a wrong space can be
+               forgotten; the no-signal message says a station can reach a
+               drone held up and miss it on the floor.
+
+  WHERE IT STOPS (read straight off the drone, app closed, deck on top)
+  MEASURED     deck.bcLighthouse4 1 · lighthouse.systemType 2 (V2) ·
+               width0-3 nonzero 99/99 samples (241-322) · bsCalVal 1 ·
+               bsReceive 10/99 · validAngles 0/99 · decoded sweeps: none in 8 s
+  MEANT        at that spot the light arrived and the station's data was read,
+               but almost no sweep decoded (bsReceive 10 %, 0 sweeps in 8 s).
+               Bitcraze: "Every V2 base station in the system must be set to a
+               unique channel" (channel 0 "not supported"). validAngles was
+               then read as the decode signal — WRONG, see below.
+  CHANGED      Set up step 3 sets each station's channel over USB, as
+               Bitcraze's client does; steps 3-4 show every stage from light to
+               position. The green no longer limits the plan (floor-plans.txt).
+
+  LATER, IN THE APP (GET /station, 8 readings, drone on the floor)
+  MEASURED     light 4/4 · calibrated [0] · received [0] on EVERY reading ·
+               measured [] · validAngles 0 · uncertainty 334 → 457 cm, rising
+  MEANT        decoding works there: the firmware sets bsReceive only when a
+               sweep yields angles (lighthouse_core.c usePulseResult). The one
+               missing stage is the station's PLACE (bsGeoVal) — never stored,
+               so the decoded angles cannot become a position. validAngles is
+               not the decode signal; the app now reads bsReceive.
+  CHANGED      decode row reads bsReceive; bsActive added ("in use"); the
+               check message names only the missing stage; ② Check has
+               Check again.
+
+  THE STATION MEASURED FROM WHERE THE DRONE SAT — NO WALKING
+  DID          one 50-sweep sample, IPPE, both answers printed (three samples,
+               identical to 1 cm): (-1.33, +1.74, +1.49) station up-z +0.89 ·
+               (+1.33, -1.74, +1.49) station up-z -0.74 (upside down). Stored
+               the upright one (geometry.estimate_quick), estimator reset.
+  MEASURED     base station 0: 2.64 m away, 1.49 m above the drone. Still drone
+               over 15 s: x +0.006..+0.009, y -0.012..-0.008, z -0.010..-0.007
+               m; Kalman spread 3.2 cm; bsGeoVal 1, bsActive 1, trusted.
+               ./cropwatcher check: every check ok, base stations ok, position
+               settled 0.0 cm, ground z -0.009 m, READY. Battery 3.82 V.
+  MEANT        the decoded angles became a position the moment the station's
+               place was known. Nothing else was missing.
+  CHANGED      ② Position: one press, the upright rule (MIN_UPRIGHT); the Auto
+               flow is Plan → Position → Flyable space → Auto-correct → Fly;
+               the predicted space can be used as the green.
+
+  FLOWN       the 1 m square from the app (flight 0fca5fb4, 62 s, up to ~1 m) —
+               the first autonomous mission on this drone.
+
+  RE-FLIGHTS THAT NEVER FLEW
+  MEASURED     flights d0514a2b, e9f4eddc, b81e71a3: supervisor.info 580 (LOCKED,
+               0x0040) from the first sample, stabilizer.thrust 0 and z 0 the
+               whole way, while the flight system went armed → flying →
+               landing; the app said started, then landing. Flight 0fca5fb4
+               read 542 (armed, can fly, flying) and ended "landed" at z 0.055
+               m with motors ~60 % before the cut.
+  MEANT        a landing left the drone LOCKED (cleared only by a restart) and
+               nothing read the lock between missions.
+  CHANGED      the lock is read before every mission (a named reason, with
+               Reset drone); in flight, LOCKED or four motors at zero 1.5 s
+               after arming ends it as "the motors did not start". Verified
+               through the rebuilt app: the drone, still locked, is refused by
+               name. What locks it (manual.py's landing, locked code) is
+               recorded in mission-controller.txt, not changed.
+
+  NEXT         Reset drone (or switch it off and on) → ② Position shows settled
+               → ⑤ start session, checks → the square again; a second mission
+               straight after, to see whether the landing locks it again.
+
+
+=========================================================================
 2026-10-01 — A SECOND DRONE, AND WHY THE FIRST ONE COULD NEVER SEE A STATION
 =========================================================================
 

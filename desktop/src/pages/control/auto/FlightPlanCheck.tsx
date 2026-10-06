@@ -1,60 +1,60 @@
 /**
- * Step ② — YOUR PLAN, AND THE PLAN THAT WILL FLY (2026-10-01, Samuel).
+ * Steps ③ FLYABLE SPACE and ④ AUTO-CORRECT of the Auto flow (2026-10-05:
+ * ① Plan → ② Position → ③ Flyable space → ④ Auto-correct → ⑤ Fly, in the
+ * order the operator works). `mode` picks which half this renders.
  *
- *   top     the plan as drawn, over the FLYABLE SPACE (where the drone's
- *           position can be trusted — plan/space.ts). Editable here: "Edit
- *           the plan" opens the same editor as step ①.
- *   bottom  THE PLAN THAT WILL FLY, read-only: from where the drone is,
- *           every point outside the space moved to the nearest fine spot,
- *           each move named. It is asked of the agent — GET …/from-drone for
- *           the saved plan every 2 s, POST /missions/fit for an unsaved edit —
- *           the SAME function Start flies (backend mission/plan/fit.py), so
- *           what this shows is what flies.
+ *   ③ THE GREEN: where the measured base station reaches, over the whole map
+ *     (agent session._prediction) — computed, never walked, never a button.
+ *     Your room, path and obstacles are drawn over it.
+ *   ④ YOUR PLAN, AND THE AUTO-CORRECTED PLAN (2026-10-01, Samuel): the plan
+ *     as drawn — editable here, the green on its map, points outside it
+ *     ringed red — and below it the plan that will fly, corrected by the
+ *     agent on its own: moved to start at the drone, points outside the green
+ *     brought in, each move named. It is asked of the agent (GET …/from-drone
+ *     every 2 s, POST /missions/fit for an unsaved edit) — the SAME function
+ *     Start flies (backend mission/plan/fit.py). The saved plan never changes.
  *
- * Both in 2-D or 3-D (the map's own switch), each full screen.
- *
- * THE SURVEY measures the space: carry the drone round the room's edge with
- * the base stations in view; its outline grows on the map; save it and it is
- * the room's coverage. Until then the agent's default area stands in, and a
- * prediction from the stations' poses (if `cropwatcher geometry` has stored
- * them) shows where to walk.
+ * Both maps in 2-D or 3-D (the map's own switch), each full screen.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { Run } from "@/App";
 import {
   api, AgentError, type FlyingPlan, type Mission, type MissionView, type PlanLimits, type Room,
-  type RoomCoverage, type RoomView, type SurveyStatus,
+  type RoomCoverage, type RoomView,
 } from "@/lib/agent";
 import { formatMetres } from "@/lib/format";
 import { Button, Message, Panel, Spinner, StatusDot } from "@/components/ui";
 import { FullScreenOverlay } from "@/components/FullScreenOverlay";
 import { MissionEditor } from "./plan/MissionEditor";
 import { RoomMap } from "./plan/RoomMap";
-import type { SpaceLayer } from "./plan/space";
+import { spaceOf, type SpaceLayer } from "./plan/space";
 
 const FROM_DRONE_EVERY_MS = 2000;
-const SURVEY_EVERY_MS = 1000;
 const DRAFT_SETTLE_MS = 400;
 
 type Full = "drawn" | "flying" | null;
 
-/** What the maps draw as the flyable space: the survey while it runs, then the
- *  measured coverage, else the prediction. */
-export function spaceOf(cov: RoomCoverage | null, survey: SurveyStatus, room: Room): SpaceLayer | null {
-  const band = { z_min: room.geofence.z_min, z_max: room.geofence.z_max };
-  if (survey.active && survey.outline.length >= 3) return { kind: "survey", vertices: survey.outline, ...band };
-  if (cov?.measured) return { kind: "measured", vertices: cov.measured.vertices, z_min: cov.measured.z_min, z_max: cov.measured.z_max };
-  const ever = cov?.predicted?.everywhere;
-  if (ever) return { kind: "predicted", vertices: ever.vertices, z_min: ever.z_min, z_max: ever.z_max, slices: cov?.predicted?.slices };
-  return null;
+/** The outline's extent, for the words beside the map. */
+function extent(space: SpaceLayer): string {
+  const xs = space.vertices.map((v) => v[0]);
+  const ys = space.vertices.map((v) => v[1]);
+  const w = Math.max(...xs) - Math.min(...xs);
+  const d = Math.max(...ys) - Math.min(...ys);
+  return `${formatMetres(w)} × ${formatMetres(d)}, from ${space.z_min.toFixed(2)} to ${space.z_max.toFixed(2)} m up`;
 }
 
-export function FlightPlanCheck({ mission, run }: { mission: MissionView; run: Run }) {
+export function FlightPlanCheck({ mission, run, mode, onFlyable, onContinue }: {
+  mission: MissionView;
+  run: Run;
+  mode: "space" | "fit";
+  /** ④ only: whether the auto-corrected plan can fly, every time it is asked. */
+  onFlyable?: (ok: boolean) => void;
+  onContinue?: () => void;
+}) {
   const [drawn, setDrawn] = useState<MissionView>(mission);
   const [room, setRoom] = useState<RoomView | null>(null);
   const [coverage, setCoverage] = useState<RoomCoverage | null>(null);
-  const [survey, setSurvey] = useState<SurveyStatus>({ active: false });
   const [plan, setPlan] = useState<FlyingPlan | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -65,8 +65,8 @@ export function FlightPlanCheck({ mission, run }: { mission: MissionView; run: R
   useEffect(() => { setDrawn(mission); }, [mission]);
 
   const loadRoom = useCallback(() => {
-    api.room(drawn.room_id).then(setRoom).catch(() => {});
-    api.roomCoverage(drawn.room_id).then((c) => { setCoverage(c); setSurvey(c.survey); }).catch(() => {});
+    api.room(drawn.room_id).then(setRoom).catch((e: unknown) => setError(e instanceof AgentError ? e.message : "The room could not be loaded."));
+    api.roomCoverage(drawn.room_id).then(setCoverage).catch(() => setCoverage(null));
   }, [drawn.room_id]);
   useEffect(loadRoom, [loadRoom, attempt]);
 
@@ -95,25 +95,24 @@ export function FlightPlanCheck({ mission, run }: { mission: MissionView; run: R
     return () => { live = false; window.clearTimeout(timer); };
   }, [draft]);
 
-  // The survey's outline, while it runs.
-  useEffect(() => {
-    if (!survey.active) return;
-    const timer = window.setInterval(() => { api.surveyStatus().then(setSurvey).catch(() => {}); }, SURVEY_EVERY_MS);
-    return () => window.clearInterval(timer);
-  }, [survey.active]);
-
   const startEditing = async () => {
-    const [limits, all] = await Promise.all([api.planLimits(), api.missions()]);
-    setEditing({ limits, others: all.filter((m) => m.room_id === drawn.room_id && m.id !== drawn.id).length });
+    try {
+      const [limits, all] = await Promise.all([api.planLimits(), api.missions()]);
+      setEditing({ limits, others: all.filter((m) => m.room_id === drawn.room_id && m.id !== drawn.id).length });
+    } catch (e) {
+      setError(e instanceof AgentError ? e.message : "The editor could not open.");
+    }
   };
   const stopEditing = () => { setEditing(null); setDraft(null); };
 
-  const space = room ? spaceOf(coverage, survey, room) : null;
-  const flySpace: SpaceLayer | null = plan && coverage?.measured
-    ? { kind: "measured", vertices: plan.space.vertices, z_min: plan.space.z_min, z_max: plan.space.z_max }
-    : null;
+  const space = spaceOf(coverage);
   const errors = plan?.mission.problems.filter((p) => p.severity === "error") ?? [];
   const drone = plan?.position ?? null;
+  const flyable = !!plan?.position && errors.length === 0 && (plan?.unfitted.length ?? 0) === 0;
+
+  // ④ is done when the auto-corrected plan can fly — and undone the moment it
+  // cannot (the drone moved, the plan was edited).
+  useEffect(() => { if (mode === "fit" && plan) onFlyable?.(flyable); }, [mode, plan, flyable, onFlyable]);
 
   const drawnMap = (heightClass: string) => room && (
     <RoomMap outer={room.outer} fence={room.geofence} obstacles={room.obstacles} path={drawn}
@@ -123,96 +122,110 @@ export function FlightPlanCheck({ mission, run }: { mission: MissionView; run: R
   const flyingMap = (heightClass: string) => room && plan && (
     <RoomMap outer={room.outer} fence={plan.mission.room_id === room.id ? room.geofence : null}
              obstacles={room.obstacles} path={plan.mission} takeoffHeight={plan.mission.cruise_height_m}
-             problems={plan.mission.problems} drone={drone} space={flySpace} heightClass={heightClass}
-             label={`${drawn.name}: the plan that will fly, from where the drone is`} />
+             problems={plan.mission.problems} drone={drone} space={space} heightClass={heightClass}
+             label={`${drawn.name}: the auto-corrected plan, from where the drone is`} />
   );
+
+  const status = !plan ? <Spinner label="Checking…" />
+    : !plan.position ? <StatusDot tone="warning">No position yet</StatusDot>
+    : mode === "space" ? <StatusDot tone={space ? "good" : "warning"}>{space ? "Station reach known" : "Default area"}</StatusDot>
+    : flyable ? <StatusDot tone="good">Ready to fly</StatusDot>
+    : <StatusDot tone="critical">{`${errors.length + (plan.unfitted.length ? 1 : 0)} to fix`}</StatusDot>;
 
   return (
     <>
-      <Panel
-        title="Your plan, and the plan that will fly"
-        action={!plan ? <Spinner label="Checking…" />
-          : !plan.position ? <StatusDot tone="idle">No position yet</StatusDot>
-          : errors.length ? <StatusDot tone="critical">{`${errors.length} to fix`}</StatusDot>
-          : <StatusDot tone="good">Safe to start here</StatusDot>}
-        bodyClassName="grid gap-4 px-4 py-3"
-      >
-        <p className="text-xs leading-relaxed">
-          The green space is where the drone knows where it is. Points outside it are ringed red, and the plan that will
-          fly moves each one to the nearest spot inside — the points already inside never move. The flight starts from
-          wherever the drone is (D).
-        </p>
+      <Panel title={mode === "space" ? "Flyable space" : "Auto-correct"} action={status}
+             bodyClassName="grid gap-4 px-4 py-3">
         {error && (
           <div className="grid gap-2">
             <Message tone="critical" text={error} />
             <div><Button onClick={() => setAttempt((n) => n + 1)}>Try again</Button></div>
           </div>
         )}
-        {!coverage?.measured && (
-          <Message tone="warning" text={coverage?.predicted?.everywhere
-            ? "The flyable space shown is PREDICTED from the base stations. Measure it with the survey below before trusting its edges — until then the agent's default area is what flies."
-            : "This room's flyable space has not been measured. Until it is, the agent's default area stands in. Measure it with the survey below."} />
+        {plan && !plan.position && (
+          <Message tone="warning" text="The drone does not know where it is yet. Measure it in ② Position, then come back." />
         )}
 
-        <section className="grid gap-2" aria-labelledby="drawn-heading">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 id="drawn-heading" className="eyebrow">Your plan</h3>
-            <div className="flex flex-wrap gap-2">
-              {!editing && <Button onClick={() => void startEditing()}>Edit the plan here</Button>}
-              {!editing && <Button onClick={() => setFull("drawn")}>Full screen</Button>}
-            </div>
-          </div>
-          {editing && room ? (
-            <MissionEditor
-              draft={{ room, mission: drawn, roomIsNew: false, missionIsNew: false }}
-              limits={editing.limits} run={run} drone={drone} missionsInRoom={editing.others} space={space}
-              onDraft={(m, r) => setDraft({ mission: m, room: r })}
-              onCancel={stopEditing}
-              onSaved={(saved) => { setDrawn(saved); stopEditing(); setAttempt((n) => n + 1); }}
-            />
-          ) : room ? drawnMap("h-72") : <Spinner label="Loading the room…" />}
-        </section>
+        {mode === "space" && (
+          <section className="grid gap-2" aria-labelledby="space-heading">
+            <h3 id="space-heading" className="eyebrow">Where the base station reaches</h3>
+            <p className="text-sm">
+              {space
+                ? `Green is where the drone can trust its position: ${extent(space)}. Your room, path and obstacles are drawn over it. Points outside the green are ringed red — ④ brings them in for the flight; your plan itself is never changed.`
+                : "The base station's reach is not known yet, so the agent's default area (4 m × 4 m) stands in. Measure the drone's position in ② Position and the green appears here."}
+            </p>
+            {room ? drawnMap("h-80") : <Spinner label="Loading the room…" />}
+            {onContinue && <div><Button variant="primary" onClick={onContinue}>Continue to Auto-correct →</Button></div>}
+          </section>
+        )}
 
-        <section className="grid gap-2" aria-labelledby="flying-heading">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 id="flying-heading" className="eyebrow">
-              The plan that will fly{draft ? " — following your unsaved edit" : ""}
-            </h3>
-            <Button onClick={() => setFull("flying")} disabled={!plan}>Full screen</Button>
-          </div>
-          {plan ? flyingMap("h-72") : <Spinner label="Working out the plan that will fly…" />}
-          {plan && plan.moves.length > 0 && (
-            <ul className="grid gap-1" aria-label="Points moved into the flyable space">
-              {plan.moves.map((m) => (
-                <li key={m.point_id} className="text-xs">
-                  <StatusDot tone="warning">
-                    <strong className="mono">{m.point_id}</strong> moved {formatMetres(m.distance_m)} into the flyable space
-                  </StatusDot>
-                </li>
-              ))}
-            </ul>
-          )}
-          {plan && plan.unfitted.length > 0 && (
-            <Message tone="critical" text={`${plan.unfitted.join(", ")} cannot be brought inside the flyable space. Move ${plan.unfitted.length === 1 ? "it" : "them"} in your plan.`} />
-          )}
-          {plan?.position && errors.length > 0 && (
-            <ul className="grid gap-1">
-              {errors.map((p, i) => (
-                <li key={`${p.code}-${i}`} className="text-xs">
-                  <StatusDot tone="critical">
-                    {p.where ? <strong className="mono">{p.where.replace(/^home/, "D").replace(/→ home$/, "→ D")}: </strong> : null}
-                    {p.message.replace(/^The start/, "The drone's spot")}
-                  </StatusDot>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+        {mode === "fit" && (
+          <>
+            <section className="grid gap-2" aria-labelledby="drawn-heading">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 id="drawn-heading" className="eyebrow">Your plan — as drawn, editable</h3>
+                <div className="flex flex-wrap gap-2">
+                  {!editing && <Button onClick={() => void startEditing()}>Edit the plan</Button>}
+                  {!editing && <Button onClick={() => setFull("drawn")}>Full screen</Button>}
+                </div>
+              </div>
+              {editing && room ? (
+                <MissionEditor
+                  draft={{ room, mission: drawn, roomIsNew: false, missionIsNew: false }}
+                  limits={editing.limits} run={run} drone={drone} missionsInRoom={editing.others} space={space}
+                  onDraft={(m, r) => setDraft({ mission: m, room: r })}
+                  onCancel={stopEditing}
+                  onSaved={(saved) => { setDrawn(saved); stopEditing(); setAttempt((n) => n + 1); }}
+                />
+              ) : room ? drawnMap("h-64") : <Spinner label="Loading the room…" />}
+            </section>
+
+            <section className="grid gap-2" aria-labelledby="flying-heading">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 id="flying-heading" className="eyebrow">
+                  The plan that will fly — auto-corrected{draft ? ", following your unsaved edit" : ""}
+                </h3>
+                <Button onClick={() => setFull("flying")} disabled={!plan}>Full screen</Button>
+              </div>
+              <p className="text-xs">
+                Starts where the drone is (D): the whole path moves with it. Points outside the green are brought inside;
+                the walls and obstacles stay where they are.
+              </p>
+              {plan ? flyingMap("h-64") : <Spinner label="Working out the plan that will fly…" />}
+              {plan && plan.moves.length > 0 && (
+                <ul className="grid gap-1" aria-label="Points moved into the flyable space">
+                  {plan.moves.map((m) => (
+                    <li key={m.point_id} className="text-xs">
+                      <StatusDot tone="warning">
+                        <strong className="mono">{m.point_id}</strong> moved {formatMetres(m.distance_m)} into the green
+                      </StatusDot>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {plan && plan.unfitted.length > 0 && (
+                <Message tone="critical" text={`${plan.unfitted.join(", ")} cannot be brought inside the green. Edit your plan above, or move the drone.`} />
+              )}
+              {plan?.position && errors.length > 0 && (
+                <ul className="grid gap-1" aria-label="Why it cannot fly">
+                  {errors.map((p, i) => (
+                    <li key={`${p.code}-${i}`} className="text-xs">
+                      <StatusDot tone="critical">
+                        {p.where ? <strong className="mono">{p.where.replace(/^home/, "D").replace(/→ home$/, "→ D")}: </strong> : null}
+                        {p.message.replace(/^The start/, "The drone's spot")}
+                      </StatusDot>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {plan && flyable && (
+                <p className="text-sm"><StatusDot tone="good">{plan.moves.length ? `Corrected: ${plan.moves.length} point${plan.moves.length === 1 ? "" : "s"} moved into the green. Your saved plan is unchanged.` : "Nothing to correct — every point is inside the green."}</StatusDot></p>
+              )}
+              {flyable && onContinue && <div><Button variant="primary" onClick={onContinue}>Continue to Fly →</Button></div>}
+            </section>
+          </>
+        )}
       </Panel>
-
-      <SurveyPanel room={room} survey={survey} run={run}
-                   onStarted={setSurvey}
-                   onStopped={() => { setSurvey({ active: false }); setAttempt((n) => n + 1); }} />
 
       {full && (
         <FullScreenOverlay label={full === "drawn" ? `${drawn.name} — your plan` : `${drawn.name} — the plan that will fly`}
@@ -221,50 +234,5 @@ export function FlightPlanCheck({ mission, run }: { mission: MissionView; run: R
         </FullScreenOverlay>
       )}
     </>
-  );
-}
-
-/** Measure the flyable space: carry the drone round the room's edge. */
-function SurveyPanel({ room, survey, run, onStarted, onStopped }: {
-  room: RoomView | null;
-  survey: SurveyStatus;
-  run: Run;
-  onStarted: (s: SurveyStatus) => void;
-  onStopped: () => void;
-}) {
-  const busy = useRef(false);
-  const act = (action: () => Promise<unknown>, label: string, after: () => void) => {
-    if (busy.current) return;
-    busy.current = true;
-    void run(action, label).finally(() => { busy.current = false; after(); });
-  };
-  return (
-    <Panel title="Measure the flyable space"
-           action={survey.active ? <StatusDot tone="warning">{`Surveying · ${survey.kept} positions`}</StatusDot> : undefined}
-           bodyClassName="grid gap-3 px-4 py-3">
-      <p className="text-xs leading-relaxed">
-        Motors off, drone in your hands: press Start, then walk it slowly round the edge of the space you want to fly
-        in, at about the heights it will fly, with the base stations in view. Only positions where the drone receives
-        enough stations count (one by default; two where the room insists). Save when the outline covers the room.
-      </p>
-      {survey.active && (
-        <p className="mono text-xs">{survey.kept} of {survey.seen} positions counted · the outline is drawn on the maps above</p>
-      )}
-      <div className="flex flex-wrap gap-2">
-        {!survey.active ? (
-          <Button variant="primary" disabled={!room}
-                  onClick={() => room && act(() => api.startSurvey(room.id).then(onStarted), "Start the survey", () => {})}>
-            Start the survey
-          </Button>
-        ) : (
-          <>
-            <Button variant="primary" onClick={() => act(() => api.stopSurvey(true), "Save the flyable space", onStopped)}>
-              Save as the flyable space
-            </Button>
-            <Button onClick={() => act(() => api.stopSurvey(false), "Discard the survey", onStopped)}>Discard</Button>
-          </>
-        )}
-      </div>
-    </Panel>
   );
 }

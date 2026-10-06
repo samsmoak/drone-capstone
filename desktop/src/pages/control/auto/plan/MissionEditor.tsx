@@ -19,7 +19,7 @@
  * here" in its row) and the flight lands there, whatever comes after it.
  * Reverse direction flies the points the other way round. The drone (D) is
  * the real start of every flight: a new mission starts where it is, and
- * ② Check tests the path from wherever it has been put since.
+ * ④ Auto-correct tests the path from wherever it has been put since.
  *
  * THE AGENT CHECKS THE PLAN, NOT THIS FILE. A moment after every change the
  * draft goes to POST /missions/validate and the agent's own answer — every
@@ -87,8 +87,11 @@ const SPEEDS: { m_s: number; name: string }[] = [
   { m_s: 0.20, name: "Brisk" },
 ];
 
-export function outerOf(room: Room, limits: PlanLimits): OuterBound {
-  return room.coverage ? { vertices: room.coverage.vertices, measured: true } : limits.outer;
+/** The room's map — the agent's flying area, never the measured flyable
+ *  space: the plan is the operator's, and only the plan that will fly is
+ *  fitted into the green (agent validate.py outer_bound, 2026-10-05). */
+export function outerOf(_room: Room, limits: PlanLimits): OuterBound {
+  return { ...limits.outer, measured: false };
 }
 
 /** A new room: the map, less a margin, as a rectangle. */
@@ -714,7 +717,7 @@ function PathForm({ mission, setMission, setPoint, removePoint, box, band, limit
           <CardState selected={startSelected} />
         </div>
         <p className="text-xs leading-relaxed">
-          Every flight starts from <strong>wherever the drone is</strong> (D on the map) when you press Start — ② Check tests the path from there. The planned start (S) is what the plan is drawn and checked from until then.
+          Every flight starts from <strong>wherever the drone is</strong> (D on the map) when you press Start — ④ Auto-correct tests the path from there. The planned start (S) is what the plan is drawn and checked from until then.
         </p>
         <div className="flex flex-wrap items-end gap-3">
           <NumberField label="From left" value={left} min={0} max={cm(box.xMax - box.xMin)} hint="" readOnly={!startSelected}
@@ -732,7 +735,7 @@ function PathForm({ mission, setMission, setPoint, removePoint, box, band, limit
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <SmallButton disabled={!drone} onClick={() => drone && setHome(drone)}
-                       title={drone ? undefined : "No drone is reporting a position."}>
+                       title={drone ? undefined : "The drone does not know where it is yet. Measure the base station in Set up (step 4)."}>
             Put the start where the drone is
           </SmallButton>
           {off !== null && off > 0.3 && (
