@@ -14,7 +14,13 @@ import { formatLocal, useIsClient } from "@/components/ui/local-time";
 
 const PAGE_SIZE = 100;
 
-const COLUMNS: { key: keyof TelemetryRow; label: string; digits?: number }[] = [
+/** One column of the table: a field of the row, its label, its decimals. */
+export type ReadingColumn = { key: string; label: string; digits?: number };
+
+/** Any stored row — a flight's telemetry, or a session's own samples. */
+type ReadingRow = { [key: string]: unknown };
+
+const COLUMNS: (ReadingColumn & { key: keyof TelemetryRow })[] = [
   { key: "index", label: "#" },
   { key: "recorded_at", label: "Recorded" },
   { key: "mode", label: "Mode" },
@@ -36,7 +42,7 @@ const COLUMNS: { key: keyof TelemetryRow; label: string; digits?: number }[] = [
   { key: "roc_per_s", label: "Rate of change (/s)", digits: 3 },
 ];
 
-function cell(row: TelemetryRow, key: keyof TelemetryRow, client: boolean, digits?: number): string {
+function cell(row: ReadingRow, key: string, client: boolean, digits?: number): string {
   const value = row[key];
   if (value === null || value === undefined) return "—";
   // Viewer's timezone once in the browser; an explicit UTC ISO string before.
@@ -45,7 +51,14 @@ function cell(row: TelemetryRow, key: keyof TelemetryRow, client: boolean, digit
   return String(value);
 }
 
-export function RawReadings({ rows, unit }: { rows: TelemetryRow[]; unit: string }) {
+export function RawReadings({ rows, unit, columns = COLUMNS, what = "flight" }: {
+  rows: ReadingRow[];
+  unit: string;
+  /** The flight's columns unless given (a session's samples have their own). */
+  columns?: ReadingColumn[];
+  /** Named in the empty state: "flight" or "session". */
+  what?: string;
+}) {
   const client = useIsClient();
   const [page, setPage] = useState(0);
   const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
@@ -56,7 +69,7 @@ export function RawReadings({ rows, unit }: { rows: TelemetryRow[]; unit: string
   if (rows.length === 0) {
     return (
       <p className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-6 text-sm text-[var(--muted)]">
-        No readings were stored for this flight.
+        No readings were stored for this {what}.
       </p>
     );
   }
@@ -78,7 +91,7 @@ export function RawReadings({ rows, unit }: { rows: TelemetryRow[]; unit: string
           </caption>
           <thead className="sticky top-0 bg-[var(--surface-2)]">
             <tr>
-              {COLUMNS.map((c) => (
+              {columns.map((c) => (
                 <th key={c.key} scope="col" className="whitespace-nowrap px-3 py-2 font-medium">
                   {c.label}
                 </th>
@@ -86,9 +99,9 @@ export function RawReadings({ rows, unit }: { rows: TelemetryRow[]; unit: string
             </tr>
           </thead>
           <tbody>
-            {visible.map((row) => (
-              <tr key={row.id} className="border-t border-[var(--border)]">
-                {COLUMNS.map((c) => (
+            {visible.map((row, i) => (
+              <tr key={String(row.id ?? row.seq ?? i)} className="border-t border-[var(--border)]">
+                {columns.map((c) => (
                   <td key={c.key} className="tabular whitespace-nowrap px-3 py-1.5">
                     {cell(row, c.key, client, c.digits)}
                   </td>

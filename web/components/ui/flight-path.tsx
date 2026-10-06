@@ -31,9 +31,13 @@ function niceTicks(min: number, max: number, count = 5): number[] {
 export function FlightPath({
   rows,
   zones,
+  what = "flight",
 }: {
-  rows: TelemetryRow[];
+  /** Positions to draw: a flight's telemetry, or a session's positioned samples. */
+  rows: Pick<TelemetryRow, "x_m" | "y_m">[];
   zones: ZoneRow[];
+  /** Named in the empty state: "flight" or "session". */
+  what?: string;
 }) {
   const points: Point[] = rows
     .filter((r) => r.x_m != null && r.y_m != null)
@@ -42,9 +46,9 @@ export function FlightPath({
   if (points.length === 0) {
     return (
       <p className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-6 text-sm text-[var(--muted)]">
-        No position readings in this flight, so there is no path to draw. Position
-        comes from the Lighthouse deck — if every flight shows this, check that
-        both base stations are powered and visible to the drone.
+        No position readings in this {what}, so there is no path to draw. Position
+        comes from the Lighthouse deck — if every {what} shows this, check the base
+        station is on and measured (desktop app, Auto › ② Position).
       </p>
     );
   }

@@ -12,6 +12,9 @@ export type MissionRow = Database["public"]["Tables"]["missions"]["Row"];
 export type ZoneRow = Database["public"]["Tables"]["zones"]["Row"];
 export type PredictionRow = Database["public"]["Tables"]["predictions"]["Row"];
 export type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
+export type SessionRow = Database["public"]["Tables"]["sessions"]["Row"];
+export type SessionSampleRow = Database["public"]["Tables"]["session_samples"]["Row"];
+export type AuditEventRow = Database["public"]["Tables"]["audit_events"]["Row"];
 
 /**
  * A read that failed, as opposed to a read that found nothing.
@@ -226,6 +229,128 @@ export const getMissions = cache(async (limit = 50): Promise<MissionRow[]> => {
   if (error) failed(error, "missions");
   return data;
 });
+
+// ── sessions ─────────────────────────────────────────────────────────────
+//
+// A session is one operator, one drone, Start to End session — flying or
+// not. Its own vitals (one a second, session_samples) cover the whole of it;
+// its flights' telemetry covers only the time the motors ran.
+
+/** A session in the list: who ran it, on which drone, and how many flights. */
+export type SessionSummary = SessionRow & {
+  operator: string | null;
+  drone: string | null;
+  flight_count: number;
+};
+
+export const getRecentSessions = cache(async (limit = 50): Promise<SessionSummary[]> => {
+  const supabase = await createClient();
+  const { data: sessions, error } = await supabase
+    .from("sessions")
+    .select("*")
+    .order("started_at", { ascending: false })
+    .limit(limit);
+  if (error) failed(error, "sessions");
+  if (sessions.length === 0) return [];
+  const ids = sessions.map((s) => s.id);
+  const [flights, profiles, drones] = await Promise.all([
+    supabase.from("flights").select("session_id").in("session_id", ids),
+    supabase.from("profiles").select("id, email, full_name")
+      .in("id", sessions.map((s) => s.operator_id).filter((x): x is string => !!x)),
+    supabase.from("drones").select("id, name")
+      .in("id", sessions.map((s) => s.drone_id).filter((x): x is string => !!x)),
+  ]);
+  if (flights.error) failed(flights.error, "session flights");
+  const counts = new Map<string, number>();
+  for (const f of flights.data) if (f.session_id) counts.set(f.session_id, (counts.get(f.session_id) ?? 0) + 1);
+  const who = new Map((profiles.data ?? []).map((p) => [p.id, p.full_name || p.email]));
+  const what = new Map((drones.data ?? []).map((d) => [d.id, d.name]));
+  return sessions.map((s) => ({
+    ...s,
+    operator: s.operator_id ? who.get(s.operator_id) ?? null : null,
+    drone: s.drone_id ? what.get(s.drone_id) ?? null : null,
+    flight_count: counts.get(s.id) ?? 0,
+  }));
+});
+
+export const getSession = cache(async (id: string): Promise<SessionSummary | null> => {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("sessions").select("*").eq("id", id).maybeSingle();
+  if (error) failed(error, "this session");
+  if (!data) return null;
+  const [flights, profile, drone] = await Promise.all([
+    supabase.from("flights").select("id", { count: "exact", head: true }).eq("session_id", id),
+    data.operator_id
+      ? supabase.from("profiles").select("email, full_name").eq("id", data.operator_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    data.drone_id
+      ? supabase.from("drones").select("name").eq("id", data.drone_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+  return {
+    ...data,
+    operator: profile.data ? profile.data.full_name || profile.data.email : null,
+    drone: drone.data?.name ?? null,
+    flight_count: flights.count ?? 0,
+  };
+});
+
+/** The session's own vitals, one a second. `migrated: false` while the
+ *  database has no session_samples table yet (migration 20261006000013) —
+ *  said on the page, never shown as an error or as "nothing recorded". */
+export const getSessionSamples = cache(
+  async (sessionId: string, limit = 10000): Promise<{ rows: SessionSampleRow[]; migrated: boolean }> => {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("session_samples")
+      .select("*")
+      .eq("session_id", sessionId)
+      .order("seq", { ascending: true })
+      .limit(limit);
+    if (error) {
+      if (error.code === "PGRST205" || error.code === "42P01" || error.message.includes("session_samples")) {
+        return { rows: [], migrated: false };
+      }
+      failed(error, "session vitals");
+    }
+    return { rows: data, migrated: true };
+  },
+);
+
+export const getSessionFlights = cache(async (sessionId: string): Promise<FlightRow[]> => {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("flights")
+    .select("*")
+    .eq("session_id", sessionId)
+    .order("started_at", { ascending: true });
+  if (error) failed(error, "this session's flights");
+  return data;
+});
+
+/** What happened in the session: checks, starts, landings, refusals. Read by
+ *  operators only (row-level security) — empty for anyone else. */
+export const getSessionEvents = cache(async (sessionId: string): Promise<AuditEventRow[]> => {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("audit_events")
+    .select("*")
+    .eq("session_id", sessionId)
+    .order("occurred_at", { ascending: true })
+    .limit(500);
+  if (error) failed(error, "this session's events");
+  return data;
+});
+
+export const getPredictionsForFlights = cache(
+  async (flightIds: string[]): Promise<PredictionRow[]> => {
+    if (flightIds.length === 0) return [];
+    const supabase = await createClient();
+    const { data, error } = await supabase.from("predictions").select("*").in("flight_id", flightIds);
+    if (error) failed(error, "predictions");
+    return data;
+  },
+);
 
 export const getPredictionsForFlight = cache(
   async (flightId: string): Promise<PredictionRow[]> => {
