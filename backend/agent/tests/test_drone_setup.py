@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+from dataclasses import replace
 
 import pytest
 
@@ -10,15 +11,20 @@ from cropwatcher import drone_setup
 from cropwatcher.drone_setup import BUNDLE_DIR, DroneSetup, Facts, load_manifest, needed_parts
 
 MANIFEST = load_manifest()
-FRESH = Facts(battery_v=4.1, ai_deck=True, fw_version=None, deck_bundle=None)
+FRESH = Facts(battery_v=4.1, ai_deck=True, fw_version=None, deck_bundle=None,
+              lighthouse_deck=True, lighthouse_needs_fw=True)
 DONE = Facts(battery_v=4.1, ai_deck=True, fw_version=MANIFEST["drone_wifi"],
-             deck_bundle=MANIFEST["bundle"])
+             deck_bundle=MANIFEST["bundle"], lighthouse_deck=True)
 
 
 class Rig:
     def __init__(self, facts: Facts | None, *, present_after_unplug=True, started=True,
-                 flash_ok=True) -> None:
+                 flash_ok=True, deck_keeps_fw=True, deck_takes_fw=True,
+                 main_asks_for_deck_fw=False) -> None:
         self.facts = facts
+        self.deck_keeps_fw = deck_keeps_fw          # survives the battery unplug
+        self.deck_takes_fw = deck_takes_fw          # the write is accepted
+        self.main_asks_for_deck_fw = main_asks_for_deck_fw
         self.flashed: list[str] = []
         self.marked: list[int] = []
         self.radio: list[str] = []
@@ -40,6 +46,8 @@ class Rig:
             # gone for one probe, then back — the battery pulled and replugged
             if self._probes_in_unplug == 1:
                 self.unplugged = True
+                if not self.deck_keeps_fw and self.facts is not None:
+                    self.facts = replace(self.facts, lighthouse_needs_fw=True)
                 return None
             return self.facts if self.present_after_unplug else None
         return self.facts
@@ -48,6 +56,12 @@ class Rig:
         on_progress(0.5)
         on_progress(1.0)
         self.flashed.append(part)
+        if self.flash_ok and self.facts is not None:
+            if part == "main" and self.main_asks_for_deck_fw:
+                # a new main firmware can name a different deck image
+                self.facts = replace(self.facts, lighthouse_needs_fw=True)
+            if part == "lighthouse" and self.deck_takes_fw:
+                self.facts = replace(self.facts, lighthouse_needs_fw=False)
         return self.flash_ok
 
     def mark(self, bundle: int) -> bool:
@@ -61,7 +75,7 @@ class Rig:
 
 
 class TestNeededParts:
-    def test_a_new_drone_needs_all_three(self):
+    def test_a_new_drone_needs_all_four(self):
         assert set(needed_parts(FRESH, MANIFEST).values()) == {"needed"}
 
     def test_a_set_up_drone_needs_nothing(self):
@@ -70,7 +84,14 @@ class TestNeededParts:
     def test_old_drone_software_alone_is_updated(self):
         old_main = Facts(4.1, True, MANIFEST["drone_wifi"] - 1, MANIFEST["bundle"])
         parts = needed_parts(old_main, MANIFEST)
-        assert parts == {"main": "needed", "camera": "installed", "wifi": "installed"}
+        assert parts == {"main": "needed", "lighthouse": "installed",
+                         "camera": "installed", "wifi": "installed"}
+
+    def test_the_positioning_deck_reports_its_own_state(self):
+        assert needed_parts(replace(DONE, lighthouse_needs_fw=True), MANIFEST)["lighthouse"] \
+            == "needed"
+        assert needed_parts(replace(DONE, lighthouse_deck=False), MANIFEST)["lighthouse"] \
+            == "absent"
 
 
 class TestCheck:
@@ -99,13 +120,37 @@ class TestCheck:
 
 
 class TestInstall:
-    def test_a_new_drone_gets_all_three_in_order_then_the_unplug_then_the_marker(self):
+    def test_a_new_drone_gets_all_four_in_order_then_the_unplug_then_the_marker(self):
         rig = Rig(FRESH)
         state = rig.run("install")
-        assert rig.flashed == ["main", "camera", "wifi"]
+        assert rig.flashed == ["main", "lighthouse", "camera", "wifi"]
         assert rig.unplugged, "the check must wait for a real unplug"
         assert rig.marked == [MANIFEST["bundle"]]
         assert state["phase"] == "done"
+
+    def test_a_drone_with_no_positioning_deck_is_set_up_without_it(self):
+        rig = Rig(replace(FRESH, lighthouse_deck=False, lighthouse_needs_fw=False))
+        state = rig.run("install")
+        assert rig.flashed == ["main", "camera", "wifi"]
+        assert state["phase"] == "done" and state["parts"]["lighthouse"] == "absent"
+
+    def test_the_deck_is_asked_again_after_main_because_main_names_its_image(self):
+        rig = Rig(replace(DONE, fw_version=None), main_asks_for_deck_fw=True)
+        state = rig.run("install")
+        assert rig.flashed == ["main", "lighthouse"]
+        assert state["phase"] == "done"
+
+    def test_a_deck_that_still_asks_after_the_write_is_reported(self):
+        rig = Rig(FRESH, deck_takes_fw=False)
+        state = rig.run("install")
+        assert state["phase"] == "failed" and "still asks for its firmware" in state["message"]
+        assert rig.flashed == ["main", "lighthouse"]
+
+    def test_a_deck_that_loses_its_firmware_on_the_unplug_is_reported(self):
+        rig = Rig(FRESH, deck_keeps_fw=False)
+        state = rig.run("install")
+        assert state["phase"] == "failed" and "lost its firmware" in state["message"]
+        assert rig.marked == []
 
     def test_only_what_is_missing_is_flashed(self):
         rig = Rig(Facts(4.1, True, None, MANIFEST["bundle"]))

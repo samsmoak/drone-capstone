@@ -16,6 +16,41 @@ readings as they were taken. This file is what those readings mean.
 
 
 ========================================================================
+UPDATE 7 — 2026-10-01 (a second drone; nothing flown)
+========================================================================
+
+HEADLINE
+
+THE LAB DRONE IS NOW cf-002d00263234511236373639, built 2026-10-01. The old
+one (cf-002f002a3334471239333335) is a spare. UPDATE 6's open item 1 is
+ANSWERED for the old drone: its Lighthouse deck was mounted UNDER the drone,
+upside down ("FRONT ↑ UP" facing the floor — photos 2026-10-01), so its ID chip
+could never be read and its sensors faced away from the stations. That
+explains every barometer-only session since 09-23.
+
+WHERE THE NEW DRONE STANDS (flight-log.txt, 2026-10-01)
+
+- Firmware: 2025.12.1 + drone_wifi (0x252b4134, cwsetup.fw 2). Camera chip
+  written; the Wi-Fi chip's patched image was being written.
+- Lighthouse deck: detected; arrived WITHOUT its image (in its bootloader,
+  deaf); Bitcraze's own 2025.12.1 image written — Set up now does this itself
+  (../desktop/setup.txt). It lost the image across one battery unplug and was
+  written again; whether it keeps it now is not yet re-measured.
+- Base stations: station 0's calibration was decoded from its light, but only
+  sensors 0 and 1 see pulses and no sweep decodes. NOTHING IS ASSISTED YET.
+
+WHAT IS NOT FIXED
+
+1. No sweep decoded on the new drone (cause not yet measured: half the deck
+   shaded, both stations on one channel, or out of a station's sweep).
+2. UPDATE 6's thrust headroom (~81 % to hover) — unmeasured on the new
+   airframe; the hover ladder (flight-log.txt rungs 4–10) comes first.
+3. The tuning was measured on the old drone: re-verify before any mission.
+
+UPDATE 6 below still stands for the old drone's traces and for thrust.
+
+
+========================================================================
 UPDATE 6 — 2026-09-30, early morning (in the lab, drone queried directly)
 ========================================================================
 

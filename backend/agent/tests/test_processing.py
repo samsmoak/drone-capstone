@@ -43,6 +43,9 @@ class TestTheQueue:
         q.submit("f1")
         assert q.wait_idle()
         assert q.job("f1").state == JobState.DONE and q.job("f1").error is None
+        # The worker marks the job done, THEN notifies: wait_idle can return in
+        # between, so wait for the notification itself (this raced ~1 run in 3).
+        assert wait_for(lambda: seen[-1:] == ["done"])
         assert seen == ["queued", "running", "done"]
 
     def test_a_failure_says_why_in_the_pipelines_own_words(self):
@@ -159,12 +162,14 @@ class TestTheSwitch:
         assert wait_for(lambda: rig.session.snapshot().state is State.READY)
         assert rig.queue.job(flight_id) is None
 
-    def test_the_operators_choice_outlasts_a_mode_change(self, rig):
-        start_and_confirm(rig, Mode.MANUAL)
-        rig.session.set_processing(False)
+    def test_a_mode_change_with_no_session_resets_to_that_modes_default(self, rig):
+        # A session cannot change mode (sessions-and-modes.txt), so the
+        # operator's choice can never meet a mode change inside one.
+        sign_in(rig)
         rig.session.set_mode(Mode.AUTO)
+        assert rig.session.snapshot().processing["on"] is True
+        rig.session.set_mode(Mode.MANUAL)
         assert rig.session.snapshot().processing["on"] is False
-        assert rig.session.snapshot().processing["chosen"] is True
 
     def test_the_choice_is_per_session(self, rig):
         start_and_confirm(rig, Mode.MANUAL)

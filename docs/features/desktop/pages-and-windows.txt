@@ -318,6 +318,12 @@ DECISIONS
   locked while busy: switching mid-air would hand the drone to a different
   command source with no warning. It opens on MANUAL — see
   ../backend/sessions-and-modes.txt for why Auto was the wrong default.
+- WITH A SESSION OPEN IT ONLY CHANGES THE PAGE (2026-10-01): a session keeps
+  the mode it started in (the agent refuses a change), so choosing the other
+  mode shows pages/control/ModeLock.tsx — which session is open, and "Go to
+  <mode>" — instead of controls that would act on it. Under the toggle,
+  expanded: "Manual session open". lib/sessionMode.ts mirrors the agent's
+  rule for when a session is open (UX only; the agent decides).
 - NO TICK BOXES BEFORE FLYING. The agent still requires `accept_unassisted` and
   refuses confirm_area without it (session.py); what changed on 2026-09-23 is
   how the window obtains it. A button whose LABEL states what is being accepted
@@ -520,7 +526,8 @@ depends-on        ../../design/layout.txt
 shares-data-with  drone-wifi.txt
                   the Drone Wi-Fi page and its sidebar badge
 depends-on        ../backend/sessions-and-modes.txt
-                  Home's standby row, vitals with no session
+                  Home's standby row, vitals with no session; the mode a session
+                  keeps — the sidebar switch and the lock page
 consumed-by       auto-control.txt
                   Auto reuses FlightDeck, Checklist, RetryPanel, HealthTestPanel,
                   Field, Tabs and the ConsolePane (`views`). SceneView's `plan`

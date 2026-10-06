@@ -188,6 +188,33 @@ export type Obstacle = {
  *  coverage, or the agent's default area until that is measured. */
 export type OuterBound = { vertices: XY[]; measured: boolean };
 
+/** A point the fit moved into the flyable space (mission/plan/fit.py). */
+export type PlanMove = { point_id: string; from: [number, number, number]; to: [number, number, number]; distance_m: number };
+
+/** THE PLAN THAT WILL FLY — exactly what Start flies (GET …/from-drone, POST /missions/fit). */
+export type FlyingPlan = {
+  position: XY | null;
+  mission: MissionView;
+  /** The room's fence clipped to where the position can be trusted. */
+  space: Geofence;
+  moves: PlanMove[];
+  unfitted: string[];
+};
+
+/** One height's predicted outline. */
+export type CoverageSlice = { z_m: number; outline: XY[] };
+
+export type SurveyStatus =
+  | { active: false }
+  | { active: true; room_id: string; seen: number; kept: number; outline: XY[] };
+
+/** Where the drone's position can be trusted: measured (flies) and predicted (a guide). */
+export type RoomCoverage = {
+  measured: Geofence | null;
+  predicted: { z_min_m: number; z_max_m: number; slices: CoverageSlice[]; everywhere: Geofence | null } | null;
+  survey: SurveyStatus;
+};
+
 export type Room = {
   format: number;
   id: string;
@@ -484,8 +511,15 @@ export const api = {
   /** The mission checked from where the drone is now (its position is the
    *  start) — what Start will be checked against. */
   missionFromDrone: (id: string) =>
-    command<{ position: XY | null; mission: MissionView }>(
-      `/missions/${encodeURIComponent(id)}/from-drone`, undefined, "GET"),
+    command<FlyingPlan>(`/missions/${encodeURIComponent(id)}/from-drone`, undefined, "GET"),
+  /** The plan that will fly for an UNSAVED draft — nothing is saved. */
+  fitDraft: (mission: Mission, room: Room) => command<FlyingPlan>("/missions/fit", { mission, room }),
+  roomCoverage: (id: string) =>
+    command<RoomCoverage>(`/rooms/${encodeURIComponent(id)}/coverage`, undefined, "GET"),
+  startSurvey: (roomId: string) =>
+    command<SurveyStatus>(`/rooms/${encodeURIComponent(roomId)}/survey/start`),
+  surveyStatus: () => command<SurveyStatus>("/survey", undefined, "GET"),
+  stopSurvey: (save: boolean) => command<{ room: RoomView | null }>("/survey/stop", { save }),
   /** The DPP switch for this session. */
   setProcessing: (on: boolean) => command<Session>("/session/processing", { on }),
   /** Which way the arrow keys move the drone. Works in the air. */
@@ -550,12 +584,12 @@ export type SessionRecord = {
 export type SampleRow = { recorded_at: string } & Record<string, number | string | null>;
 
 /** Set up: installing the camera software on a drone (drone_setup.py). */
-export type SetupPart = "main" | "camera" | "wifi";
+export type SetupPart = "main" | "lighthouse" | "camera" | "wifi";
 export type SetupState = {
   phase: "idle" | "checking" | "ready" | "installing" | "unplug" | "verifying" | "done" | "failed";
   message: string | null;
   facts: { battery_v: number | null; ai_deck: boolean | null } | null;
-  parts: Partial<Record<SetupPart, "installed" | "needed" | "installing" | "done">>;
+  parts: Partial<Record<SetupPart, "installed" | "needed" | "installing" | "done" | "absent">>;
   current: SetupPart | null;
   progress: number;
   labels: Record<SetupPart, string>;

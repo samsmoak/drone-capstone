@@ -85,6 +85,9 @@ backend/supabase/migrations/20260928000012_telemetry_point_id.sql
   obstacles, the leg to P1 and back clear. That from-start mission is what is
   handed to the controller, kept with the flight and read by the pipeline.
   GET /missions/{id}/from-drone runs the same function for ② Check.
+  SINCE 2026-10-01 it is THE PLAN THAT WILL FLY (floor-plans.txt, fit.py):
+  from the drone AND fitted to the flyable space — points outside it moved
+  to the nearest fine spot, named, and kept with the flight as "moves".
 • THE ROOM'S FENCE FLIES WITH IT: the in-flight guard lands the drone outside
   the room's own polygon, not the ±2 m square Manual uses.
 • The flight is named "mission:<id>@r<revision>" and the exact plan flown —

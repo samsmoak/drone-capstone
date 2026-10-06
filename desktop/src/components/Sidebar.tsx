@@ -33,6 +33,7 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { Mode, Session } from "@/lib/agent";
+import { modeName, sessionOpen } from "@/lib/sessionMode";
 import { TONE_COLOR, TONE_ICON, type Tone } from "@/components/ui";
 import type { Page } from "@/App";
 import { NAV_GROUPS } from "@/components/nav-items";
@@ -77,7 +78,7 @@ function loadLocked(): Locked {
 }
 
 export function Sidebar({
-  page, onNavigate, session, starting, flying, onSetMode, onSignOut, badges = {},
+  page, onNavigate, session, starting, flying, mode: shown, onSetMode, onSignOut, badges = {},
 }: {
   /** A status dot beside an item — Drone Wi-Fi's join state, for one. */
   badges?: Partial<Record<Page, { tone: Tone; label: string }>>;
@@ -87,6 +88,9 @@ export function Sidebar({
   starting: boolean;
   /** While true the rail will not open itself — see the note above. */
   flying: boolean;
+  /** The mode whose page is shown (lib/sessionMode.ts shownMode) — the open
+   *  session's own, unless the operator is looking at the other one. */
+  mode: Mode;
   onSetMode: (mode: Mode) => void;
   onSignOut: () => void;
 }) {
@@ -126,6 +130,9 @@ export function Sidebar({
   }, []);
 
   const modeLocked = starting || session?.state === "busy";
+  // With a session open the switch only changes the page you look at; the
+  // session keeps its mode until it ends (lib/sessionMode.ts).
+  const open = sessionOpen(session);
 
   return (
     // The LAYOUT box: always the locked width, so expanding never reflows.
@@ -184,15 +191,17 @@ export function Sidebar({
               <button
                 key={mode}
                 type="button"
-                aria-pressed={session?.mode === mode}
+                aria-pressed={shown === mode}
                 disabled={modeLocked}
                 title={
                   modeLocked ? "Finish the current flight first"
-                    : expanded ? undefined : `${mode} mode`
+                    : open && session && session.mode !== mode
+                      ? `Look at ${modeName(mode)} — the open session stays ${modeName(session.mode)}`
+                      : expanded ? undefined : `${mode} mode`
                 }
                 onClick={() => onSetMode(mode)}
                 className={`min-h-8 flex-1 text-[10px] font-semibold uppercase tracking-[0.08em] disabled:cursor-not-allowed disabled:opacity-50 ${
-                  session?.mode === mode
+                  shown === mode
                     ? "bg-[var(--primary)] text-[var(--on-primary)]"
                     : "text-[var(--muted)] hover:bg-[var(--surface-2)]"
                 }`}
@@ -201,6 +210,9 @@ export function Sidebar({
               </button>
             ))}
           </div>
+          {expanded && open && session && (
+            <p className="pt-1.5 text-xs">{modeName(session.mode)} session open</p>
+          )}
         </div>
 
         <nav aria-label="Pages" className="console-scroll flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-2 pb-3">
