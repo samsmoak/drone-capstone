@@ -1,6 +1,6 @@
 import {
   ADMIN_GALLERY, ADMIN_PAGES, ADMIN_PROJECTS, ADMIN_TEAM,
-  COMPARE, FLIGHTS, LIVE, MANUAL, OPERATOR_HOME, PLAN, SETTINGS, ZONES,
+  COMPARE, FLIGHTS, LIVE, MANUAL, OPERATOR_HOME, PLAN, SESSIONS, SETTINGS, ZONES,
 } from "@/lib/routes";
 
 /**
@@ -16,6 +16,7 @@ export const OPERATOR_GROUPS: OperatorNavGroup[] = [
     items: [
       { href: OPERATOR_HOME, label: "Dashboard", icon: "M4 5a1 1 0 011-1h5v7H4V5zm0 8h6v7H5a1 1 0 01-1-1v-6zm8-9h4a1 1 0 011 1v4h-5V4zm0 7h5v8a1 1 0 01-1 1h-4v-9z" },
       { href: LIVE, label: "Live", icon: "M12 4a8 8 0 100 16 8 8 0 000-16zm0 4.5a3.5 3.5 0 110 7 3.5 3.5 0 010-7z" },
+      { href: SESSIONS, label: "Sessions", icon: "M7 2v2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2h-2V2h-2v2H9V2H7zm-2 7h14v11H5V9zm2 2v2h2v-2H7zm4 0v2h2v-2h-2zm4 0v2h2v-2h-2zm-8 4v2h2v-2H7zm4 0v2h2v-2h-2z" },
       { href: FLIGHTS, label: "Flights", icon: "M3 17l6-6 4 4 8-8v4h2V4h-7v2h4l-7 7-4-4-7 7z" },
       { href: ZONES, label: "Zones", icon: "M4 4h7v7H4V4zm9 0h7v7h-7V4zM4 13h7v7H4v-7zm9 0h7v7h-7v-7z" },
       { href: COMPARE, label: "Compare", icon: "M9 3h2v18H9V3zm4 5h2v13h-2V8zM5 11h2v10H5V11zm12-4h2v14h-2V7z" },
