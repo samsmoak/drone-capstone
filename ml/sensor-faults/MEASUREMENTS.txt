@@ -1,0 +1,108 @@
+SENSOR-FAULT MEASUREMENTS — where every number in the cleaner comes from
+=======================================================================
+
+The cleaner (backend/agent/cropwatcher/pipeline/stages/clean/hampel.py) cites
+this file for each threshold. Change a threshold → change its line here, with
+the measurement that justifies it.
+
+STATUS (2026-10-03): ONE flight measured — the pipeline fixture,
+backend/agent/tests/pipeline/fixtures/data/flights/2026-09-24/, 400 rows
+(about 40 s at 10 Hz) of a real lab flight flown by hand, in °C. Missing, gap and
+out-of-range are FINAL. Spike and stuck are PROVISIONAL until three or more
+flights, one with a hand-warmer test, are measured
+(docs/handoffs/sprint-1/undone/dpp-clean.txt, step 1). Add each flight below
+and re-run the script at the end.
+
+
+TIMING  (gap)
+─────────────
+  Interval between readings     min 0.080 s · median 0.100 s · p99 0.104 s ·
+                                max 0.120 s
+  → EXPECTED_PERIOD_S = 0.1, GAP_S = 2.5 × 0.1 = 0.25 s: twice the worst
+    interval seen.
+  The row index is consecutive in the CSV: the recorder numbers each row as
+  it builds it (telemetry/reader.py, rows_written). A skipped index is a lost
+  row, and catches the single lost row that time alone cannot (0.2 s < 0.25 s).
+
+
+RANGE  (out_of_range)
+─────────────────────
+  Temperature and pressure come from the BMP388 (telemetry/correction.py).
+  Bosch BMP388 datasheet, BST-BMP388-DS001, section 1 "Specification":
+    pressure                    300 … 1250 hPa
+    operating temperature       −40 … +85 °C
+  → applied to raw_temp, corrected_temp (converted for °F flights) and
+    station_pressure_hpa. CHECK THESE AGAINST THE PDF: it is not in
+    docs/hardware/, so they were taken from the published datasheet, not the
+    repo.
+  Seen in the fixture: raw_temp 29.9 … 34.2 °C (the board runs warm),
+  corrected_temp 20.5 … 26.7 °C, pressure 1026 … 1027 hPa.
+
+
+MISSING
+───────
+  0 missing values in all 400 rows. The recorder skips a row whose
+  temperature, pressure, battery or position has not arrived
+  (telemetry/reader.py, _build), so a missing value means the file was damaged
+  or a NaN came off the sensor. The loader turns an empty cell into None and
+  "nan" into NaN (pipeline/sources.py, _number): both are flagged.
+
+
+SPIKE  (Hampel, PROVISIONAL)
+────────────────────────────
+  Over a rolling window of 11 readings (1.1 s), on the fixture:
+
+                         scaled MAD (1.4826 × MAD)   largest |value − median|
+                         median     5th pct   min
+  raw_temp      °C       0.0378     0.0030    0.0015   0.0374
+  corrected     °C       0.0424     0.0018    0.0005   0.0090
+  pressure      hPa      0.0127     0.0054    0.0016   0.0443
+
+  The scaled MAD falls near zero on quiet stretches, so without a floor the
+  threshold would too, and ordinary noise would be called a spike.
+  → WINDOW = 11, K = 3.
+  → noise floor 0.05 °C for both temperatures: threshold ≥ 0.15 °C, four times
+    the largest real deviation (0.037 °C).
+  → noise floor 0.03 hPa for pressure: threshold ≥ 0.09 hPa, twice the
+    largest real deviation (0.044 hPa).
+
+  Largest real step from one reading to the next: raw_temp 0.055 °C,
+  pressure 0.050 hPa, corrected_temp 4.64 °C. That last one is NOT noise: at
+  row 27 thermal_state goes IDLE → FLIGHT (COOLING) as the drone takes off,
+  and the correction engine moves corrected_temp from 22.01 to 26.65 °C and
+  holds it, while raw_temp stays flat at 34.22 °C. It is why the cleaner has
+  no rate-of-change rule: a held step moves the median with it.
+
+
+STUCK  (PROVISIONAL)
+────────────────────
+  Longest run of exactly identical consecutive values, and how often two
+  readings in a row are identical:
+    raw_temp                2     0.3 %
+    station_pressure_hpa    2     0.5 %
+    corrected_temp          1     0 %     (computed: not checked itself)
+    battery_v               28            (logged at a slower rate)
+  → STUCK_SAMPLES = 10 (1 s), five times the longest real run, on raw_temp and
+    station_pressure_hpa only. corrected_temp is flagged with raw_temp,
+    because it is computed from it. battery_v is never checked for stuck.
+
+
+NOT YET CHECKED  (the ticket's SHOULD columns)
+──────────────────────────────────────────────
+  x_m, y_m, z_m, battery_v. In the fixture the Lighthouse never locked:
+  lighthouse_received is 0 from row 2 on, x_m and y_m are exactly 0.0, and
+  z_m is about −91 m (no ground reference was captured). Every position value
+  in that flight would be flagged, so it cannot show what a clean flight
+  looks like. Measure on flights with a Lighthouse lock first.
+
+
+SCORE  (ml/sensor-faults/evaluate.py, faults planted by plant_faults.py)
+──────────────────────────────────────────────────────────────────────
+  Fixture flight, seeds 0–7:  caught 54/54 planted values every time ·
+  false flags 0 of 1188 checked values (0.00 %) · ramp flags 0 ·
+  31–44 ms to clean the whole 400-row flight as one point (a dev machine,
+  NOT the lab laptop — the ticket's timing is still owed).
+
+  Re-run on new flights:
+    cd backend/agent && .venv/bin/python ../../ml/sensor-faults/evaluate.py \
+        <flight.csv> [...] --seed 0
