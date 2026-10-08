@@ -125,6 +125,14 @@ def build_parser() -> argparse.ArgumentParser:
     which.add_argument("--fixture", action="store_true",
                        help="run on the test fixture in tests/pipeline (source checkout only)")
 
+    report = sub.add_parser(
+        "mission-report",
+        help="how a mission flight flew, point by point, and what the mission "
+             "controller's constants should be; never connects")
+    report.add_argument("--flight", action="append", required=True,
+                        help="a mission flight's id; repeat to measure across several")
+    report.add_argument("--json", action="store_true", help="the same report, as JSON")
+
     sub.add_parser("selftest", help="load every library the agent only loads on demand")
     return parser
 
@@ -560,6 +568,31 @@ SELFTEST_MODULES = (
 )
 
 
+def cmd_mission_report(args: argparse.Namespace) -> int:
+    """How mission flights flew, from the files they wrote (mission/review.py):
+    each point's transit, settle, hold and drift, the flown time against the
+    planner's, and what the four constants should be. Touches no radio."""
+    from cropwatcher.mission import review
+
+    reviews, errors = [], []
+    for flight_id in args.flight:
+        try:
+            reviews.append(review.load_review(flight_id, paths.data_dir()))
+        except review.ReportError as e:
+            errors.append((flight_id, str(e)))
+    suggestions = review.suggest_constants(reviews)
+    if args.json:
+        print(json.dumps(review.to_json(reviews, suggestions, errors), indent=2))
+    else:
+        for found in reviews:
+            print(f"\n{review.format_review(found)}")
+        for _, message in errors:
+            print(f"\n  {message}")
+        if reviews:
+            print(f"\n{review.format_suggestions(suggestions)}\n")
+    return 1 if errors else 0
+
+
 def cmd_selftest(_args: argparse.Namespace) -> int:
     """Import every lazily loaded library; report each one that will not load.
 
@@ -653,6 +686,7 @@ def main(argv: list[str] | None = None) -> int:
         "hover": cmd_hover,
         "mission": cmd_mission,
         "process": cmd_process,
+        "mission-report": cmd_mission_report,
         "serve": cmd_serve,
         "selftest": cmd_selftest,
     }

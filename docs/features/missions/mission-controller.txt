@@ -1,12 +1,13 @@
 ================================================================================
 THE MISSION CONTROLLER — how a saved mission is flown
-Last verified: 2026-09-29 against claude/awesome-carson-eqkt8w — test_manual.py
-TestFlyTo (13), tests/mission/test_session_missions.py (22), test_stamping.py.
+Last verified: 2026-10-08 against feat/mission-verification — test_manual.py
+TestFlyTo, tests/mission/test_session_missions.py, test_stamping.py,
+tests/test_sim_drone.py (18), tests/mission/test_review.py (40).
 SOURCE: backend/agent/cropwatcher/mission/controller/mission_controller.py
 ================================================================================
 
 --------------------------------------------------------------------------------
-STATUS  (Last verified: 2026-09-28)
+STATUS  (Last verified: 2026-10-08)
 --------------------------------------------------------------------------------
   goal       BUILT — ManualController.fly_to(), goal_active, operator_override
   session    BUILT — Session.run_mission(), POST /session/mission, the room's
@@ -16,9 +17,12 @@ STATUS  (Last verified: 2026-09-28)
              (../../handoffs/sprint-1/undone/mission-controller.txt).
              BUILT = False, and the session refuses to arm a mission until
              it is True.
-  proof      NOT BUILT — Yordi: a simulated drone, the mission report, the
-             end-to-end scenarios, the lab rungs, the measured constants
-             (../../handoffs/sprint-1/undone/mission-verification.txt).
+  proof      PART BUILT — Yordi (../../handoffs/sprint-1/undone/
+             mission-verification.txt). BUILT 2026-10-08: the simulated
+             drone (tests/sim_drone.py) and the mission report
+             (`cropwatcher mission-report`). NOT BUILT: the end-to-end
+             scenarios (they need the controller's body), the lab rungs,
+             the measured constants.
   flown      NEVER — no mission has flown. 2026-10-05 lab: the 1 m square
              (0.40 m, Steady, 5 s holds, return) flies in simulation in 72.6 s;
              on the drone it is blocked on station reception with the drone
@@ -50,7 +54,12 @@ backend/agent/cropwatcher/safety/flight_guard.py      GuardContext.fence
 backend/agent/cropwatcher/telemetry/row.py            TelemetryRow.point_id
 backend/agent/cropwatcher/camera/recording.py         frames.csv point_id
 backend/agent/cropwatcher/sync/cloud.py               without_empty_point_id
-backend/agent/cropwatcher/cli.py                      `cropwatcher mission`
+backend/agent/cropwatcher/cli.py                      `cropwatcher mission`,
+                                                      `cropwatcher mission-report`
+backend/agent/cropwatcher/mission/review.py           the mission report
+backend/agent/tests/sim_drone.py                      the simulated drone
+backend/agent/tests/test_sim_drone.py
+backend/agent/tests/mission/test_review.py
 backend/supabase/migrations/20260928000012_telemetry_point_id.sql
 
 --------------------------------------------------------------------------------
@@ -120,6 +129,25 @@ backend/supabase/migrations/20260928000012_telemetry_point_id.sql
 • The base-station geometry is NOT re-checked at Start: if the stations moved
   since the room was drawn, absolute positions mean something else. That
   needs the room's geometry fingerprint (floor-plans.txt, NOT BUILT).
+• THE SIMULATED DRONE RUNS NO THREAD (2026-10-08). SimDrone.arm() calls
+  ctl.arm() and never ctl.start(): step() IS the 50 Hz loop, on the one
+  FakeClock, ticking a mission every MISSION_TICK_S (= the controller's
+  TICK_S, imported). The ticket said "arm + start"; a real-time thread beside
+  a fake clock makes no two runs alike, and manual.py's tick() exists so
+  tests can drive it.
+• THE MISSION REPORT IS FLIGHT PERFORMANCE ONLY (2026-10-08): per point the
+  leg, planned and transit time, settle, hold and hold drift, reached or
+  what happened instead; the flown time against Mission.estimated_duration_s
+  (a flight longer than it says is a battery budget that is wrong — the
+  report says so, in words); and what ARRIVE_M, SETTLE_S, SETTLE_TIMEOUT_S
+  and TRANSIT_MARGIN_S should be, each figure citing its flights. It
+  SUGGESTS; people set the constants. Nothing from the pipeline.
+• PLANNED TIME IS THE PLANNER'S, not leg / MOVE_SPEED_M_S as the ticket
+  said: max(horizontal / min(MOVE_SPEED_M_S, mission speed), |Δz| /
+  CLIMB_RATE_M_S), exactly what estimated_duration_s adds up — a Steady
+  mission takes twice the old figure. test_review.py pins the legs' sum to
+  estimated_duration_s. SPEC T8's transit timeout still says
+  leg / MOVE_SPEED_M_S; that is Hannah's and Samuel's to settle.
 • POINT_ID UPLOAD FALLBACK: a batch with no point id sends no point_id key, and
   a batch the database refuses over the column is re-sent without it (the CSV
   keeps it). One mission flight before the migration can never stall the
@@ -133,6 +161,11 @@ backend/supabase/migrations/20260928000012_telemetry_point_id.sql
 • The controller uses MissionFlight only — never arm, start, stop,
   emergency_stop or heartbeat. tests/mission/test_boundaries.py checks the
   manual system satisfies it.
+• A trace has no flight_id column: trace_<id[:8]>.csv is matched to its
+  flight by the day folder and by overlapping the flight CSV's time span
+  (review.find_flight). The CSV's own rows name the whole id. A flight flown
+  with `cropwatcher mission` is recorded as "cli", with no trace and no plan
+  flown — the report refuses it, in words.
 • Apply migration 20260928000012 before flying missions: until then the
   inspection point reaches the CSV but not the database.
 

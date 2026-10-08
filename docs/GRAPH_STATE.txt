@@ -31,9 +31,15 @@ CLEARING AN ENTRY requires the fix, not a judgement that it is fine. Re-run
 graph_check.py; if the finding is gone, move the entry to RESOLVED with a date.
 
 --------------------------------------------------------------------------------
-BLOCK  (0)
+BLOCK  (4)
 --------------------------------------------------------------------------------
-None recorded.
+2026-10-08  STALE (4), each blocking ONLY its own area — found by the check run
+            for mission verification, not touched by it (outside its files):
+              design/layout.txt               desktop/src/harness.tsx, 10-06
+              features/desktop/auto-control.txt  desktop/src/lib/agent.ts, 10-06
+              features/missions/floor-plans.txt  cropwatcher/api/rest.py, 10-06
+              features/pipeline/data-pipeline.txt cropwatcher/api/rest.py, 10-06
+            Re-verify each doc against its code before building there.
 
 --------------------------------------------------------------------------------
 WARN  (1)
@@ -73,8 +79,14 @@ DEBT  (4)
             desktop/src/components/.
 
 --------------------------------------------------------------------------------
-WATCH  (2)
+WATCH  (3)
 --------------------------------------------------------------------------------
+2026-10-08  origin/samuel/mission-controller (Samuel's experiment, 14 ahead and
+            5 behind main on 2026-10-08) holds a second sim_drone.py,
+            review.py and `mission-report`. Branch A of mission verification
+            built its own on main (feat/mission-verification); the experiment's
+            report still plans legs at MOVE_SPEED_M_S. One implementation,
+            never two (PROJECT_PROFILE.txt SHIP "experiments") — Samuel's call.
 2026-09-27  UNMERGED BRANCH is fooled by squash merges. docs/main-owner-only,
             feat/linux-install, fix/any-machine-desktop, fix/readable-agent-
             errors and fix/sign-in-deadline-and-reopen report "ahead of main",
@@ -94,5 +106,8 @@ and why it did not apply)
 RESOLVED
 --------------------------------------------------------------------------------
 2026-09-27  Docs tree, checker and this file created by the feature-kit.
+2026-10-08  STALE features/missions/mission-controller.txt (cli.py moved on
+            10-06): re-verified against the code and updated with the
+            simulated drone and the mission report.
 2026-09-29  Indented RELATED edges in ten docs rewritten at column 0 (#71), so
             the checker reads them; ORPHAN 30 -> 20, then 15 with #72.
