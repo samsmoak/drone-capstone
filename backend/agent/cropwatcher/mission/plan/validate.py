@@ -62,36 +62,47 @@ def errors(problems: list[Problem]) -> list[Problem]:
 
 
 def outer_bound(room: Room | None, *, default_half_extent_m: float) -> Geofence:
-    """The largest area anything in a room may occupy — THE ROOM'S MAP.
+    """The largest area anything in a room may be DRAWN in — THE ROOM'S MAP:
+    the agent's default flying area, always.
 
-    The drone and its Lighthouse deck do not see walls or objects (this drone
-    carries no distance sensor); what they establish is where the drone's
-    position can be trusted. That measured coverage is the map every fence,
-    obstacle and path must fit inside. Until it has been measured, the agent's
-    default flying area stands in, and validate_room says so.
+    The room and the mission are the operator's plan, and the measured
+    flyable space (Room.coverage, the green) never limits or edits them
+    (2026-10-05, Samuel: "the flyable space is not my architecture"). Until
+    then this returned the coverage, so a survey saved from a drifting
+    estimate (-100 m to +100 m) became a 102 m "room map" in the editor and
+    refused the room's own fence. Only the plan that will fly is fitted into
+    the green — see flyable_bound and fit.py.
     """
+    return Geofence.square(default_half_extent_m)
+
+
+def flyable_bound(room: Room | None, *, default_half_extent_m: float) -> Geofence:
+    """Where the drone may actually fly: the measured flyable space when there
+    is one, else the agent's default area. Read ONLY by the plan that will fly
+    (fit.py plan_to_fly), which fits a copy of the plan into it — the saved
+    plan is never changed."""
     if room is not None and room.coverage is not None:
         return room.coverage
     return Geofence.square(default_half_extent_m)
 
 
 def validate_room(room: Room, *, outer: Geofence) -> list[Problem]:
-    """The room on its own: the fence inside the outer bound, obstacles inside
-    the fence. `outer` is the room's measured coverage when it has one, and the
-    agent's default fence otherwise."""
+    """The room on its own: the fence inside the room's map (the agent's
+    default area — outer_bound), obstacles inside the fence. The measured
+    flyable space is not checked here: it shapes the plan that will fly, never
+    the room."""
     problems: list[Problem] = []
     if room.coverage is None:
         problems.append(Problem(
             "coverage_not_measured",
-            "This room's Lighthouse coverage has not been measured, so the fence is "
-            "checked against the agent's default flying area instead. Measure it before "
-            "trusting the edges of the room.",
+            "This room's flyable space has not been measured, so the plan that will "
+            "fly uses the agent's default area. Optional for a small flight.",
             Severity.WARNING))
     if not outer.contains_fence(room.geofence):
         problems.append(Problem(
             "fence_outside_coverage",
-            "Part of the geofence is outside the area the drone's position can be "
-            "trusted in. Pull the fence in."))
+            "Part of the geofence is outside the agent's flying area (the room map). "
+            "Pull the fence in."))
     for obstacle in room.obstacles:
         if not all(room.geofence.contains(*p) for p in obstacle.reference_points()):
             problems.append(Problem(

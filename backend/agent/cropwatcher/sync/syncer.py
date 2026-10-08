@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any, get_args, get_type_hints
 
 from cropwatcher.camera.recording import INDEX_NAME, frames_to_upload
+from cropwatcher.sync import samples
 from cropwatcher.sync.cloud import Cloud, CloudError
 from cropwatcher.sync.outbox import Kind, Outbox
 from cropwatcher.telemetry.row import TelemetryRow
@@ -171,6 +172,10 @@ class Syncer:
                 self._send_sessions(cloud)
                 self._send_flights(cloud)
                 self._send_frames(cloud)
+                # Last: until the database has session_samples (migration
+                # 20261006000013) this one fails, and everything above has
+                # already gone.
+                self._send_samples(cloud)
                 self.status.last_error = None
                 self.status.last_success_at = time.time()
             except CloudError as e:
@@ -310,6 +315,27 @@ class Syncer:
             cloud.upload_frame(f"{session_id}/{INDEX_NAME}", folder / INDEX_NAME, "text/csv",
                                replace=True)
             self._outbox.mark_sent(Kind.FRAMES, session_id)
+
+    def _send_samples(self, cloud: Cloud) -> None:
+        """A session's 1 Hz vitals, from its cursor on (sync/samples.py).
+
+        The cursor advances after each batch lands, so an interrupted pass
+        resumes where it stopped. Sent once the session has ended and every
+        row is up — the session row itself goes first (_send_sessions), which
+        the table's foreign key and row-level security both need."""
+        for record in self._outbox.pending(Kind.SAMPLES):
+            payload = record.payload
+            session_id = record.id
+            folder = Path(payload.get("folder", ""))
+            self.status.uploading = f"vitals {session_id[:8]}"
+            cursor = int(payload.get("uploaded_through", 0))
+            for batch in samples.batches(folder, session_id, cursor):
+                cloud.insert_session_samples(batch)
+                last = batch[-1]["seq"]
+                self._outbox.update(Kind.SAMPLES, session_id,
+                                    lambda p, last=last: p.__setitem__("uploaded_through", last))
+            if payload.get("ended"):
+                self._outbox.mark_sent(Kind.SAMPLES, session_id)
 
     # ── helpers ──────────────────────────────────────────────────────────
 

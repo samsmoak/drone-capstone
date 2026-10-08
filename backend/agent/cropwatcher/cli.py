@@ -38,7 +38,7 @@ from cropwatcher.flight.programs import HoverTest, run_hover_test
 from cropwatcher.mission.controller import TERMINAL_STATES, MissionController, MissionEvent
 from cropwatcher.mission.plan.floorplan import PlanError
 from cropwatcher.mission.plan.store import NotFound, PlanStore
-from cropwatcher.mission.plan.validate import errors, outer_bound, validate_mission
+from cropwatcher.mission.plan.validate import errors, flyable_bound, outer_bound, validate_mission
 from cropwatcher.paths import flights_dir
 from cropwatcher.safety.flight_guard import Action as GuardAction
 from cropwatcher.safety.flight_guard import assess_positioning
@@ -443,7 +443,7 @@ def cmd_mission(args: argparse.Namespace) -> int:
         # The flight starts from the drone, as in the app (Session.run_mission).
         mission = mission.from_start((float(x), float(y)))
         from_here = errors(validate_mission(
-            mission, room, outer=outer_bound(room, default_half_extent_m=args.fence)))
+            mission, room, outer=flyable_bound(room, default_half_extent_m=args.fence)))
         if from_here:
             print(f"\n  from where the drone is ({x:+.2f}, {y:+.2f}) m: "
                   f"{from_here[0].message}")
@@ -617,6 +617,12 @@ def _start_logging(*, verbose: bool) -> None:
             paths.log_file(), maxBytes=2_000_000, backupCount=3, encoding="utf-8"))
     except Exception:                       # a read-only home must not stop a flight
         pass
+    # One line per repeating message (logfilter.py): the 50 Hz flight loop and
+    # the camera watchdog otherwise rotate the useful lines out of the file.
+    from cropwatcher.logfilter import RepeatFilter
+    repeats = RepeatFilter()
+    for handler in handlers:
+        handler.addFilter(repeats)
     logging.basicConfig(
         level=logging.DEBUG if verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",

@@ -112,6 +112,12 @@ DECISIONS
   window that was hidden or never ordered front stayed invisible however often
   the icon was clicked: on an Intel Mac (2026-09-25) Launchpad gave a Dock icon
   and no window, while starting the binary from Terminal gave one.
+- ONE LINE PER REPEATING MESSAGE in agent.log (cropwatcher/logfilter.py,
+  2026-10-05): "N cm off the commanded point" was written at 50 Hz and the
+  camera watchdog's "not restarting the drone" every 5 s, rotating the lines
+  that explain a flight out of a 2 MB × 3 log. Messages differing only in
+  their numbers are one message; one per 10 s gets through, saying how many
+  were dropped. Filtered at the handler, so locked flight code is untouched.
 - THE SHELL KEEPS ITS OWN LOG: logs/shell.log beside agent.log, capped at
   256 KB. Each launch and each Dock click records the window's visibility,
   position, size and display, before and after bringing it forward. A

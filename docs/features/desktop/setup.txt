@@ -1,4 +1,4 @@
-SET UP — a drone out of the box to a session, in four steps
+SET UP — a drone out of the box, ready to fly, in five steps
 ============================================================
 
 WHAT IT IS
@@ -7,10 +7,15 @@ The Set up page (sidebar). One list, one step open at a time:
 
   1. Connect the drone          Crazyradio in, drone on (ticks itself)
   2. Install drone software     check → install what is missing → unplug → verified
-  3. Connect the camera to Wi-Fi   → the Drone Wi-Fi page (drone-wifi.txt)
-  4. Start a session            → Home
+  3. Base stations: one channel each   each station on USB → channel 1 / 2
+  4. Connect the camera to Wi-Fi   → the Drone Wi-Fi page (drone-wifi.txt)
+  5. Fly                        → Control › Auto (auto-control.txt)
 
 Step 2 puts on a new drone exactly what the first drone was given by hand.
+Step 3 puts every base station on its own channel, so the drone can decode
+their sweeps. Telling the drone where the station stands is part of flying,
+not set-up: Control › Auto › ② Position (auto-control.txt) — it was step 4
+here until 2026-10-05, where the operator could not find it.
 
 
 WHERE IT LIVES
@@ -23,6 +28,15 @@ WHERE IT LIVES
   backend/agent/packaging/cropwatcher-agent.spec     bundles firmware_bundle/
   firmware/drone-wifi/src/drone_wifi.c               the cwsetup.fw / .deck params
   GET /setup · POST /setup/check · POST /setup/install · event "setup"
+
+  step 3:
+  backend/agent/cropwatcher/flight/basestation.py    find, set_channel (pyserial)
+  GET /basestations · POST /basestations/channel
+  backend/agent/tests/test_basestation.py
+
+  shared with Auto › ② Position (auto-control.txt):
+  desktop/src/components/StationStages.tsx           useStation, the stage rows
+  GET /station (session.py station_status)
 
 
 THE BUNDLE (manifest.json, sha256 each — a mismatch refuses to flash)
@@ -51,32 +65,49 @@ DECISIONS
 - The agent does the flashing: it is the radio's only owner (standby paused,
   resumed after). Refused during a session.
 - Words on the page are instructions; the why is here.
-
-
-INVARIANTS
-
-- ORDER: main, then lighthouse (main names the image the deck needs, so the
-  deck is asked AGAIN after main), then camera (the GAP8 is written THROUGH
-  the ESP32), then wifi.
-- A POSITIONING DECK WITHOUT ITS IMAGE IS DEAF (2026-10-01, the second lab
-  drone cf-002d00263234511236373639): detected (deck.bcLighthouse4 = 1) but
-  sitting in its bootloader — lighthouse.status 0, nothing received, the
-  position running away — while both base stations were fine. The drone says
-  so itself (deck memory: fw_upgrade_required), so it is read, never assumed,
-  and needs no marker. The first write did NOT survive a battery unplug that
-  day, so the unplug Set up already asks for doubles as the check that it
-  stays; a deck that loses it is reported, not marked done.
-- The deck is flashed with cflib's own deck path (flash_firmware.py
-  flash_lighthouse_deck): only the deck is in the target list, so the STM32
-  and the nRF51 are skipped; cflib leaves the drone in its bootloader, so it
-  is restarted into its firmware after.
-- AFTER THE ESP32 IS FLASHED THE GAP8 DOES NOT START until the battery is
-  unplugged ~10 s (Bitcraze Discussion #1305; measured 2026-09-24 — a restart
-  over the radio is not enough). The page asks, and the check counts only once
-  the drone has left the radio AND come back: the drone's console keeps old
-  lines, and "GAP8 running" from before the flash must not pass for after it.
-- NOT BELOW 3.8 V: a flash that loses power can leave a drone unable to start.
-- The marker is written only after the camera is seen starting.
+- STEP 3 SETS CHANNELS THE WAY BITCRAZE'S CLIENT DOES (cfclient
+  basestation_mode_dialog.py, "Set BS channel"): a Base Station 2.0 on USB is
+  a serial console (vid 0x28de pid 0x2500); "mode" reads "Current mode: N",
+  "mode N" + "param save" sets and keeps it; the reply is read back and a
+  channel the station does not confirm is a failure in words. WHY: Bitcraze,
+  "Every V2 base station in the system must be set to a unique channel";
+  channel 0 is "not supported" — overlapping sweeps are not decoded while the
+  station's data still is. The step reads done once the drone decodes
+  sweeps (bsReceive). Measured 2026-10-05: one spot, no sweep in 8 s and
+  bsReceive 10 % of samples; later, station 0 decoded on every reading.
+- EVERY STAGE FROM LIGHT TO POSITION IS SHOWN (step 3, and ② Position): light on the
+  sensors (lighthouse.width0-3) → the station's data read (bsCalVal) →
+  sweeps decoded into angles (bsReceive) → its place stored (bsGeoVal) → in
+  use by the drone (bsActive: calibration, place and sweeps together) →
+  settled (Kalman spread < 5 cm). The first row that is not ✓ is the one to
+  fix. The telemetry stream carries them (stream.py, six log blocks; the
+  firmware allows 16).
+- bsReceive IS THE DECODE SIGNAL, validAngles IS NOT. The firmware sets a
+  station's bsReceive bit only when a sweep yields angles
+  (crazyflie-firmware lighthouse_core.c: processFrame →
+  pulseProcessorProcessPulse true → usePulseResult). validAngles read 0
+  while bsReceive showed station 0 decoding on every reading (2026-10-05).
+  This doc and the app said "validAngles 0 = not decoding" for one build
+  that night; that was wrong, and is corrected here and in the code.
+- ONE CAUSE, SAID ONCE (flight_guard problems): received but not measured
+  says "measure the base station" only — not also "wait for the
+  calibration" (already read) or "may be blocked or off" (it was received).
+  ② Check shows the agent's own reason and a Check again button
+  (Session.retry, allowed while READY), so a station measured mid-session
+  is picked up without ending it.
+- STEP 2 HOLDS THE LIST ONLY WHILE IT HAS WORK (2026-10-05). Its state is
+  the agent's and starts "idle" every launch, so "done" required pressing
+  Check the drone again each run — and that hid the measuring step from an operator whose
+  drone was fully installed: the station was never measured and ② Check
+  showed the drone "92 m from the start". Step 2 now leads only while
+  checking, installing, unplugging, failed, or with parts to install; its
+  "Check" button opens it any time. Every step reopens by its button.
+- AN UNMOVED DRONE IS NAMED, NOT CALLED A DISAGREEMENT in the terminal's
+  two-record walk (`cropwatcher geometry`; NOT_MOVED_M 0.10 m, 2026-10-05): two records whose station positions match are the same place.
+  That day's terminal run read "disagree by 100 cm … 2.45 m away from both" —
+  an unmoved drone — and a still drone's 50-sweep averages agree to 1e-5 rad.
+  The guard also exposed a test (test_geometry.py, the mirror test) that had
+  been feeding one sample twice since it was written.
 - The page cannot tell a Crazyflie 2.1 from a 2.1 Brushless (the radio does not
   say; cflib's bootloader reports both as "cf2"). It is for the 2.1 + AI deck.
 
@@ -84,13 +115,22 @@ INVARIANTS
 RELATED
 
 depends-on        drone-wifi.txt
-                  step 3; drone_wifi is what "main" installs
+                  step 5; drone_wifi is what "main" installs
 depends-on        camera.txt
                   the patched ESP32 and the GAP8 streamer
 shares-data-with  ../backend/sessions-and-modes.txt
                   pauses and resumes standby
+consumed-by       auto-control.txt
+                  ② Position, after the channels step, with the same stages
+depends-on        ../backend/flight-safety.txt
+                  step 3 and ② Position: the one-station geometry solve, and the positioning
+                  rule that decides when it is done
 
 
-LAST VERIFIED  2026-09-24: agent tests (16 for setup: parts chosen, order,
+LAST VERIFIED  2026-10-05 (steps 3-4): tests/test_basestation.py,
+test_station_measure.py, test_geometry.py; desktop build; the full agent suite
+1237 passed. Channels not yet set on the lab's stations; steps 3-4 on
+the lab drone: see ../../flight-log.txt 2026-10-05.
+2026-09-24: agent tests (16 for setup: parts chosen, order,
 skip-installed, low battery, real unplug, damaged file, marker only after the
 camera starts); desktop build. NOT YET run end to end on a drone.

@@ -1,16 +1,21 @@
 /**
- * The Auto flow: ① Mission → ② Check → ③ Fly.
+ * The Auto flow, in the order the operator works (2026-10-05, Samuel):
+ * ① Plan → ② Position → ③ Flyable space → ④ Auto-correct → ⑤ Fly.
  *
  * Adapted from the Zoomaa booking flow (booking_flow_screen.dart): one screen,
  * a step bar across the top, back always allowed, forward only once the step
  * before is satisfied — and here "satisfied" is read from the agent, never
  * decided by the page:
  *
- *   ① Mission  done when a mission is chosen that the agent says is valid
- *   ② Check    done when the agent reports ready (checks passed, area confirmed,
- *              no retry owed)
- *   ③ Fly      Start mission at the top; LOCKED here while a mission flies, so
- *              no plan can be changed in the air
+ *   ① Plan          done when a mission is chosen that the agent says is valid
+ *   ② Position      done when the drone says its position has settled
+ *                   (/station ready) — measured here from where it sits
+ *   ③ Flyable space the green: predicted from the base station, walked, or
+ *                   the default area; never changes the plan
+ *   ④ Auto-correct  the agent corrects the plan on its own; done while the
+ *                   corrected plan can fly, undone the moment it cannot
+ *   ⑤ Fly           the session, its checks and the area first (CheckStep),
+ *                   then Start mission; LOCKED here while a mission flies
  *
  * The chosen mission is remembered per machine (localStorage), a convenience
  * only: the agent re-reads and re-validates the mission when it is started.
@@ -23,6 +28,9 @@ import { CheckStep, checkComplete } from "./CheckStep";
 import { FlyStep } from "./FlyStep";
 import { MissionStep } from "./plan/MissionStep";
 import { StepBar, type FlowStep, type StepState } from "./StepBar";
+import { PositionStep } from "./PositionStep";
+import { FlightPlanCheck } from "./FlightPlanCheck";
+import { useStation } from "@/components/StationStages";
 
 const CHOSEN_KEY = "cropwatcher.auto.mission";
 
@@ -57,7 +65,11 @@ export function MissionFlow({ session, run, telemetry, history, ambient, setAmbi
 }) {
   const flying = session.activity === "mission";
   const [chosen, setChosen] = useState<MissionView | null>(null);
-  const [step, setStep] = useState<FlowStep>(flying ? 3 : start?.step ?? 1);
+  const [step, setStep] = useState<FlowStep>(flying ? 5 : start?.step ?? 1);
+  // ④: the auto-corrected plan can fly (reported by FlightPlanCheck, live).
+  const [flyable, setFlyable] = useState(false);
+  const station = useStation(session.radio?.state === "connected" || session.session_id != null);
+  const positioned = station?.connected === true && station.ready;
 
   // Reopen on the mission chosen last time, if it is still here.
   useEffect(() => {
@@ -67,26 +79,32 @@ export function MissionFlow({ session, run, telemetry, history, ambient, setAmbi
   }, [session.mission?.id, start?.missionId, chosen]);
 
   // A mission in the air pins the flow to Fly.
-  useEffect(() => { if (flying) setStep(3); }, [flying]);
+  useEffect(() => { if (flying) setStep(5); }, [flying]);
 
   const choose = (mission: MissionView) => {
     setChosen(mission);
+    setFlyable(false);
     remember(mission.id);
     setStep(2);
   };
 
   const ready = checkComplete(session);
+  const inFlight = flying ? "A mission is flying — the plan cannot change in the air." : null;
   const steps: StepState[] = [
-    { step: 1, label: "Mission", done: chosen?.valid ?? false,
-      blocked: flying ? "A mission is flying — the plan cannot change in the air." : null },
-    { step: 2, label: "Check", done: ready,
-      blocked: flying ? "A mission is flying."
-        : !chosen ? "Choose a mission first."
-        : !chosen.valid ? "The chosen mission has problems to fix." : null },
-    { step: 3, label: "Fly", done: false,
+    { step: 1, label: "Plan", done: chosen?.valid ?? false, blocked: inFlight },
+    { step: 2, label: "Position", done: positioned,
+      blocked: inFlight ?? (!chosen ? "Choose a mission first." : null) },
+    { step: 3, label: "Flyable space", done: positioned,
+      blocked: inFlight ?? (!chosen ? "Choose a mission first."
+        : !positioned ? "Measure the drone's position first (②)." : null) },
+    { step: 4, label: "Auto-correct", done: flyable,
+      blocked: inFlight ?? (!chosen ? "Choose a mission first."
+        : !chosen.valid ? "The chosen mission has problems to fix."
+        : !positioned ? "Measure the drone's position first (②)." : null) },
+    { step: 5, label: "Fly", done: false,
       blocked: flying ? null
         : !chosen ? "Choose a mission first."
-        : !ready ? "Pass the checks and confirm the area first." : null },
+        : !flyable ? "The auto-corrected plan cannot fly yet — see ④." : null },
   ];
 
   return (
@@ -105,13 +123,18 @@ export function MissionFlow({ session, run, telemetry, history, ambient, setAmbi
         <MissionStep run={run} telemetry={telemetry} selectedId={chosen?.id ?? null} onUse={choose}
                      openEditor={start?.view === "edit" ? start.missionId : undefined} heightClass={heightClass} />
       )}
-      {step === 2 && (
-        <CheckStep session={session} run={run} mission={chosen} onContinue={() => setStep(3)} />
-      )}
+      {step === 2 && <PositionStep session={session} run={run} onContinue={() => setStep(3)} />}
       {step === 3 && chosen && (
-        <FlyStep session={session} run={run} telemetry={telemetry} history={history} mission={chosen}
-                 ambient={ambient} setAmbient={setAmbient} onPlanAnother={() => setStep(1)} heightClass={heightClass} />
+        <FlightPlanCheck mission={chosen} run={run} mode="space" onContinue={() => setStep(4)} />
       )}
+      {step === 4 && chosen && (
+        <FlightPlanCheck mission={chosen} run={run} mode="fit" onFlyable={setFlyable}
+                         onContinue={() => setStep(5)} />
+      )}
+      {step === 5 && chosen && (flying || (ready && session.assisted)
+        ? <FlyStep session={session} run={run} telemetry={telemetry} history={history} mission={chosen}
+                   ambient={ambient} setAmbient={setAmbient} onPlanAnother={() => setStep(1)} heightClass={heightClass} />
+        : <CheckStep session={session} run={run} mission={chosen} />)}
     </section>
   );
 }

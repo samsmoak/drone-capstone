@@ -55,6 +55,22 @@ SPACE_SAMPLES = 6
 #: than that while staying loose enough for a hand-carried 1 m step.
 SINGLE_STATION_AGREEMENT_M = 0.25
 
+#: Two single-station samples whose solved station positions are both this
+#: close are the SAME position: the drone was not moved between them. Measured
+#: 2026-10-05: a still drone's 50-sweep averages agree to 1e-5 rad, millimetres
+#: at 2.45 m; a real 1 m step moves the station 1 m in the drone's frame. That
+#: day's failed run read "disagree by 100 cm … 2.45 m away from both", which is
+#: what an unmoved drone produces — and it was reported as a disagreement.
+NOT_MOVED_M = 0.10
+
+#: How upright a station must stand for its one-record pose to be believed:
+#: the z of its own "up" axis in the room (1 = vertical, 0.5 = tilted 60°).
+#: IPPE's two answers for the deck's four sensors are mirror images; on
+#: 2026-10-05 they put the station at (-1.33, +1.74) and (+1.33, -1.74), both
+#: 1.49 m up, one standing (up z +0.89), the other upside down (up z -0.74).
+#: A station on a tripod stands — so its orientation, not a 1 m walk, decides.
+MIN_UPRIGHT = 0.5
+
 
 @dataclass
 class GeometryStep:
@@ -260,19 +276,19 @@ def estimate_quick(
     *,
     write: bool = True,
 ) -> GeometryResult:
-    """One sample, one position, no measuring — the fastest way back into the air.
+    """One sample, the drone where it sits — no walking, no measuring tape.
 
-    IPPE gives two poses for a planar target and this takes the one with the
-    lower reprojection error, which is what cfclient's own "simple" geometry
-    estimation does. The two-sample walk exists because that choice is
-    sometimes the MIRROR, and a mirrored room flies forward when told back.
-
-    So this trades a known risk for a much smaller ask. It restores POSITION
-    HOLD immediately — hovering, height, and holding a spot do not care which
-    way the room is labelled — and the mirror, if it happened, shows up the
-    first time an arrow is pressed and costs one more run to fix. When the
-    directions matter, measure properly with estimate_single().
+    IPPE gives two poses for the deck's four sensors, and they are MIRROR
+    images: a mirrored room flies forward when told back, and its estimate
+    fights the drone's own accelerometer. cfclient's "simple" estimation takes
+    the lower reprojection error, which for a target 3 cm across seen from
+    metres away is close to a coin toss. This takes the one whose STATION
+    STANDS UPRIGHT (its up axis has the larger room z, at least MIN_UPRIGHT):
+    base stations stand on tripods or walls the right way up, and the mirror
+    puts them upside down. Neither upright: refused, never guessed — then the
+    two-record walk (estimate_single) decides with a measured step.
     """
+    import numpy as np
     from cflib.localization import LhDeck4SensorPositions
 
     step = GeometryStep(
@@ -290,14 +306,25 @@ def estimate_quick(
         )
 
     station = sorted(sample.angles_calibrated)[0]
-    pose = sample.ippe_solutions[station][0]      # lower reprojection error
+    candidates = list(sample.ippe_solutions[station])
+    # Ties (both upright) keep IPPE's order: the lower reprojection error first.
+    pose = max(candidates, key=_uprightness)
+    if _uprightness(pose) < MIN_UPRIGHT:
+        return GeometryResult(
+            converged=False,
+            message=(
+                f"Neither answer has base station {station} standing upright, so the "
+                f"mirror cannot be ruled out from here. Check the station stands the "
+                f"right way up, or measure with two records 1 m apart."
+            ),
+        )
     result = GeometryResult(
         converged=True,
         stations={station: pose},
         message=(
-            f"Solved for base station {station} from a single sample. Position hold "
-            f"will work. If forward turns out to be backward, the mirror was picked "
-            f"— run `cropwatcher geometry` without --quick to settle it."
+            f"Base station {station} measured from where the drone sits: "
+            f"{float(np.linalg.norm(pose.translation)):.2f} m away, "
+            f"{float(pose.translation[2]):.2f} m above the drone, standing upright."
         ),
     )
     if write:
@@ -349,6 +376,17 @@ def estimate_single(
         )
     station = sorted(seen)[0]
 
+    if _not_moved(origin.ippe_solutions[station], forward.ippe_solutions[station]):
+        return GeometryResult(
+            converged=False,
+            message=(
+                f"The drone did not move between the two records: both saw base "
+                f"station {station} from exactly the same place. Record the first "
+                f"with the drone at the start, then move it {reference_distance_m:.2f} m "
+                f"straight forward, facing the same way, and record the second."
+            ),
+        )
+
     # The drone faced the same way for both samples, so the second one sits at
     # (distance, 0, 0) in the frame being defined. Whichever pairing of the two
     # candidates agrees about where the station is, is the true one.
@@ -387,6 +425,21 @@ def estimate_single(
     if write:
         result.written = _write(cf, {station: best_pose})
     return result
+
+
+def _uprightness(pose: Any) -> float:
+    """The room z of the station's own up axis: column 2 of its rotation."""
+    return float(pose.rot_matrix[2][2])
+
+
+def _not_moved(at_origin: Any, at_forward: Any) -> bool:
+    """Both IPPE answers put the station in the same place from both samples."""
+    import numpy as np
+
+    return all(
+        float(np.linalg.norm(a.translation - b.translation)) < NOT_MOVED_M
+        for a, b in zip(at_origin, at_forward, strict=False)
+    )
 
 
 def _turned_by(before: float | None, after: float | None) -> float | None:

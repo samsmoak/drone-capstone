@@ -246,7 +246,7 @@ export function PlanCanvas({
       <polygon points={polygon(outer.vertices)} fill="none" {...thin}
                style={{ stroke: "var(--muted)", strokeWidth: 1.2, strokeDasharray: "5 4" }} />
       <text x={box.xMin + 0.05} y={-box.yMax + 0.16} style={{ fill: "var(--muted)", fontSize: 0.12 }}>
-        {outer.measured ? "Room map (measured coverage)" : "Room map (default area — coverage not measured)"}
+        Room map (the agent&apos;s flying area)
       </text>
 
       {/* where "from left" and "from front" are measured from, and which way

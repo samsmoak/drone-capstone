@@ -12,6 +12,7 @@ from cropwatcher.mission.plan.obstacles import Obstacle, ObstacleError, Obstacle
 from cropwatcher.mission.plan.validate import (
     Severity,
     errors,
+    flyable_bound,
     outer_bound,
     validate_mission,
     validate_room,
@@ -41,10 +42,21 @@ class TestTheLayersNest:
         assert "fence_outside_coverage" in codes(errors(
             validate_mission(mission(), wide, outer=OUTER)))
 
-    def test_the_outer_bound_is_the_coverage_when_measured(self):
+    def test_the_rooms_map_is_never_the_flyable_space(self):
+        """The plan is the operator's: the green never limits the room."""
         measured = room(coverage=Geofence.square(1.6))
-        assert outer_bound(measured, default_half_extent_m=2.0) is measured.coverage
+        assert outer_bound(measured, default_half_extent_m=2.0).bounds() == (-2, -2, 2, 2)
         assert outer_bound(room(), default_half_extent_m=2.0).bounds() == (-2, -2, 2, 2)
+
+    def test_a_wrong_flyable_space_never_refuses_the_room(self):
+        """2026-10-05: a survey saved from a drifting estimate ran to 100 m."""
+        junk = room(coverage=Geofence.polygon([(-2.4, -11.9), (99.9, -99.9), (0.0, 0.0)]))
+        assert not errors(validate_room(junk, outer=outer_bound(junk, default_half_extent_m=2.0)))
+
+    def test_only_the_plan_that_will_fly_reads_the_flyable_space(self):
+        measured = room(coverage=Geofence.square(1.6))
+        assert flyable_bound(measured, default_half_extent_m=2.0) is measured.coverage
+        assert flyable_bound(room(), default_half_extent_m=2.0).bounds() == (-2, -2, 2, 2)
 
     def test_an_obstacle_outside_the_fence_is_only_a_warning(self):
         stray = room(obstacles=(Obstacle("x", ObstacleKind.CIRCLE, ((1.7, 0.0),), 0.2),))
@@ -174,6 +186,39 @@ class TestDuration:
         assert seconds < holds + travel + 30
 
 
+class TestSpeed:
+    """One speed per mission (2026-10-01): Steady 10, Normal 15, Brisk 20 cm/s."""
+
+    def test_a_saved_mission_flies_at_the_speed_it_always_did(self):
+        old = mission().to_dict()
+        del old["speed_m_s"]
+        assert Mission.from_dict(old).speed_m_s == 0.20
+
+    @pytest.mark.parametrize("speed", [0.10, 0.15, 0.20])
+    def test_each_preset_round_trips(self, speed):
+        m = mission(speed_m_s=speed)
+        assert Mission.from_dict(m.to_dict()).speed_m_s == speed
+
+    @pytest.mark.parametrize("speed", [0.0, 0.05, 0.12, 0.25, float("nan")])
+    def test_anything_else_is_refused(self, speed):
+        with pytest.raises(PlanError, match="cm/s"):
+            mission(speed_m_s=speed)
+
+    def test_a_slower_mission_takes_longer_by_its_travel(self):
+        brisk = mission(speed_m_s=0.20)
+        steady = mission(speed_m_s=0.10)
+        fast = brisk.estimated_duration_s(move_speed_m_s=0.2, climb_rate_m_s=0.15)
+        slow = steady.estimated_duration_s(move_speed_m_s=0.2, climb_rate_m_s=0.15)
+        travel = brisk.path_length_m()
+        assert slow - fast == pytest.approx(travel / 0.10 - travel / 0.20, abs=2.0)
+
+    def test_it_is_never_estimated_faster_than_the_flight_system_moves(self):
+        m = mission(speed_m_s=0.20)
+        assert (m.estimated_duration_s(move_speed_m_s=0.1, climb_rate_m_s=0.15)
+                == mission(speed_m_s=0.10).estimated_duration_s(move_speed_m_s=0.2,
+                                                                 climb_rate_m_s=0.15))
+
+
 class TestEndPoint:
     """An end point: the flight flies up to it and lands there. Points after it
     stay in the plan and are not flown — or checked."""
@@ -217,12 +262,19 @@ class TestEndPoint:
 
 
 class TestFromStart:
-    """The drone's position is the start. The points never move with it."""
+    """The drone's position is the start, and the whole path moves with it
+    (2026-10-05, Samuel): the drawn shape is flown from wherever the drone is."""
 
-    def test_the_start_moves_and_the_points_do_not(self):
-        m = mission().from_start((-1.0, -0.4))
+    def test_the_whole_path_moves_with_the_start(self):
+        m = mission().from_start((-1.0, -0.4))                 # home (-1, -1): +0.6 in y
         assert m.home == (-1.0, -0.4)
-        assert [p.xy for p in m.points] == [p.xy for p in mission().points]
+        assert [p.xy for p in m.points] == [
+            pytest.approx((x, y + 0.6)) for x, y in (p.xy for p in mission().points)]
+
+    def test_the_shape_and_heights_are_kept(self):
+        before, after = mission(), mission().from_start((0.3, -0.2))
+        assert after.path_length_m() == pytest.approx(before.path_length_m())
+        assert [p.z_m for p in after.points] == [p.z_m for p in before.points]
 
     def test_it_returns_to_where_it_actually_started(self):
         legs = mission().from_start((-1.0, -0.4)).legs()
@@ -233,8 +285,10 @@ class TestFromStart:
         assert m.point_ids == ("P1", "P2")
         assert m.end_point_id is None and m.return_to_start is False
 
-    def test_a_start_whose_first_leg_crosses_the_table_is_an_error(self):
-        m = mission().from_start((0.8, -1.0))
+    def test_a_shifted_path_that_runs_past_the_table_is_an_error(self):
+        # The room and its table stay where they are; the path moves +0.5 in x,
+        # so home → P1 runs up x = -0.5, inside the table's 0.25 m clearance.
+        m = mission().from_start((-0.5, -1.0))
         assert "leg_near_obstacle" in codes(validate_mission(m, room(), outer=OUTER))
 
 

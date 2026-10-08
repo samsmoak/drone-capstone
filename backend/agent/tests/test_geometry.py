@@ -157,8 +157,9 @@ class TestOneBaseStationAlone:
     def test_the_mirror_is_refused_when_nothing_agrees(self):
         at_origin = FakeSample({0: (FakePose(2, 0, 2), FakePose(-2, 0, 2))})
         one_m_on = FakeSample({0: (FakePose(9, 9, 9), FakePose(-9, 9, 9))})
+        samples = iter([at_origin, one_m_on])
         result = geometry.estimate_single(
-            SimpleNamespace(), lambda step, i: iter([at_origin, one_m_on]).__next__(),
+            SimpleNamespace(), lambda step, i: next(samples),
             reference_distance_m=1.0, write=False)
         assert not result.converged
         assert "disagree" in result.message
@@ -247,12 +248,31 @@ class TestTheQuickWayBack:
             write=False)
         assert seen == ["origin"]
 
-    def test_it_says_the_mirror_is_the_risk_it_took(self):
-        sample = FakeSample({0: (FakePose(2, 0, 2),) * 2})
+    def test_the_station_standing_upright_wins_over_the_mirror(self):
+        """2026-10-05, the lab's numbers: both answers 2.65 m away and 1.49 m
+        up; the mirror has the station upside down, and came SECOND."""
+        import numpy as np
+        upright = FakePose(-1.33, 1.74, 1.49)
+        upright.rot_matrix = np.array([[0.24, 0.95, 0.19], [-0.86, 0.30, -0.41],
+                                       [-0.45, -0.06, 0.89]])
+        mirror = FakePose(1.33, -1.74, 1.49)
+        mirror.rot_matrix = np.array([[-0.70, 0.64, 0.32], [0.37, 0.71, -0.59],
+                                      [-0.61, -0.29, -0.74]])
+        sample = FakeSample({0: (mirror, upright)})
         result = geometry.estimate_quick(
             SimpleNamespace(), lambda step, i: sample, write=False)
-        assert "mirror" in result.message
-        assert "Position hold will work" in result.message
+        assert result.converged
+        assert result.stations[0].translation.tolist() == [-1.33, 1.74, 1.49]
+        assert "2.65 m away" in result.message and "upright" in result.message
+
+    def test_neither_upright_is_refused_not_guessed(self):
+        import numpy as np
+        a, b = FakePose(2, 0, 2), FakePose(-2, 0, 2)
+        a.rot_matrix = b.rot_matrix = np.diag([1.0, -1.0, -1.0])     # upside down
+        result = geometry.estimate_quick(
+            SimpleNamespace(), lambda step, i: FakeSample({0: (a, b)}), write=False)
+        assert not result.converged
+        assert "upright" in result.message
 
     def test_no_station_at_that_spot_is_refused(self):
         result = geometry.estimate_quick(

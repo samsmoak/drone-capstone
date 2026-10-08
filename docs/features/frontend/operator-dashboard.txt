@@ -13,6 +13,9 @@ WHERE IT LIVES
 
   /app/live          app/app/live/page.tsx
                      components/live-view.tsx, lib/use-live-telemetry.ts, lib/store.ts
+  /app/sessions      web/app/app/sessions/page.tsx (the list) and
+                     web/app/app/sessions/[id]/page.tsx (one session — a copy of
+                     web/app/app/flights/[id]/page.tsx; this doc owns both)
   /app/flights       app/app/flights/
                      components/ui/time-series.tsx, flight-path.tsx, raw-readings.tsx
   /app/zones         app/app/zones/page.tsx, components/ui/zone-map.tsx
@@ -27,6 +30,20 @@ WHERE IT LIVES
 
 
 DECISIONS
+
+- SESSIONS: EVERYTHING IN A SESSION, NOT JUST ITS FLIGHTS (2026-10-06,
+  Samuel). /app/sessions lists every session (who, drone, mode, duration,
+  flight count); one session reads like the flight page — summary, sensor
+  temperature, height, battery, pressure, where the drone was, camera, zone
+  health, raw readings — over the session's OWN vitals (session_samples, one
+  a second, Start to End session, flying or not), plus its flights (each to
+  its flight page) and its events (audit trail, operators only). A copy of
+  the flight page, adapted: raw-readings.tsx takes a column list and
+  flight-path.tsx any {x_m, y_m}, the flight page unchanged. The path is drawn
+  only from samples with positioned = true. Temperature is the sensor's own:
+  room temperature is corrected per flight. Until migration 20261006000013 is
+  applied the page says so (getSessionSamples migrated = false), never an
+  error and never "nothing recorded".
 
 - One chart component, TimeSeries, with no second-axis seam. Different units are
   different charts. It always ships a table view, because light-mode --series-3

@@ -507,6 +507,77 @@ export type Database = {
         }
         Relationships: []
       }
+      session_samples: {
+        Row: {
+          battery_v: number | null
+          height_m: number | null
+          lighthouse_received: number | null
+          mode: string | null
+          pitch_deg: number | null
+          positioned: boolean | null
+          raw_temp: number | null
+          recorded_at: string
+          roll_deg: number | null
+          seq: number
+          session_id: string
+          station_pressure_hpa: number | null
+          thrust: number | null
+          values: Json
+          x_m: number | null
+          y_m: number | null
+          yaw_deg: number | null
+          z_m: number | null
+        }
+        Insert: {
+          battery_v?: number | null
+          height_m?: number | null
+          lighthouse_received?: number | null
+          mode?: string | null
+          pitch_deg?: number | null
+          positioned?: boolean | null
+          raw_temp?: number | null
+          recorded_at: string
+          roll_deg?: number | null
+          seq: number
+          session_id: string
+          station_pressure_hpa?: number | null
+          thrust?: number | null
+          values?: Json
+          x_m?: number | null
+          y_m?: number | null
+          yaw_deg?: number | null
+          z_m?: number | null
+        }
+        Update: {
+          battery_v?: number | null
+          height_m?: number | null
+          lighthouse_received?: number | null
+          mode?: string | null
+          pitch_deg?: number | null
+          positioned?: boolean | null
+          raw_temp?: number | null
+          recorded_at?: string
+          roll_deg?: number | null
+          seq?: number
+          session_id?: string
+          station_pressure_hpa?: number | null
+          thrust?: number | null
+          values?: Json
+          x_m?: number | null
+          y_m?: number | null
+          yaw_deg?: number | null
+          z_m?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_samples_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sessions: {
         Row: {
           agent_id: string | null

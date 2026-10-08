@@ -9,6 +9,7 @@
     end_point_id       optional: the point the flight ends and lands at. Points
                        after it stay in the plan and are not flown.
     cruise_height_m    the height it takes off to
+    speed_m_s          how fast it travels between points: one of SPEED_PRESETS_M_S
     return_to_start    fly back over the start before landing (ignored when an
                        end point is set: the flight lands at the end point)
 
@@ -43,6 +44,15 @@ from cropwatcher.mission.plan.shapes import Point, is_finite
 MIN_HOLD_S = 5.0
 MAX_HOLD_S = 300.0
 MAX_POINTS = 100
+
+#: The travel speeds a mission may choose (2026-10-01, Samuel: "an autonomous
+#: flight must be extra steady"). Steady, Normal, Brisk. One speed per
+#: mission, never a range: every change of speed is a lean, and leaning is
+#: what makes a hold unsteady. Brisk is the manual flight system's own
+#: MOVE_SPEED_M_S — the fastest a mission has ever been flown, and the
+#: default, so every mission saved before this flies exactly as it did.
+SPEED_PRESETS_M_S = (0.10, 0.15, 0.20)
+DEFAULT_SPEED_M_S = 0.20
 
 POINT_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 
@@ -97,6 +107,8 @@ class Mission:
     points: tuple[InspectionPoint, ...]
     cruise_height_m: float = 0.40
     return_to_start: bool = True
+    #: The travel speed between points, one of SPEED_PRESETS_M_S.
+    speed_m_s: float = DEFAULT_SPEED_M_S
     #: The inspection point the flight ends and lands at, or None to fly every
     #: point. Must name a point of this mission (validate.py says so if not).
     end_point_id: str | None = None
@@ -118,6 +130,9 @@ class Mission:
             raise PlanError("the home mark or the cruise height is not a number")
         if self.revision < 1:
             raise PlanError("a mission's revision starts at 1")
+        if not any(abs(self.speed_m_s - s) < 1e-9 for s in SPEED_PRESETS_M_S):
+            choices = ", ".join(f"{s * 100:.0f}" for s in SPEED_PRESETS_M_S)
+            raise PlanError(f"a mission's speed is one of {choices} cm/s")
 
     @property
     def point_ids(self) -> tuple[str, ...]:
@@ -143,15 +158,26 @@ class Mission:
         """The mission as it will actually be flown from `start` — the drone's
         own position when it is started.
 
-        The inspection points are NOT moved. They are absolute Lighthouse
-        positions tied to the equipment they inspect; shifting them with the
-        drone would put a point beside the wrong pump, or inside a bench. What
-        changes is the start: the first leg runs from where the drone really
-        is, the return leg (if any) comes back there, and the points after an
-        end point are dropped. The result is re-validated like any mission.
+        THE WHOLE PATH MOVES WITH THE START (2026-10-05, Samuel). The plan is
+        drawn relative to its start: every inspection point is shifted by
+        (start − home), so the drawn shape, spacing and heights are flown
+        exactly, beginning wherever the drone was set down — a 1 m square
+        stays a 1 m square. Until then only the start moved and the points
+        stayed put as "absolute positions tied to equipment"; but the room was
+        never measured on the floor, and (0, 0, 0) is wherever the drone sat
+        when the base station was measured, so a drawn absolute position named
+        no real place. The room's fence and obstacles do NOT move: they are
+        checked against the shifted path where they are (fit.py), and the
+        flyable space (where the station reaches) is real.
+
+        No rotation: the plan keeps its directions in the room's frame. Points
+        after an end point are dropped; a landing at the end point makes that
+        spot the next flight's start.
         """
+        dx, dy = float(start[0]) - self.home[0], float(start[1]) - self.home[1]
+        points = tuple(replace(p, x_m=p.x_m + dx, y_m=p.y_m + dy) for p in self.flown_points)
         return replace(self, home=(float(start[0]), float(start[1])),
-                       points=self.flown_points, end_point_id=None,
+                       points=points, end_point_id=None,
                        return_to_start=self.returns_home)
 
     def legs(self) -> list[tuple[Point, Point, str]]:
@@ -173,9 +199,11 @@ class Mission:
 
         The speeds are the manual flight system's own (manual.py
         MOVE_SPEED_M_S, CLIMB_RATE_M_S), passed in by the caller: a plan does
-        not import the flight code. Heights change during a leg at the climb
-        rate, so each leg costs whichever of the two motions is longer.
+        not import the flight code. The mission travels at its own speed_m_s,
+        never faster than the flight system moves. Heights change during a leg
+        at the climb rate, so each leg costs whichever of the two is longer.
         """
+        move_speed_m_s = min(move_speed_m_s, self.speed_m_s)
         total = self.cruise_height_m / climb_rate_m_s          # takeoff
         height = self.cruise_height_m
         stops = [(self.home, self.cruise_height_m)]
@@ -201,6 +229,7 @@ class Mission:
             "points": [p.to_dict() for p in self.points],
             "cruise_height_m": self.cruise_height_m,
             "return_to_start": self.return_to_start,
+            "speed_m_s": self.speed_m_s,
             "end_point_id": self.end_point_id,
             "revision": self.revision, "flown_revision": self.flown_revision,
             "created_at": self.created_at, "updated_at": self.updated_at,
@@ -224,6 +253,7 @@ class Mission:
                 points=tuple(InspectionPoint.from_dict(p) for p in data.get("points") or []),
                 cruise_height_m=float(data.get("cruise_height_m", 0.40)),
                 return_to_start=bool(data.get("return_to_start", True)),
+                speed_m_s=float(data.get("speed_m_s", DEFAULT_SPEED_M_S)),
                 end_point_id=(str(data["end_point_id"]) if data.get("end_point_id") else None),
                 revision=int(data.get("revision", 1)),
                 flown_revision=int(flown) if flown is not None else None,

@@ -67,7 +67,7 @@ const session: Session = {
   can_fly: false,
   restoring: false,
   assisted: false,
-  unassisted_reason: "No base station signal is reaching the drone. Check both base stations are on (front LED solid green), the drone is upright, and nothing blocks the line of sight.",
+  unassisted_reason: "No base station signal is reaching the drone where it is now. Check the station is on (front LED solid green) and can see the top of the drone from where it sits.",
 };
 
 const values: Record<string, number> = {
@@ -85,7 +85,7 @@ const values: Record<string, number> = {
   "lighthouse.bsAvailable": 0b1111,
   "kalman.varPX": 0.004, "kalman.varPY": 0.003, "kalman.varPZ": 0.001,
 };
-const telemetry: Telemetry = { values, height_m: 0.31, at: 0 };
+const telemetry: Telemetry = { values, height_m: 0.31, positioned: true, at: 0 };
 const history: History = Array.from({ length: 120 }, (_, i) => ({
   t: i / 10, values, height_m: 0.3 + Math.sin(i / 8) * 0.02,
 }));
@@ -335,7 +335,7 @@ createRoot(document.getElementById("root")!).render(
     {control("Auto · ① Mission editor", { state: "idle", mode: "auto", assisted: true, message: null, checks: [], health_test: null },
              { step: 1, missionId: "m-long", view: "edit" })}
     {control("Auto · ② Check", { state: "awaiting_confirmation", mode: "auto", assisted: true, message: null },
-             { step: 2, missionId: "m-long" })}
+             { step: 4, missionId: "m-long" })}
     {control("Auto · ③ Fly, flying", {
       state: "busy", mode: "auto", activity: "mission", assisted: true, message: "Holding at P2",
       mission: {
@@ -343,7 +343,7 @@ createRoot(document.getElementById("root")!).render(
         state: "holding", current_point_id: "P2", completed_point_ids: ["P1"],
         last_event: { kind: "hold_started", at_s: 31.2, point_id: "P2", detail: "Holding at P2 for 5 s — 4 cm off the point" },
       },
-    }, { step: 3, missionId: "m-long" })}
+    }, { step: 5, missionId: "m-long" })}
     {control("Auto · ③ Fly, landed", {
       state: "ready", mode: "auto", activity: null, assisted: true, message: null,
       mission: {
@@ -351,7 +351,7 @@ createRoot(document.getElementById("root")!).render(
         state: "done", current_point_id: null, completed_point_ids: ["P1", "P2", "P3"],
         last_event: { kind: "done", at_s: 88.0, point_id: null, detail: "Mission complete" },
       },
-    }, { step: 3, missionId: "m-long" })}
+    }, { step: 5, missionId: "m-long" })}
     {control("Auto · full screen editor", { state: "idle", mode: "auto", assisted: true, message: null, checks: [], health_test: null },
              { step: 1, missionId: "m-long", view: "edit", full: true })}
     {control("Control · Manual, armed", {

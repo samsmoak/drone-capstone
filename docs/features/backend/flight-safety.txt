@@ -101,6 +101,8 @@ all. That was the lab's state on 2026-09-21: received 0, calibrated 0 and 1.
 
 MEASURING WHERE THE STATIONS ARE
 
+  Set up › Measure the base station     the one-station walk, in the app
+                                        (../desktop/setup.txt, step 3)
   cropwatcher geometry                  walks the steps and writes the result
   cropwatcher geometry --distance 1.25  the measured distance that sets scale
   cropwatcher geometry --dry-run        solve and print, write nothing
@@ -200,6 +202,15 @@ INVARIANTS
 - Advisory is not the same as trusted. A positioning warning must always
   return assisted = False. The 2026-09-16 crash was a blind drone told it could
   hold a position; tests pin that the crash readings come back unassisted.
+- A POSITION IS ONLY A PLACE WHEN THE DRONE STANDS BEHIND IT
+  (flight_guard.position_trusted, 2026-10-05): a usable station AND the
+  Kalman x-y spread within MAX_HOLD_VARIANCE_M2 — the bound manual flight
+  already used for its commanded point (link.py _fix). Session.position()
+  returns None otherwise, so the plan that will fly, Start, "I'm here" and
+  frame tagging never take a drifting estimate for a place; telemetry
+  carries it as `positioned`, and the app draws the drone (D) only then.
+  Measured: a still drone, station received but never measured, read 92 m
+  from the mission's start and climbing in ② Check.
 - Lost position still outranks low battery in an assisted flight: landing steers
   by the estimate, so with no estimate the motors stop instead.
 - Losing the DOWNLINK is not losing the drone. Telemetry going quiet means we
@@ -288,5 +299,11 @@ check` run against the lab drone (battery passes, deck named).
 
 RELATED
 
+consumed-by       ../desktop/setup.txt
+                  Set up's step 3 runs the one-station geometry solve and is
+                  done when assess_positioning says ready
+consumed-by       ../desktop/auto-control.txt
+                  position_trusted decides when the drone is drawn and when
+                  the plan is checked from it
 consumed-by       ../missions/mission-controller.txt
                   a mission's room fence becomes the guard's fence
