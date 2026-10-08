@@ -34,6 +34,12 @@ THE TABLES
                 produced it when two people fly two drones.
   sessions      one operation: who, which drone, which mode, when it started
                 and ended.
+  session_samples  the session's own vitals, one a second, flying or not:
+                PRIMARY KEY (session_id, seq), telemetry's column names where
+                they mean the same, `positioned`, and every stream variable in
+                `values`. Signed-in read; insert by an operator for their own
+                session only; append-only (migration 20261006000013). Read by
+                /app/sessions (../frontend/operator-dashboard.txt).
   flights       belongs to a session. Carries mode, program, outcome,
                 abort_reason, ground_z_m, ambient_start, temp_unit, csv_path.
   telemetry     one row per 10 Hz sample, UNIQUE (flight_id, index), with the

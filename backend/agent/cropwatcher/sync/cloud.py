@@ -115,6 +115,7 @@ class Cloud(Protocol):
     def insert_audit(self, rows: list[dict[str, Any]]) -> None: ...
     def max_telemetry_index(self, flight_id: str) -> int | None: ...
     def insert_telemetry(self, rows: list[dict[str, Any]]) -> None: ...
+    def insert_session_samples(self, rows: list[dict[str, Any]]) -> None: ...
     def upload_flight_csv(self, object_path: str, csv_path: Path) -> None: ...
     def request_backfill(self, flight_id: str, object_path: str) -> None: ...
     def upload_frame(self, object_path: str, path: Path, content_type: str,
@@ -386,6 +387,19 @@ class SupabaseCloud:
             raise CloudError(f"could not read the upload progress: {type(e).__name__}") from e
         rows = getattr(response, "data", None) or []
         return int(rows[0]["index"]) if rows else None
+
+    def insert_session_samples(self, rows: list[dict[str, Any]]) -> None:
+        """A session's vitals (sync/samples.py); a re-sent batch changes nothing."""
+        if not rows:
+            return
+        try:
+            self._table("session_samples").upsert(
+                rows, on_conflict="session_id,seq", ignore_duplicates=True
+            ).execute()
+        except Exception as e:
+            hint = (" — apply migration 20261006000013_session_samples.sql"
+                    if "session_samples" in str(e) else "")
+            raise CloudError(f"could not upload session vitals: {type(e).__name__}{hint}") from e
 
     def insert_telemetry(self, rows: list[dict[str, Any]]) -> None:
         if not rows:

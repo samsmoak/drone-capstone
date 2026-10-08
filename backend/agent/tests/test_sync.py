@@ -71,6 +71,13 @@ class FakeCloud:
         for row in rows:
             self.telemetry.setdefault(row["flight_id"], {}).setdefault(row["index"], row)
 
+    def insert_session_samples(self, rows):
+        self._maybe_fail()
+        if not hasattr(self, "samples"):
+            self.samples = {}
+        for row in rows:
+            self.samples.setdefault(row["session_id"], {}).setdefault(row["seq"], row)
+
     def upload_flight_csv(self, object_path, csv_path):
         self._maybe_fail()
         self.uploads.append((object_path, csv_path))

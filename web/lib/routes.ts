@@ -20,6 +20,7 @@ export const AUTH_CALLBACK = "/auth/callback";
 export const OPERATOR_HOME = "/app";
 export const LIVE = "/app/live";
 export const FLIGHTS = "/app/flights";
+export const SESSIONS = "/app/sessions";
 export const COMPARE = "/app/compare";
 export const ZONES = "/app/zones";
 export const PLAN = "/app/plan";
@@ -68,6 +69,7 @@ export const PUBLIC_NAV = [
 export const OPERATOR_NAV = [
   { href: OPERATOR_HOME, label: "Dashboard" },
   { href: LIVE, label: "Live" },
+  { href: SESSIONS, label: "Sessions" },
   { href: FLIGHTS, label: "Flights" },
   { href: ZONES, label: "Zones" },
   { href: COMPARE, label: "Compare" },

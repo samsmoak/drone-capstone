@@ -83,7 +83,8 @@ Rungs 7-10 are what PR #26 changed. They are the test of it.
 CONDITIONS
   drone        cf-002d00263234511236373639
   stations     one in use (station 0); DroneDeck closed for the reads below
-  code         experiment/samuel (mission controller BUILT)
+  code         experiment/samuel — the private lab build, mission controller
+               BUILT (its body is not on main; there it is still Hannah's ticket)
 
 LIGHTHOUSE DECK UNDER THE DRONE
   DID          ./cropwatcher stations --seconds 12 ; ./cropwatcher check
@@ -117,7 +118,7 @@ GEOMETRY, FIRST TRY (terminal)
                the walk in the app, and an unmoved drone named as such
                (geometry.py NOT_MOVED_M).
 
-  A 1 m SQUARE IN SIMULATION (the real controller, tests/sim_drone.py): home
+  A 1 m SQUARE IN SIMULATION (the lab build's controller and simulated drone): home
   (0,0), P1 (0,0) P2 (1,0) P3 (1,1) P4 (0,1) at 0.40 m, Steady 0.10 m/s, 5 s
   holds, return: every event in order, arrivals within 6 cm, 72.6 s against a
   71.3 s estimate.
