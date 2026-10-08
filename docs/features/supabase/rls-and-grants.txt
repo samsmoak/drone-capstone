@@ -57,6 +57,11 @@ INVARIANTS
   which rows, the grant says whether the role may touch the table at all. The
   drones insert policy looked complete and every insert failed with "permission
   denied" — migration 0004 had revoked the grant. Add both, together.
+  It happened again on 2026-10-08: session_samples (0013) shipped with its
+  policies and no grant; 0014 grants select, insert to authenticated. Proven
+  on the hosted project as the operator: read 200, an insert for a session
+  not theirs refused BY THE POLICY (not "permission denied" — so the grant is
+  there), anonymous read 401.
 - A GRANT WITHOUT A POLICY IS A SILENT HOLE waiting for someone to add a policy.
   audit_events carried an UPDATE grant no policy used; 0006 revokes update and
   delete explicitly so the append-only rule cannot be undone by accident.
