@@ -29,6 +29,9 @@ WHERE IT LIVES
   /app/plan          app/app/plan/page.tsx — see mission-planner.txt
   /app/manual        app/app/manual/page.tsx — points to the desktop app
   /app/settings      app/app/settings/page.tsx, components/agent-reachability.tsx
+  /app/notifications app/app/notifications/page.tsx, actions.tsx;
+                     components/operator/notifications.tsx (provider, bell);
+                     lib/realtime.ts (the authed socket, shared with live)
 
   shared             app/app/error.tsx, app/app/loading.tsx,
                      components/ui/page-header.tsx, local-time.tsx,
@@ -61,6 +64,22 @@ DECISIONS
   pages; the table stays in the database. Not processed, and not migrated,
   are said in words. Checked in a browser against the local stack at 390 and
   1440 px, both themes: no sideways overflow (2026-10-09).
+- NOTIFICATIONS ARE KEPT UNTIL READ (2026-10-09, Samuel: "persistent, at
+  least in the web app"). Rows in public.notifications, made by the database
+  for every operator when a warning-or-worse finding is first inserted
+  (migration 20261009000017) — so an operator who was away sees them at the
+  next sign-in. ONE provider in the operator shell holds them and ONE
+  Realtime subscription delivers new ones at once (announced politely to
+  screen readers); the bell in the sidebar and in the phone bar read it. The
+  bell says "N unread" in words, opens a panel (the latest, Mark all read,
+  View all), and each item opens its finding on the session page and is
+  marked read. /app/notifications lists every one, newest first, paged back
+  by time, unread marked in a word. A viewer is not notified. A
+  notification keeps the words it was sent with. Proved in the browser
+  against the local stack: a finding inserted while the page was open
+  reached the bell without a reload. The desktop app also raises an OS
+  notification when a flight finishes processing with a warning or worse
+  (desktop/src/lib/os-notify.ts).
 - WHO RAN IT is on every session and flight (operator_name, operator_email,
   stamped by the database — supabase/data-model.txt), shown as name + email,
   "Not recorded" for records from before.

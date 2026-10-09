@@ -57,6 +57,14 @@ THE TABLES
                 Both: signed-in read; operators write (findings also delete —
                 a re-process retracts what it no longer finds); anon nothing.
                 Proof: backend/supabase/checks/results_check.py (11 checks).
+  notifications ONE ROW PER OPERATOR PER WARNING-OR-WORSE FINDING (migration
+                20261009000017), made by the trigger notify_operators_of_finding
+                AFTER INSERT on pipeline_findings — an upsert of an existing
+                finding inserts nothing, and (user_id, finding_id) is unique,
+                so a re-processed flight never notifies twice. Read and mark
+                read your own only (update grant on read_at alone); no client
+                inserts or deletes; in the Realtime publication. Proof:
+                backend/supabase/checks/notifications_check.py (16 checks).
   session_samples  the session's own vitals, one a second, flying or not:
                 PRIMARY KEY (session_id, seq), telemetry's column names where
                 they mean the same, `positioned`, and every stream variable in

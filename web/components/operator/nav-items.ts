@@ -41,6 +41,9 @@ export const OPERATOR_GROUPS: OperatorNavGroup[] = [
 export function activeHref(pathname: string, groups: OperatorNavGroup[]): string | undefined {
   return groups
     .flatMap((g) => g.items)
-    .filter((i) => pathname === i.href || pathname.startsWith(i.href + "/"))
+    // The dashboard (/app) is its own page only: a page with no item of its
+    // own (/app/notifications) must not claim to be the dashboard.
+    .filter((i) => pathname === i.href
+      || (i.href !== OPERATOR_HOME && pathname.startsWith(i.href + "/")))
     .sort((a, b) => b.href.length - a.href.length)[0]?.href;
 }

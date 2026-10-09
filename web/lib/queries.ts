@@ -17,6 +17,7 @@ export type SessionSampleRow = Database["public"]["Tables"]["session_samples"]["
 export type AuditEventRow = Database["public"]["Tables"]["audit_events"]["Row"];
 export type PipelineResultRow = Database["public"]["Tables"]["pipeline_results"]["Row"];
 export type FindingRow = Database["public"]["Tables"]["pipeline_findings"]["Row"];
+export type NotificationRow = Database["public"]["Tables"]["notifications"]["Row"];
 
 /**
  * A read that failed, as opposed to a read that found nothing.
@@ -402,6 +403,43 @@ export const getFindings = cache(
              migrated: true };
   },
 );
+
+// ── notifications (migration 20261009000017) ─────────────────────────────
+
+/** The signed-in operator's notifications, newest first; `before` pages back.
+ *  Row-level security returns only their own — the filter on user_id is for
+ *  the index, not the guard. */
+export const getNotifications = cache(
+  async (limit = 30, before?: string): Promise<{ rows: NotificationRow[]; migrated: boolean }> => {
+    const profile = await getCurrentProfile();
+    if (!profile) return { rows: [], migrated: true };
+    const supabase = await createClient();
+    let query = supabase.from("notifications").select("*").eq("user_id", profile.id)
+      .order("created_at", { ascending: false }).limit(limit);
+    if (before) query = query.lt("created_at", before);
+    const { data, error } = await query;
+    if (error) {
+      if (notMigrated(error, "notifications")) return { rows: [], migrated: false };
+      failed(error, "notifications");
+    }
+    return { rows: data, migrated: true };
+  },
+);
+
+/** How many of the operator's notifications are unread. */
+export const getUnreadCount = cache(async (): Promise<number> => {
+  const profile = await getCurrentProfile();
+  if (!profile) return 0;
+  const supabase = await createClient();
+  const { count, error } = await supabase.from("notifications")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", profile.id).is("read_at", null);
+  if (error) {
+    if (notMigrated(error, "notifications")) return 0;
+    failed(error, "unread notifications");
+  }
+  return count ?? 0;
+});
 
 /** Each flight's telemetry, capped per flight like the flight page. */
 export const getFlightsTelemetry = cache(
