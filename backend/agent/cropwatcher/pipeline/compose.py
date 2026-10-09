@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from cropwatcher.pipeline.contracts import Classifier, Cleaner, Enhancer, Interpreter
-from cropwatcher.pipeline.stages.classify.stub import StubClassifier
+from cropwatcher.pipeline.stages.classify.blocks import BlocksClassifier
 from cropwatcher.pipeline.stages.clean.hampel import HampelCleaner
 from cropwatcher.pipeline.stages.enhance.stub import StubEnhancer
 from cropwatcher.pipeline.stages.interpret.labels import LabelInterpreter
@@ -36,6 +36,6 @@ def default_stages() -> Stages:
     return Stages(
         cleaner=HampelCleaner(),          # Kevin: docs/handoffs/sprint-1/undone/dpp-clean.txt
         enhancer=StubEnhancer(),          # Kevin: docs/handoffs/sprint-1/undone/dpp-enhance.txt
-        classifier=StubClassifier(),      # Reagan: docs/handoffs/sprint-1/undone/dpp-classify.txt
+        classifier=BlocksClassifier(),    # blocks against expected: ml/anomaly-eval/
         interpreter=LabelInterpreter(),   # Samuel
     )
