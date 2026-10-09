@@ -39,7 +39,7 @@ import { Button, Message, PageHeader, Panel, Spinner, Stat, StatusDot, TONE_COLO
 import { SplitPane } from "@/components/SplitPane";
 import { useMediaQuery, WIDE } from "@/lib/useMediaQuery";
 import { AutoControl } from "./auto/AutoControl";
-import { DataPipelinePanel } from "./DataPipeline";
+import { DataPipelinePanel, ProcessingSwitch } from "./DataPipeline";
 import { ArrowFrame } from "./ArrowFrame";
 import { arrowWords } from "@/lib/arrows";
 import type { FlowStart } from "./auto/MissionFlow";
@@ -81,10 +81,15 @@ export function ControlPage({
     <div className="grid gap-4">
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
         <PageHeader eyebrow={session.mode === "auto" ? "Auto" : "Manual"} title="Control" />
-        {/* The recent-sessions list used to sit full-width at the foot of this
-            page, duplicating the Sessions page and taking the width the console
-            wanted. One link does the same job. */}
-        <Button onClick={onOpenSessions}>Recent sessions →</Button>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+          {/* The DPP switch: at the top, in both modes, on by default (the
+              owner, 2026-10-09) — DataPipeline.tsx. */}
+          <ProcessingSwitch session={session} run={run} />
+          {/* The recent-sessions list used to sit full-width at the foot of this
+              page, duplicating the Sessions page and taking the width the console
+              wanted. One link does the same job. */}
+          <Button onClick={onOpenSessions}>Recent sessions →</Button>
+        </div>
       </div>
 
       {session.message && (

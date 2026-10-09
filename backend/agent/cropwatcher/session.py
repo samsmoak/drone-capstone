@@ -231,11 +231,11 @@ class Snapshot:
     mission: dict[str, Any] | None = None
     #: The DPP switch and the flights being processed (processing.py). `on` is
     #: what the next flight will get; `chosen` is False while it is still the
-    #: mode's default (on in Auto, off in Manual); `jobs` newest first;
+    #: default (on, in either mode); `jobs` newest first;
     #: `last_flight_id` the session's most recent flight to land, so a flight
     #: flown with DPP off can still be processed from the page.
     processing: dict[str, Any] = field(default_factory=lambda: {
-        "on": False, "chosen": False, "jobs": [], "last_flight_id": None})
+        "on": True, "chosen": False, "jobs": [], "last_flight_id": None})
     #: Which way the arrow keys move the drone (flight/keyframe.py): the
     #: operator's choice (`key_frame`, "operator" or "room"), their marked
     #: spot (`operator`, room metres, or None for the takeoff spot) and, while
@@ -551,11 +551,12 @@ class Session:
     # ── the data pipeline (the DPP switch) ───────────────────────────────
 
     def processing_on(self) -> bool:
-        """Whether the next flight is processed: the operator's choice for this
-        session, else the mode's default — on in Auto, off in Manual."""
+        """Whether the next flight is processed: the operator's choice, kept
+        until the session ends, else on — in Auto and in Manual alike (the
+        owner, 2026-10-09: "by default the DPP toggle should be on")."""
         if self._processing_choice is not None:
             return self._processing_choice
-        return self._snapshot.mode is Mode.AUTO
+        return True
 
     def _refresh_processing(self) -> None:
         self._set(processing={"on": self.processing_on(),

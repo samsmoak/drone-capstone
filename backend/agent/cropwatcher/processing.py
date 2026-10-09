@@ -1,10 +1,11 @@
 """Processing recorded flights through the data pipeline, one at a time, in a
 process of its own — the DPP switch on the Control page.
 
-WHEN. The operator chooses per session: on by default in Auto (a mission's
-whole point is its verdicts), off by default in Manual, and changeable either
-way. The choice is read when a flight BEGINS and recorded on it, so switching
-mid-flight never leaves a flight half-decided. When a flight marked for
+WHEN. On by default in Auto and in Manual alike (the owner, 2026-10-09; Manual
+was off by default until then), and the operator can turn it off — before a
+session starts or during one. The choice lasts until the session ends. It is
+read when a flight BEGINS and recorded on it, so switching mid-flight never
+leaves a flight half-decided. When a flight marked for
 processing ends — its CSV already closed and on disk (CLAUDE.md invariant 6:
 write first) — it is queued here.
 

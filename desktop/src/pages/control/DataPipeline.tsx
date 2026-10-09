@@ -2,11 +2,13 @@
  * The data pipeline on the Control page: the DPP switch, and the result of
  * the last flight.
  *
- * THE SWITCH IS PER SESSION (backend/agent/cropwatcher/processing.py): on by
- * default in Auto — a mission's point is its verdicts — and off by default in
- * Manual; either can be flipped. It is read as a flight BEGINS, so flipping it
- * mid-flight is for the next one, and the switch says so. The agent keeps the
- * choice; this page only shows it (Session.processing) and asks to change it.
+ * THE SWITCH sits at the top of the page, in Auto and in Manual alike (the
+ * owner, 2026-10-09), and is ON by default in both. It can be turned off
+ * before a session starts or during one; the choice lasts until the session
+ * ends (backend/agent/cropwatcher/processing.py). It is read as a flight
+ * BEGINS, so flipping it mid-flight is for the next one, and the switch says
+ * so. The agent keeps the choice; this page only shows it
+ * (Session.processing) and asks to change it.
  *
  * THE RESULT has the four states of every async surface here, plus the two
  * the pipeline adds: being processed (queued, running), failed with the
@@ -28,11 +30,18 @@ import { formatTime } from "@/lib/format";
 import { Button, Message, Panel, Spinner, StatusDot, type Tone } from "@/components/ui";
 
 export function ProcessingSwitch({ session, run }: { session: Session; run: Run }) {
-  const on = session.processing?.on ?? false;
+  const on = session.processing?.on ?? true;
   const chosen = session.processing?.chosen ?? false;
   const signedOut = session.state === "signed_out";
   const flying = session.activity === "mission" || session.activity === "manual" || session.activity === "program";
-  const mode = session.mode === "auto" ? "Auto" : "Manual";
+  const inSession = session.session_id !== null;
+  const note = signedOut
+    ? "Sign in to change it."
+    : flying
+      ? "Changes apply to the next flight."
+      : chosen
+        ? inSession ? "Your choice until this session ends." : "Your choice for the session you start next."
+        : "On by default.";
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
       <button
@@ -50,10 +59,7 @@ export function ProcessingSwitch({ session, run }: { session: Session; run: Run 
         </span>
         Process flights (DPP): {on ? "on" : "off"}
       </button>
-      <span className="text-xs text-[var(--muted)]">
-        {flying ? "Changes apply to the next flight. " : ""}
-        {chosen ? "Your choice for this session." : `${mode}'s default — ${session.mode === "auto" ? "on" : "off"}.`}
-      </span>
+      <span className="text-xs text-[var(--muted)]">{note}</span>
     </div>
   );
 }
@@ -222,11 +228,8 @@ export function FlightResults({ session, run, flightId }: { session: Session; ru
 /** The switch and the last flight's result, as one panel. */
 export function DataPipelinePanel({ session, run }: { session: Session; run: Run }) {
   return (
-    <Panel title="Data processing" note="Turns a flight's readings and frames into a verdict per inspection point." bodyClassName="grid gap-3 px-4 py-3">
-      <ProcessingSwitch session={session} run={run} />
-      <div className="border-t border-[var(--border)] pt-3">
-        <FlightResults session={session} run={run} />
-      </div>
+    <Panel title="Data processing" note="Turns a flight's readings and frames into a verdict per inspection point. The switch is at the top of the page." bodyClassName="grid gap-3 px-4 py-3">
+      <FlightResults session={session} run={run} />
     </Panel>
   );
 }
