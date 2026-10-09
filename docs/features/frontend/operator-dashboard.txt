@@ -29,6 +29,10 @@ WHERE IT LIVES
   /app/plan          app/app/plan/page.tsx — see mission-planner.txt
   /app/manual        app/app/manual/page.tsx — points to the desktop app
   /app/settings      app/app/settings/page.tsx, components/agent-reachability.tsx
+  /app/processed     app/app/processed/page.tsx (all anomalies, the sessions)
+                     and [id]/page.tsx (one session's processed data) — see
+                     ../pipeline/results.txt; components/ui/hint.tsx (the
+                     anomaly tooltip), raw-readings.tsx (rows tinted)
   /app/notifications app/app/notifications/page.tsx, actions.tsx;
                      components/operator/notifications.tsx (provider, bell);
                      lib/realtime.ts (the authed socket, shared with live)

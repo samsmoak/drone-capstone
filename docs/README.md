@@ -49,7 +49,8 @@ Feature docs are plain `.txt`, grouped by the surface they describe.
 
 | Doc | What it covers |
 |---|---|
-| [features/pipeline/data-pipeline.txt](features/pipeline/data-pipeline.txt) | `cropwatcher process`: clean → enhance → classify → interpret, a verdict per inspection point, laptop-first |
+| [features/pipeline/data-pipeline.txt](features/pipeline/data-pipeline.txt) | `cropwatcher process`: clean → enhance → classify → interpret, a verdict per inspection point, laptop-first; the DPP switch (top of Control, on by default); `process --all` |
+| [features/pipeline/results.txt](features/pipeline/results.txt) | Results on the web: the Processed data page (`/app/processed`), anomalies highlighted in the readings and on the frames with their meaning, notifications |
 
 ## Frontend — the web app (`web/`)
 

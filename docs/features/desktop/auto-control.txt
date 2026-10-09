@@ -216,8 +216,9 @@ desktop/src/lib/agent.ts                           the calls and types
 • Start mission sits AT THE TOP of ③, disabled with its reason; the agent's own
   refusals (unsafe from the drone's position, battery, controller not built)
   arrive as the page message.
-• THE DPP SWITCH is on ② (before the session) and ③ (beside Start): on by
-  default in Auto (../pipeline/data-pipeline.txt). The RESULTS panel under
+• THE DPP SWITCH is at the top of the Control page, beside Recent sessions —
+  the same place in Auto and Manual (2026-10-09; it was on ② and ③), on by
+  default (../pipeline/data-pipeline.txt). The RESULTS panel under
   Progress shows the last flight's verdicts, then its FINDINGS worst first
   (title, severity in a word, the agent's sentence, the camera note), and
   "Process again". A result from before 2026-10-09 has no findings and may
