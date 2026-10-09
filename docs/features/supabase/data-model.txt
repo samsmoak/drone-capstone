@@ -34,6 +34,19 @@ THE TABLES
                 produced it when two people fly two drones.
   sessions      one operation: who, which drone, which mode, when it started
                 and ended.
+  pipeline_results  ONE ROW PER PROCESSED FLIGHT (migration 20261009000016):
+                the whole result.json — verdicts per point, the cleaner's
+                flags [index, column, kind, reason], the tracks (observed and
+                expected per reading), the blocks, every frame's enhanced
+                copy, quality and label — plus findings_count and
+                worst_severity. Replaced when the flight is processed again.
+  pipeline_findings  ONE ROW PER FINDING: signal, severity, title, sentence,
+                start/end, observed/expected/delta/z, point_ids, position,
+                evidence_frames, image_support. The id is made on the laptop
+                from the flight and the stretch, so a re-process upserts.
+                Both: signed-in read; operators write (findings also delete —
+                a re-process retracts what it no longer finds); anon nothing.
+                Proof: backend/supabase/checks/results_check.py (11 checks).
   session_samples  the session's own vitals, one a second, flying or not:
                 PRIMARY KEY (session_id, seq), telemetry's column names where
                 they mean the same, `positioned`, and every stream variable in

@@ -1,0 +1,174 @@
+"""A processed flight reaches the web (sync/results.py, migration
+20261009000016): its result, its findings, its enhanced frames — after the
+flight's own row, replacing on re-process, retracting what a re-process no
+longer finds, and waiting on disk when offline."""
+
+from __future__ import annotations
+
+import json
+import shutil
+from pathlib import Path
+
+import pytest
+
+from cropwatcher.cli import main
+from cropwatcher.sync import results
+from cropwatcher.sync.cloud import CloudError
+from cropwatcher.sync.outbox import Kind, Outbox
+from cropwatcher.sync.syncer import Syncer
+from tests.test_sync import FakeCloud
+
+FIXTURE = Path(__file__).parent / "pipeline" / "fixtures" / "data"
+FLIGHT = "372bbdc4-d323-42bb-9e6c-29ef02e3794c"
+
+
+class ResultsCloud(FakeCloud):
+    def __init__(self) -> None:
+        super().__init__()
+        self.results: dict[str, dict] = {}
+        self.findings: dict[str, dict] = {}
+        self.objects: dict[str, Path] = {}
+
+    def upload_frame(self, object_path, path, content_type, *, replace=False):
+        self._maybe_fail()
+        self.objects[object_path] = path
+
+    def upsert_result(self, row):
+        self._maybe_fail()
+        self.results[row["flight_id"]] = row
+
+    def upsert_findings(self, rows):
+        self._maybe_fail()
+        for row in rows:
+            self.findings[row["id"]] = row
+
+    def delete_findings_except(self, flight_id, keep):
+        self._maybe_fail()
+        self.findings = {k: v for k, v in self.findings.items()
+                         if v["flight_id"] != flight_id or k in keep}
+
+
+def finding(fid: str, severity: str = "warning") -> dict:
+    return {"id": fid, "signal": "temperature", "severity": severity, "title": "Warmer",
+            "sentence": "From 0:42…", "start_index": 1, "end_index": 30, "t_start_s": 0.1,
+            "t_end_s": 3.0, "unit": "C", "observed": 33.0, "expected": 31.0, "delta": 2.0,
+            "z": 9.0, "point_ids": ["P1"], "x_m": None, "y_m": None, "z_m": None,
+            "evidence_frames": [2], "image_support": "cannot_tell", "image_note": "…"}
+
+
+def write_result(folder: Path, *, findings: list[dict], frames: int = 2,
+                 session: str | None = "session-1") -> None:
+    (folder / "work" / "enhanced").mkdir(parents=True, exist_ok=True)
+    for seq in range(1, frames + 1):
+        (folder / "work" / "enhanced" / f"{seq:06d}.png").write_bytes(b"png")
+    (folder / results.RESULT_NAME).write_text(json.dumps({
+        "flight_id": "flight-1", "session_id": session, "pipeline_version": "2",
+        "stages": {"clean": "robust@1"}, "created_at": "2026-10-09T08:00:00+00:00",
+        "temp_unit": "C", "points": [{"point_id": "P1", "verdict": "anomaly"}],
+        "findings": findings,
+        "flags": [{"index": 3, "column": "raw_temp", "kind": "spike", "reason": "a spike"}],
+        "frames": [{"seq": s, "enhanced": f"enhanced/{s:06d}.png"} for s in range(1, frames + 1)],
+    }))
+
+
+@pytest.fixture
+def rig(tmp_path):
+    outbox = Outbox(tmp_path / "outbox")
+    cloud = ResultsCloud()
+    return outbox, cloud, Syncer(outbox, lambda: cloud, sleep=lambda s: None), tmp_path
+
+
+def queue(outbox: Outbox, folder: Path) -> None:
+    outbox.put(Kind.RESULTS, "flight-1", {"flight_id": "flight-1", "folder": str(folder),
+                                          "occurred_at": "2026-10-09T08:00:00+00:00"})
+
+
+class TestTheRows:
+    def test_the_result_row_counts_findings_and_names_the_worst(self, tmp_path):
+        write_result(tmp_path, findings=[finding("a", "info"), finding("b", "critical")])
+        row = results.result_row(results.load(tmp_path))
+        assert row["findings_count"] == 2 and row["worst_severity"] == "critical"
+        assert row["flags"] == [[3, "raw_temp", "spike", "a spike"]]
+
+    def test_no_findings_is_no_worst(self, tmp_path):
+        write_result(tmp_path, findings=[])
+        assert results.result_row(results.load(tmp_path))["worst_severity"] is None
+
+    def test_a_finding_row_carries_its_flight_and_session(self, tmp_path):
+        write_result(tmp_path, findings=[finding("a")])
+        (row,) = results.finding_rows(results.load(tmp_path))
+        assert (row["flight_id"], row["session_id"], row["pipeline_version"]) == \
+            ("flight-1", "session-1", "2")
+
+    def test_a_file_that_is_not_a_result_says_so(self, tmp_path):
+        (tmp_path / results.RESULT_NAME).write_text("{}")
+        with pytest.raises(results.ResultUnreadable):
+            results.load(tmp_path)
+
+
+class TestTheUpload:
+    def test_it_waits_for_the_flights_own_row(self, rig):
+        outbox, cloud, syncer, tmp = rig
+        write_result(tmp / "r", findings=[finding("a")])
+        outbox.put(Kind.FLIGHT, "flight-1", {"id": "flight-1", "_sent": False})
+        queue(outbox, tmp / "r")
+        syncer._send_results(cloud)
+        assert cloud.results == {} and outbox.count_pending(Kind.RESULTS) == 1
+
+    def test_frames_then_result_then_findings(self, rig):
+        outbox, cloud, syncer, tmp = rig
+        write_result(tmp / "r", findings=[finding("a"), finding("b", "info")])
+        queue(outbox, tmp / "r")
+        syncer.sync_once()
+        assert sorted(cloud.objects) == ["session-1/enhanced/000001.png",
+                                         "session-1/enhanced/000002.png"]
+        assert cloud.results["flight-1"]["findings_count"] == 2
+        assert set(cloud.findings) == {"a", "b"}
+        assert outbox.count_pending(Kind.RESULTS) == 0
+
+    def test_a_reprocess_replaces_and_retracts(self, rig):
+        outbox, cloud, syncer, tmp = rig
+        write_result(tmp / "r", findings=[finding("a"), finding("b")])
+        queue(outbox, tmp / "r")
+        syncer.sync_once()
+        write_result(tmp / "r", findings=[finding("a", "critical")])
+        queue(outbox, tmp / "r")                       # processed again
+        syncer.sync_once()
+        assert set(cloud.findings) == {"a"} and cloud.findings["a"]["severity"] == "critical"
+        assert cloud.results["flight-1"]["findings_count"] == 1
+
+    def test_offline_everything_waits_and_resumes_after_the_last_frame(self, rig):
+        outbox, cloud, syncer, tmp = rig
+        write_result(tmp / "r", findings=[finding("a")], frames=3)
+        queue(outbox, tmp / "r")
+        cloud.fail_with = CloudError("offline")
+        syncer.sync_once()
+        assert outbox.count_pending(Kind.RESULTS) == 1 and cloud.results == {}
+        cloud.fail_with = None
+        outbox.update(Kind.RESULTS, "flight-1", lambda p: p.__setitem__("frames_uploaded", 2))
+        syncer.sync_once()
+        assert sorted(cloud.objects) == ["session-1/enhanced/000003.png"]   # resumed
+        assert "flight-1" in cloud.results
+
+    def test_a_flight_with_no_session_uploads_no_frames(self, rig):
+        outbox, cloud, syncer, tmp = rig
+        write_result(tmp / "r", findings=[], session=None)
+        queue(outbox, tmp / "r")
+        syncer.sync_once()
+        assert cloud.objects == {} and "flight-1" in cloud.results
+
+    def test_a_missing_result_file_is_dropped_not_retried_forever(self, rig):
+        outbox, cloud, syncer, tmp = rig
+        queue(outbox, tmp / "gone")
+        syncer.sync_once()
+        assert outbox.count_pending(Kind.RESULTS) == 0 and cloud.results == {}
+
+
+def test_processing_a_flight_queues_its_result(tmp_path, monkeypatch, capsys):
+    root = tmp_path / "data"
+    shutil.copytree(FIXTURE, root)
+    monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(root))
+    assert main(["process", "--flight", FLIGHT]) == 0
+    assert "queued for upload" in capsys.readouterr().out
+    record = Outbox(root / "outbox").get(Kind.RESULTS, FLIGHT)
+    assert record and Path(record["folder"]) == root / "results" / FLIGHT

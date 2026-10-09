@@ -44,6 +44,9 @@ class Kind(StrEnum):
     #: One per session: its 1 Hz vitals (samples.csv), uploaded from a cursor
     #: (sync/samples.py) — never one record per row.
     SAMPLES = "samples"
+    #: One per processed flight: its pipeline result and enhanced frames
+    #: (sync/results.py). Re-processing replaces the record.
+    RESULTS = "results"
 
 
 def new_id() -> str:

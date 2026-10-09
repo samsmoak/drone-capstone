@@ -17,6 +17,8 @@ WHERE IT LIVES
   backend/agent/cropwatcher/sync/cloud.py    every call made to Supabase
   backend/agent/cropwatcher/sync/syncer.py   when and in what order
   backend/agent/cropwatcher/sync/samples.py  a session's samples.csv as rows
+  backend/agent/cropwatcher/sync/results.py  a flight's result.json as rows
+  backend/agent/tests/test_results_upload.py
   backend/agent/cropwatcher/paths.py         where the data dir is
   backend/agent/cropwatcher/telemetry/sinks.py  CSV first, then cloud
   backend/agent/tests/test_outbox.py, test_syncer.py
@@ -25,13 +27,25 @@ WHERE IT LIVES
 THE ORDER (records reference each other)
 
   audit events -> drones -> sessions -> flights -> telemetry rows -> CSV file
-  -> camera frames -> session vitals (LAST: sync/samples.py, Kind.SAMPLES)
+  -> camera frames -> session vitals (sync/samples.py, Kind.SAMPLES)
+  -> pipeline results (LAST: sync/results.py, Kind.RESULTS)
 
 Session vitals go last because their table (migration 20261006000013) may not
 exist yet: until it does that step fails with "apply migration
 20261006000013", and everything before it has already gone. One outbox record
 per session, a cursor through samples.csv moved after each 500-row batch, sent
 once the session has ended and every row is up.
+
+Pipeline results go after them for the same reason (migration
+20261009000016). `cropwatcher process --flight` queues one record per flight
+once result.json is written (the agent wakes the syncer when a processing job
+finishes); the syncer waits while the flight's own record is still pending,
+then uploads the enhanced frames from a cursor (to flight-frames/<session>/
+enhanced/<seq>.png, replacing), upserts pipeline_results on flight_id, upserts
+pipeline_findings on their ids, and deletes the flight's findings the new
+result no longer makes. Processing a flight again re-queues it, which resets
+the cursor and replaces what was uploaded. Proved against the local stack
+with the real client, 2026-10-09.
 
 Audit events deliberately have NO foreign keys, so they can go first and never
 wait for a flight row that may not exist yet.

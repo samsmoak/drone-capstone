@@ -1,0 +1,103 @@
+"""A flight's pipeline result, uploaded (supabase migration 20261009000016).
+
+`cropwatcher process` writes results/<flight>/result.json and the enhanced
+frames under results/<flight>/work/ — on the laptop first (CLAUDE.md invariant
+6) — and queues an outbox record (Kind.RESULTS). The syncer turns that file
+into the two tables' rows:
+
+    pipeline_results    one row per flight: the whole result as written
+    pipeline_findings   one row per finding, for the pages and notifications
+
+and uploads each enhanced frame to the flight-frames bucket beside the
+session's originals: <session>/enhanced/<seq>.png.
+
+Re-processing a flight re-queues it: the result row is replaced (upsert on
+flight_id), every finding upserted on its id (a stretch keeps its id), and the
+findings the new result no longer makes are deleted. This reads the JSON the
+pipeline wrote and nothing else — sync never imports the pipeline.
+"""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Mapping
+from pathlib import Path
+from typing import Any
+
+RESULT_NAME = "result.json"
+WORK_NAME = "work"
+RANK = {"info": 0, "warning": 1, "critical": 2}
+
+
+class ResultUnreadable(ValueError):
+    """result.json is missing or not a pipeline result."""
+
+
+def load(folder: Path) -> dict[str, Any]:
+    try:
+        data: dict[str, Any] = json.loads((folder / RESULT_NAME).read_text(encoding="utf-8"))
+    except FileNotFoundError as e:
+        raise ResultUnreadable(f"no {RESULT_NAME} in {folder}") from e
+    except json.JSONDecodeError as e:
+        raise ResultUnreadable(f"{folder / RESULT_NAME} is not JSON: {e}") from e
+    if "flight_id" not in data or "points" not in data:
+        raise ResultUnreadable(f"{folder / RESULT_NAME} is not a pipeline result")
+    return data
+
+
+def result_row(result: Mapping[str, Any]) -> dict[str, Any]:
+    """public.pipeline_results ← result.json."""
+    findings = result.get("findings") or []
+    worst = max((f["severity"] for f in findings), key=lambda s: RANK.get(s, -1),
+                default=None)
+    return {
+        "flight_id": result["flight_id"],
+        "session_id": result.get("session_id"),
+        "pipeline_version": str(result.get("pipeline_version", "")),
+        "stages": result.get("stages") or {},
+        "created_at": result["created_at"],
+        "temp_unit": result.get("temp_unit") or "C",
+        "points": result.get("points") or [],
+        "findings_count": len(findings),
+        "worst_severity": worst,
+        # Compact: [index, column, kind, reason] — a flight can carry thousands.
+        "flags": [[f["index"], f.get("column"), f["kind"], f["reason"]]
+                  for f in result.get("flags") or []],
+        "tracks": result.get("tracks") or [],
+        "segments": result.get("segments") or [],
+        "frames": result.get("frames") or [],
+        "failures": result.get("failures") or [],
+        "summary": result.get("summary") or {},
+    }
+
+
+FINDING_COLUMNS = ("id", "signal", "severity", "title", "sentence", "start_index",
+                   "end_index", "t_start_s", "t_end_s", "unit", "observed", "expected",
+                   "delta", "z", "point_ids", "x_m", "y_m", "z_m", "evidence_frames",
+                   "image_support", "image_note")
+
+
+def finding_rows(result: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """public.pipeline_findings ← result.json's findings."""
+    return [{**{c: f.get(c) for c in FINDING_COLUMNS},
+             "point_ids": list(f.get("point_ids") or []),
+             "evidence_frames": list(f.get("evidence_frames") or []),
+             "flight_id": result["flight_id"], "session_id": result.get("session_id"),
+             "pipeline_version": str(result.get("pipeline_version", ""))}
+            for f in result.get("findings") or []]
+
+
+def enhanced_frames(folder: Path, result: Mapping[str, Any]) -> list[tuple[int, Path]]:
+    """(seq, local file) of every enhanced copy the result names and the disk has."""
+    work = folder / WORK_NAME
+    out = []
+    for frame in result.get("frames") or []:
+        relative = frame.get("enhanced")
+        if relative and (work / relative).is_file():
+            out.append((int(frame["seq"]), work / relative))
+    return out
+
+
+def enhanced_object_path(session_id: str, seq: int) -> str:
+    """Beside the session's originals (<session>/frames/<seq>.png)."""
+    return f"{session_id}/enhanced/{seq:06d}.png"
