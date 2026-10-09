@@ -283,7 +283,9 @@ class Syncer:
                 cloud.request_backfill(flight_id, object_path)
 
             expected = payload.get("rows_written")
-            complete = expected is None or (sent_to is not None and sent_to + 1 >= expected)
+            # A flight that wrote no rows is complete once its record is up —
+            # otherwise it is retried every pass, forever.
+            complete = not expected or (sent_to is not None and sent_to + 1 >= expected)
             if complete:
                 self._outbox.mark_sent(Kind.FLIGHT, flight_id)
             else:
