@@ -55,6 +55,10 @@ Feature docs are plain `.txt`, grouped by the surface they describe.
 | [features/pipeline/enhance.txt](features/pipeline/enhance.txt) | clahe@1: clearer copies of dark frames, and each frame's quality |
 | [features/pipeline/classify.txt](features/pipeline/classify.txt) | blocks@1: stretches where temperature or pressure departs from what was expected |
 | [features/pipeline/interpret.txt](features/pipeline/interpret.txt) | findings@1: each stretch judged and put into words, a verdict per point |
+| [features/pipeline/scene.txt](features/pipeline/scene.txt) | scene@1: whether the camera's view changed during a finding — supports it, never contradicts |
+| [features/pipeline/session.txt](features/pipeline/session.txt) | The session itself processed — its 1 Hz samples around the flights, judged on the ground (ground@1), Auto and Manual |
+| [features/pipeline/live.txt](features/pipeline/live.txt) | Live verdicts (story 4.9): each inspection point judged as its hold ends, shown in Progress |
+| [features/pipeline/calibrate.txt](features/pipeline/calibrate.txt) | `cropwatcher calibrate`: the hand-warmer flights measured, thresholds recommended — the lab procedure |
 | [features/pipeline/results.txt](features/pipeline/results.txt) | Results on the web: the Processed data page (`/app/processed`), anomalies highlighted in the readings and on the frames with their meaning, the session and flight pages, notified until read |
 
 ## Frontend — the web app (`web/`)
@@ -115,6 +119,8 @@ are the only thing that survives a session.
 [plans/2026-09-28-missions-and-pipeline.txt](plans/2026-09-28-missions-and-pipeline.txt) — the 100-stage plan for autonomous missions (floor plans, the mission controller through the manual system), the data pipeline, and the Control page remodelled for Auto. What shipped is in features/missions/, features/pipeline/ and features/desktop/auto-control.txt.
 
 [plans/2026-10-09-data-pipeline-v2.txt](plans/2026-10-09-data-pipeline-v2.txt) — the plan for the pipeline built whole: clean, enhance, classify, interpret, results on the web, notifications and owners. What shipped is in features/pipeline/.
+
+[plans/2026-10-09-pipeline-completion.txt](plans/2026-10-09-pipeline-completion.txt) — the pipeline completed: the session processed too, the camera's part (scene@1), live verdicts, calibration, the marks and the error table — and what is still owed.
 
 ## Handoffs — work orders given to teammates
 

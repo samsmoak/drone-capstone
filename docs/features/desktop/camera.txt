@@ -287,3 +287,5 @@ consumed-by       setup.txt
                   installs the patched ESP32 and the GAP8 streamer
 consumed-by       drone-wifi.txt
                   sets the address DeckStream streams from
+consumed-by       ../pipeline/scene.txt
+                  frames.csv: each frame's time and position, for scene@1

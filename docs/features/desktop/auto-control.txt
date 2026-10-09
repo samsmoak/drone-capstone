@@ -310,3 +310,5 @@ depends-on        ../backend/flight-safety.txt
                   `positioned` / position_trusted says it is one
 depends-on        ../../design/layout.txt
                   the standing rule every change here is measured against
+depends-on        ../pipeline/live.txt
+                  each inspection point's verdict in Progress while the mission flies

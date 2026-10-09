@@ -28,6 +28,12 @@ WHERE IT LIVES
                                                            finding, never twice,
                                                            read and marked only
                                                            by their owner
+  backend/supabase/checks/session_results_check.py         a session's own result
+                                                           (0018): the same access
+                                                           as a flight's; every
+                                                           finding a flight's or
+                                                           a session's; gone with
+                                                           its session
   backend/supabase/checks/owner_check.py                   owners: A's records
                                                            carry A, whatever A
                                                            sends; B sees who ran

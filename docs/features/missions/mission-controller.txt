@@ -151,6 +151,8 @@ consumed-by       ../desktop/auto-control.txt
 consumed-by       ../pipeline/data-pipeline.txt
                   point_id groups the readings; the plan flown names the points;
                   POINT_COMPLETE will feed the live runner
+consumed-by       ../pipeline/live.txt
+                  POINT_COMPLETE queues that point's live verdict
 
 --------------------------------------------------------------------------------
 6. THE EXPERIMENT — experiment/samuel ONLY, never main as it stands
@@ -237,4 +239,3 @@ FOUND, NOT FIXED — outside both tickets; Samuel's call
 LAST VERIFIED: 2026-09-30, on samuel/mission-controller in a cloud session
 with no radio. ruff pass · mypy pass · pytest 1112 passed, 1 failed (the
 root-only chmod test, as on main) — the hardware gates were not run.
-
