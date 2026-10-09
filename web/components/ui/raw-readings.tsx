@@ -39,7 +39,7 @@ import {
  * (components/processing/error-table.tsx) jumps here too.
  */
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE = 20;
 
 /** One column: a field of the row, its label, its decimals, its header group. */
 export type ReadingColumn = {
