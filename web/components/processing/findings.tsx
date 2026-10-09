@@ -1,8 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { FindingRow } from "@/lib/queries";
-import { StatusBadge } from "@/components/ui/states";
-import { SEVERITY, clock, severityColor, severityOf, unitSymbol, type ExcerptRow } from "@/lib/pipeline";
+import { GROUPS, SEVERITY, clock, groupColor, groupTint, severityOf, unitSymbol, type ExcerptRow } from "@/lib/pipeline";
+import { MarkShape } from "@/components/ui/mark-legend";
 
 /**
  * What the data pipeline found: each stretch of a flight whose temperature or
@@ -115,14 +115,19 @@ export function FindingCard({ f, frames, flight, excerpt, more }: {
   more?: { label: string; href: string };
 }) {
   const sev = SEVERITY[severityOf(f.severity)];
+  const group = f.signal === "pressure" ? "pressure" as const : "temperature" as const;
   const shown = f.evidence_frames.slice(0, SHOWN_FRAMES);
   return (
     <article id={`finding-${f.id}`}
-             style={{ borderLeftColor: severityColor(severityOf(f.severity)) }}
+             style={{ borderLeftColor: groupColor(f.signal === "pressure" ? "pressure" : "temperature") }}
              className="scroll-mt-24 space-y-3 rounded-lg border border-l-4 border-[var(--border)] bg-[var(--surface)] p-4">
       <header className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-base font-semibold">{f.title}</h3>
-        <StatusBadge status={sev.status} label={sev.label} />
+        <span className="inline-flex items-center gap-1.5 rounded border-l-4 px-2 py-1 text-xs font-medium"
+              style={{ borderLeftColor: groupColor(group), background: groupTint(group, severityOf(f.severity)) }}>
+          <MarkShape mark={{ group, severity: severityOf(f.severity) }} />
+          {GROUPS[group].label} · {sev.label}
+        </span>
       </header>
       <p className="text-sm">{f.sentence}</p>
       <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-[auto_1fr]">
@@ -202,7 +207,7 @@ export function FindingsList({ findings, frames, flightOf, excerpts, moreOf }: {
     <div className="space-y-3">
       {findings.map((f) => (
         <FindingCard key={f.id} f={f} frames={typeof frames === "function" ? frames(f) : frames}
-                     flight={flightOf?.(f.flight_id)}
+                     flight={f.flight_id ? flightOf?.(f.flight_id) : undefined}
                      excerpt={excerpts?.[f.id]} more={moreOf?.(f)} />
       ))}
     </div>

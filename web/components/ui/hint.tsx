@@ -36,6 +36,9 @@ export function useHint() {
   const [open, setOpen] = useState<Open | null>(null);
   const [, setMoved] = useState(0);
   const closing = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // A tap is focus THEN click: the click must not close what the focus just
+  // opened.
+  const openedAt = useRef(0);
 
   const cancelClose = useCallback(() => {
     if (closing.current) clearTimeout(closing.current);
@@ -50,12 +53,14 @@ export function useHint() {
   /** Open at an element, or at the pointer's x over it. */
   const show = useCallback((text: HintText, el: Element, pointerX?: number) => {
     cancelClose();
+    openedAt.current = Date.now();
     setOpen({ text, el, dx: pointerX === undefined ? null : pointerX - el.getBoundingClientRect().left });
   }, [cancelClose]);
 
   const toggle = useCallback((text: HintText, el: Element) => {
-    if (open && open.text.title === text.title && open.text.body === text.body) hideNow();
-    else show(text, el);
+    const same = open && open.text.title === text.title && open.text.body === text.body;
+    if (same && Date.now() - openedAt.current > 400) hideNow();
+    else if (!same) show(text, el);
   }, [open, show, hideNow]);
 
   useEffect(() => {

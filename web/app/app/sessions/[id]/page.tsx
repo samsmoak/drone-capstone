@@ -8,19 +8,22 @@ import {
   getSession,
   getSessionEvents,
   getSessionFlights,
+  getSessionFindings,
   getSessionFrames,
+  getSessionResult,
   getSessionSamples,
   getZones,
 } from "@/lib/queries";
+import { ErrorTable } from "@/components/processing/error-table";
 import { FindingsList, type FrameLinks } from "@/components/processing/findings";
 import { FlightProcessing } from "@/components/processing/flight-processing";
-import { SEVERITY, excerptsFor, frameMarks, highlightsOf, readTracks, severityOf } from "@/lib/pipeline";
+import { SEVERITY, excerptsFor, frameMarks, marksOf, readFlags, readTracks, severityOf } from "@/lib/pipeline";
 import { FrameGallery } from "@/components/flight/FrameGallery";
 import { Stat, StatusBadge } from "@/components/ui/states";
 import { PageHeader } from "@/components/ui/page-header";
 import { TimeSeries } from "@/components/ui/time-series";
 import { FlightPath } from "@/components/ui/flight-path";
-import { RawReadings, type ReadingColumn } from "@/components/ui/raw-readings";
+import { RawReadings, SESSION_COLUMNS } from "@/components/ui/raw-readings";
 import { FLIGHTS, SESSIONS, processedPath } from "@/lib/routes";
 import {
   elapsedSeconds,
@@ -50,25 +53,6 @@ const SAMPLE_CAP = 10000;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** The session's own samples — their columns, not a flight's. */
-const SAMPLE_COLUMNS: ReadingColumn[] = [
-  { key: "seq", label: "#" },
-  { key: "recorded_at", label: "Recorded" },
-  { key: "mode", label: "Mode" },
-  { key: "positioned", label: "Positioned" },
-  { key: "x_m", label: "x (m)", digits: 3 },
-  { key: "y_m", label: "y (m)", digits: 3 },
-  { key: "z_m", label: "z (m)", digits: 3 },
-  { key: "height_m", label: "Height (m)", digits: 3 },
-  { key: "battery_v", label: "Battery (V)", digits: 2 },
-  { key: "thrust", label: "Thrust", digits: 0 },
-  { key: "raw_temp", label: "Sensor temp (°C)", digits: 2 },
-  { key: "station_pressure_hpa", label: "Pressure (hPa)", digits: 2 },
-  { key: "roll_deg", label: "Roll (°)", digits: 1 },
-  { key: "pitch_deg", label: "Pitch (°)", digits: 1 },
-  { key: "yaw_deg", label: "Yaw (°)", digits: 1 },
-  { key: "lighthouse_received", label: "Stations received" },
-];
 
 function Note({ children }: { children: React.ReactNode }) {
   return (
@@ -93,11 +77,13 @@ export default async function SessionPage(props: PageProps<"/app/sessions/[id]">
   ]);
   if (!session) notFound();
   const flightIds = flights.map((f) => f.id);
-  const [results, findings, enhanced, telemetry] = await Promise.all([
+  const [results, findings, enhanced, telemetry, own, ownFindings] = await Promise.all([
     getPipelineResults(flightIds),
     getFindings(flightIds),
     getEnhancedFrames(id),
     getFlightsTelemetry(flightIds),
+    getSessionResult(id),
+    getSessionFindings(id),
   ]);
   const resultOf = new Map(results.rows.map((r) => [r.flight_id, r]));
   const frameLinks: FrameLinks = Object.fromEntries(
@@ -107,13 +93,23 @@ export default async function SessionPage(props: PageProps<"/app/sessions/[id]">
     ? { label: `Flight ${flightNumber.get(flightId)} of the session`, href: `${FLIGHTS}/${flightId}` }
     : undefined;
   const processed = flights.filter((f) => resultOf.has(f.id)).length;
-  const marks = frameMarks(findings.rows);
-  const excerpts = excerptsFor(findings.rows,
-    (flightId) => readTracks(resultOf.get(flightId)?.tracks ?? []),
-    Object.fromEntries(findings.rows.map((f) => [f.id, (telemetry[f.flight_id] ?? [])
-      .filter((r) => r.index >= f.start_index && r.index <= f.end_index)])));
-
   const rows = samples.rows;
+  // The session's own result: its samples around the flights (scope "session").
+  const ownRows = ownFindings.rows;
+  const marks = frameMarks([...findings.rows, ...ownRows]);
+  const sampleRows = rows.map((r) => ({ ...r, index: r.seq }));
+  const excerpts = excerptsFor([...findings.rows, ...ownRows],
+    (key) => key === id ? readTracks(own.row?.tracks ?? []) : readTracks(resultOf.get(key)?.tracks ?? []),
+    Object.fromEntries([
+      ...findings.rows.map((f) => [f.id, (telemetry[f.flight_id ?? ""] ?? [])
+        .filter((r) => r.index >= f.start_index && r.index <= f.end_index)]),
+      ...ownRows.map((f) => [f.id, sampleRows
+        .filter((r) => r.seq >= f.start_index && r.seq <= f.end_index)]),
+    ]));
+  const sessionMarks = marksOf(ownRows, own.row ? readFlags(own.row.flags) : [], rows, "seq");
+  const flightMarks = (flightId: string) => marksOf(
+    findings.rows.filter((x) => x.flight_id === flightId),
+    readFlags(resultOf.get(flightId)?.flags ?? []), telemetry[flightId] ?? []);
   const first = rows[0]?.recorded_at;
   // Only the columns the charts use cross into the client bundle.
   const series = rows.map((r) => ({
@@ -212,7 +208,13 @@ export default async function SessionPage(props: PageProps<"/app/sessions/[id]">
             <FindingsList findings={findings.rows} frames={frameLinks} flightOf={flightOf} excerpts={excerpts} />
           </>
         )}
-        {processed > 0 && (
+        {ownRows.length > 0 && (
+          <>
+            <h3 className="text-base font-semibold">On the ground, around the flights</h3>
+            <FindingsList findings={ownRows} frames={frameLinks} excerpts={excerpts} />
+          </>
+        )}
+        {(processed > 0 || own.row) && (
           <p className="text-sm">
             <Link href={processedPath(id)} className="inline-flex min-h-11 items-center underline underline-offset-4">
               This session&apos;s processed data, on its own page →
@@ -392,7 +394,16 @@ export default async function SessionPage(props: PageProps<"/app/sessions/[id]">
       <section aria-labelledby="raw-heading" className="space-y-3">
         <h2 id="raw-heading" className="text-lg font-semibold text-[var(--heading)]">Raw readings</h2>
         <h3 className="text-base font-semibold">The session, one a second</h3>
-        {noVitals ?? <RawReadings rows={rows} unit="C" columns={SAMPLE_COLUMNS} what="session" />}
+        {noVitals ?? (
+          <>
+            {own.row && (
+              <ErrorTable marks={sessionMarks} rows={rows} indexKey="seq" table="session-readings"
+                          unit="C" what="session" />
+            )}
+            <RawReadings rows={rows} unit="C" columns={SESSION_COLUMNS} what="session" indexKey="seq"
+                         marks={sessionMarks} id="session-readings" />
+          </>
+        )}
         {flights.map((f) => (
           <details key={f.id} className="rounded-lg border border-[var(--border)] p-3"
                    open={findings.rows.some((x) => x.flight_id === f.id)}>
@@ -400,9 +411,13 @@ export default async function SessionPage(props: PageProps<"/app/sessions/[id]">
               Flight {flightNumber.get(f.id)} — {(telemetry[f.id] ?? []).length.toLocaleString()} readings, ten a
               second
             </summary>
-            <div className="mt-3">
-              <RawReadings rows={telemetry[f.id] ?? []} unit={f.temp_unit}
-                           highlights={highlightsOf(findings.rows.filter((x) => x.flight_id === f.id))} />
+            <div className="mt-3 space-y-4">
+              {resultOf.has(f.id) && (
+                <ErrorTable marks={flightMarks(f.id)} rows={telemetry[f.id] ?? []}
+                            table={`flight-${f.id}-readings`} unit={f.temp_unit} />
+              )}
+              <RawReadings rows={telemetry[f.id] ?? []} unit={f.temp_unit} marks={flightMarks(f.id)}
+                           id={`flight-${f.id}-readings`} />
             </div>
           </details>
         ))}

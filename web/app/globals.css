@@ -57,6 +57,17 @@
   --status-critical: #d03b3b;
   --on-critical: #ffffff;  /* 4.80:1 on --status-critical, measured — the Cut motors button */
 
+  /* DATA GROUPS — the pipeline's highlights (the owner, 2026-10-09: "different
+     colour for each data group; the severity is the shade"). Hue = what the
+     data is; how deep the tint = how severe (lib/pipeline.ts, groupTint: 14 %
+     slight, 28 % warning, 48 % critical). Defined once here on the categorical
+     palette, so every theme gets its own. Measured: text on the deepest tint
+     ≥ 6.4:1 in either theme; the solid edge ≥ 3.2:1 on --surface. */
+  --group-temperature: var(--cat-2);   /* orange */
+  --group-pressure: var(--cat-1);      /* blue */
+  --group-fault: var(--cat-5);         /* purple — a sensor fault the cleaner flagged */
+  --group-position: var(--cat-7);      /* teal — position and battery */
+
   /* Sequential (zone health magnitude): one hue, light → dark. */
   --seq-100: #cde2fb;
   --seq-250: #86b6ef;

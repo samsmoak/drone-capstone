@@ -60,7 +60,10 @@ export type Band = {
   x1: number;
   x2: number;
   label: string;
-  tone: "critical" | "serious" | "warning";
+  /** A colour token (the data group's: lib/pipeline groupColor). */
+  color: string;
+  /** How deep the fill, 0–1 — the severity's shade (lib/pipeline SHADE). */
+  depth: number;
 };
 
 type Row = Record<string, number | string | null>;
@@ -336,10 +339,10 @@ export function TimeSeries({
                 key={`band-${i}`}
                 x1={b.x1}
                 x2={b.x2}
-                fill={`var(--status-${b.tone})`}
-                fillOpacity={0.18}
-                stroke={`var(--status-${b.tone})`}
-                strokeOpacity={0.6}
+                fill={b.color}
+                fillOpacity={b.depth}
+                stroke={b.color}
+                strokeOpacity={0.7}
                 ifOverflow="extendDomain"
               />
             ))}
@@ -370,7 +373,7 @@ export function TimeSeries({
           {bands.map((b, i) => (
             <li key={i} className="flex items-baseline gap-2">
               <span aria-hidden="true" className="inline-block h-2.5 w-4 shrink-0 rounded-sm"
-                    style={{ background: `var(--status-${b.tone})`, opacity: 0.5 }} />
+                    style={{ background: b.color, opacity: Math.max(b.depth, 0.3) }} />
               <span>{formatX(b.x1, xFormat)}–{formatX(b.x2, xFormat)}: {b.label}</span>
             </li>
           ))}

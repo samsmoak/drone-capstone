@@ -3,6 +3,7 @@ import {
   getFrameLinks,
   getPipelineResults,
   getProcessedOverview,
+  getSessionResult,
   getStretchReadings,
   type FindingRow,
 } from "@/lib/queries";
@@ -99,20 +100,27 @@ export default async function ProcessedPage() {
 
   // The evidence for each anomaly shown: its readings, its flight's tracks
   // (what was expected), and the frames taken during it.
-  const flightIds = [...new Set(findings.map((f) => f.flight_id))];
+  const flightIds = [...new Set(findings.map((f) => f.flight_id).filter((x): x is string => !!x))];
+  const ownSessions = [...new Set(findings.filter((f) => f.scope === "session" && f.session_id)
+    .map((f) => f.session_id as string))];
   const bySession = new Map<string, FindingRow[]>();
   for (const f of findings) {
     if (f.session_id) bySession.set(f.session_id, [...(bySession.get(f.session_id) ?? []), f]);
   }
-  const [readings, results, frameLinks] = await Promise.all([
+  const [readings, results, frameLinks, owns] = await Promise.all([
     getStretchReadings(findings),
     getPipelineResults(flightIds),
     Promise.all([...bySession.entries()].map(async ([sessionId, list]) => [
       sessionId,
       await getFrameLinks(sessionId, [...new Set(list.flatMap((f) => f.evidence_frames.slice(0, 4)))]),
     ] as const)),
+    Promise.all(ownSessions.map((sid) => getSessionResult(sid))),
   ]);
-  const tracks = new Map(results.rows.map((r) => [r.flight_id, readTracks(r.tracks)]));
+  // A flight's tracks by flight id; a session's own by session id.
+  const tracks = new Map([
+    ...results.rows.map((r) => [r.flight_id, readTracks(r.tracks)] as const),
+    ...owns.flatMap((o) => (o.row ? [[o.row.session_id, readTracks(o.row.tracks)] as const] : [])),
+  ]);
   const excerpts = excerptsFor(findings, (id) => tracks.get(id) ?? [], readings);
   const framesOf = new Map<string, FrameLinks>(frameLinks);
 
@@ -191,7 +199,12 @@ export default async function ProcessedPage() {
                     <th scope="row" className="px-4 py-3 font-normal"><LocalTime iso={s.started_at} /></th>
                     <td className="px-4 py-3"><Owner who={s} /></td>
                     <td className="px-4 py-3">{s.mode_at_start ?? "—"}</td>
-                    <td className="tabular px-4 py-3">{s.processed} of {s.flights} flight{s.flights === 1 ? "" : "s"}</td>
+                    <td className="tabular px-4 py-3">
+                      {s.processed} of {s.flights} flight{s.flights === 1 ? "" : "s"}
+                      <span className="block text-xs text-[var(--muted)]">
+                        {s.ownResult ? "and the session itself" : "the session itself not yet"}
+                      </span>
+                    </td>
                     <td className="px-4 py-3">
                       {sev ? <StatusBadge status={sev.status} label={`${s.findings} · worst ${sev.label.toLowerCase()}`} />
                         : <StatusBadge status="good" label="None" />}

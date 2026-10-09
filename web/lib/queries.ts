@@ -17,6 +17,7 @@ export type SessionSampleRow = Database["public"]["Tables"]["session_samples"]["
 export type AuditEventRow = Database["public"]["Tables"]["audit_events"]["Row"];
 export type PipelineResultRow = Database["public"]["Tables"]["pipeline_results"]["Row"];
 export type FindingRow = Database["public"]["Tables"]["pipeline_findings"]["Row"];
+export type SessionResultRow = Database["public"]["Tables"]["pipeline_session_results"]["Row"];
 export type NotificationRow = Database["public"]["Tables"]["notifications"]["Row"];
 
 /**
@@ -393,10 +394,41 @@ export const getFindings = cache(
     if (flightIds.length === 0) return { rows: [], migrated: true };
     const supabase = await createClient();
     const { data, error } = await supabase.from("pipeline_findings").select("*")
-      .in("flight_id", [...flightIds]).order("t_start_s", { ascending: true });
+      .in("flight_id", [...flightIds]).eq("scope", "flight").order("t_start_s", { ascending: true });
     if (error) {
       if (notMigrated(error, "pipeline_findings")) return { rows: [], migrated: false };
       failed(error, "findings");
+    }
+    const rank = { critical: 2, warning: 1, info: 0 } as Record<string, number>;
+    return { rows: [...data].sort((a, b) => (rank[b.severity] ?? 0) - (rank[a.severity] ?? 0)),
+             migrated: true };
+  },
+);
+
+/** A session's own result — its samples around the flights, on the ground
+ *  (migration 20261009000018). `migrated: false` while the table is missing. */
+export const getSessionResult = cache(
+  async (sessionId: string): Promise<{ row: SessionResultRow | null; migrated: boolean }> => {
+    const supabase = await createClient();
+    const { data, error } = await supabase.from("pipeline_session_results").select("*")
+      .eq("session_id", sessionId).maybeSingle();
+    if (error) {
+      if (notMigrated(error, "pipeline_session_results")) return { row: null, migrated: false };
+      failed(error, "the session's result");
+    }
+    return { row: data, migrated: true };
+  },
+);
+
+/** A session's own findings (scope "session"), worst first, then in time. */
+export const getSessionFindings = cache(
+  async (sessionId: string): Promise<{ rows: FindingRow[]; migrated: boolean }> => {
+    const supabase = await createClient();
+    const { data, error } = await supabase.from("pipeline_findings").select("*")
+      .eq("session_id", sessionId).eq("scope", "session").order("t_start_s", { ascending: true });
+    if (error) {
+      if (notMigrated(error, "scope")) return { rows: [], migrated: false };
+      failed(error, "the session's findings");
     }
     const rank = { critical: 2, warning: 1, info: 0 } as Record<string, number>;
     return { rows: [...data].sort((a, b) => (rank[b.severity] ?? 0) - (rank[a.severity] ?? 0)),
@@ -789,6 +821,8 @@ export type ProcessedSession = SessionRow & {
   processed: number;
   findings: number;
   worst: string | null;
+  /** The session itself was processed (its samples around the flights). */
+  ownResult: boolean;
 };
 
 /**
@@ -822,7 +856,14 @@ export const getProcessedOverview = cache(async (limit = 200): Promise<{
     }
     failed(findings.error, "findings");
   }
-  const sessionIds = [...new Set(results.data.map((r) => r.session_id).filter((x): x is string => !!x))];
+  // A session processed on its own counts too (migration 20261009000018).
+  const own = await supabase.from("pipeline_session_results")
+    .select("session_id, findings_count, worst_severity");
+  const sessionResults = own.error ? [] : own.data;
+  const sessionIds = [...new Set([
+    ...results.data.map((r) => r.session_id),
+    ...sessionResults.map((r) => r.session_id),
+  ].filter((x): x is string => !!x))];
   let sessions: ProcessedSession[] = [];
   if (sessionIds.length) {
     const [rows, flights] = await Promise.all([
@@ -834,11 +875,14 @@ export const getProcessedOverview = cache(async (limit = 200): Promise<{
     const count = (id: string) => flights.data.filter((f) => f.session_id === id).length;
     const rank = { critical: 2, warning: 1, info: 0 } as Record<string, number>;
     sessions = rows.data.map((s) => {
-      const mine = results.data.filter((r) => r.session_id === s.id);
+      const mine = [...results.data.filter((r) => r.session_id === s.id),
+                    ...sessionResults.filter((r) => r.session_id === s.id)];
       const worst = mine.reduce<string | null>((w, r) => (r.worst_severity
         && (w === null || (rank[r.worst_severity] ?? 0) > (rank[w] ?? 0)) ? r.worst_severity : w), null);
-      return { ...s, flights: count(s.id), processed: mine.length,
-               findings: mine.reduce((n, r) => n + r.findings_count, 0), worst };
+      return { ...s, flights: count(s.id),
+               processed: results.data.filter((r) => r.session_id === s.id).length,
+               findings: mine.reduce((n, r) => n + r.findings_count, 0), worst,
+               ownResult: sessionResults.some((r) => r.session_id === s.id) };
     });
   }
   const rank = { critical: 2, warning: 1, info: 0 } as Record<string, number>;
@@ -854,18 +898,27 @@ export const getProcessedOverview = cache(async (limit = 200): Promise<{
 /** The readings a stretch covers (telemetry `index`, inclusive) — the
  *  evidence an anomaly's card shows. Finding id → rows, in order. */
 export const getStretchReadings = cache(
-  async (findings: readonly Pick<FindingRow, "id" | "flight_id" | "start_index" | "end_index">[],
-  ): Promise<Record<string, TelemetryRow[]>> => {
+  async (findings: readonly Pick<FindingRow, "id" | "flight_id" | "session_id" | "start_index" | "end_index">[],
+  ): Promise<Record<string, { index: number; recorded_at: string; [key: string]: unknown }[]>> => {
     if (findings.length === 0) return {};
     const supabase = await createClient();
-    const all = await Promise.all(findings.map((f) => supabase.from("telemetry").select("*")
-      .eq("flight_id", f.flight_id).gte("index", f.start_index).lte("index", f.end_index)
-      .order("index", { ascending: true }).limit(5000)));
-    const out: Record<string, TelemetryRow[]> = {};
-    all.forEach((r, i) => {
-      if (r.error) failed(r.error, "an anomaly's readings");
-      out[findings[i].id] = r.data;
-    });
+    const out: Record<string, { index: number; recorded_at: string; [key: string]: unknown }[]> = {};
+    await Promise.all(findings.map(async (f) => {
+      if (f.flight_id) {
+        const r = await supabase.from("telemetry").select("*")
+          .eq("flight_id", f.flight_id).gte("index", f.start_index).lte("index", f.end_index)
+          .order("index", { ascending: true }).limit(5000);
+        if (r.error) failed(r.error, "an anomaly's readings");
+        out[f.id] = r.data;
+      } else if (f.session_id) {
+        // A session's finding: its samples, one a second, by seq.
+        const r = await supabase.from("session_samples").select("*")
+          .eq("session_id", f.session_id).gte("seq", f.start_index).lte("seq", f.end_index)
+          .order("seq", { ascending: true }).limit(5000);
+        if (r.error) failed(r.error, "an anomaly's readings");
+        out[f.id] = r.data.map((row) => ({ ...row, index: row.seq }));
+      }
+    }));
     return out;
   },
 );

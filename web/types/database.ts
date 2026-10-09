@@ -423,13 +423,14 @@ export type Database = {
           end_index: number
           evidence_frames: number[]
           expected: number | null
-          flight_id: string
+          flight_id: string | null
           id: string
           image_note: string
           image_support: string
           observed: number | null
           pipeline_version: string
           point_ids: string[]
+          scope: string
           sentence: string
           session_id: string | null
           severity: string
@@ -450,13 +451,14 @@ export type Database = {
           end_index: number
           evidence_frames?: number[]
           expected?: number | null
-          flight_id: string
+          flight_id?: string | null
           id: string
           image_note?: string
           image_support: string
           observed?: number | null
           pipeline_version: string
           point_ids?: string[]
+          scope?: string
           sentence: string
           session_id?: string | null
           severity: string
@@ -477,13 +479,14 @@ export type Database = {
           end_index?: number
           evidence_frames?: number[]
           expected?: number | null
-          flight_id?: string
+          flight_id?: string | null
           id?: string
           image_note?: string
           image_support?: string
           observed?: number | null
           pipeline_version?: string
           point_ids?: string[]
+          scope?: string
           sentence?: string
           session_id?: string | null
           severity?: string
@@ -590,6 +593,78 @@ export type Database = {
           },
           {
             foreignKeyName: "pipeline_results_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pipeline_session_results: {
+        Row: {
+          created_at: string
+          failures: Json
+          findings_count: number
+          flags: Json
+          frames: Json
+          pipeline_version: string
+          points: Json
+          segments: Json
+          session_id: string
+          stages: Json
+          summary: Json
+          temp_unit: string
+          tracks: Json
+          uploaded_at: string
+          uploaded_by: string | null
+          worst_severity: string | null
+        }
+        Insert: {
+          created_at: string
+          failures?: Json
+          findings_count?: number
+          flags?: Json
+          frames?: Json
+          pipeline_version: string
+          points?: Json
+          segments?: Json
+          session_id: string
+          stages?: Json
+          summary?: Json
+          temp_unit?: string
+          tracks?: Json
+          uploaded_at?: string
+          uploaded_by?: string | null
+          worst_severity?: string | null
+        }
+        Update: {
+          created_at?: string
+          failures?: Json
+          findings_count?: number
+          flags?: Json
+          frames?: Json
+          pipeline_version?: string
+          points?: Json
+          segments?: Json
+          session_id?: string
+          stages?: Json
+          summary?: Json
+          temp_unit?: string
+          tracks?: Json
+          uploaded_at?: string
+          uploaded_by?: string | null
+          worst_severity?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pipeline_session_results_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: true
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pipeline_session_results_uploaded_by_fkey"
             columns: ["uploaded_by"]
             isOneToOne: false
             referencedRelation: "profiles"
