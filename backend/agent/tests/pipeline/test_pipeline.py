@@ -1,5 +1,6 @@
-"""Loading a flight, running the stages point by point, surviving a stage that
-fails or breaks the contract, and saving the result."""
+"""Loading a flight, running the stages once over the whole flight (contract v2),
+a verdict per inspection point, surviving a stage that fails or breaks the
+contract, and saving the result."""
 
 from __future__ import annotations
 
@@ -15,7 +16,9 @@ from cropwatcher.pipeline.contracts import (
     ClassifyResult,
     CleanResult,
     ImageVerdict,
+    InterpretResult,
     Label,
+    PointResult,
     ReadingFlag,
     StageError,
 )
@@ -44,12 +47,33 @@ class TestLoading:
         flight = LocalFlightSource(FIXTURE).load(FLIGHT)
         assert [[f.seq for f in p.frames] for p in flight.points] == [[2, 3], [5, 6], []]
 
-    def test_readings_keep_their_numbers_and_their_time(self):
+    def test_readings_keep_their_numbers_their_time_and_their_point(self):
         first = LocalFlightSource(FIXTURE).load(FLIGHT).points[0].readings[0]
         assert first.index == 100
         assert isinstance(first.values["corrected_temp"], float)
         assert "temp_unit" not in first.values and "point_id" not in first.values
+        assert first.point_id == "P1"
         assert first.t_s > 0
+
+    def test_the_whole_flight_holds_every_reading_transit_included(self):
+        flight = LocalFlightSource(FIXTURE).load(FLIGHT)
+        assert flight.whole.point.id == "flight"
+        assert len(flight.whole.readings) == 400
+        assert [r.index for r in flight.whole.readings] == list(range(400))
+        assert sum(1 for r in flight.whole.readings if r.point_id is None) == 280
+        assert [f.seq for f in flight.whole.frames] == [2, 3, 4, 5, 6]
+        assert [f.point_id for f in flight.whole.frames] == ["P1", "P1", None, "P2", "P2"]
+        assert [p.id for p in flight.plan] == ["P1", "P2", "P3"]
+
+    def test_a_flight_with_no_mission_is_one_point(self, tmp_path):
+        import shutil
+        folder = tmp_path / "flights" / "2026-09-24"
+        folder.mkdir(parents=True)
+        for csv_path in (FIXTURE / "flights" / "2026-09-24").glob("*.csv"):
+            shutil.copy(csv_path, folder)
+        flight = LocalFlightSource(tmp_path).load(FLIGHT)
+        assert flight.plan == () and flight.points == (flight.whole,)
+        assert flight.unassigned_readings == 0
 
     def test_a_flight_that_is_not_here_says_so(self):
         with pytest.raises(FlightNotFound):
@@ -62,10 +86,14 @@ class TestRunning:
         assert [p.point_id for p in result.points] == ["P1", "P2", "P3"]
         assert all(p.verdict == "insufficient_data" for p in result.points)
         assert result.stages == {"clean": "hampel@1", "enhance": "stub@0",
-                                 "classify": "stub@0", "interpret": "labels@1"}
+                                 "classify": "stub@0", "interpret": "labels@2"}
+        assert result.pipeline_version == "2"
         saved = json.loads(Path(where).read_text())
         assert saved["flight_id"] == FLIGHT
         assert saved["summary"]["_transit"] == {"readings": 280}
+        assert saved["summary"]["P1"]["readings"] == 60
+        assert saved["session_id"] == "a5788fe1-02fb-49d7-ac1c-b400d825d45f"
+        assert [f["seq"] for f in saved["frames"]] == [2, 3, 4, 5, 6]
 
     def test_running_again_replaces_the_result(self, tmp_path):
         run(tmp_path)
@@ -95,7 +123,7 @@ class TestRunning:
                 raise StageError("the model file is missing")
 
         result, _ = run(tmp_path, replace(default_stages(), classifier=Broken()))
-        assert {(f.point_id, f.stage) for f in result.failures} >= {("P1", "classify")}
+        assert {(f.point_id, f.stage) for f in result.failures} == {("flight", "classify")}
         assert "model file is missing" in result.failures[0].reason
         assert len(result.points) == 3
 
@@ -109,6 +137,31 @@ class TestRunning:
         result, _ = run(tmp_path, replace(default_stages(), cleaner=Editor()))
         assert result.points[0].verdict == "insufficient_data"
         assert "may only flag" in result.failures[0].reason
+
+    def test_an_interpreter_that_skips_a_point_breaks_the_contract(self, tmp_path):
+        class Skips:
+            name, version = "skips", "1"
+
+            def interpret(self, data, clean, enhanced, classified, ctx):
+                return InterpretResult((PointResult("P1", "normal", ("fine",)),))
+
+        result, _ = run(tmp_path, replace(default_stages(), interpreter=Skips()))
+        assert [p.point_id for p in result.points] == ["P1", "P2", "P3"]
+        assert all(p.verdict == "insufficient_data" for p in result.points)
+        assert "every inspection point" in result.failures[0].reason
+
+    def test_the_stages_see_the_whole_flight_once(self, tmp_path):
+        seen = []
+
+        class Counts:
+            name, version = "counts", "1"
+
+            def clean(self, data, ctx):
+                seen.append((data.point.id, len(data.readings), [p.id for p in ctx.points]))
+                return CleanResult(data.readings, ())
+
+        run(tmp_path, replace(default_stages(), cleaner=Counts()))
+        assert seen == [("flight", 400, ["P1", "P2", "P3"])]
 
     def test_a_flagged_reading_is_not_usable(self):
         data = LocalFlightSource(FIXTURE).load(FLIGHT).points[0]

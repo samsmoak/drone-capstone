@@ -117,7 +117,25 @@ export type PointVerdict = {
   alerts: { severity: "info" | "warning" | "critical"; message?: string; [key: string]: unknown }[];
 };
 
-/** results/<flight id>/result.json, as the pipeline wrote it. */
+/** One finding (pipeline/contracts.py Finding): a block of readings that
+ *  departed from what was expected, judged and put into words. */
+export type PipelineFinding = {
+  id: string;
+  signal: "temperature" | "pressure";
+  severity: "info" | "warning" | "critical";
+  title: string;
+  sentence: string;
+  t_start_s: number;
+  t_end_s: number;
+  point_ids: string[];
+  evidence_frames: number[];
+  image_support: "supports" | "contradicts" | "cannot_tell";
+  image_note: string;
+};
+
+/** results/<flight id>/result.json, as the pipeline wrote it. Version 1
+ *  results (before 2026-10-09) have no findings — every v2 field is optional
+ *  so a result already on disk still reads. */
 export type FlightResult = {
   flight_id: string;
   job: ProcessingJob | null;
@@ -129,6 +147,7 @@ export type FlightResult = {
     points: PointVerdict[];
     failures: { point_id: string; stage: string; reason: string }[];
     summary: Record<string, { readings?: number; frames?: number; flags?: number }>;
+    findings?: PipelineFinding[];
   };
 };
 

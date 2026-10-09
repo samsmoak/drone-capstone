@@ -41,8 +41,10 @@ def ctx(tmp_path, flight) -> FlightContext:
 
 
 def points(flight):
+    """What a stage may be handed: the whole flight (what the runner gives),
+    each point's view, and an empty point."""
     empty = PointData(InspectionPoint("EMPTY", None, 0, 0, 0.4), (), ())
-    return [*flight.points, empty]
+    return [flight.whole, *flight.points, empty]
 
 
 def hashes(data: PointData) -> dict[int, str]:
@@ -90,7 +92,7 @@ class TestCleaners:
                 assert flag.reason
 
     def test_the_same_input_gives_the_same_flags(self, cleaner, flight, ctx):
-        data = flight.points[0]
+        data = flight.whole
         assert cleaner().clean(data, ctx).flags == cleaner().clean(data, ctx).flags
 
 
@@ -115,7 +117,7 @@ class TestEnhancers:
             assert hashes(data) == before
 
     def test_the_same_input_gives_the_same_output(self, enhancer, flight, ctx):
-        data = flight.points[0]
+        data = flight.whole
         first = [(f.method, f.scale, f.path) for f in enhancer().enhance(data, ctx).frames]
         again = [(f.method, f.scale, f.path) for f in enhancer().enhance(data, ctx).frames]
         assert first == again
@@ -138,11 +140,11 @@ class TestClassifiers:
                 assert "@" in label.model
 
     def test_the_same_input_gives_the_same_labels(self, classifier, flight, ctx):
-        data = flight.points[0]
+        data = flight.whole
         assert self.labels(classifier, data, ctx) == self.labels(classifier, data, ctx)
 
     def test_feature_names_carry_units(self, classifier, flight, ctx):
-        result = self.labels(classifier, flight.points[0], ctx)
+        result = self.labels(classifier, flight.whole, ctx)
         for name in result.features:
             assert "_" in name, f"feature {name!r} should name its unit"
 
