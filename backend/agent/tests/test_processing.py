@@ -351,12 +351,17 @@ def test_the_agent_resumes_as_it_starts_unless_told_not_to(monkeypatch, tmp_path
     monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("CROPWATCHER_STANDBY", "0")
     monkeypatch.setenv("CROPWATCHER_RESUME", setting)
-    called = []
+    called, closed = [], []
     monkeypatch.setattr(rest.agent.session, "resume_processing", lambda: called.append(1))
+    # rest.agent's outbox is the LAPTOP'S OWN — built when the module was
+    # imported, before this test's data folder existed. Unstubbed, this test
+    # closed the real laptop's open flight records (found 2026-10-09).
+    monkeypatch.setattr(rest, "close_orphaned_flights", lambda outbox: closed.append(outbox))
     with TestClient(rest.app):
         if resumed:
             assert wait_for(lambda: bool(called))
     assert bool(called) is resumed
+    assert bool(closed) is resumed
 
 
 class TestProcessAll:
