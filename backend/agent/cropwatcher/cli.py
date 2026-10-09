@@ -124,6 +124,9 @@ def build_parser() -> argparse.ArgumentParser:
     which.add_argument("--flight", help="the flight's id (a session's flights list it)")
     which.add_argument("--fixture", action="store_true",
                        help="run on the test fixture in tests/pipeline (source checkout only)")
+    process.add_argument("--live-point", metavar="POINT",
+                         help="with --flight: the flight so far, as the drone finishes "
+                              "holding at POINT (story 4.9); writes that point's verdict")
     which.add_argument("--session",
                        help="a session's id: its samples around the flights, on the ground")
     which.add_argument("--all", action="store_true",
@@ -520,6 +523,8 @@ def cmd_process(args: argparse.Namespace) -> int:
         return _process_all()
     if args.session:
         return _process_session(args.session)
+    if args.live_point:
+        return _process_live(args.flight, args.live_point)
     if args.fixture:
         root = Path(__file__).resolve().parents[1] / "tests" / "pipeline" / "fixtures" / "data"
         if not root.exists():
@@ -598,6 +603,31 @@ def _process_all() -> int:
           f"{skipped} with no readings, {failed} failed")
     print(f"  processed {sessions_done} session(s); {sessions_failed} failed")
     return 1 if failed or sessions_failed else 0
+
+
+def _process_live(flight_id: str | None, point_id: str) -> int:
+    """Story 4.9: one point's verdict while the flight goes on."""
+    from cropwatcher.pipeline.compose import default_stages
+    from cropwatcher.pipeline.runner import run_live_point
+    from cropwatcher.pipeline.sources import FlightNotFound, LocalFlightSource
+    from cropwatcher.processing import FLIGHT_ID, POINT_ID
+
+    if not flight_id:
+        print("  --live-point needs --flight")
+        return 2
+    if not FLIGHT_ID.match(flight_id) or not POINT_ID.match(point_id):
+        print("  not a flight id and point id")
+        return 2
+    try:
+        out, where = run_live_point(flight_id, point_id,
+                                    source=LocalFlightSource(paths.data_dir()),
+                                    results_root=paths.results_dir(), stages=default_stages())
+    except (FlightNotFound, ValueError) as e:
+        print(f"  {e}")
+        return 2
+    print(f"  {point_id}: {out['verdict']} — {len(out['findings'])} finding(s)")
+    print(f"  saved {where}")
+    return 0
 
 
 def session_results_dir() -> Path:

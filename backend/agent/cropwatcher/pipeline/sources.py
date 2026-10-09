@@ -111,9 +111,13 @@ class LocalFlightSource:
     def __init__(self, data_root: Path) -> None:
         self.root = data_root
 
-    def load(self, flight_id: str) -> LoadedFlight:
+    def load(self, flight_id: str, *, partial: bool = False) -> LoadedFlight:
+        """`partial`: the flight is still being recorded (the live runner,
+        story 4.9) — a last row caught half-written is skipped, not an error."""
         csv_path = self._find_csv(flight_id)
         rows = list(self._rows(csv_path))
+        if partial:
+            rows = [r for r in rows if self._complete(r)]
         if not rows:
             raise FlightNotFound(f"Flight {flight_id} has no readings in {csv_path.name}.")
         started = _time(rows[0]["recorded_at"])
@@ -156,6 +160,16 @@ class LocalFlightSource:
                 return meta_path.parent
         log.info("flight %s belongs to no session folder here; no frames", flight_id)
         return None
+
+    @staticmethod
+    def _complete(row: dict[str, str]) -> bool:
+        try:
+            int(float(row["index"]))
+            _time(row["recorded_at"])
+        except (KeyError, TypeError, ValueError):
+            return False
+        # csv.DictReader fills the fields a cut-off line never reached with None.
+        return all(v is not None for v in row.values())
 
     @staticmethod
     def _rows(path: Path) -> Iterator[dict[str, str]]:

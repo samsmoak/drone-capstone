@@ -28,14 +28,20 @@ runner makes sure a regression in the field still cannot write a verdict on
 data that does not line up.
 
 THIS RUNS IN THE CALLER'S PROCESS. The CLI is not flying anything. The live
-runner (story 4.9) will run in a process of its own — never a thread beside the
-50 Hz flight loop, which shares one interpreter lock.
+runner (story 4.9, run_live_point) runs in a process of its own too — the
+agent starts it as a child at a lower priority when the drone finishes holding
+at a point — never a thread beside the 50 Hz flight loop, which shares one
+interpreter lock.
 """
 
 from __future__ import annotations
 
+import json
 import logging
+import os
+import tempfile
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from cropwatcher.pipeline import PIPELINE_VERSION
@@ -238,3 +244,55 @@ def run_session(session_id: str, *, source: LocalSessionSource, sink: ResultSink
     )
     result, _ = run_stages(session.whole, ctx, stages)
     return result, sink.save(result)
+
+
+#: <results>/<flight id>/live/<point id>.json — one point's verdict, in flight.
+LIVE_FOLDER = "live"
+
+
+def live_path(results_root: Path, flight_id: str, point_id: str) -> Path:
+    return results_root / flight_id / LIVE_FOLDER / f"{point_id}.json"
+
+
+def run_live_point(flight_id: str, point_id: str, *, source: Any, results_root: Path,
+                   stages: Stages) -> tuple[dict[str, Any], Path]:
+    """Story 4.9: the flight SO FAR — still being recorded — through every stage
+    once, as soon as the drone has finished holding at `point_id`; that point's
+    verdict and the findings that touch it are written to
+    <results>/<flight>/live/<point>.json for the app.
+
+    The whole flight so far, not the point alone: a stretch can start in
+    transit, and the expected curve needs everything flown. The result after
+    landing (run_flight) replaces it; this one is never uploaded."""
+    flight = source.load(flight_id, partial=True)
+    work = results_root / flight_id / LIVE_FOLDER / "work"
+    work.mkdir(parents=True, exist_ok=True)
+    ctx = FlightContext(
+        flight_id=flight.flight_id, session_id=flight.session_id,
+        temp_unit=flight.temp_unit, ground_z_m=flight.ground_z_m,
+        started_at=flight.started_at, workdir=work, mode="live", points=flight.plan,
+    )
+    result, _ = run_stages(flight.whole, ctx, stages)
+    point = next((p for p in result.points if p.point_id == point_id), None)
+    if point is None:
+        raise ValueError(f"{point_id} is not an inspection point of flight {flight_id}")
+    here = [f for f in result.findings if point_id in f.point_ids]
+    readings = sum(1 for r in flight.whole.readings if r.point_id == point_id)
+    out: dict[str, Any] = {
+        "flight_id": flight_id, "point_id": point_id, "verdict": point.verdict,
+        "reasons": list(point.reasons), "readings": readings,
+        "findings": [{"id": f.id, "title": f.title, "severity": f.severity,
+                      "sentence": f.sentence, "signal": f.signal} for f in here],
+        "pipeline_version": result.pipeline_version, "created_at": result.created_at,
+        "failures": [{"stage": x.stage, "reason": x.reason} for x in result.failures],
+    }
+    path = live_path(results_root, flight_id, point_id)
+    fd, temp = tempfile.mkstemp(dir=path.parent, prefix=".live.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(out, f, indent=2)
+        os.replace(temp, path)
+    except BaseException:
+        Path(temp).unlink(missing_ok=True)
+        raise
+    return out, path
