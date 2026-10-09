@@ -533,6 +533,8 @@ def cmd_process(args: argparse.Namespace) -> int:
         detail = result.summary.get(point.point_id, {})
         print(f"  {point.point_id:8} {point.verdict:18} {detail.get('readings', 0)} readings, "
               f"{detail.get('frames', 0)} frames — {'; '.join(point.reasons)}")
+    for finding in result.findings:
+        print(f"  {finding.severity.upper():8} {finding.sentence}")
     for failure in result.failures:
         print(f"  FAILED   {failure.point_id} {failure.stage}: {failure.reason}")
     print(f"\n  saved {where}")

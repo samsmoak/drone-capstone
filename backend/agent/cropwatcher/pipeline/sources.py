@@ -12,11 +12,12 @@ FRAMES ARE RECORDED PER SESSION, NOT PER FLIGHT — the camera runs for the whol
 session. So a flight's frames are the session's frames taken between its first
 and last reading.
 
-GROUPING BY INSPECTION POINT. Rows and frames carry point_id while the mission
-controller was holding there (story 3.5). A flight with a mission gives one
-PointData per inspection point, from exactly those rows and frames; readings
-taken in transit belong to no point and are not analysed. A flight with no
-mission is a single point, "flight", holding everything.
+THE WHOLE FLIGHT, TAGGED BY POINT (contract v2). Rows and frames carry point_id
+while the mission controller was holding there (story 3.5); every Reading and
+Frame keeps it. The stages get the whole flight as one PointData ("flight") —
+transit included, since a block can start in transit — and `points` gives the
+per-point view: exactly the rows and frames stamped with each point. A flight
+with no mission has no plan, and its one point is the whole flight.
 
 A later cloud worker gets its own adapter (Supabase Storage in, the same
 LoadedFlight out) — the stages never know the difference.
@@ -59,9 +60,28 @@ class LoadedFlight:
     temp_unit: Literal["C", "F"]
     ground_z_m: float | None
     started_at: datetime
-    points: tuple[PointData, ...]
-    #: Readings that belonged to no inspection point (transit, takeoff).
-    unassigned_readings: int = 0
+    #: Every reading and every frame of the flight, as one point ("flight").
+    whole: PointData
+    #: The mission's inspection points, in order; () when none was flown.
+    plan: tuple[InspectionPoint, ...] = ()
+
+    @property
+    def points(self) -> tuple[PointData, ...]:
+        """One PointData per inspection point — exactly the readings and frames
+        stamped with it. A flight with no mission is its own single point."""
+        if not self.plan:
+            return (self.whole,)
+        return tuple(
+            PointData(p, tuple(r for r in self.whole.readings if r.point_id == p.id),
+                      tuple(f for f in self.whole.frames if f.point_id == p.id))
+            for p in self.plan)
+
+    @property
+    def unassigned_readings(self) -> int:
+        """Readings that belonged to no inspection point (transit, takeoff)."""
+        if not self.plan:
+            return 0
+        return sum(1 for r in self.whole.readings if r.point_id is None)
 
 
 class FlightSource(Protocol):
@@ -99,28 +119,16 @@ class LocalFlightSource:
             raise FlightNotFound(f"Flight {flight_id} records temperatures in {unit!r}, "
                                  f"which is not C or F.")
 
-        readings = [(row.get("point_id") or None, self._reading(row, started)) for row in rows]
+        readings = tuple(self._reading(row, started) for row in rows)
         session = self._find_session(flight_id)
-        frames = self._frames(session, started, ended) if session else []
-        plan = self._plan(session, flight_id) if session else None
+        frames = tuple(self._frames(session, started, ended)) if session else ()
+        plan = (self._plan(session, flight_id) if session else None) or ()
 
-        points: tuple[PointData, ...]
-        if plan is None:
-            point = InspectionPoint(WHOLE_FLIGHT, None, 0.0, 0.0, 0.0)
-            points = (PointData(point, tuple(r for _, r in readings),
-                                tuple(f for _, f in frames)),)
-            unassigned = 0
-        else:
-            points = tuple(
-                PointData(p, tuple(r for pid, r in readings if pid == p.id),
-                          tuple(f for pid, f in frames if pid == p.id))
-                for p in plan)
-            unassigned = sum(1 for pid, _ in readings if pid is None)
-
+        whole = PointData(InspectionPoint(WHOLE_FLIGHT, None, 0.0, 0.0, 0.0), readings, frames)
         return LoadedFlight(
             flight_id=flight_id, session_id=session.name if session else None,
             temp_unit="F" if unit == "F" else "C", ground_z_m=None, started_at=started,
-            points=points, unassigned_readings=unassigned,
+            whole=whole, plan=plan,
         )
 
     # ── finding things ───────────────────────────────────────────────────
@@ -157,27 +165,29 @@ class LocalFlightSource:
             index=int(float(row["index"])), recorded_at=at,
             t_s=(at - started).total_seconds(),
             values={k: _number(v) for k, v in row.items() if k not in TEXT_COLUMNS},
+            point_id=row.get("point_id") or None,
         )
 
     def _frames(self, session: Path, started: datetime,
-                ended: datetime) -> list[tuple[str | None, Frame]]:
+                ended: datetime) -> list[Frame]:
         index = session / "frames.csv"
         if not index.exists():
             return []
-        found: list[tuple[str | None, Frame]] = []
+        found: list[Frame] = []
         for row in self._rows(index):
             try:
                 at = _time(row["recorded_at"])
                 if not started <= at <= ended:
                     continue
-                found.append((row.get("point_id") or None, Frame(
+                found.append(Frame(
                     seq=int(row["seq"]), recorded_at=at, t_s=(at - started).total_seconds(),
                     path=session / row["file"], width=int(row["width"]),
                     height=int(row["height"]), x_m=_number(row.get("x_m")),
-                    y_m=_number(row.get("y_m")), z_m=_number(row.get("z_m")))))
+                    y_m=_number(row.get("y_m")), z_m=_number(row.get("z_m")),
+                    point_id=row.get("point_id") or None))
             except (KeyError, ValueError):
                 log.warning("skipping an unreadable row of %s", index)
-        return sorted(found, key=lambda pair: pair[1].seq)
+        return sorted(found, key=lambda frame: frame.seq)
 
     @staticmethod
     def _plan(session: Path, flight_id: str) -> tuple[InspectionPoint, ...] | None:
