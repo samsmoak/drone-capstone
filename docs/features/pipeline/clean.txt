@@ -1,0 +1,77 @@
+================================================================================
+CLEAN — robust@1: flag the values a misbehaving sensor or estimator gave, and
+leave a real event alone
+Last verified: 2026-10-09 against docs/pipeline-v2 — tests/pipeline/
+test_clean.py, ml/sensor-faults/evaluate.py on 66 real flights × 5 seeds.
+SOURCE: backend/agent/cropwatcher/pipeline/stages/clean/robust.py
+================================================================================
+
+--------------------------------------------------------------------------------
+STATUS  (Last verified: 2026-10-09)
+--------------------------------------------------------------------------------
+  agent     BUILT — robust@1 (Samuel) replaced hampel@1 (Kevin, 2026-10-03) on
+            the owner's call, scored against it on the same flights
+  NOT BUILT the lab-laptop timing; a re-measure on the hand-warmer flights
+            (Kevin's follow-ups: ../../handoffs/sprint-1/done/dpp-clean.txt)
+
+--------------------------------------------------------------------------------
+1. WHAT IT IS
+--------------------------------------------------------------------------------
+Story 4.2: a faulty sensor must not be mistaken for faulty equipment. The
+cleaner marks each value it cannot trust, and the stages after it skip those
+values (CleanResult.usable). It never edits or deletes a reading. On the
+web's Raw view the flagged values are the points; the Clean view leaves them
+out.
+
+--------------------------------------------------------------------------------
+2. WHERE IT LIVES
+--------------------------------------------------------------------------------
+backend/agent/cropwatcher/pipeline/stages/clean/robust.py   RobustCleaner
+backend/agent/tests/pipeline/test_clean.py                   every rule
+ml/sensor-faults/MEASUREMENTS.txt     every threshold, the comparison table
+ml/sensor-faults/plant_faults.py      plant(), plant_extras(), real_gaps()
+ml/sensor-faults/evaluate.py          --cleaner robust|hampel, folders, seeds
+ml/sensor-faults/hampel_v1.py         hampel@1 read from git, for comparison
+
+--------------------------------------------------------------------------------
+3. DECISIONS
+--------------------------------------------------------------------------------
+• REPLACED, NOT EXTENDED (the owner). On 66 real flights hampel@1 caught
+  97.4 % of planted faults with 0.140 % false flags and 632 flags inside the
+  planted heat ramps; robust@1 catches 100 % with 0.011 % and none.
+• CORRECTED_TEMP IS JUDGED BY THE ENGINE'S OFFSET. It is raw_temp minus an
+  offset the correction engine re-scales per thermal_state, so it STEPS when
+  the state flips (median 4 times a flight, up to 79). hampel@1 called those
+  steps spikes (294 of its 332 false flags). robust@1 checks raw − corrected
+  against same-state neighbours, and corrected_temp inherits raw_temp's spike
+  and stuck flags. With no raw_temp column it is judged on its own values.
+• STUCK IS COUNTED ACROSS A GAP: a frozen sensor that loses a row is still
+  frozen (hampel@1's 23 misses).
+• POSITION AND BATTERY ARE CHECKED: untrusted (no base station received — the
+  IMU coasting), implausible (faster than the flight guard's 2.0 m/s, imported
+  from safety/flight_guard.py; a battery step over 1.0 V), out of range.
+  After 0.5 s an estimate that stayed somewhere new becomes the reference.
+• NO RATE-OF-CHANGE RULE: a real heat event is a sustained rise, which moves
+  the median with it.
+• The 114 remaining "false" pressure flags are ~0.1 hPa pulses at full-thrust
+  bursts — the propellers, not the room — flagged on purpose so the
+  classifier never reads them as the room.
+
+--------------------------------------------------------------------------------
+4. INVARIANTS
+--------------------------------------------------------------------------------
+• It flags; it never edits (the runner breaks a cleaner that changes readings).
+• A held step and a slow rise are never flagged; the fixture flight gets no
+  sensor flag; °F flags = °C flags (test_clean.py).
+• A value keeps the first flag that fits: missing, out_of_range, untrusted,
+  stuck, implausible, spike, gap.
+• Spike windows never cross a gap; no module state — two flights may be
+  cleaned at once.
+
+--------------------------------------------------------------------------------
+5. RELATED
+--------------------------------------------------------------------------------
+depends-on        data-pipeline.txt
+                  the contract (CleanResult, FlagKind) and the runner
+consumed-by       classify.txt
+                  only usable values reach the models

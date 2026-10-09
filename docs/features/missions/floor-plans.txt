@@ -1,6 +1,8 @@
 ================================================================================
 FLOOR PLANS AND MISSIONS — what the drone flies, checked before it can fly
-Last verified: 2026-09-29 against claude/awesome-carson-eqkt8w — tests/mission/
+Last verified: 2026-10-09 against docs/pipeline-v2 — re-checked after
+api/rest.py moved (the processing resume in the lifespan): no room or mission
+route changed. Before that, 2026-09-29 against claude/awesome-carson-eqkt8w — tests/mission/
 (134 tests: plan, end point, from_start, heights, store, API, session,
 stamping) and the harness.
 SOURCE: backend/agent/cropwatcher/mission/plan/validate.py

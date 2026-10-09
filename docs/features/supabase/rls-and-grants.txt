@@ -18,6 +18,16 @@ WHERE IT LIVES
   backend/supabase/migrations/…0004_revoke_platform_defaults.sql
   backend/supabase/migrations/…0006_sessions_audit_identity.sql
   backend/supabase/checks/rls_check.py                     the proof
+  backend/supabase/checks/results_check.py                 pipeline results and
+                                                           findings: operators
+                                                           write, everyone
+                                                           signed in reads, a
+                                                           viewer writes nothing
+  backend/supabase/checks/notifications_check.py           notifications: one
+                                                           per operator per
+                                                           finding, never twice,
+                                                           read and marked only
+                                                           by their owner
   backend/supabase/checks/owner_check.py                   owners: A's records
                                                            carry A, whatever A
                                                            sends; B sees who ran
@@ -91,3 +101,8 @@ INVARIANTS
   permitted path works in the same test, or a missing grant is indistinguishable
   from a working policy: both deny, for opposite reasons, and only one is what
   you wanted.
+
+RELATED
+
+shares-data-with  data-model.txt
+                  the policies and grants of every table described there

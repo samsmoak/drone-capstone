@@ -147,3 +147,9 @@ INVARIANTS
   is not wired up. Pin the range when it lands, or a score on a 0–100 scale
   will paint every zone at the top of the sequential ramp and look like a
   uniformly healthy greenhouse.
+
+RELATED
+
+depends-on        ../pipeline/results.txt
+                  the session and flight pages, the bell and /app/notifications
+                  read the pipeline's results, findings and notifications

@@ -1,0 +1,95 @@
+================================================================================
+RESULTS ON THE WEB — every processed flight's result, findings and enhanced
+frames uploaded, shown on the session and flight pages, and notified
+Last verified: 2026-10-09 against docs/pipeline-v2 — the real agent client
+uploading to the local Supabase stack, results_check.py 11/11,
+notifications_check.py 16/16, the pages in a browser at 390 and 1440 px in
+both themes, a finding arriving live at the bell.
+SOURCE: backend/agent/cropwatcher/sync/results.py
+================================================================================
+
+--------------------------------------------------------------------------------
+STATUS  (Last verified: 2026-10-09)
+--------------------------------------------------------------------------------
+  agent     BUILT — queued by `cropwatcher process`, uploaded by the syncer
+  database  BUILT — migrations 20261009000015 (owners), 0016 (results), 0017
+            (notifications); proved on the local stack. NOT APPLIED to the
+            hosted database yet — the owner's step: `cd backend && supabase
+            db push`
+  web       BUILT — the session and flight pages, the bell, /app/notifications
+  NOT BUILT email or push to a phone (in-app and desktop only, by choice)
+
+--------------------------------------------------------------------------------
+1. WHAT IT IS
+--------------------------------------------------------------------------------
+The owner's ask: on the web, the dirty data against the clean, the grayscale
+frame against the enhanced, what it means — grouped by session (a session is
+the superset of its flights) — and notifications that stay until read.
+
+--------------------------------------------------------------------------------
+2. WHERE IT LIVES
+--------------------------------------------------------------------------------
+backend/agent/cropwatcher/sync/results.py       result.json → rows; frame paths
+backend/agent/cropwatcher/sync/syncer.py        _send_results (LAST in a pass)
+backend/agent/cropwatcher/sync/cloud.py         upsert_result, upsert_findings,
+                                                delete_findings_except
+backend/agent/tests/test_results_upload.py
+backend/supabase/migrations/20261009000016_pipeline_results.sql
+backend/supabase/migrations/20261009000017_notifications.sql
+backend/supabase/checks/results_check.py, notifications_check.py
+web/lib/pipeline.ts                             the result's JSON, read safely
+web/components/processing/                      findings, flight processing,
+                                                signal panel (raw vs clean)
+web/components/operator/notifications.tsx       provider and bell
+web/app/app/notifications/                      every notification
+web/app/app/sessions/[id]/page.tsx, web/app/app/flights/[id]/page.tsx
+
+--------------------------------------------------------------------------------
+3. DECISIONS
+--------------------------------------------------------------------------------
+• LAPTOP FIRST, THEN UP (CLAUDE.md invariant 6): result.json is the record;
+  the outbox (Kind.RESULTS) uploads it once the flight's own row is up,
+  enhanced frames from a cursor, then the result, the findings, and the
+  retraction of findings a re-process no longer makes.
+• TWO TABLES: pipeline_results (the whole result per flight, replaced on
+  re-process) and pipeline_findings (one row each, ids made on the laptop).
+• NOTIFICATIONS ARE ROWS, made by a database trigger per operator for each
+  warning-or-worse finding FIRST inserted — persistent until read, never
+  twice; Realtime only delivers them at once. Each operator reads and marks
+  only their own.
+• THE PAGES: findings first (sentence, when, where, change, camera note,
+  frames original | enhanced); then per flight the verdicts, what was
+  cleaned, and per signal a Clean / Raw switch with the stretches shaded and
+  named; the camera with Original / Enhanced / Side by side; on the session
+  page every flight's raw telemetry beside its 1 Hz vitals. "Zone health"
+  (greenhouse) is gone; the predictions table stays.
+
+--------------------------------------------------------------------------------
+4. INVARIANTS
+--------------------------------------------------------------------------------
+• Results go LAST in a sync pass: a database without the tables never stalls
+  sessions, flights, frames or vitals.
+• A missing table is said on the page ("apply migration …"), never shown as
+  an error or as nothing.
+• Re-processing replaces: one finding (same id), one notification (proved
+  with the real client on the local stack).
+• Check scripts clean up as the database owner and prove it: this project
+  revokes the platform's default privileges, so service_role cannot delete
+  over the API — a cleanup through it silently leaves rows behind (found
+  2026-10-09).
+
+--------------------------------------------------------------------------------
+5. RELATED
+--------------------------------------------------------------------------------
+depends-on        data-pipeline.txt
+                  result.json, written by `cropwatcher process`
+depends-on        interpret.txt
+                  the findings uploaded and notified
+depends-on        enhance.txt
+                  the enhanced copies uploaded beside the originals
+depends-on        ../backend/offline-sync.txt
+                  the outbox and the order of a sync pass
+depends-on        ../supabase/data-model.txt
+                  pipeline_results, pipeline_findings, notifications
+consumed-by       ../frontend/operator-dashboard.txt
+                  the session and flight pages, the bell, /app/notifications

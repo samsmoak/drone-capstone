@@ -1,6 +1,7 @@
 ================================================================================
 CONTROL IN AUTO — plan a mission, check the drone, fly it
-Last verified: 2026-09-29 (fourth pass: the list is home — Close, ← All
+Last verified: 2026-10-09 for the RESULTS panel only (the findings, below; agent.ts's
+FlightResult type), against docs/pipeline-v2 — pnpm build. The rest: 2026-09-29 (fourth pass: the list is home — Close, ← All
 missions, Edit on every row, Save back to the list; no page jump when a point
 is added) against claude/awesome-carson-eqkt8w —
 pnpm build, the divider dragged and the selection driven in headless
@@ -217,8 +218,12 @@ desktop/src/lib/agent.ts                           the calls and types
   arrive as the page message.
 • THE DPP SWITCH is on ② (before the session) and ③ (beside Start): on by
   default in Auto (../pipeline/data-pipeline.txt). The RESULTS panel under
-  Progress shows the last flight's verdicts, "Process again", and the honest
-  placeholder until the classify stage lands.
+  Progress shows the last flight's verdicts, then its FINDINGS worst first
+  (title, severity in a word, the agent's sentence, the camera note), and
+  "Process again". A result from before 2026-10-09 has no findings and may
+  still read "no classifier yet" — the panel says so. When a job finishes
+  while the app is open with a warning or worse, the OS is notified once
+  (desktop/src/lib/os-notify.ts; ../pipeline/interpret.txt).
 
 --------------------------------------------------------------------------------
 4. INVARIANTS

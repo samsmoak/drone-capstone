@@ -110,3 +110,9 @@ INVARIANTS
   yet. A batch with no point id sends no point_id key; a batch refused over the
   column is re-sent without it (sync/cloud.py). One failed batch aborts a whole
   sync pass, so refusing would stall every flight and frame behind it.
+
+RELATED
+
+consumed-by       ../pipeline/results.txt
+                  Kind.RESULTS: a processed flight's result, findings and
+                  enhanced frames, uploaded last in a pass

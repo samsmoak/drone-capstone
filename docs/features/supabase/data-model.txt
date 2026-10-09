@@ -129,3 +129,11 @@ INVARIANTS
 - telemetry.point_id (migration 20260928000012_telemetry_point_id.sql, text,
   indexed with flight_id where set): the inspection point a reading was taken
   at. NOT YET APPLIED to the hosted project — `cd backend && supabase db push`.
+
+RELATED
+
+consumed-by       ../pipeline/results.txt
+                  pipeline_results, pipeline_findings and notifications hold
+                  what the agent's pipeline found
+shares-data-with  rls-and-grants.txt
+                  every table here has its policies and grants there
