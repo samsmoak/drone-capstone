@@ -19,7 +19,10 @@ STATUS  (Last verified: 2026-10-05)
             (Kevin): temperature, pressure, position, battery; scored on 66
             real flights against hampel@1 (ml/sensor-faults/MEASUREMENTS.txt).
             Follow-ups for Kevin: ../../handoffs/sprint-1/done/dpp-clean.txt
-  enhance   STUB — Kevin (../../handoffs/sprint-1/undone/dpp-enhance.txt)
+  enhance   BUILT (2026-10-09) — clahe@1, Samuel: CLAHE (clip 2.0, 4×4 tiles)
+            and each frame's quality, chosen on 600 real frames
+            (ml/enhance-eval/RESULTS.txt). Kevin's upscaler evaluation can
+            replace it: ../../handoffs/sprint-1/done/dpp-enhance.txt
   classify  STUB — Reagan (../../handoffs/sprint-1/undone/dpp-classify.txt)
   NOT BUILT the live runner (story 4.9 — verdicts arrive after landing, not
             per point in the air); results in Supabase and alerts on the
@@ -109,8 +112,15 @@ backend/agent/tests/pipeline/                      fixture, conformance, tests
   "unknown" must say why — a stub that said "normal" would write confident
   nonsense, as the greenhouse model would have (../architecture.txt).
 • Runtime models are ONNX run by onnxruntime; the runtime dependencies are
-  numpy, Pillow, opencv-contrib-python-headless, onnxruntime. None is added
-  yet — the stubs need none.
+  numpy, Pillow, opencv-python-headless, onnxruntime. numpy (clean) and
+  opencv-python-headless (enhance) are added; OpenCV doubled the frozen agent
+  (43 → 86 MB), verified by build_sidecar.py's self-test.
+• ENHANCEMENT IS CONTRAST, NOT RESOLUTION, AND NEVER COLOUR. The frames are
+  dark (median 61 of 255), 324×244 grayscale; CLAHE moves pixel values and
+  draws none, where a super-resolution network can invent a crack. Each
+  frame's quality (sharpness, brightness, clipping) is measured on the
+  ORIGINAL; a frame under the limits is enhanced and kept but marked
+  unusable with the reason, and is never read as evidence.
 • The batch runner runs in the command's own process. The live runner must run
   in a process of its own: CPU work beside the 50 Hz flight loop competes for
   Python's one interpreter lock.
