@@ -15,7 +15,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { TimeSeries } from "@/components/ui/time-series";
 import { FlightPath } from "@/components/ui/flight-path";
 import { RawReadings } from "@/components/ui/raw-readings";
-import { FLIGHTS } from "@/lib/routes";
+import { FLIGHTS, processedPath } from "@/lib/routes";
+import { excerptsFor, frameMarks, highlightsOf, readTracks } from "@/lib/pipeline";
 import {
   elapsedSeconds,
   flightDuration,
@@ -57,6 +58,13 @@ export default async function FlightPage(props: PageProps<"/app/flights/[id]">) 
   const result = results.rows[0] ?? null;
   const frameLinks: FrameLinks = Object.fromEntries(
     frames.map((f) => [f.seq, { original: f.url, enhanced: enhanced[f.seq] }]));
+  // The anomalies, marked where they show: their readings in the table, the
+  // frames taken during them, and each card's own excerpt.
+  const highlights = highlightsOf(findings.rows);
+  const marks = frameMarks(findings.rows);
+  const excerpts = excerptsFor(findings.rows, () => (result ? readTracks(result.tracks) : []),
+    Object.fromEntries(findings.rows.map((f) => [
+      f.id, telemetry.filter((r) => r.index >= f.start_index && r.index <= f.end_index)])));
 
   const unit = flight.temp_unit;
   const first = telemetry[0]?.recorded_at;
@@ -141,15 +149,23 @@ export default async function FlightPage(props: PageProps<"/app/flights/[id]">) 
           </p>
         ) : !result ? (
           <p className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-6 text-sm text-[var(--muted)]">
-            This flight has not been processed. Turn on Data processing in the desktop app (Control
-            page) before it flies, or press Process this flight there; the result uploads here.
+            This flight has not been processed. Process flights (DPP), at the top of the desktop
+            app&apos;s Control page, was off when it flew — press Process this flight there; the result
+            uploads here.
           </p>
         ) : findings.rows.length === 0 ? (
           <p className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-6 text-sm">
             Nothing in this flight departed from what was expected.
           </p>
         ) : (
-          <FindingsList findings={findings.rows} frames={frameLinks} />
+          <FindingsList findings={findings.rows} frames={frameLinks} excerpts={excerpts} />
+        )}
+        {result && flight.session_id && (
+          <p className="text-sm">
+            <Link href={processedPath(flight.session_id)} className="inline-flex min-h-11 items-center underline underline-offset-4">
+              This session&apos;s processed data →
+            </Link>
+          </p>
         )}
       </section>
 
@@ -241,7 +257,7 @@ export default async function FlightPage(props: PageProps<"/app/flights/[id]">) 
         <h2 id="camera-heading" className="text-lg font-semibold text-[var(--heading)]">
           Camera
         </h2>
-        <FrameGallery frames={frames} enhanced={enhanced} />
+        <FrameGallery frames={frames} enhanced={enhanced} marks={marks} />
       </section>
 
 
@@ -249,7 +265,7 @@ export default async function FlightPage(props: PageProps<"/app/flights/[id]">) 
         <h2 id="raw-heading" className="text-lg font-semibold text-[var(--heading)]">
           Raw readings
         </h2>
-        <RawReadings rows={telemetry} unit={unit} />
+        <RawReadings rows={telemetry} unit={unit} highlights={highlights} />
       </section>
     </div>
   );

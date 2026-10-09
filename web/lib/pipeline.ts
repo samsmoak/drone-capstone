@@ -136,3 +136,132 @@ export function clock(seconds: number): string {
   const s = Math.max(0, Math.round(seconds));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
+
+/**
+ * A stretch of a flight the pipeline found anomalous, as the readings table
+ * and the camera mark it: the readings it covers (telemetry `index`,
+ * inclusive — the agent's Reading.index), its time, and what it means.
+ */
+export type Highlight = {
+  id: string;
+  signal: string;
+  severity: Severity;
+  start: number;
+  end: number;
+  tStart: number;
+  tEnd: number;
+  title: string;
+  sentence: string;
+};
+
+type FindingLike = {
+  id: string; signal: string; severity: string; start_index: number; end_index: number;
+  t_start_s: number; t_end_s: number; title: string; sentence: string; evidence_frames: number[];
+};
+
+export function highlightsOf(findings: readonly FindingLike[]): Highlight[] {
+  return findings.map((f) => ({
+    id: f.id, signal: f.signal, severity: severityOf(f.severity),
+    start: f.start_index, end: f.end_index, tStart: f.t_start_s, tEnd: f.t_end_s,
+    title: f.title, sentence: f.sentence,
+  })).sort((a, b) => a.start - b.start);
+}
+
+/** The worst highlight covering a reading, or undefined. */
+export function highlightAt(highlights: readonly Highlight[], index: number): Highlight | undefined {
+  let worst: Highlight | undefined;
+  for (const h of highlights) {
+    if (index < h.start || index > h.end) continue;
+    if (!worst || SEVERITY[h.severity].rank > SEVERITY[worst.severity].rank) worst = h;
+  }
+  return worst;
+}
+
+/** Frame seq → the findings that frame was taken during. */
+export function frameMarks(findings: readonly FindingLike[]): Record<number, Highlight[]> {
+  const out: Record<number, Highlight[]> = {};
+  const all = highlightsOf(findings);
+  findings.forEach((f) => {
+    const h = all.find((x) => x.id === f.id);
+    if (!h) return;
+    for (const seq of f.evidence_frames) (out[seq] ??= []).push(h);
+  });
+  for (const list of Object.values(out)) {
+    list.sort((a, b) => SEVERITY[b.severity].rank - SEVERITY[a.severity].rank);
+  }
+  return out;
+}
+
+/** The CSS colour of a severity — a status token, never a raw colour. */
+export function severityColor(severity: Severity): string {
+  return `var(--status-${SEVERITY[severity].status})`;
+}
+
+/** One reading of an anomalous stretch: the stored value, and what the
+ *  pipeline measured (after any correction) against what it expected. */
+export type ExcerptRow = {
+  index: number;
+  t: number;
+  raw: number | null;
+  measured: number | null;
+  expected: number | null;
+};
+
+/**
+ * The readings of a stretch, at most `max` of them: the first, the last, the
+ * one furthest from what was expected, and evenly between — so a long
+ * stretch reads in a glance without hiding where it peaked.
+ */
+export function excerptOf(
+  rows: readonly { index: number; recorded_at: string; [key: string]: unknown }[],
+  track: Track | null,
+  tStart: number,
+  rawColumn: string,
+  max = 10,
+): { rows: ExcerptRow[]; total: number } {
+  if (rows.length === 0) return { rows: [], total: 0 };
+  const at = new Map<number, number>();
+  track?.indexes.forEach((index, i) => at.set(index, i));
+  const first = Date.parse(rows[0].recorded_at);
+  const all: ExcerptRow[] = rows.map((r) => {
+    const i = at.get(r.index);
+    const raw = r[rawColumn];
+    return {
+      index: r.index,
+      t: tStart + (Date.parse(r.recorded_at) - first) / 1000,
+      raw: typeof raw === "number" ? raw : null,
+      measured: i !== undefined && track ? track.observed[i] : null,
+      expected: i !== undefined && track ? track.expected[i] : null,
+    };
+  });
+  if (all.length <= max) return { rows: all, total: all.length };
+  const gap = (r: ExcerptRow) =>
+    r.measured !== null && r.expected !== null ? Math.abs(r.measured - r.expected) : -1;
+  const peak = all.reduce((best, r, i) => (gap(r) > gap(all[best]) ? i : best), 0);
+  const keep = new Set([0, all.length - 1, peak]);
+  for (let k = 1; keep.size < max && k < max; k++) {
+    keep.add(Math.round((k * (all.length - 1)) / (max - 1)));
+  }
+  return { rows: [...keep].sort((a, b) => a - b).map((i) => all[i]), total: all.length };
+}
+
+/** The stored column an anomaly's signal is read from, and what to call it. */
+export function rawColumnOf(signal: string, track: Track | null): { column: string; label: string } {
+  if (signal === "pressure") return { column: "station_pressure_hpa", label: "Stored pressure" };
+  return { column: track?.column ?? "raw_temp", label: "Stored temp" };
+}
+
+/** Each finding's excerpt, from its flight's result and its stretch's readings. */
+export function excerptsFor(
+  findings: readonly { id: string; flight_id: string; signal: string; t_start_s: number }[],
+  tracksOf: (flightId: string) => Track[],
+  readings: Record<string, { index: number; recorded_at: string; [key: string]: unknown }[]>,
+): Record<string, { rows: ExcerptRow[]; total: number; rawLabel: string }> {
+  const out: Record<string, { rows: ExcerptRow[]; total: number; rawLabel: string }> = {};
+  for (const f of findings) {
+    const track = tracksOf(f.flight_id).find((t) => t.signal === f.signal) ?? null;
+    const raw = rawColumnOf(f.signal, track);
+    out[f.id] = { ...excerptOf(readings[f.id] ?? [], track, f.t_start_s, raw.column), rawLabel: raw.label };
+  }
+  return out;
+}

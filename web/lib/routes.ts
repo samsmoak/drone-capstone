@@ -27,6 +27,8 @@ export const PLAN = "/app/plan";
 export const MANUAL = "/app/manual";
 export const SETTINGS = "/app/settings";
 export const NOTIFICATIONS = "/app/notifications";
+export const PROCESSED = "/app/processed";
+export const processedPath = (sessionId: string) => `${PROCESSED}/${sessionId}`;
 
 export const ADMIN = "/admin";
 export const ADMIN_PROJECTS = "/admin/projects";
@@ -72,6 +74,7 @@ export const OPERATOR_NAV = [
   { href: LIVE, label: "Live" },
   { href: SESSIONS, label: "Sessions" },
   { href: FLIGHTS, label: "Flights" },
+  { href: PROCESSED, label: "Processed data" },
   { href: ZONES, label: "Zones" },
   { href: COMPARE, label: "Compare" },
   { href: PLAN, label: "Plan" },

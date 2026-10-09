@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { FindingRow } from "@/lib/queries";
 import { StatusBadge } from "@/components/ui/states";
-import { SEVERITY, clock, severityOf, unitSymbol } from "@/lib/pipeline";
+import { SEVERITY, clock, severityColor, severityOf, unitSymbol, type ExcerptRow } from "@/lib/pipeline";
 
 /**
  * What the data pipeline found: each stretch of a flight whose temperature or
@@ -13,7 +13,68 @@ import { SEVERITY, clock, severityOf, unitSymbol } from "@/lib/pipeline";
  * beside them, original next to enhanced, because the camera may have been
  * facing away. The finding says whether an image model backs it ("cannot
  * tell" until one exists).
+ *
+ * WITH AN EXCERPT (the Processed data pages), the card also carries the
+ * stretch's own readings — the value stored, what the pipeline measured after
+ * any correction, what it expected, and the difference — so the evidence and
+ * its meaning sit in one place.
  */
+
+/** A stretch's readings, for the card (lib/pipeline excerptOf). */
+export type Excerpt = { rows: ExcerptRow[]; total: number; rawLabel: string };
+
+function Readings({ f, excerpt }: { f: FindingRow; excerpt: Excerpt }) {
+  const unit = unitSymbol(f.unit);
+  const digits = f.signal === "pressure" ? 2 : 1;
+  const n = (v: number | null) => (v === null ? "—" : v.toFixed(digits));
+  if (excerpt.rows.length === 0) {
+    return <p className="text-xs text-[var(--muted)]">The readings of this stretch are not on the web yet.</p>;
+  }
+  // The stored value is the measured one for temperature; said once, not twice.
+  const stored = excerpt.rows.some((r) => n(r.raw) !== n(r.measured));
+  return (
+    <div className="space-y-1">
+      <div className="overflow-x-auto [contain:paint] rounded-md border border-[var(--border)]">
+        <table className="w-full border-collapse text-left text-xs">
+          <caption className="sr-only">
+            Readings in this stretch: {excerpt.rows.length} of {excerpt.total}, in {unit}
+          </caption>
+          <thead className="bg-[var(--surface-2)]">
+            <tr>
+              <th scope="col" className="px-2 py-1.5 font-medium">Reading</th>
+              <th scope="col" className="px-2 py-1.5 font-medium">Time</th>
+              {stored && <th scope="col" className="px-2 py-1.5 font-medium">{excerpt.rawLabel} ({unit})</th>}
+              <th scope="col" className="px-2 py-1.5 font-medium">Measured ({unit})</th>
+              <th scope="col" className="px-2 py-1.5 font-medium">Expected ({unit})</th>
+              <th scope="col" className="px-2 py-1.5 font-medium">Difference</th>
+            </tr>
+          </thead>
+          <tbody>
+            {excerpt.rows.map((r) => {
+              const d = r.measured !== null && r.expected !== null ? r.measured - r.expected : null;
+              return (
+                <tr key={r.index} className="border-t border-[var(--border)]">
+                  <th scope="row" className="tabular px-2 py-1 font-normal">{r.index}</th>
+                  <td className="tabular px-2 py-1">{clock(r.t)}</td>
+                  {stored && <td className="tabular px-2 py-1">{n(r.raw)}</td>}
+                  <td className="tabular px-2 py-1">{n(r.measured)}</td>
+                  <td className="tabular px-2 py-1">{n(r.expected)}</td>
+                  <td className="tabular px-2 py-1 font-semibold">{d === null ? "—" : `${d > 0 ? "+" : ""}${d.toFixed(digits)}`}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {excerpt.total > excerpt.rows.length && (
+        <p className="text-xs text-[var(--muted)]">
+          {excerpt.rows.length} of the stretch&apos;s {excerpt.total} readings: the first, the last, the one
+          furthest from what was expected, and evenly between.
+        </p>
+      )}
+    </div>
+  );
+}
 
 /** Links to a frame: the original, and its enhanced copy when there is one. */
 export type FrameLinks = Record<number, { original?: string; enhanced?: string }>;
@@ -43,17 +104,22 @@ function Where({ f }: { f: FindingRow }) {
   return <>{points}{place}</>;
 }
 
-export function FindingCard({ f, frames, flight }: {
+export function FindingCard({ f, frames, flight, excerpt, more }: {
   f: FindingRow;
   frames: FrameLinks;
   /** On a session page: which flight it is from, and its page. */
   flight?: { label: string; href: string };
+  /** The stretch's readings, shown under the card's facts. */
+  excerpt?: Excerpt;
+  /** Where else to look — the session's processed data, say. */
+  more?: { label: string; href: string };
 }) {
   const sev = SEVERITY[severityOf(f.severity)];
   const shown = f.evidence_frames.slice(0, SHOWN_FRAMES);
   return (
     <article id={`finding-${f.id}`}
-             className="scroll-mt-24 space-y-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
+             style={{ borderLeftColor: severityColor(severityOf(f.severity)) }}
+             className="scroll-mt-24 space-y-3 rounded-lg border border-l-4 border-[var(--border)] bg-[var(--surface)] p-4">
       <header className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-base font-semibold">{f.title}</h3>
         <StatusBadge status={sev.status} label={sev.label} />
@@ -66,7 +132,8 @@ export function FindingCard({ f, frames, flight }: {
           {flight && (
             <>
               {" · "}
-              <Link href={`${flight.href}#finding-${f.id}`} className="underline underline-offset-4">
+              <Link href={flight.href.startsWith("#") ? flight.href : `${flight.href}#finding-${f.id}`}
+                    className="underline underline-offset-4">
                 {flight.label}
               </Link>
             </>
@@ -79,6 +146,7 @@ export function FindingCard({ f, frames, flight }: {
         <dt className="text-[var(--muted)]">Camera</dt>
         <dd>{f.image_note}</dd>
       </dl>
+      {excerpt && <Readings f={f} excerpt={excerpt} />}
       {shown.length > 0 && (
         <ul className="grid gap-3 sm:grid-cols-2" aria-label="Frames taken during this stretch">
           {shown.map((seq) => {
@@ -108,22 +176,34 @@ export function FindingCard({ f, frames, flight }: {
       {f.evidence_frames.length > SHOWN_FRAMES && (
         <p className="text-xs text-[var(--muted)]">
           And {f.evidence_frames.length - SHOWN_FRAMES} more frames from this stretch in the camera
-          section below.
+          section{more ? " of the session's processed data" : " below"}.
+        </p>
+      )}
+      {more && (
+        <p className="text-sm">
+          <Link href={more.href} className="inline-flex min-h-11 items-center underline underline-offset-4">
+            {more.label}
+          </Link>
         </p>
       )}
     </article>
   );
 }
 
-export function FindingsList({ findings, frames, flightOf }: {
+export function FindingsList({ findings, frames, flightOf, excerpts, moreOf }: {
   findings: FindingRow[];
-  frames: FrameLinks;
+  /** One session's frames, or each finding's own (findings from many sessions). */
+  frames: FrameLinks | ((f: FindingRow) => FrameLinks);
   flightOf?: (flightId: string) => { label: string; href: string } | undefined;
+  excerpts?: Record<string, Excerpt>;
+  moreOf?: (f: FindingRow) => { label: string; href: string } | undefined;
 }) {
   return (
     <div className="space-y-3">
       {findings.map((f) => (
-        <FindingCard key={f.id} f={f} frames={frames} flight={flightOf?.(f.flight_id)} />
+        <FindingCard key={f.id} f={f} frames={typeof frames === "function" ? frames(f) : frames}
+                     flight={flightOf?.(f.flight_id)}
+                     excerpt={excerpts?.[f.id]} more={moreOf?.(f)} />
       ))}
     </div>
   );
