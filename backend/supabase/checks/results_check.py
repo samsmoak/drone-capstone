@@ -59,6 +59,28 @@ def set_role(uid, role):
     assert out == role, f"could not make {uid} a {role}: it is {out!r}"
 
 
+def sql(statement):
+    """Run SQL as the database owner in the local stack's container. Cleanup
+    goes this way: this project revokes the platform's default privileges, so
+    service_role can neither change profiles nor delete rows over the API —
+    a cleanup through the API silently leaves the rows behind."""
+    import subprocess
+    return subprocess.run(["docker", "exec", DB_CONTAINER, "psql", "-U", "postgres", "-d",
+                           "postgres", "-v", "ON_ERROR_STOP=1", "-qtAc", statement],
+                          check=True, capture_output=True, text=True).stdout.strip()
+
+
+def cleanup(user_ids, session_ids):
+    users = ", ".join(f"'{u}'" for u in user_ids)
+    sessions = ", ".join(f"'{s}'" for s in session_ids)
+    sql(f"delete from public.flights where session_id in ({sessions}) "
+        f"or created_by in ({users})")
+    sql(f"delete from public.sessions where id in ({sessions})")
+    sql(f"delete from auth.users where id in ({users})")
+    left = sql(f"select count(*) from auth.users where id in ({users})")
+    assert left == "0", f"cleanup left {left} test users behind"
+
+
 def user(email, role):
     status, body = call("POST", "/auth/v1/admin/users", SERVICE,
                         {"email": email, "password": "check-pipeline-1", "email_confirm": True})
@@ -131,10 +153,7 @@ def main():
         _, rows = call("GET", f"/rest/v1/pipeline_findings?id=eq.{fid}", a)
         check("an operator retracts a finding", rows == [], (status, rows))
     finally:
-        call("DELETE", f"/rest/v1/flights?id=eq.{flight}", SERVICE)
-        call("DELETE", f"/rest/v1/sessions?id=eq.{session}", SERVICE)
-        for uid in (a_id, b_id, v_id):
-            call("DELETE", f"/auth/v1/admin/users/{uid}", SERVICE)
+        cleanup((a_id, b_id, v_id), (session,))
     print(f"\n  {sum(results)}/{len(results)} held")
     return 0 if all(results) else 1
 
