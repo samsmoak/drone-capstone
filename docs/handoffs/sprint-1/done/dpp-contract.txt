@@ -157,7 +157,8 @@ Shared input
   Reading              index (unique within the flight), recorded_at (UTC),
                        t_s (seconds since the flight's first row), values:
                        Mapping[str, float | None] — numeric columns by name,
-                       point_id (None in transit)
+                       point_id (None in transit), text: the row's words
+                       (mode, thermal_state, event)
   Frame                seq, recorded_at, t_s, path (READ ONLY), width (324),
                        height (244), x_m, y_m, z_m, point_id
   PointData            point, readings (by index), frames (by seq; may be

@@ -53,6 +53,8 @@ class TestLoading:
         assert isinstance(first.values["corrected_temp"], float)
         assert "temp_unit" not in first.values and "point_id" not in first.values
         assert first.point_id == "P1"
+        assert first.text["thermal_state"].startswith("FLIGHT")
+        assert set(first.text) <= {"mode", "thermal_state", "event"}
         assert first.t_s > 0
 
     def test_the_whole_flight_holds_every_reading_transit_included(self):

@@ -47,6 +47,9 @@ log = logging.getLogger(__name__)
 #: CSV columns that are words, not measurements.
 TEXT_COLUMNS = frozenset({"index", "recorded_at", "flight_id", "mode", "thermal_state",
                           "event", "temp_unit", "point_id"})
+#: The words a stage is given (Reading.text); the rest are identity or units,
+#: carried elsewhere.
+STAGE_TEXT = ("mode", "thermal_state", "event")
 
 
 class FlightNotFound(LookupError):
@@ -166,6 +169,7 @@ class LocalFlightSource:
             t_s=(at - started).total_seconds(),
             values={k: _number(v) for k, v in row.items() if k not in TEXT_COLUMNS},
             point_id=row.get("point_id") or None,
+            text={k: row[k] for k in STAGE_TEXT if row.get(k)},
         )
 
     def _frames(self, session: Path, started: datetime,
