@@ -563,7 +563,28 @@ def cmd_process(args: argparse.Namespace) -> int:
     for failure in result.failures:
         print(f"  FAILED   {failure.point_id} {failure.stage}: {failure.reason}")
     print(f"\n  saved {where}")
+    if not args.fixture:
+        _queue_result_upload(result.flight_id, Path(where).parent)
     return 0
+
+
+def _queue_result_upload(flight_id: str, folder: Path) -> None:
+    """Queue the result for the web (sync/results.py). The agent's syncer —
+    whichever process runs it — uploads it once the flight's own row is up.
+    Processing again re-queues it, which replaces what was uploaded."""
+    from datetime import UTC, datetime
+
+    from cropwatcher.sync.outbox import Kind, Outbox
+
+    try:
+        Outbox().put(Kind.RESULTS, flight_id, {
+            "flight_id": flight_id, "folder": str(folder),
+            "occurred_at": datetime.now(UTC).isoformat(),
+        })
+        print("  queued for upload")
+    except OSError as e:
+        # The result is saved; only the web copy waits for the next process.
+        print(f"  could not queue the upload ({e}); the result stays on this computer")
 
 
 #: Everything the agent imports only when a feature is first used — inside a

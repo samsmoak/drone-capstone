@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, get_args, get_type_hints
 
 from cropwatcher.camera.recording import INDEX_NAME, frames_to_upload
-from cropwatcher.sync import samples
+from cropwatcher.sync import results, samples
 from cropwatcher.sync.cloud import Cloud, CloudError
 from cropwatcher.sync.outbox import Kind, Outbox
 from cropwatcher.telemetry.row import TelemetryRow
@@ -176,6 +176,9 @@ class Syncer:
                 # 20261006000013) this one fails, and everything above has
                 # already gone.
                 self._send_samples(cloud)
+                # After that, for the same reason: pipeline results need
+                # 20261009000016.
+                self._send_results(cloud)
                 self.status.last_error = None
                 self.status.last_success_at = time.time()
             except CloudError as e:
@@ -336,6 +339,45 @@ class Syncer:
                                     lambda p, last=last: p.__setitem__("uploaded_through", last))
             if payload.get("ended"):
                 self._outbox.mark_sent(Kind.SAMPLES, session_id)
+
+    def _send_results(self, cloud: Cloud) -> None:
+        """A processed flight's result, findings and enhanced frames
+        (sync/results.py).
+
+        Waits while the flight's own record is still pending: the result's
+        foreign key needs the flight row. Enhanced frames go first, from a
+        cursor (replacing — a re-process may change them), then the result,
+        then the findings, then the findings this result no longer makes are
+        deleted. Re-processing re-queues the record, which resets the cursor."""
+        for record in self._outbox.pending(Kind.RESULTS):
+            payload = record.payload
+            flight_id = record.id
+            flight = self._outbox.get(Kind.FLIGHT, flight_id)
+            if flight is not None and not flight.get("_sent"):
+                continue            # the flight row first
+            folder = Path(payload.get("folder", ""))
+            try:
+                result = results.load(folder)
+            except results.ResultUnreadable as e:
+                log.warning("result of flight %s cannot be uploaded: %s", flight_id, e)
+                self._outbox.mark_sent(Kind.RESULTS, flight_id)
+                continue
+            self.status.uploading = f"result {flight_id[:8]}"
+            session_id = result.get("session_id")
+            if session_id:
+                done = int(payload.get("frames_uploaded", 0))
+                for n, (seq, path) in enumerate(results.enhanced_frames(folder, result)):
+                    if n < done:
+                        continue
+                    cloud.upload_frame(results.enhanced_object_path(session_id, seq), path,
+                                       "image/png", replace=True)
+                    self._outbox.update(Kind.RESULTS, flight_id,
+                                        lambda p, n=n: p.__setitem__("frames_uploaded", n + 1))
+            cloud.upsert_result(results.result_row(result))
+            rows = results.finding_rows(result)
+            cloud.upsert_findings(rows)
+            cloud.delete_findings_except(flight_id, [r["id"] for r in rows])
+            self._outbox.mark_sent(Kind.RESULTS, flight_id)
 
     # ── helpers ──────────────────────────────────────────────────────────
 

@@ -70,7 +70,7 @@ from cropwatcher.mission.plan.mission import Mission
 from cropwatcher.mission.plan.store import NotFound, PlanStore
 from cropwatcher.mission.plan.validate import errors, flyable_bound
 from cropwatcher.paths import flights_dir
-from cropwatcher.processing import Job, ProcessingQueue
+from cropwatcher.processing import Job, JobState, ProcessingQueue
 from cropwatcher.safety.flight_guard import Action as GuardAction
 from cropwatcher.safety.flight_guard import Reason as GuardReason
 from cropwatcher.safety.flight_guard import Verdict as GuardVerdict
@@ -598,6 +598,9 @@ class Session:
             log.exception("could not record the processing state of %s", job.flight_id)
         self._refresh_processing()
         self._emit("processing", job.to_dict())
+        # The finished result was queued for the web (cli._queue_result_upload).
+        if job.state == JobState.DONE and self._syncer is not None:
+            self._syncer.trigger()
 
     # ── worker ───────────────────────────────────────────────────────────
 
