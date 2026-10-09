@@ -28,6 +28,7 @@ import csv
 import json
 import logging
 import os
+import tempfile
 import threading
 import time
 from collections.abc import Callable, Iterable, Mapping
@@ -341,28 +342,44 @@ def interrupted_flights(*, root: Path | None = None) -> list[str]:
     return [flight_id for _, flight_id in sorted(found)]
 
 
+#: One writer at a time for closed sessions' meta.json. A processing job
+#: reports "queued" from the caller's thread and "running"/"done" from the
+#: queue's worker; two unguarded read-modify-writes through one temp file
+#: interleaved and left a meta.json that was not JSON (found 2026-10-09 by the
+#: resume tests, 2 runs in 15).
+_CLOSED_META_LOCK = threading.Lock()
+
+
 def set_flight_processing(flight_id: str, state: str, error: str | None = None, *,
                           root: Path | None = None) -> bool:
     """Record a flight's processing state in whichever CLOSED session holds it.
     An open session is written through its SessionLog instead — it keeps the
     meta in memory and would overwrite a change made to the file under it.
     False when no session on this laptop has the flight."""
-    for meta_file in (root or sessions_dir()).glob("*/meta.json"):
-        try:
-            raw = json.loads(meta_file.read_text())
-        except (OSError, ValueError):
-            continue
-        flights = raw.get("flights") or []
-        if not any(f.get("id") == flight_id for f in flights):
-            continue
-        for flight in flights:
-            if flight.get("id") == flight_id:
-                flight["processing"], flight["processing_error"] = state, error
-        temp = meta_file.with_suffix(".json.tmp")
-        temp.write_text(json.dumps(raw, indent=2))
-        os.replace(temp, meta_file)
-        return True
-    return False
+    with _CLOSED_META_LOCK:
+        for meta_file in (root or sessions_dir()).glob("*/meta.json"):
+            try:
+                raw = json.loads(meta_file.read_text())
+            except (OSError, ValueError):
+                continue
+            flights = raw.get("flights") or []
+            if not any(f.get("id") == flight_id for f in flights):
+                continue
+            for flight in flights:
+                if flight.get("id") == flight_id:
+                    flight["processing"], flight["processing_error"] = state, error
+            # A temp file of its own, then an atomic rename: a crash mid-write
+            # leaves the previous meta, never half of one.
+            fd, temp = tempfile.mkstemp(dir=meta_file.parent, prefix=".meta.", suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    f.write(json.dumps(raw, indent=2))
+                os.replace(temp, meta_file)
+            except BaseException:
+                Path(temp).unlink(missing_ok=True)
+                raise
+            return True
+        return False
 
 
 def _session_folder(session_id: str, root: Path | None) -> Path:
