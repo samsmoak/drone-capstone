@@ -204,6 +204,33 @@ class TestTheSwitch:
             rig.session.process_flight(rig.session.snapshot().flight["id"])
 
 
+def test_two_threads_recording_at_once_never_corrupt_the_file(tmp_path):
+    """A job reports from the caller's thread and the worker's at once."""
+    import threading as _threading
+    folder = tmp_path / "s1"
+    folder.mkdir()
+    (folder / "meta.json").write_text(json.dumps(
+        {"flights": [{"id": f"f{i}"} for i in range(8)]}))
+    errors: list[BaseException] = []
+
+    def hammer(i: int) -> None:
+        try:
+            for n in range(40):
+                history.set_flight_processing(f"f{i}", f"state-{n}", root=tmp_path)
+        except BaseException as e:            # noqa: BLE001 — the test reports it
+            errors.append(e)
+
+    threads = [_threading.Thread(target=hammer, args=(i,)) for i in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert errors == []
+    flights = json.loads((folder / "meta.json").read_text())["flights"]
+    assert [f["processing"] for f in flights] == ["state-39"] * 8
+    assert list(folder.glob("*.tmp")) == []
+
+
 def test_a_closed_sessions_flight_is_recorded_in_its_file(tmp_path):
     folder = tmp_path / "s1"
     folder.mkdir()
