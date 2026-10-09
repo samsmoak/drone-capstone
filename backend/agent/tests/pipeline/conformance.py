@@ -17,12 +17,12 @@ from __future__ import annotations
 
 from cropwatcher.pipeline.stages.classify.blocks import BlocksClassifier
 from cropwatcher.pipeline.stages.classify.stub import StubClassifier
-from cropwatcher.pipeline.stages.clean.hampel import HampelCleaner
+from cropwatcher.pipeline.stages.clean.robust import RobustCleaner
 from cropwatcher.pipeline.stages.clean.stub import StubCleaner
 from cropwatcher.pipeline.stages.enhance.stub import StubEnhancer
 
-#: Add your cleaner here (Kevin).
-CLEANERS = [StubCleaner, HampelCleaner]
+#: Every cleaner, checked against the contract.
+CLEANERS = [StubCleaner, RobustCleaner]
 #: Add your enhancer here (Kevin).
 ENHANCERS = [StubEnhancer]
 #: Every classifier, checked against the contract.
