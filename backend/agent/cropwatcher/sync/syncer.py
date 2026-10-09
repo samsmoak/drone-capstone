@@ -177,8 +177,9 @@ class Syncer:
                 # already gone.
                 self._send_samples(cloud)
                 # After that, for the same reason: pipeline results need
-                # 20261009000016.
+                # 20261009000016, a session's own result 20261009000018.
                 self._send_results(cloud)
+                self._send_session_results(cloud)
                 self.status.last_error = None
                 self.status.last_success_at = time.time()
             except CloudError as e:
@@ -378,6 +379,40 @@ class Syncer:
             cloud.upsert_findings(rows)
             cloud.delete_findings_except(flight_id, [r["id"] for r in rows])
             self._outbox.mark_sent(Kind.RESULTS, flight_id)
+
+    def _send_session_results(self, cloud: Cloud) -> None:
+        """A processed session's own result (sync/results.py session_result_row):
+        enhanced frames from a cursor, the result, its findings, and the
+        retraction of session findings a re-process no longer makes. Waits
+        while the session's own record is still pending: the row's foreign key
+        needs the session."""
+        for record in self._outbox.pending(Kind.SESSION_RESULTS):
+            payload = record.payload
+            session_id = record.id
+            session = self._outbox.get(Kind.SESSION, session_id)
+            if session is not None and not session.get("_sent"):
+                continue            # the session row first
+            folder = Path(payload.get("folder", ""))
+            try:
+                result = results.load(folder)
+            except results.ResultUnreadable as e:
+                log.warning("result of session %s cannot be uploaded: %s", session_id, e)
+                self._outbox.mark_sent(Kind.SESSION_RESULTS, session_id)
+                continue
+            self.status.uploading = f"session result {session_id[:8]}"
+            done = int(payload.get("frames_uploaded", 0))
+            for n, (seq, path) in enumerate(results.enhanced_frames(folder, result)):
+                if n < done:
+                    continue
+                cloud.upload_frame(results.enhanced_object_path(session_id, seq), path,
+                                   "image/png", replace=True)
+                self._outbox.update(Kind.SESSION_RESULTS, session_id,
+                                    lambda p, n=n: p.__setitem__("frames_uploaded", n + 1))
+            cloud.upsert_session_result(results.session_result_row(result))
+            rows = results.finding_rows(result)
+            cloud.upsert_findings(rows)
+            cloud.delete_session_findings_except(session_id, [r["id"] for r in rows])
+            self._outbox.mark_sent(Kind.SESSION_RESULTS, session_id)
 
     # ── helpers ──────────────────────────────────────────────────────────
 

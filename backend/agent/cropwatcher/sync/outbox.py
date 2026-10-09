@@ -47,6 +47,9 @@ class Kind(StrEnum):
     #: One per processed flight: its pipeline result and enhanced frames
     #: (sync/results.py). Re-processing replaces the record.
     RESULTS = "results"
+    #: One per processed session: its own result — the samples around its
+    #: flights — and enhanced frames (sync/results.py session_result_row).
+    SESSION_RESULTS = "session_results"
 
 
 def new_id() -> str:

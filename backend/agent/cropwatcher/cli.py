@@ -672,6 +672,7 @@ def _process_session(session_id: str, *, quiet: bool = False) -> int:
         history.set_session_processing(session_id, "failed", str(e))
         return 1
     history.set_session_processing(session_id, "done")
+    _queue_session_result_upload(session_id, Path(where).parent)
     point = result.points[0] if result.points else None
     print(f"  session {session_id[:8]}: {point.verdict if point else 'no verdict'}, "
           f"{len(result.findings)} finding(s), {len(result.flags)} flag(s), "
@@ -727,6 +728,21 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
     print("  Change a constant in a reviewed pull request, citing this report in "
           "ml/anomaly-eval/MEASUREMENTS.txt.")
     return 0
+
+
+def _queue_session_result_upload(session_id: str, folder: Path) -> None:
+    """Queue a session's own result for the web (sync: Kind.SESSION_RESULTS)."""
+    from datetime import UTC, datetime
+
+    from cropwatcher.sync.outbox import Kind, Outbox
+
+    try:
+        Outbox().put(Kind.SESSION_RESULTS, session_id, {
+            "session_id": session_id, "folder": str(folder),
+            "occurred_at": datetime.now(UTC).isoformat(),
+        })
+    except OSError as e:
+        print(f"  could not queue the upload ({e}); the result stays on this computer")
 
 
 def _queue_result_upload(flight_id: str, folder: Path) -> None:

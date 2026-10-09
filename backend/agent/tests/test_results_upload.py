@@ -28,6 +28,7 @@ class ResultsCloud(FakeCloud):
         self.results: dict[str, dict] = {}
         self.findings: dict[str, dict] = {}
         self.objects: dict[str, Path] = {}
+        self.session_results: dict[str, dict] = {}
 
     def upload_frame(self, object_path, path, content_type, *, replace=False):
         self._maybe_fail()
@@ -46,6 +47,16 @@ class ResultsCloud(FakeCloud):
         self._maybe_fail()
         self.findings = {k: v for k, v in self.findings.items()
                          if v["flight_id"] != flight_id or k in keep}
+
+    def upsert_session_result(self, row):
+        self._maybe_fail()
+        self.session_results[row["session_id"]] = row
+
+    def delete_session_findings_except(self, session_id, keep):
+        self._maybe_fail()
+        self.findings = {k: v for k, v in self.findings.items()
+                         if not (v.get("scope") == "session" and v["session_id"] == session_id)
+                         or k in keep}
 
 
 def finding(fid: str, severity: str = "warning") -> dict:
@@ -172,3 +183,56 @@ def test_processing_a_flight_queues_its_result(tmp_path, monkeypatch, capsys):
     assert "queued for upload" in capsys.readouterr().out
     record = Outbox(root / "outbox").get(Kind.RESULTS, FLIGHT)
     assert record and Path(record["folder"]) == root / "results" / FLIGHT
+
+
+def write_session_result(folder: Path, *, findings: list[dict], frames: int = 1) -> None:
+    write_result(folder, findings=findings, frames=frames, session="session-1")
+    data = json.loads((folder / results.RESULT_NAME).read_text())
+    data.update(flight_id="session-1", scope="session",
+                points=[{"point_id": "session", "verdict": "normal"}])
+    (folder / results.RESULT_NAME).write_text(json.dumps(data))
+
+
+class TestASessionsOwnResult:
+    """A session processed as a whole (migration 20261009000018): its row in
+    pipeline_session_results, its findings scope "session" with no flight."""
+
+    def test_the_rows_name_the_session_and_no_flight(self, tmp_path):
+        write_session_result(tmp_path, findings=[finding("s1")])
+        result = results.load(tmp_path)
+        row = results.session_result_row(result)
+        assert "flight_id" not in row and row["session_id"] == "session-1"
+        (f,) = results.finding_rows(result)
+        assert (f["flight_id"], f["session_id"], f["scope"]) == (None, "session-1", "session")
+
+    def test_a_flights_finding_says_flight(self, tmp_path):
+        write_result(tmp_path, findings=[finding("a")])
+        (f,) = results.finding_rows(results.load(tmp_path))
+        assert f["scope"] == "flight" and f["flight_id"] == "flight-1"
+
+    def test_it_waits_for_the_sessions_row_then_uploads(self, rig):
+        outbox, cloud, syncer, tmp = rig
+        write_session_result(tmp / "s", findings=[finding("s1")])
+        outbox.put(Kind.SESSION, "session-1", {"id": "session-1"})
+        outbox.put(Kind.SESSION_RESULTS, "session-1", {"session_id": "session-1",
+                                                       "folder": str(tmp / "s")})
+        syncer._send_session_results(cloud)
+        assert cloud.session_results == {}
+        outbox.mark_sent(Kind.SESSION, "session-1")
+        syncer._send_session_results(cloud)
+        assert cloud.session_results["session-1"]["findings_count"] == 1
+        assert cloud.findings["s1"]["scope"] == "session"
+        assert "session-1/enhanced/000001.png" in cloud.objects
+        assert outbox.count_pending(Kind.SESSION_RESULTS) == 0
+
+    def test_a_reprocess_retracts_only_the_sessions_own_findings(self, rig):
+        outbox, cloud, syncer, tmp = rig
+        cloud.findings["flight-f"] = {**finding("flight-f"), "flight_id": "flight-1",
+                                      "session_id": "session-1", "scope": "flight"}
+        cloud.findings["old"] = {**finding("old"), "flight_id": None,
+                                 "session_id": "session-1", "scope": "session"}
+        write_session_result(tmp / "s", findings=[finding("s1")])
+        outbox.put(Kind.SESSION_RESULTS, "session-1", {"session_id": "session-1",
+                                                       "folder": str(tmp / "s")})
+        syncer._send_session_results(cloud)
+        assert set(cloud.findings) == {"flight-f", "s1"}
