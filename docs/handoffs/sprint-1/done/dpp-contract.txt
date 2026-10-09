@@ -208,9 +208,11 @@ Stage 3 — classify (stories 4.4, 4.6)  class Classifier(Protocol)
                                        tracks: per signal, observed and expected
                                          per reading index, the noise, the model
                                        segments: the blocks found
-                                       events: the blocks that depart from
-                                         expected (delta, z, slope, points,
-                                         mean position when measured)
+                                       events: the stretches that depart from
+                                         expected — one block, or adjacent
+                                         blocks departing the same way (delta,
+                                         z, peak, slope, points, mean position
+                                         when measured)
   ImageVerdict(seq, source, label)     source: "original" | "enhanced"
   Label(value, p_faulty, model, reason=None)
                                        value: normal | faulty | unknown

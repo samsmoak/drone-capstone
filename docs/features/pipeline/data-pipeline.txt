@@ -23,7 +23,12 @@ STATUS  (Last verified: 2026-10-05)
             and each frame's quality, chosen on 600 real frames
             (ml/enhance-eval/RESULTS.txt). Kevin's upscaler evaluation can
             replace it: ../../handoffs/sprint-1/done/dpp-enhance.txt
-  classify  STUB — Reagan (../../handoffs/sprint-1/undone/dpp-classify.txt)
+  classify  BUILT for the sensors (2026-10-09) — blocks@1, Samuel: temperature
+            against the drone's cooling curve, pressure corrected for height,
+            blocks by PELT; 0 events on 115 normal flights, planted warm
+            patches of 2 °C+ always found (ml/anomaly-eval/MEASUREMENTS.txt).
+            No image model yet — story 4.4 stays Reagan's
+            (../../handoffs/sprint-1/done/dpp-classify.txt)
   NOT BUILT the live runner (story 4.9 — verdicts arrive after landing, not
             per point in the air); results in Supabase and alerts on the
             dashboard

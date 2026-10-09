@@ -57,7 +57,11 @@ class LabelInterpreter:
 
         images = [v for v in classified.images if v.seq in frames]
         faulty_frames = tuple(v.seq for v in images if v.label.value == "faulty")
-        sensors_faulty = classified.sensors.value == "faulty" and bool(usable)
+        # The sensor label is the flight's. With events, it is this point's
+        # only where an event overlaps the point's readings.
+        mine_events = [e for e in classified.events if whole or point.id in e.point_ids]
+        sensors_faulty = classified.sensors.value == "faulty" and bool(usable) and (
+            bool(mine_events) or not classified.events)
         if faulty_frames or sensors_faulty:
             reasons: list[str] = []
             alerts: list[Alert] = []
@@ -66,8 +70,10 @@ class LabelInterpreter:
                 reason = (f"The sensor model ({classified.sensors.model}) labelled the "
                           f"readings faulty" + (f": {shown}." if shown else "."))
                 reasons.append(reason)
-                alerts.append(Alert(point.id, "warning", reason,
-                                    evidence_readings=tuple(r.index for r in usable)))
+                evidence = tuple(r.index for r in usable if any(
+                    e.start_index <= r.index <= e.end_index for e in mine_events)) or \
+                    tuple(r.index for r in usable)
+                alerts.append(Alert(point.id, "warning", reason, evidence_readings=evidence))
             if faulty_frames:
                 model = next(v.label.model for v in images if v.label.value == "faulty")
                 reason = (f"{len(faulty_frames)} of {len(images)} frames labelled "

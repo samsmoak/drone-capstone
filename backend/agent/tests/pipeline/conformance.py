@@ -15,6 +15,7 @@ These are the rules marked [checked] in docs/handoffs/sprint-1/done/dpp-contract
 
 from __future__ import annotations
 
+from cropwatcher.pipeline.stages.classify.blocks import BlocksClassifier
 from cropwatcher.pipeline.stages.classify.stub import StubClassifier
 from cropwatcher.pipeline.stages.clean.robust import RobustCleaner
 from cropwatcher.pipeline.stages.clean.stub import StubCleaner
@@ -25,5 +26,5 @@ from cropwatcher.pipeline.stages.enhance.stub import StubEnhancer
 CLEANERS = [StubCleaner, RobustCleaner]
 #: Every enhancer, checked against the contract.
 ENHANCERS = [StubEnhancer, ClaheEnhancer]
-#: Add your classifier here (Reagan).
-CLASSIFIERS = [StubClassifier]
+#: Every classifier, checked against the contract.
+CLASSIFIERS = [StubClassifier, BlocksClassifier]

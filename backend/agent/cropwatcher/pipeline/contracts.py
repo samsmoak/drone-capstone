@@ -244,7 +244,9 @@ class Segment:
 
 @dataclass(frozen=True)
 class Event:
-    """A block the classifier says departs from what was expected."""
+    """A stretch the classifier says departs from what was expected: one block,
+    or adjacent blocks that depart the same way (a ramp up and down is a
+    staircase of blocks, and one event)."""
 
     signal: Signal
     unit: str
@@ -255,8 +257,9 @@ class Event:
     direction: Literal["rise", "drop"]
     observed: float                         # the block's mean
     expected: float                         # what was expected over it
-    delta: float                            # observed − expected
+    delta: float                            # observed − expected, over the event
     z: float                                # |delta| in noise units
+    peak: float                             # the largest block's departure, signed
     slope_per_s: float                      # within the block
     point_ids: tuple[str, ...]              # inspection points it overlaps
     x_m: float | None                       # mean position, when measured

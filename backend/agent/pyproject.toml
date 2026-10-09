@@ -42,6 +42,9 @@ dev = [
     "httpx>=0.27",
     "ruff>=0.7",
     "mypy>=1.13",
+    # The classifier's PELT is checked against this reference implementation
+    # (tests/pipeline/test_classify.py). Tests only — never shipped.
+    "ruptures>=1.1",
 ]
 # Freezing the agent into the desktop app's sidecar (packaging/build_sidecar.py).
 # One declaration, so `node scripts/setup.mjs` and CI install the same thing.

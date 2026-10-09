@@ -86,9 +86,11 @@ class TestRunning:
     def test_the_whole_flight_gets_a_result_per_point(self, tmp_path):
         result, where = run(tmp_path)
         assert [p.point_id for p in result.points] == ["P1", "P2", "P3"]
-        assert all(p.verdict == "insufficient_data" for p in result.points)
+        # A real flight's readings: nothing departs from expected at P1 and P2;
+        # P3 was never reached.
+        assert [p.verdict for p in result.points] == ["normal", "normal", "insufficient_data"]
         assert result.stages == {"clean": "robust@1", "enhance": "clahe@1",
-                                 "classify": "stub@0", "interpret": "labels@2"}
+                                 "classify": "blocks@1", "interpret": "labels@2"}
         assert result.pipeline_version == "2"
         saved = json.loads(Path(where).read_text())
         assert saved["flight_id"] == FLIGHT

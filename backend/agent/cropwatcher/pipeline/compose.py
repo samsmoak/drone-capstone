@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from cropwatcher.pipeline.contracts import Classifier, Cleaner, Enhancer, Interpreter
-from cropwatcher.pipeline.stages.classify.stub import StubClassifier
+from cropwatcher.pipeline.stages.classify.blocks import BlocksClassifier
 from cropwatcher.pipeline.stages.clean.robust import RobustCleaner
 from cropwatcher.pipeline.stages.enhance.clahe import ClaheEnhancer
 from cropwatcher.pipeline.stages.interpret.labels import LabelInterpreter
@@ -36,6 +36,6 @@ def default_stages() -> Stages:
     return Stages(
         cleaner=RobustCleaner(),          # replaced hampel@1 (Kevin) on 2026-10-09
         enhancer=ClaheEnhancer(),         # contrast, not resolution: ml/enhance-eval/RESULTS.txt
-        classifier=StubClassifier(),      # Reagan: docs/handoffs/sprint-1/undone/dpp-classify.txt
+        classifier=BlocksClassifier(),    # blocks against expected: ml/anomaly-eval/
         interpreter=LabelInterpreter(),   # Samuel
     )
