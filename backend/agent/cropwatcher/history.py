@@ -319,6 +319,28 @@ def read_samples(
     return rows
 
 
+#: Processing states a closed app can leave behind: the flight was waiting,
+#: queued or being processed when the agent stopped.
+INTERRUPTED = ("pending", "queued", "running")
+
+
+def interrupted_flights(*, root: Path | None = None) -> list[str]:
+    """Flights on this laptop whose processing never finished — the app closed
+    first. Oldest first. A flight that FAILED is not among them: it failed for
+    a reason, and running it again unasked would fail the same way each time
+    the app starts; the operator can process it again from the app."""
+    found: list[tuple[str, str]] = []
+    for meta_file in (root or sessions_dir()).glob("*/meta.json"):
+        try:
+            raw = json.loads(meta_file.read_text())
+        except (OSError, ValueError):
+            continue
+        for flight in raw.get("flights") or []:
+            if flight.get("processing") in INTERRUPTED and flight.get("id"):
+                found.append((str(flight.get("started_at") or ""), str(flight["id"])))
+    return [flight_id for _, flight_id in sorted(found)]
+
+
 def set_flight_processing(flight_id: str, state: str, error: str | None = None, *,
                           root: Path | None = None) -> bool:
     """Record a flight's processing state in whichever CLOSED session holds it.
