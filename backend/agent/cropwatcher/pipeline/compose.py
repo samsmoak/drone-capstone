@@ -13,7 +13,7 @@ from cropwatcher.pipeline.contracts import Classifier, Cleaner, Enhancer, Interp
 from cropwatcher.pipeline.stages.classify.blocks import BlocksClassifier
 from cropwatcher.pipeline.stages.clean.robust import RobustCleaner
 from cropwatcher.pipeline.stages.enhance.clahe import ClaheEnhancer
-from cropwatcher.pipeline.stages.interpret.labels import LabelInterpreter
+from cropwatcher.pipeline.stages.interpret.findings import FindingInterpreter
 
 
 @dataclass(frozen=True)
@@ -37,5 +37,5 @@ def default_stages() -> Stages:
         cleaner=RobustCleaner(),          # replaced hampel@1 (Kevin) on 2026-10-09
         enhancer=ClaheEnhancer(),         # contrast, not resolution: ml/enhance-eval/RESULTS.txt
         classifier=BlocksClassifier(),    # blocks against expected: ml/anomaly-eval/
-        interpreter=LabelInterpreter(),   # Samuel
+        interpreter=FindingInterpreter(), # events → findings and verdicts
     )
