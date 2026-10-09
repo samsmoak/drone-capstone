@@ -14,7 +14,19 @@ import { PhotoViewer, type ViewerPhoto } from "@/components/media/PhotoViewer";
  * during the session and uploaded two a second to the private flight-frames
  * bucket (backend/agent/cropwatcher/camera/recording.py). Each carries its time
  * in the session and the drone's position when it was taken.
+ *
+ * With the data pipeline's ENHANCED copies (clahe@1 — contrast for dark
+ * frames, nothing drawn that was not there), a switch shows the originals,
+ * the enhanced copies, or both side by side. An enhanced image is always
+ * labelled as one: it is easier to read, and it is not what the camera saw.
  */
+
+type View = "original" | "enhanced" | "both";
+const VIEWS: { key: View; label: string }[] = [
+  { key: "original", label: "Original" },
+  { key: "enhanced", label: "Enhanced" },
+  { key: "both", label: "Side by side" },
+];
 
 function clock(seconds: number | null): string | null {
   if (seconds === null || !Number.isFinite(seconds)) return null;
@@ -30,7 +42,12 @@ function describe(frame: SessionFrame): string {
   return [`Frame ${frame.seq}`, at, where].filter(Boolean).join(" · ");
 }
 
-export function FrameGallery({ frames }: { frames: SessionFrame[] }) {
+export function FrameGallery({ frames, enhanced = {} }: {
+  frames: SessionFrame[];
+  /** Frame seq → a link to its enhanced copy. */
+  enhanced?: Record<number, string>;
+}) {
+  const [view, setView] = useState<View>("original");
   const [at, setAt] = useState(0);
   const [all, setAll] = useState(false);
   const [viewing, setViewing] = useState<number | null>(null);
@@ -47,8 +64,13 @@ export function FrameGallery({ frames }: { frames: SessionFrame[] }) {
 
   const count = frames.length;
   const current = frames[at];
+  const enhancedCount = frames.filter((f) => enhanced[f.seq]).length;
+  const showEnhanced = view === "enhanced";
+  const src = (f: SessionFrame) => (showEnhanced ? enhanced[f.seq] ?? f.url : f.url);
+  const isEnhanced = (f: SessionFrame) => showEnhanced && Boolean(enhanced[f.seq]);
   const photos: ViewerPhoto[] = frames.map((f) => ({
-    src: f.url, alt: `Camera frame ${f.seq}`, caption: describe(f), unoptimized: true,
+    src: src(f), alt: `Camera frame ${f.seq}${isEnhanced(f) ? ", enhanced" : ""}`,
+    caption: `${describe(f)}${isEnhanced(f) ? " · ENHANCED (contrast)" : ""}`, unoptimized: true,
   }));
   const open = (i: number, from: HTMLElement) => { openedFrom.current = from; setViewing(i); };
   const step = (delta: number) => setAt((i) => (i + delta + count) % count);
@@ -62,6 +84,18 @@ export function FrameGallery({ frames }: { frames: SessionFrame[] }) {
           <span className="font-semibold">{count}</span> frame{count === 1 ? "" : "s"}
           <span className="text-[var(--muted)]"> · two a second, from the drone&apos;s camera</span>
         </p>
+        {enhancedCount > 0 && (
+          <div role="group" aria-label="Which frames to show" className="inline-flex rounded-lg border border-[var(--border)]">
+            {VIEWS.map((v) => (
+              <button key={v.key} type="button" onClick={() => setView(v.key)}
+                      aria-pressed={view === v.key}
+                      className={`inline-flex min-h-11 items-center px-3 text-sm font-medium first:rounded-l-lg last:rounded-r-lg ${
+                        view === v.key ? "bg-[var(--primary)] text-[var(--on-primary)]" : "hover:bg-[var(--surface-2)]"}`}>
+                {v.label}
+              </button>
+            ))}
+          </div>
+        )}
         <button
           type="button"
           onClick={() => setAll((v) => !v)}
@@ -82,7 +116,7 @@ export function FrameGallery({ frames }: { frames: SessionFrame[] }) {
                 aria-label={`View ${describe(f)} full screen`}
                 className="group relative block aspect-[4/3] w-full cursor-zoom-in overflow-hidden rounded-lg bg-black ring-1 ring-[var(--border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
               >
-                <Image src={f.url} alt="" fill unoptimized sizes="16vw"
+                <Image src={src(f)} alt="" fill unoptimized sizes="16vw"
                        className="object-contain transition-transform duration-300 group-hover:scale-105" />
                 <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 font-mono text-[10px] text-white">
                   {f.seq}
@@ -93,8 +127,33 @@ export function FrameGallery({ frames }: { frames: SessionFrame[] }) {
         </ul>
       ) : (
         <>
+          {/* Side by side: the original beside its enhanced copy. */}
+          {view === "both" && (
+            <div className="grid max-w-5xl gap-3 sm:grid-cols-2">
+              {(["original", "enhanced"] as const).map((which) => {
+                const url = which === "original" ? current.url : enhanced[current.seq];
+                return (
+                  <figure key={which} className="m-0">
+                    <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl bg-black">
+                      {url ? (
+                        <Image src={url} alt={`Camera frame ${current.seq}, ${which}`} fill unoptimized
+                               sizes="(max-width: 640px) 100vw, 50vw" className="object-contain" />
+                      ) : (
+                        <p className="absolute inset-0 flex items-center justify-center p-4 text-center text-sm text-white">
+                          No enhanced copy of this frame.
+                        </p>
+                      )}
+                    </div>
+                    <figcaption className="mt-1 text-xs font-semibold">
+                      {which === "original" ? "Original — what the camera saw" : "Enhanced — contrast, nothing added"}
+                    </figcaption>
+                  </figure>
+                );
+              })}
+            </div>
+          )}
           {/* The carousel: one frame, large, never cropped. */}
-          <figure>
+          <figure className={view === "both" ? "hidden" : undefined}>
             <div className="relative aspect-[4/3] w-full max-w-3xl overflow-hidden rounded-xl bg-black">
               <button
                 type="button"
@@ -102,8 +161,8 @@ export function FrameGallery({ frames }: { frames: SessionFrame[] }) {
                 aria-label={`View ${describe(current)} full screen`}
                 className="absolute inset-0 cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
               >
-                <Image src={current.url} alt={`Camera frame ${current.seq}`} fill unoptimized
-                       sizes="(max-width: 768px) 100vw, 768px" className="object-contain" />
+                <Image src={src(current)} alt={`Camera frame ${current.seq}${isEnhanced(current) ? ", enhanced" : ""}`}
+                       fill unoptimized sizes="(max-width: 768px) 100vw, 768px" className="object-contain" />
               </button>
               {count > 1 && (
                 <>
@@ -120,11 +179,19 @@ export function FrameGallery({ frames }: { frames: SessionFrame[] }) {
               <span className="absolute right-3 top-3 rounded bg-black/60 px-2 py-1 font-mono text-xs text-white">
                 {at + 1} / {count}
               </span>
+              {isEnhanced(current) && (
+                <span className="absolute left-3 top-3 rounded bg-black/70 px-2 py-1 text-xs font-semibold text-white">
+                  Enhanced
+                </span>
+              )}
             </div>
             <figcaption className="mt-2 font-mono text-xs text-[var(--muted)]">{describe(current)}</figcaption>
           </figure>
 
           {/* Every frame, small — jump anywhere without paging. */}
+          {view === "both" && (
+            <p className="font-mono text-xs text-[var(--muted)]">{describe(current)}</p>
+          )}
           {count > 1 && (
             <ol className="flex gap-2 overflow-x-auto [contain:paint] pb-2" aria-label="All frames">
               {frames.map((f, i) => (
@@ -138,7 +205,7 @@ export function FrameGallery({ frames }: { frames: SessionFrame[] }) {
                       i === at ? "ring-2 ring-[var(--primary)]" : "opacity-70 ring-1 ring-[var(--border)] hover:opacity-100"
                     }`}
                   >
-                    <Image src={f.url} alt="" fill unoptimized sizes="76px" className="object-contain" />
+                    <Image src={src(f)} alt="" fill unoptimized sizes="76px" className="object-contain" />
                   </button>
                 </li>
               ))}
