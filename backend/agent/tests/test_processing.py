@@ -104,7 +104,7 @@ def rig(tmp_path, monkeypatch):
     link = FakeLink()
     events: list[tuple[str, dict]] = []
     outbox = Outbox(tmp_path / "outbox")
-    queue = ProcessingQueue(command=succeeds)
+    queue = ProcessingQueue(command=succeeds, session_command=succeeds)
     session = Session(cloud=cloud, outbox=outbox, link_factory=lambda: link,
                       publish=lambda kind, payload: events.append((kind, payload)),
                       processing=queue)
@@ -386,3 +386,58 @@ class TestProcessAll:
         capsys.readouterr()
         assert cli.main(["process", "--all"]) == 0
         assert "processed 0" in capsys.readouterr().out
+
+
+class TestTheSessionItself:
+    """The session is processed too — its samples around the flights — when it
+    ends with the DPP switch on, in Manual as in Auto (the owner, 2026-10-09)."""
+
+    def test_a_session_job_runs_the_session_command(self):
+        ran: list[str] = []
+
+        def session_command(session_id: str) -> list[str]:
+            ran.append(session_id)
+            return succeeds(session_id)
+
+        queue = ProcessingQueue(command=fails, session_command=session_command)
+        job = queue.submit("s-1", kind="session")
+        assert job.kind == "session"
+        assert queue.wait_idle()
+        assert queue.job("s-1").state == JobState.DONE and ran == ["s-1"]
+
+    def test_an_unknown_kind_is_refused(self):
+        with pytest.raises(ValueError, match="kind"):
+            ProcessingQueue(command=succeeds).submit("s-1", kind="mission")
+
+    def test_ending_a_session_with_dpp_on_processes_it(self, rig):
+        start_and_confirm(rig, Mode.MANUAL)
+        rig.session.set_processing(True)
+        session_id = rig.session.snapshot().session_id
+        folder = rig.session.history.folder
+        rig.session.end()
+        assert rig.queue.wait_idle()
+        job = rig.queue.job(session_id)
+        assert job is not None and job.kind == "session" and job.state == JobState.DONE
+        assert wait_for(lambda: json.loads((folder / "meta.json").read_text())
+                        .get("processing") == "done")
+
+    def test_ending_a_session_with_dpp_off_does_not(self, rig):
+        start_and_confirm(rig, Mode.MANUAL)
+        session_id = rig.session.snapshot().session_id
+        rig.session.set_processing(False)
+        rig.session.end()
+        assert rig.queue.wait_idle()
+        assert rig.queue.job(session_id) is None
+
+    def test_unfinished_sessions_are_found_and_resumed(self, rig, tmp_path):
+        for name, state, ended in (("s-old", "running", True), ("s-done", "done", True),
+                                   ("s-open", "queued", False), ("s-failed", "failed", True)):
+            folder = tmp_path / "sessions" / name
+            folder.mkdir(parents=True)
+            (folder / "meta.json").write_text(json.dumps({
+                "id": name, "started_at": "2026-10-09T08:00:00Z", "flights": [],
+                "ended_at": "2026-10-09T08:10:00Z" if ended else None, "processing": state}))
+        assert history.interrupted_sessions(root=tmp_path / "sessions") == ["s-old"]
+        assert "s-old" in rig.session.resume_processing()
+        assert rig.queue.wait_idle()
+        assert rig.queue.job("s-old").kind == "session"

@@ -21,6 +21,11 @@ not measured is at most info: a climb would look the same.
 
 WORDS come from fixed templates filled with the event's numbers — exact,
 testable, and nothing an operator reads was made up.
+
+A SESSION'S GROUND STRETCHES (ctx.scope "session", stages/classify/ground.py)
+are said as such: "on the ground", against the sensor's own trend there — never
+a cooling curve, an inspection point or a height (on the ground z is the
+floor's Lighthouse height, not a height above it).
 """
 
 from __future__ import annotations
@@ -101,7 +106,11 @@ def finding_id(flight_id: str, event: Event) -> str:
                           f"{flight_id}:{event.signal}:{event.start_index}:{event.end_index}"))
 
 
-def _where(event: Event) -> str:
+def _where(event: Event, ground: bool = False) -> str:
+    if ground:
+        if event.x_m is not None and event.y_m is not None:
+            return f"on the ground at ({event.x_m:.2f}, {event.y_m:.2f}) m"
+        return "on the ground (position not measured)"
     points = event.point_ids
     if len(points) == 1:
         near = f"near {points[0]}"
@@ -114,9 +123,10 @@ def _where(event: Event) -> str:
     return f"{near} (position not measured)"
 
 
-def _title(event: Event) -> str:
-    place = f" near {event.point_ids[0]}" if len(event.point_ids) == 1 else (
-        " between points" if not event.point_ids else f" at {', '.join(event.point_ids)}")
+def _title(event: Event, ground: bool = False) -> str:
+    place = " on the ground" if ground else (
+        f" near {event.point_ids[0]}" if len(event.point_ids) == 1 else (
+            " between points" if not event.point_ids else f" at {', '.join(event.point_ids)}"))
     if event.signal == "temperature":
         return ("Warmer" if event.direction == "rise" else "Cooler") + " than expected" + place
     return "Pressure " + ("higher" if event.direction == "rise" else "lower") + \
@@ -132,18 +142,23 @@ def _beyond_noise(z: float) -> str:
     return "far beyond its noise" if z >= FAR_BEYOND_NOISE else f"{z:.0f}× its noise"
 
 
-def _sentence(event: Event, height_measured: bool) -> str:
+def _sentence(event: Event, height_measured: bool, ground: bool = False) -> str:
     sym = _symbol(event.unit)
     word = "above" if event.direction == "rise" else "below"
     held = event.t_end_s - event.t_start_s
-    when = f"From {_clock(event.t_start_s)} to {_clock(event.t_end_s)}, {_where(event)}"
+    when = (f"From {_clock(event.t_start_s)} to {_clock(event.t_end_s)} into the session, "
+            f"{_where(event, True)}") if ground else \
+        f"From {_clock(event.t_start_s)} to {_clock(event.t_end_s)}, {_where(event)}"
     if event.signal == "temperature":
-        what = (f"the temperature sensor read {abs(event.peak):.1f} {sym} {word} the drone's "
-                f"normal cooling curve at its peak ({abs(event.delta):.1f} {sym} on average, "
+        trend = ("its own trend there (the board warming or settling)" if ground
+                 else "the drone's normal cooling curve")
+        what = (f"the temperature sensor read {abs(event.peak):.1f} {sym} {word} {trend} at "
+                f"its peak ({abs(event.delta):.1f} {sym} on average, "
                 f"{_beyond_noise(event.z)})")
     else:
-        corrected = "corrected for height" if height_measured else \
-            "NOT corrected for height (not measured — a climb would look the same)"
+        corrected = "as measured (the drone was on the ground)" if ground else (
+            "corrected for height" if height_measured else
+            "NOT corrected for height (not measured — a climb would look the same)")
         what = (f"the station pressure, {corrected}, was {abs(event.peak):.2f} {sym} {word} "
                 f"its trend at its peak ({abs(event.delta):.2f} {sym} on average, "
                 f"{_beyond_noise(event.z)})")
@@ -193,14 +208,15 @@ class FindingInterpreter:
     def interpret(self, data: PointData, clean: CleanResult, enhanced: EnhanceResult,
                   classified: ClassifyResult, ctx: FlightContext) -> InterpretResult:
         measured = _height_measured(classified.tracks)
+        ground = ctx.scope == "session"
         findings = []
         for event in classified.events:
             height_ok = measured or event.signal != "pressure"
             frames, support, note = _frames(event, enhanced, classified)
             findings.append(Finding(
                 id=finding_id(ctx.flight_id, event), signal=event.signal,
-                severity=severity(event, classified.features, height_ok), title=_title(event),
-                sentence=_sentence(event, height_ok),
+                severity=severity(event, classified.features, height_ok),
+                title=_title(event, ground), sentence=_sentence(event, height_ok, ground),
                 start_index=event.start_index, end_index=event.end_index,
                 t_start_s=event.t_start_s, t_end_s=event.t_end_s, unit=event.unit,
                 observed=event.observed, expected=event.expected, delta=event.delta,
@@ -210,14 +226,14 @@ class FindingInterpreter:
         points = ctx.points or (data.point,)
         whole = not ctx.points
         return InterpretResult(
-            points=tuple(_verdict(p, data, clean, classified, findings, whole=whole)
-                         for p in points),
+            points=tuple(_verdict(p, data, clean, classified, findings, whole=whole,
+                                  ground=ground) for p in points),
             findings=tuple(findings))
 
 
 def _verdict(point: InspectionPoint, data: PointData, clean: CleanResult,
              classified: ClassifyResult, findings: Sequence[Finding], *,
-             whole: bool) -> PointResult:
+             whole: bool, ground: bool = False) -> PointResult:
     def mine(point_id: str | None) -> bool:
         return whole or point_id == point.id
 
@@ -243,6 +259,7 @@ def _verdict(point: InspectionPoint, data: PointData, clean: CleanResult,
     if not classified.tracks:
         why = classified.sensors.reason or "the readings could not be analysed"
         return PointResult(point.id, "insufficient_data", (f"Not analysed: {why}.",))
-    reasons = ["Nothing here departed from the drone's normal cooling or the pressure trend."]
+    reasons = ["Nothing on the ground departed from the sensor's own trend." if ground else
+               "Nothing here departed from the drone's normal cooling or the pressure trend."]
     reasons += [f"Slight: {f.sentence}" for f in here]
     return PointResult(point.id, "normal", tuple(reasons))

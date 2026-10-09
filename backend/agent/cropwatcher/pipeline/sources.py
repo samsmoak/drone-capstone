@@ -36,6 +36,7 @@ from typing import Any, Literal, Protocol
 
 from cropwatcher.pipeline.contracts import (
     WHOLE_FLIGHT,
+    WHOLE_SESSION,
     Frame,
     InspectionPoint,
     PointData,
@@ -92,7 +93,7 @@ class FlightSource(Protocol):
 
 
 def _time(value: str) -> datetime:
-    return datetime.fromisoformat(value)
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
 def _number(value: str | None) -> float | None:
@@ -209,3 +210,135 @@ class LocalFlightSource:
             log.warning("the plan flown by %s could not be read (%s); treating the "
                         "flight as one point", flight_id, e)
             return None
+
+
+# ── a whole session (story 4.5, extended 2026-10-09) ─────────────────────
+#
+# THE OWNER'S ASK: "as long as a session is started we process whatever data
+# comes, not only data in flight" — in Auto and in Manual. A session records
+# its own samples once a second from Start session to End session
+# (samples.csv, the same file the web's session vitals come from) and camera
+# frames throughout. The flights have results of their own at ten times the
+# rate; the session's run covers everything around them.
+#
+#   sessions/<id>/samples.csv     one row a second: the stream variables
+#   sessions/<id>/meta.json       its flights' start and end
+#   sessions/<id>/frames.csv      the camera, the whole session
+
+#: A reading this close to a flight's start or end belongs to it (clock skew
+#: between the sample writer and the flight recorder).
+FLIGHT_EDGE_S = 1.0
+#: Motors at or above this thrust are flying whatever the history says — the
+#: armed idle of Manual is below it.
+FLYING_THRUST = 20000.0
+
+
+class SessionNotFound(LookupError):
+    """No samples for that session on this computer."""
+
+
+@dataclass(frozen=True)
+class LoadedSession:
+    session_id: str
+    started_at: datetime
+    #: Every sample of the session, and every frame taken outside its flights,
+    #: as one point ("session"). Each reading's text["phase"] says "ground" or
+    #: "flying".
+    whole: PointData
+    #: (start, end) of each flight flown, from the session's history.
+    flights: tuple[tuple[datetime, datetime | None], ...] = ()
+
+
+def session_values(cells: dict[str, str]) -> dict[str, float | None]:
+    """A samples.csv row's numbers under the flight CSV's names, so the stages
+    read a session exactly as they read a flight (sync/samples.py COLUMNS)."""
+    from cropwatcher.sync.samples import COLUMNS
+
+    values: dict[str, float | None] = {
+        column: _number(cells.get(stream)) for column, stream in COLUMNS.items()}
+    values["lighthouse_received"] = _number(cells.get("lighthouse.bsReceive"))
+    values["height_m"] = _number(cells.get("height_m"))
+    return values
+
+
+class LocalSessionSource:
+    """A session recorded by the agent on this laptop."""
+
+    def __init__(self, data_root: Path) -> None:
+        self.root = data_root
+
+    def load(self, session_id: str) -> LoadedSession:
+        folder = self.root / "sessions" / session_id
+        samples = folder / "samples.csv"
+        if not samples.exists():
+            raise SessionNotFound(f"No samples for session {session_id} on this computer.")
+        rows = [r for r in LocalFlightSource._rows(samples) if r.get("recorded_at")]
+        if not rows:
+            raise SessionNotFound(f"Session {session_id} recorded no samples.")
+        flights = self._flights(folder)
+        started = _time(rows[0]["recorded_at"])
+        readings = []
+        for seq, row in enumerate(rows, start=1):
+            at = _time(row["recorded_at"])
+            values = session_values(row)
+            readings.append(Reading(
+                index=seq, recorded_at=at, t_s=(at - started).total_seconds(),
+                values=values, point_id=None,
+                text={"mode": row.get("mode") or "",
+                      "phase": "flying" if self._flying(at, values, flights) else "ground"}))
+        frames = tuple(f for f in self._frames(folder, started)
+                       if not self._flying(f.recorded_at, {}, flights))
+        whole = PointData(InspectionPoint(WHOLE_SESSION, "the session", 0.0, 0.0, 0.0),
+                          tuple(readings), frames)
+        return LoadedSession(session_id, started, whole, flights)
+
+    @staticmethod
+    def _flights(folder: Path) -> tuple[tuple[datetime, datetime | None], ...]:
+        try:
+            meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return ()
+        out = []
+        for f in meta.get("flights") or []:
+            try:
+                start = _time(str(f["started_at"]))
+            except (KeyError, ValueError):
+                continue
+            end = f.get("ended_at")
+            try:
+                out.append((start, _time(str(end)) if end else None))
+            except ValueError:
+                out.append((start, None))
+        return tuple(out)
+
+    @staticmethod
+    def _flying(at: datetime, values: dict[str, float | None],
+                flights: tuple[tuple[datetime, datetime | None], ...]) -> bool:
+        thrust = values.get("thrust")
+        if thrust is not None and thrust >= FLYING_THRUST:
+            return True
+        for start, end in flights:
+            if end is None:
+                continue        # never closed (the app quit): the thrust decides
+            if (start - at).total_seconds() <= FLIGHT_EDGE_S \
+                    and (at - end).total_seconds() <= FLIGHT_EDGE_S:
+                return True
+        return False
+
+    @staticmethod
+    def _frames(folder: Path, started: datetime) -> list[Frame]:
+        index = folder / "frames.csv"
+        if not index.exists():
+            return []
+        found: list[Frame] = []
+        for row in LocalFlightSource._rows(index):
+            try:
+                at = _time(row["recorded_at"])
+                found.append(Frame(
+                    seq=int(row["seq"]), recorded_at=at, t_s=(at - started).total_seconds(),
+                    path=folder / row["file"], width=int(row["width"]),
+                    height=int(row["height"]), x_m=_number(row.get("x_m")),
+                    y_m=_number(row.get("y_m")), z_m=_number(row.get("z_m")), point_id=None))
+            except (KeyError, ValueError):
+                log.warning("skipping an unreadable row of %s", index)
+        return sorted(found, key=lambda frame: frame.seq)

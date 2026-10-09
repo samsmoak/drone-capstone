@@ -59,7 +59,7 @@ from cropwatcher.pipeline.contracts import (
     StageFailure,
 )
 from cropwatcher.pipeline.sinks import ResultSink
-from cropwatcher.pipeline.sources import FlightSource
+from cropwatcher.pipeline.sources import FlightSource, LocalSessionSource
 
 log = logging.getLogger(__name__)
 
@@ -148,6 +148,7 @@ def run_stages(data: PointData, ctx: FlightContext,
             tracks=classified.tracks if classified else (),
             segments=classified.segments if classified else (),
             frames=_frames(enhanced, classified, ctx) if enhanced and classified else (),
+            scope=ctx.scope,
         )
 
     # ── clean ────────────────────────────────────────────────────────────
@@ -213,4 +214,24 @@ def run_flight(flight_id: str, *, source: FlightSource, sink: ResultSink,
         points=flight.plan,
     )
     result, _ = run_stages(flight.whole, ctx, stages)
+    return result, sink.save(result)
+
+
+#: A session's samples come once a second (sync/samples.py, the 1 Hz writer).
+SESSION_PERIOD_S = 1.0
+
+
+def run_session(session_id: str, *, source: LocalSessionSource, sink: ResultSink,
+                stages: Stages) -> tuple[FlightResult, str]:
+    """The session around its flights — its one-a-second samples and the frames
+    taken outside its flights — through every stage once. The result carries
+    scope "session" and the session's id in flight_id."""
+    session = source.load(session_id)
+    ctx = FlightContext(
+        flight_id=session.session_id, session_id=session.session_id, temp_unit="C",
+        ground_z_m=None, started_at=session.started_at,
+        workdir=sink.workdir(session.session_id), mode="batch", points=(),
+        scope="session", period_s=SESSION_PERIOD_S,
+    )
+    result, _ = run_stages(session.whole, ctx, stages)
     return result, sink.save(result)

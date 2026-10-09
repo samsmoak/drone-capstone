@@ -30,6 +30,12 @@ from typing import Any, Literal, Protocol
 #: A flight flown without a mission is one inspection point with this id, and
 #: the whole flight handed to a stage carries it too.
 WHOLE_FLIGHT = "flight"
+#: A session processed as a whole (its one-a-second readings, on the ground and
+#: between flights) is one point with this id.
+WHOLE_SESSION = "session"
+#: What a run covers: one flight (10 readings a second, airborne), or the
+#: session around its flights (1 a second, the drone on the ground).
+Scope = Literal["flight", "session"]
 
 
 class StageError(RuntimeError):
@@ -61,6 +67,13 @@ class FlightContext:
     #: The inspection points of the mission flown, in order; () when the
     #: flight flew no mission.
     points: tuple[InspectionPoint, ...] = ()
+    #: "session": flight_id holds the SESSION's id, the readings are its
+    #: one-a-second samples, and only the stretches on the ground are analysed
+    #: for events (the flights have results of their own).
+    scope: Scope = "flight"
+    #: Seconds between readings when nothing is lost: 0.1 for a flight, 1.0 for
+    #: a session. The cleaner's gap limit is measured in these.
+    period_s: float = 0.1
 
 
 @dataclass(frozen=True)
@@ -392,3 +405,5 @@ class FlightResult:
     tracks: tuple[Track, ...] = ()
     segments: tuple[Segment, ...] = ()
     frames: tuple[FrameRecord, ...] = ()
+    #: "session": flight_id is the session's id (see FlightContext.scope).
+    scope: Scope = "flight"

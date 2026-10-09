@@ -100,6 +100,23 @@ BATTERY_STEP_V = 1.0
 #: after that the estimate has settled somewhere new and becomes the reference.
 PLAUSIBLE_HORIZON_S = 0.5
 
+# A SESSION'S SAMPLES COME ONCE A SECOND, not ten times (FlightContext.period_s).
+# The gap limit is 2.5 periods at either rate — measured on 141 real sessions
+# (30 591 readings): median period 1.002 s, 99.9 % under 1.44 s
+# (ml/session-eval/MEASUREMENTS.txt, "Timing"). The plausibility horizon is at
+# least 2.5 periods too, or a 1 Hz reading would never have a neighbour close
+# enough to be compared with. Counted limits (WINDOW, STUCK_SAMPLES) stay in
+# readings: no value repeats more than twice in a row at 1 Hz either.
+
+
+def gap_limit_s(period_s: float) -> float:
+    """More than this between two readings is time lost."""
+    return 2.5 * period_s
+
+
+def plausible_horizon_s(period_s: float) -> float:
+    return max(PLAUSIBLE_HORIZON_S, 2.5 * period_s)
+
 #: How a check records a flag: index, column (None = whole row), kind, reason.
 Flag = Callable[[int, str | None, FlagKind, str], None]
 
@@ -156,7 +173,9 @@ class RobustCleaner:
             if key not in found or PRIORITY[kind] < PRIORITY[found[key].kind]:
                 found[key] = new
 
-        segments = _segments(readings, flag)
+        period = ctx.period_s if ctx.period_s > 0 else EXPECTED_PERIOD_S
+        horizon = plausible_horizon_s(period)
+        segments = _segments(readings, flag, gap_limit_s(period))
         present = {c for r in readings for c in r.values}
         bad: dict[str, set[int]] = {}
         for column in SENSORS:
@@ -169,9 +188,9 @@ class RobustCleaner:
             # No sensor value to hold it against: judged on its own values.
             _check_sensor(CORRECTED_TEMP, readings, segments, ctx.temp_unit, flag)
         if all(c in present for c in POSITION):
-            _check_position(readings, flag)
+            _check_position(readings, flag, horizon)
         if BATTERY in present:
-            _check_battery(readings, flag)
+            _check_battery(readings, flag, horizon)
 
         flags = sorted(found.values(), key=lambda f: (f.index, f.column or ""))
         return CleanResult(readings=readings, flags=tuple(flags))
@@ -185,7 +204,7 @@ def _value(r: Reading, column: str) -> float:
     return float("nan") if v is None else float(v)
 
 
-def _segments(readings: Sequence[Reading], flag: Flag) -> list[range]:
+def _segments(readings: Sequence[Reading], flag: Flag, gap_s: float = GAP_S) -> list[range]:
     """Positions of each stretch with no lost time between, flagging the first
     reading after every gap. A spike window never reaches across lost time."""
     starts = [0]
@@ -193,7 +212,7 @@ def _segments(readings: Sequence[Reading], flag: Flag) -> list[range]:
         prev, cur = readings[i - 1], readings[i]
         dt = cur.t_s - prev.t_s
         lost = cur.index - prev.index - 1
-        if dt > GAP_S or lost > 0:
+        if dt > gap_s or lost > 0:
             if lost > 0:
                 rows = f"reading {prev.index + 1}" if lost == 1 else \
                     f"readings {prev.index + 1}–{cur.index - 1}"
@@ -201,7 +220,7 @@ def _segments(readings: Sequence[Reading], flag: Flag) -> list[range]:
                           f"({dt:.2f} s apart): rows were lost.")
             else:
                 reason = (f"{dt:.2f} s between readings {prev.index} and {cur.index} "
-                          f"(limit {GAP_S:.2f} s): telemetry stopped arriving.")
+                          f"(limit {gap_s:.2f} s): telemetry stopped arriving.")
             flag(cur.index, None, "gap", reason)
             starts.append(i)
     ends = [*starts[1:], len(readings)]
@@ -357,7 +376,8 @@ def _check_corrected(readings: Sequence[Reading], segments: Sequence[range], uni
                      f"spiked.")
 
 
-def _check_position(readings: Sequence[Reading], flag: Flag) -> None:
+def _check_position(readings: Sequence[Reading], flag: Flag,
+                    horizon_s: float = PLAUSIBLE_HORIZON_S) -> None:
     """untrusted (no base station), out_of_range, implausible (faster than the
     flight guard believes a drone can move)."""
     good: tuple[float, float, float, float] | None = None       # t, x, y, z
@@ -386,7 +406,7 @@ def _check_position(readings: Sequence[Reading], flag: Flag) -> None:
         if good is not None:
             t0, x0, y0, z0 = good
             dt = r.t_s - t0
-            if 0 < dt <= PLAUSIBLE_HORIZON_S:
+            if 0 < dt <= horizon_s:
                 speed = math.dist((x, y, z), (x0, y0, z0)) / dt
                 if speed > MAX_PLAUSIBLE_SPEED_M_S:
                     for c in POSITION:
@@ -398,7 +418,8 @@ def _check_position(readings: Sequence[Reading], flag: Flag) -> None:
         good = (r.t_s, x, y, z)
 
 
-def _check_battery(readings: Sequence[Reading], flag: Flag) -> None:
+def _check_battery(readings: Sequence[Reading], flag: Flag,
+                   horizon_s: float = PLAUSIBLE_HORIZON_S) -> None:
     """missing, out_of_range, implausible (a step no load change makes). Never
     stuck: pm.vbat repeats for up to 28 readings in a real flight."""
     good: tuple[float, float] | None = None                       # t, volts
@@ -412,7 +433,7 @@ def _check_battery(readings: Sequence[Reading], flag: Flag) -> None:
                  f"{BATTERY} {v:.2f} V is not a one-cell battery's voltage "
                  f"({BATTERY_LOW_V:.1f} to {BATTERY_HIGH_V:.1f} V).")
             continue
-        if good is not None and 0 < r.t_s - good[0] <= PLAUSIBLE_HORIZON_S \
+        if good is not None and 0 < r.t_s - good[0] <= horizon_s \
                 and abs(v - good[1]) > BATTERY_STEP_V:
             flag(r.index, BATTERY, "implausible",
                  f"{BATTERY} jumped {v - good[1]:+.2f} V in {r.t_s - good[0]:.2f} s (limit "

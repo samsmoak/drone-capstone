@@ -92,6 +92,24 @@ RHO_DEFAULT = 1.225
 #: uncorrected.
 MIN_HEIGHT_SHARE = 0.5
 MAD_TO_SIGMA = 1.4826
+#: More than this between two readings ends a run: a block never spans lost
+#: time (2.5 periods at 10 Hz, the cleaner's gap limit).
+RUN_GAP_S = 0.25
+
+
+@dataclass(frozen=True)
+class Tuning:
+    """The numbers block-finding runs on. A flight's are this module's
+    constants; a session's ground stretches have their own, measured at 1 Hz
+    (stages/classify/ground.py)."""
+
+    min_block: int = MIN_BLOCK
+    run_gap_s: float = RUN_GAP_S
+    min_event_c: float = MIN_EVENT_C
+    min_event_hpa: float = MIN_EVENT_HPA
+
+
+FLIGHT_TUNING = Tuning()
 
 
 @dataclass(frozen=True)
@@ -313,7 +331,8 @@ def _to_unit(series: Series, celsius: FloatArray | float, *, difference: bool) -
     return np.asarray(x * 9.0 / 5.0 if difference else x * 9.0 / 5.0 + 32.0, dtype=np.float64)
 
 
-def _runs(positions: NDArray[np.intp], readings: Sequence[Reading]) -> list[slice]:
+def _runs(positions: NDArray[np.intp], readings: Sequence[Reading],
+          gap_s: float = RUN_GAP_S) -> list[slice]:
     """Stretches of consecutive readings with no time lost between them, so a
     block never spans a gap or a left-out (flagged) reading."""
     if len(positions) == 0:
@@ -321,14 +340,15 @@ def _runs(positions: NDArray[np.intp], readings: Sequence[Reading]) -> list[slic
     cuts = [0]
     for k in range(1, len(positions)):
         a, b = readings[int(positions[k - 1])], readings[int(positions[k])]
-        if positions[k] != positions[k - 1] + 1 or b.t_s - a.t_s > 0.25:
+        if positions[k] != positions[k - 1] + 1 or b.t_s - a.t_s > gap_s:
             cuts.append(k)
     cuts.append(len(positions))
     return [slice(a, b) for a, b in zip(cuts, cuts[1:], strict=False)]
 
 
 def _analyse(series: Series, readings: Sequence[Reading], clean: CleanResult,
-             ctx: FlightContext) -> tuple[Track, list[Segment], list[Event], dict[str, float]]:
+             ctx: FlightContext, tuning: Tuning = FLIGHT_TUNING,
+             ) -> tuple[Track, list[Segment], list[Event], dict[str, float]]:
     fit = fit_cooling(series.t, series.y) if series.signal == "temperature" \
         else fit_line(series.t, series.y)
     residual = series.y - fit.expected
@@ -337,14 +357,14 @@ def _analyse(series: Series, readings: Sequence[Reading], clean: CleanResult,
     model = fit.model + (f", {series.note}" if series.note else "")
     if series.signal == "temperature":          # the model works in °C
         features = {"temp_noise_c": sigma, "temp_spread_c": spread,
-                    "temp_event_minimum_c": MIN_EVENT_C,
+                    "temp_event_minimum_c": tuning.min_event_c,
                     "temp_settles_at_c": fit.params["settles_at"],
                     "temp_cooling_amplitude_c": fit.params["amplitude"],
                     "temp_tau_s": fit.params["tau_s"],
                     "temp_readings_used": float(len(series.y))}
     else:
         features = {"pressure_noise_hpa": sigma, "pressure_spread_hpa": spread,
-                    "pressure_event_minimum_hpa": MIN_EVENT_HPA,
+                    "pressure_event_minimum_hpa": tuning.min_event_hpa,
                     "pressure_level_hpa": fit.params["level"],
                     "pressure_drift_hpa_per_s": fit.params["slope_per_s"],
                     "pressure_readings_used": float(len(series.y))}
@@ -360,17 +380,17 @@ def _analyse(series: Series, readings: Sequence[Reading], clean: CleanResult,
     events: list[Event] = []
     if sigma <= 0:
         return track, segments, events, features
-    minimum = MIN_EVENT_C if series.signal == "temperature" else MIN_EVENT_HPA
+    minimum = tuning.min_event_c if series.signal == "temperature" else tuning.min_event_hpa
     threshold = max(Z_EVENT * sigma, minimum)
-    for run in _runs(series.positions, readings):
+    for run in _runs(series.positions, readings, tuning.run_gap_s):
         r = residual[run]
-        if len(r) < MIN_BLOCK:
+        if len(r) < tuning.min_block:
             continue        # a stretch between gaps or flags too short to hold a block
         positions = series.positions[run]
         penalty = PEN * sigma * sigma * math.log(max(len(r), 2))
         flagged: list[tuple[int, int, float]] = []      # start, end, level
         start = 0
-        for end in pelt(r, penalty, MIN_BLOCK):
+        for end in pelt(r, penalty, tuning.min_block):
             first, last = readings[int(positions[start])], readings[int(positions[end - 1])]
             level = float(r[start:end].mean())
             segments.append(Segment(series.signal, first.index, last.index, first.t_s,

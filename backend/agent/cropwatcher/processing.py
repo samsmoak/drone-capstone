@@ -55,14 +55,20 @@ class JobState:
     FAILED = "failed"
 
 
+#: What a job processes: one flight, or a session around its flights.
+FLIGHT, SESSION = "flight", "session"
+
+
 @dataclass
 class Job:
+    #: The flight's id — or, for a session job (kind "session"), the session's.
     flight_id: str
     state: str = JobState.QUEUED
     queued_at: str = ""
     finished_at: str | None = None
     #: Why it failed, in words; None otherwise.
     error: str | None = None
+    kind: str = FLIGHT
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -72,11 +78,20 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def _cli(*args: str) -> list[str]:
+    if getattr(sys, "frozen", False):
+        return [sys.executable, *args]
+    return [sys.executable, "-m", "cropwatcher.cli", *args]
+
+
 def default_command(flight_id: str) -> list[str]:
     """The pipeline command for one flight, frozen or from source."""
-    if getattr(sys, "frozen", False):
-        return [sys.executable, "process", "--flight", flight_id]
-    return [sys.executable, "-m", "cropwatcher.cli", "process", "--flight", flight_id]
+    return _cli("process", "--flight", flight_id)
+
+
+def default_session_command(session_id: str) -> list[str]:
+    """The pipeline command for a session around its flights."""
+    return _cli("process", "--session", session_id)
 
 
 def _lower_priority(process: subprocess.Popen[bytes]) -> None:
@@ -98,9 +113,11 @@ class ProcessingQueue:
 
     def __init__(self, *, on_change: Callable[[Job], None] | None = None,
                  command: Callable[[str], list[str]] = default_command,
+                 session_command: Callable[[str], list[str]] = default_session_command,
                  timeout_s: float = TIMEOUT_S) -> None:
         self._on_change = on_change
         self._command = command
+        self._session_command = session_command
         self._timeout_s = timeout_s
         self._jobs: dict[str, Job] = {}
         self._listeners: dict[str, Callable[[Job], None]] = {}
@@ -112,18 +129,22 @@ class ProcessingQueue:
 
     # ── the queue ────────────────────────────────────────────────────────
 
-    def submit(self, flight_id: str, *, on_change: Callable[[Job], None] | None = None) -> Job:
-        """Queue a flight. Queuing one already queued or running changes
-        nothing; one that finished is run again (its result is replaced)."""
+    def submit(self, flight_id: str, *, on_change: Callable[[Job], None] | None = None,
+               kind: str = FLIGHT) -> Job:
+        """Queue a flight (or, with kind "session", a session). Queuing one
+        already queued or running changes nothing; one that finished is run
+        again (its result is replaced)."""
+        if kind not in (FLIGHT, SESSION):
+            raise ValueError(f"{kind!r} is not a kind of job")
         if not FLIGHT_ID.match(flight_id or ""):
-            raise ValueError(f"{flight_id!r} is not a flight id")
+            raise ValueError(f"{flight_id!r} is not a {kind} id")
         with self._lock:
             if self._closed:
                 raise RuntimeError("the processing queue is closed")
             existing = self._jobs.get(flight_id)
             if existing is not None and existing.state in (JobState.QUEUED, JobState.RUNNING):
                 return existing
-            job = Job(flight_id=flight_id, queued_at=_now())
+            job = Job(flight_id=flight_id, queued_at=_now(), kind=kind)
             self._jobs[flight_id] = job
             if on_change is not None:
                 self._listeners[flight_id] = on_change
@@ -183,23 +204,25 @@ class ProcessingQueue:
                     continue
                 job.state = JobState.RUNNING
             self._changed(job)
-            error = self._run(flight_id)
+            error = self._run(flight_id, job.kind)
             with self._lock:
                 job.state = JobState.FAILED if error else JobState.DONE
                 job.error = error
                 job.finished_at = _now()
             if error:
-                log.warning("processing flight %s failed: %s", flight_id, error)
+                log.warning("processing %s %s failed: %s", job.kind, flight_id, error)
             else:
-                log.info("processed flight %s", flight_id)
+                log.info("processed %s %s", job.kind, flight_id)
             self._changed(job)
 
-    def _run(self, flight_id: str) -> str | None:
-        """Run the pipeline on one flight. None when it succeeded, else why not."""
+    def _run(self, flight_id: str, kind: str = FLIGHT) -> str | None:
+        """Run the pipeline on one flight or session. None when it succeeded,
+        else why not."""
         flags = getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0)
+        command = self._session_command if kind == SESSION else self._command
         try:
             process = subprocess.Popen(
-                self._command(flight_id), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                command(flight_id), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 stdin=subprocess.DEVNULL, creationflags=flags)
         except OSError as e:
             return f"The pipeline could not be started: {e.strerror or e}."

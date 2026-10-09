@@ -1,0 +1,68 @@
+SESSION MEASUREMENTS — where every 1 Hz number in the session pipeline comes from
+==================================================================================
+
+The session run (`cropwatcher process --session <id>`, pipeline/runner.py
+run_session) cleans a session's one-a-second samples with robust@1 and judges
+the stretches when the drone sat on the ground with ground@1
+(backend/agent/cropwatcher/pipeline/stages/classify/ground.py). Each constant
+there cites a section here. Change a constant → change its line here, with the
+measurement that justifies it.
+
+STATUS (2026-10-09): measured on the lab laptop's sessions — 179 sessions with
+samples.csv, 141 with at least 30 samples. PROVISIONAL like the flight
+classifier until a real heat source is measured (the hand-warmer flights,
+`cropwatcher calibrate`). The sessions stay on that laptop — the repository is
+public.
+
+    cd backend/agent && .venv/bin/python ../../ml/session-eval/evaluate.py \
+        "<data folder>" [--grid]
+
+
+TIMING
+──────
+  141 sessions, 30 591 samples: period median 1.002 s, p99 1.102 s, p99.9
+  1.441 s (the max, 1 172.8 s, is an app closed and reopened mid-session).
+  → the cleaner's gap limit is 2.5 periods at either rate: 2.5 s at 1 Hz
+    (robust.gap_limit_s); its plausibility horizon is at least 2.5 periods
+    (robust.plausible_horizon_s), or no 1 Hz reading would ever be compared.
+  Longest run of identical values: baro.temp 2, baro.pressure 2.
+  → STUCK_SAMPLES (10 readings) holds at 1 Hz as it does at 10 Hz.
+
+
+GROUND STRETCHES
+────────────────
+  202 ground stretches (readings outside every flight, 10 s trimmed beside
+  each flight); median 16 s long. ≥ 30 s: 67; ≥ 60 s: 43; ≥ 80 s: 33.
+  GROUND_SETTLE_S = 10 s is a choice, not a measurement: the motors spinning
+  up and the board's first seconds after landing are left to the flight's
+  own result.
+
+
+WANDER  (PEN 8, blocks of 10)
+──────
+  Temperature, against each stretch's own first-order curve (warming or
+  settling): 1 098 blocks, |mean| p50 0.035 °C, p99 0.753, max 0.929 °C.
+  Pressure, against each stretch's robust line: 381 blocks, p50 0.019 hPa,
+  p99 0.109, max 0.163 hPa.
+  → MIN_GROUND_EVENT_C = 1.0, MIN_GROUND_EVENT_HPA = 0.2: above the most a
+    normal ground block wanders, as the flight minimums are above a normal
+    flight's (ml/anomaly-eval/MEASUREMENTS.txt). At 0.8 °C (the flight's
+    minimum) one normal session raised an event (98172fce, −0.88 °C).
+
+
+GRID  (243 settings: PEN 6/8/16 × block 10/15/20 × stretch 30/45/60 ×
+       1 °C minimum 0.6/0.8/1.0 × hPa minimum 0.15/0.2/0.3)
+────
+  Planted into the first ground stretch ≥ 80 s of 31 sessions: a bump of
+  1, 2, 3, 5 °C (10 s up, 20 s held, 10 s down) on baro.temp and a step of
+  0.3, 0.5 hPa held 20 s on baro.pressure — 186 events.
+
+  Chosen: PEN 8, block 10, stretch 30, 1.0 °C / 0.2 hPa —
+      false events on 179 normal sessions   0
+      bump 1 °C   8/31     (below the minimum on average, by design)
+      bump 2 °C  31/31     bump 3 °C 31/31     bump 5 °C 31/31
+      step 0.3 hPa 31/31   step 0.5 hPa 31/31
+  Longer blocks (15, 20) find fewer 1 °C bumps (3, 2 of 31) and nothing
+  more; a 0.3 hPa minimum misses most 0.3 hPa steps (12–14 of 31); a
+  minimum under 1.0 °C raises the one false event above. A 30 s stretch
+  costs nothing against 60 s and analyses 67 stretches instead of 43.

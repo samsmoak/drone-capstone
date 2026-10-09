@@ -59,8 +59,10 @@ from cropwatcher.history import (
     SessionLog,
     SessionMeta,
     interrupted_flights,
+    interrupted_sessions,
     sessions_dir,
     set_flight_processing,
+    set_session_processing,
 )
 from cropwatcher.mission.controller import (
     TERMINAL_STATES,
@@ -76,7 +78,7 @@ from cropwatcher.mission.plan.mission import Mission
 from cropwatcher.mission.plan.store import NotFound, PlanStore
 from cropwatcher.mission.plan.validate import errors, flyable_bound
 from cropwatcher.paths import flights_dir
-from cropwatcher.processing import Job, JobState, ProcessingQueue
+from cropwatcher.processing import SESSION, Job, JobState, ProcessingQueue
 from cropwatcher.safety.flight_guard import Action as GuardAction
 from cropwatcher.safety.flight_guard import Reason as GuardReason
 from cropwatcher.safety.flight_guard import Verdict as GuardVerdict
@@ -599,6 +601,7 @@ class Session:
         as the agent starts. Returns the flights queued."""
         try:
             flights = interrupted_flights()
+            sessions = interrupted_sessions()
         except OSError:
             log.exception("could not look for unfinished processing")
             return []
@@ -609,15 +612,26 @@ class Session:
                 queued.append(flight_id)
             except (ValueError, RuntimeError) as e:
                 log.warning("could not resume processing flight %s: %s", flight_id, e)
+        # A session goes after its flights: the web shows them together.
+        for session_id in sessions:
+            try:
+                self.processing.submit(session_id, on_change=self._processing_changed,
+                                       kind=SESSION)
+                queued.append(session_id)
+            except (ValueError, RuntimeError) as e:
+                log.warning("could not resume processing session %s: %s", session_id, e)
         if queued:
             log.info("resuming processing of %d flight(s) left unfinished", len(queued))
         return queued
 
     def _processing_changed(self, job: Job) -> None:
-        """A job moved: the flight's line in its session history, the app."""
+        """A job moved: the flight's line in its session history (or the
+        session's own, for a session job), the app."""
         history = self.history
         try:
-            if history is not None and history.has_flight(job.flight_id):
+            if job.kind == SESSION:
+                set_session_processing(job.flight_id, job.state, job.error)
+            elif history is not None and history.has_flight(job.flight_id):
                 history.flight_processing(job.flight_id, job.state, job.error)
             else:
                 set_flight_processing(job.flight_id, job.state, job.error)
@@ -1935,12 +1949,19 @@ class Session:
 
         if self._flight_id is not None:
             self._finish_flight(status="completed", outcome="ended_with_session")
+        # The session itself is processed too — its samples around the flights,
+        # in Auto and Manual alike — when the DPP switch is on as it ends (the
+        # owner, 2026-10-09: "as long as a session is started we process
+        # whatever data comes"). Queued below, once its samples are closed.
+        process_session: str | None = None
         if self.history is not None:
             try:
                 self.history.close(reason)
             except OSError:
                 log.warning("could not close the session history")
             ended_id = self.history.meta.id
+            if self.processing_on():
+                process_session = ended_id
             self._outbox.update(Kind.SAMPLES, ended_id, lambda p: p.__setitem__("ended", True))
             self.history = None
         if self._on_session_close is not None:
@@ -1948,6 +1969,12 @@ class Session:
                 self._on_session_close()
             except Exception:
                 log.exception("session-close hook failed")
+        if process_session is not None:
+            try:
+                self.processing.submit(process_session, on_change=self._processing_changed,
+                                       kind=SESSION)
+            except (ValueError, RuntimeError):
+                log.exception("session %s could not be queued for processing", process_session)
         self._height_reference = None
 
         session_id = self._snapshot.session_id
