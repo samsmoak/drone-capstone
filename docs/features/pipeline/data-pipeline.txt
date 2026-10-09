@@ -106,8 +106,13 @@ backend/agent/tests/pipeline/                      fixture, conformance, tests
   (enhance). OpenCV doubled the frozen agent (43 → 86 MB), verified by
   build_sidecar.py's self-test. scipy and ruptures are NOT shipped (ruptures
   is a test dependency, the reference PELT).
-• THE DPP SWITCH (2026-09-29): processing is chosen PER SESSION — on by default
-  in Auto, off in Manual, flippable, audited; read as a flight BEGINS.
+• THE DPP SWITCH (2026-09-29; moved and defaulted 2026-10-09): at the TOP of
+  the Control page in Auto and Manual alike, ON BY DEFAULT IN BOTH (Manual was
+  off until the owner asked). Settable before a session starts or during one;
+  the choice lasts until the session ends; audited; read as a flight BEGINS.
+• `cropwatcher process --all` processes every recorded flight with no result
+  or one from an older pipeline, and queues each for the web; a flight with no
+  readings is skipped. Run again, it does only what is left.
 • A CHILD PROCESS, one flight at a time, lower priority, 15 minutes at most —
   never in the agent's process (the interpreter lock beside the 50 Hz loop; a
   hung stage must never take the radio with it).

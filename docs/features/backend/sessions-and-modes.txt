@@ -31,8 +31,9 @@ THE STATES
   ending                -> land if needed, close the flight, flush the upload
 
 THE DPP SWITCH (2026-09-29) is part of the session: Snapshot.processing says
-whether the next flight will be processed (on by default in Auto, off in
-Manual — the operator's choice wins and lasts until the session ends), the
+whether the next flight will be processed (on by default in Auto and Manual
+alike since 2026-10-09 — the operator's choice wins, made before the session or
+during it, and lasts until the session ends), the
 recent jobs, and the last flight to land. See ../pipeline/data-pipeline.txt.
 
 THE ARROW KEYS' FRAME (2026-09-30) is in the snapshot too: Snapshot.controls

@@ -1,10 +1,12 @@
 ================================================================================
 RESULTS ON THE WEB — every processed flight's result, findings and enhanced
 frames uploaded, shown on the session and flight pages, and notified
-Last verified: 2026-10-09 against docs/pipeline-v2 — the real agent client
-uploading to the local Supabase stack, results_check.py 11/11,
-notifications_check.py 16/16, the pages in a browser at 390 and 1440 px in
-both themes, a finding arriving live at the bell.
+Last verified: 2026-10-09 against web/processed-data — the real agent client
+uploading a planted warm patch to the local Supabase stack; /app/processed and
+/app/processed/<session> in a browser at 390 and 1440 px in both themes (43 of
+43 readings of the stretch tinted, the tooltip on hover of a row and on focus
+of a frame); the hosted database read for the owner's 2026-10-09 flight (its
+result uploaded, 0 findings).
 SOURCE: backend/agent/cropwatcher/sync/results.py
 ================================================================================
 
@@ -17,7 +19,10 @@ STATUS  (Last verified: 2026-10-09)
             hosted database 2026-10-09 and checked there read-only (tables
             answer; 188 sessions and 187 flights backfilled with owners;
             anonymous 401)
-  web       BUILT — the session and flight pages, the bell, /app/notifications
+  web       BUILT — Processed data (/app/processed, per session), the session
+            and flight pages, the bell, /app/notifications
+  backfill  BUILT — `cropwatcher process --all` (flights recorded before
+            processing, or by an older pipeline)
   NOT BUILT email or push to a phone (in-app and desktop only, by choice)
 
 --------------------------------------------------------------------------------
@@ -26,6 +31,10 @@ STATUS  (Last verified: 2026-10-09)
 The owner's ask: on the web, the dirty data against the clean, the grayscale
 frame against the enhanced, what it means — grouped by session (a session is
 the superset of its flights) — and notifications that stay until read.
+Then (2026-10-09, after a flight whose processed data could not be found): a
+PAGE OF ITS OWN for the processed data, every anomaly listed with its readings,
+its frames and what it means, and the anomalies HIGHLIGHTED in the readings
+table and on the frames, the meaning on hover.
 
 --------------------------------------------------------------------------------
 2. WHERE IT LIVES
@@ -35,6 +44,7 @@ backend/agent/cropwatcher/sync/syncer.py        _send_results (LAST in a pass)
 backend/agent/cropwatcher/sync/cloud.py         upsert_result, upsert_findings,
                                                 delete_findings_except
 backend/agent/tests/test_results_upload.py
+backend/agent/cropwatcher/cli.py                `process --all` (_process_all)
 backend/supabase/migrations/20261009000016_pipeline_results.sql
 backend/supabase/migrations/20261009000017_notifications.sql
 backend/supabase/checks/results_check.py, notifications_check.py
@@ -43,6 +53,15 @@ web/components/processing/                      findings, flight processing,
                                                 signal panel (raw vs clean)
 web/components/operator/notifications.tsx       provider and bell
 web/app/app/notifications/                      every notification
+web/app/app/processed/page.tsx                  Processed data: all anomalies,
+                                                the sessions with processed flights
+web/app/app/processed/[id]/page.tsx             one session's processed data
+web/components/ui/hint.tsx                      the anomaly tooltip
+web/components/ui/raw-readings.tsx              rows tinted, jump-to list
+web/components/flight/FrameGallery.tsx          frames outlined, "Only anomaly
+                                                frames"
+web/lib/queries.ts                              getProcessedOverview,
+                                                getStretchReadings, getFrameLinks
 web/app/app/sessions/[id]/page.tsx, web/app/app/flights/[id]/page.tsx
 
 --------------------------------------------------------------------------------
@@ -64,12 +83,36 @@ web/app/app/sessions/[id]/page.tsx, web/app/app/flights/[id]/page.tsx
   named; the camera with Original / Enhanced / Side by side; on the session
   page every flight's raw telemetry beside its 1 Hz vitals. "Zone health"
   (greenhouse) is gone; the predictions table stays.
+• PROCESSED DATA IS A PAGE OF ITS OWN (/app/processed, in the sidebar): every
+  anomaly, worst first, each card carrying its readings (at most 10 of the
+  stretch: first, last, the peak, evenly between — measured, expected, the
+  difference; the stored value too when it differs, i.e. pressure), its
+  frames original | enhanced, and its meaning; "What counts as an anomaly"
+  in the classifier's own numbers; then the sessions with processed flights.
+  Per session (/app/processed/<id>): the anomalies, each processed flight's
+  processing and EVERY reading, then the camera. The session and flight
+  pages keep everything too and link here.
+• ANOMALIES ARE MARKED WHERE THEY SHOW: readings inside a stretch tinted in
+  the severity's colour with its shape in the first cell (never colour
+  alone), a list above the table jumping to each stretch; frames taken during
+  one outlined, badged, and spelled out under the large frame. The meaning is
+  a tooltip on hover, keyboard focus or a tap (hint.tsx, WCAG 1.4.13:
+  Escape dismisses it, the pointer can move onto it, it follows its anchor
+  when the page scrolls).
+• "NO ANOMALIES" IS AN ANSWER, not an absence: a processed flight with none
+  says so, distinct from "not processed".
 
 --------------------------------------------------------------------------------
 4. INVARIANTS
 --------------------------------------------------------------------------------
 • Results go LAST in a sync pass: a database without the tables never stalls
   sessions, flights, frames or vitals.
+• A finding's start_index/end_index are telemetry `index` values, inclusive
+  (the agent's Reading.index) — the readings table tints exactly those rows.
+• Every recorded flight before 2026-10-09 is normal: `process --all` over the
+  lab laptop's 171 flights found 0 anomalies (166 processed, 5 with no
+  readings). A page of anomalies needs a real heat source — the hand-warmer
+  flights still owed (interpret.txt).
 • A missing table is said on the page ("apply migration …"), never shown as
   an error or as nothing.
 • Re-processing replaces: one finding (same id), one notification (proved
@@ -93,4 +136,5 @@ depends-on        ../backend/offline-sync.txt
 depends-on        ../supabase/data-model.txt
                   pipeline_results, pipeline_findings, notifications
 consumed-by       ../frontend/operator-dashboard.txt
-                  the session and flight pages, the bell, /app/notifications
+                  Processed data, the session and flight pages, the bell,
+                  /app/notifications

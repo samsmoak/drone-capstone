@@ -50,12 +50,12 @@ Feature docs are plain `.txt`, grouped by the surface they describe.
 
 | Doc | What it covers |
 |---|---|
-| [features/pipeline/data-pipeline.txt](features/pipeline/data-pipeline.txt) | **The index**: `cropwatcher process` — clean → enhance → classify → interpret once over the flight, laptop-first, resumed when the app restarts |
+| [features/pipeline/data-pipeline.txt](features/pipeline/data-pipeline.txt) | **The index**: `cropwatcher process` — clean → enhance → classify → interpret once over the flight, laptop-first, resumed when the app restarts; the DPP switch (top of Control, on by default); `process --all` |
 | [features/pipeline/clean.txt](features/pipeline/clean.txt) | robust@1: sensor faults flagged, never edited — scored against hampel@1 on 66 real flights |
 | [features/pipeline/enhance.txt](features/pipeline/enhance.txt) | clahe@1: clearer copies of dark frames, and each frame's quality |
 | [features/pipeline/classify.txt](features/pipeline/classify.txt) | blocks@1: stretches where temperature or pressure departs from what was expected |
 | [features/pipeline/interpret.txt](features/pipeline/interpret.txt) | findings@1: each stretch judged and put into words, a verdict per point |
-| [features/pipeline/results.txt](features/pipeline/results.txt) | Results on the web: uploaded, on the session and flight pages, notified until read |
+| [features/pipeline/results.txt](features/pipeline/results.txt) | Results on the web: the Processed data page (`/app/processed`), anomalies highlighted in the readings and on the frames with their meaning, the session and flight pages, notified until read |
 
 ## Frontend — the web app (`web/`)
 
