@@ -90,12 +90,19 @@ SHIP
   experiments  PRIVATE, in a second repo (owner, 2026-10-05): this repo is
                public and GitHub cannot hide a branch from readers, so
                experiment/* lives in samsmoak/drone-capstone-lab (private,
-               the same history), remote `lab`. Build and test there; when a
-               feature is solid, push ITS branch to `origin` and land it by
-               PR as above — its doc edits go in the same PR. Merge
-               origin/main into the experiment branch regularly (teammates'
-               code and docs). Never push experiment/* to origin. A cloud
-               session needs the Claude GitHub app granted the lab repo.
+               the same history), remote `lab`. THE WORKFLOW (owner,
+               2026-10-09): every feature on ITS OWN BRANCH, started from
+               public main (origin/main) — or from the branch it needs,
+               stacked and published after it; pushed to `lab` only; merged
+               into experiment/samuel — the HOLISTIC branch, where
+               everything runs together — with a merge commit (--no-ff),
+               never a squash, never a commit made on experiment/samuel
+               itself. When it works, the SAME branch is pushed to `origin`
+               and landed by PR as above — no cherry-picking; its doc edits
+               go in the same PR. Everything stays in `lab` too. Merge
+               origin/main into experiment/samuel regularly (teammates' code
+               and docs). Never push experiment/* to origin. A cloud session
+               needs the Claude GitHub app granted the lab repo.
                One implementation, never two: an experiment that replaces a
                teammate's ticket rewrites that ticket in the PR that lands it.
   deploy       web: Vercel on push to main, Root Directory = web (never give

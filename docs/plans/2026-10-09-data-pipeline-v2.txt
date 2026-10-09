@@ -2,9 +2,35 @@ THE DATA PIPELINE, BUILT WHOLE — clean, enhance, classify, interpret, results
 on the web, notifications, and who ran what
 ============================================================================
 
-STATUS (2026-10-09): PLANNED. Nothing built yet. Agreed with the owner in one
-session (scope, the branch workflow, the cleaner replaced, owners shown,
-notifications kept until read).
+STATUS (2026-10-09): BUILT, all branches in `lab`, merged into
+experiment/samuel; nothing pushed to origin. Gates on the integration: agent
+ruff · mypy (89 files) · pytest 1369; web typecheck · lint · build; desktop
+build; cargo test 14. Proved on the local Supabase stack (owner 10/10,
+results 11/11, notifications 16/16, rls 15/15) and in a browser (390 and
+1440 px, both themes, no sideways overflow). What shipped is in
+features/pipeline/ (an index and one doc per stage) and the docs it names.
+
+  CHANGED FROM THE PLAN, and why:
+  - Contract v2 grew three fields after it was first merged: Reading.text
+    (the cleaner and classifier need thermal_state), Event.peak (a warm patch
+    comes out of PELT as a staircase, merged into ONE event with a peak).
+  - The event threshold: planned as Z × the residual's spread; measured to
+    hide big events in short flights (5 °C found 65 %). Now 4 × the noise AND
+    a physical minimum above any normal flight's wander (0.8 °C, 0.2 hPa).
+  - The cleaner keeps the median Hampel (planned: a local-line Hampel) — the
+    diagnosis showed the false flags were the correction engine's state
+    steps, fixed by judging corrected_temp by its offset; ramp flags went to 0
+    without a line fit.
+  - notify was started from web/session-processing, not
+    data/pipeline-results: both edit the same types and queries; it is
+    published after the pages anyway.
+  - ADDED on the owner's ask mid-session: dpp/resume-processing (a closed
+    app's unfinished flights are processed when it starts again).
+  - Not done: step 91's backfill command (superseded by the resume); the
+    hosted migrations (the owner's step); the docs/README.md router lines
+    wait on the owner's own uncommitted change to that file.
+
+  OWED BY THE OWNER: see the section at the end, unchanged.
 
   BUILT IN   the private repo (samsmoak/drone-capstone-lab, remote `lab`).
              One branch per feature, each started from public main; each

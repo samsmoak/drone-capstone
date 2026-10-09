@@ -3,10 +3,14 @@ GRAPH STATE — WHAT IS OUT OF SYNC, AND WHAT THAT STOPS
 Read this BEFORE starting a feature. It is the one file that says whether the
 docs can be trusted for the area you are about to work in.
 Generated from `python3 graph_check.py` plus what passes noticed by hand.
-Last run: 2026-09-29 (after the Save gating, the height reference, the
-standing layout rule and the handoff updates) — 37 docs · 60 findings, 0 in
-a blocking class (DANGLING 0 · ONE-WAY 0 · STALE 0). design/layout.txt is new
-and typed both ways with the three docs that consume it.
+Last run: 2026-10-09 on docs/pipeline-v2 (the data pipeline built whole) —
+42 docs · 58 findings. Blocking classes: DANGLING 0 · ONE-WAY 0 · STALE 1
+(design/layout.txt: desktop/src/harness.tsx moved on 2026-10-06, before this
+work — not re-verified here, see WARN). features/pipeline/ became a folder:
+data-pipeline.txt is its index (every existing edge still lands on it), plus
+clean, enhance, classify, interpret and results — typed both ways. ORPHAN 16 →
+11: offline-sync, data-model, rls-and-grants and operator-dashboard now
+carry typed edges.
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -36,8 +40,18 @@ BLOCK  (0)
 None recorded.
 
 --------------------------------------------------------------------------------
-WARN  (1)
+WARN  (3)
 --------------------------------------------------------------------------------
+2026-10-09  design/layout.txt is STALE: desktop/src/harness.tsx was committed
+            2026-10-06 (PR #98, the Auto flow) after the doc's 2026-09-30
+            verification. Not touched by the pipeline work; re-run the
+            desktop harness at the five widths before trusting it.
+2026-10-09  DRIFT FOUND AND FIXED: pipeline/data-pipeline.txt still said the
+            unit of work was one point and that results never left the
+            laptop; desktop/camera.txt still said no whole frame had ever
+            arrived (8 748 had). Both corrected and said as drift. The
+            UNIT-OF-WORK drift went unflagged because the STALE check had
+            nothing to compare until the code moved.
 2026-09-29  15 docs declare no typed edge (ORPHAN 15, was 30): architecture,
             architecture-at-a-glance, audit-trail, flight-status,
             flight-tuning, offline-sync, skills, gallery, operator-dashboard,

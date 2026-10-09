@@ -1,6 +1,8 @@
 ================================================================================
 THE MISSION CONTROLLER — how a saved mission is flown
-Last verified: 2026-09-29 against claude/awesome-carson-eqkt8w — test_manual.py
+Last verified: 2026-10-09 against docs/pipeline-v2 — re-checked after cli.py
+moved (`cropwatcher process` queues its result's upload): nothing the
+controller does changed. Before that, 2026-09-29 against claude/awesome-carson-eqkt8w — test_manual.py
 TestFlyTo (13), tests/mission/test_session_missions.py (22), test_stamping.py.
 SOURCE: backend/agent/cropwatcher/mission/controller/mission_controller.py
 ================================================================================
