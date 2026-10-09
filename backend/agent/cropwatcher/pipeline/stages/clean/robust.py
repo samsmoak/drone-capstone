@@ -180,13 +180,14 @@ class RobustCleaner:
         bad: dict[str, set[int]] = {}
         for column in SENSORS:
             if column.name in present:
-                bad[column.name] = _check_sensor(column, readings, segments, ctx.temp_unit, flag)
+                bad[column.name] = _check_sensor(column, readings, segments, ctx.temp_unit, flag,
+                                                 period)
         if CORRECTED_TEMP.name in present and RAW_TEMP.name in present:
             _check_corrected(readings, segments, ctx.temp_unit, flag, found,
                              bad[RAW_TEMP.name])
         elif CORRECTED_TEMP.name in present:
             # No sensor value to hold it against: judged on its own values.
-            _check_sensor(CORRECTED_TEMP, readings, segments, ctx.temp_unit, flag)
+            _check_sensor(CORRECTED_TEMP, readings, segments, ctx.temp_unit, flag, period)
         if all(c in present for c in POSITION):
             _check_position(readings, flag, horizon)
         if BATTERY in present:
@@ -283,7 +284,7 @@ def _stuck_runs(values: FloatArray) -> list[NDArray[np.intp]]:
 
 
 def _check_sensor(column: Column, readings: Sequence[Reading], segments: Sequence[range],
-                  unit: str, flag: Flag) -> set[int]:
+                  unit: str, flag: Flag, period_s: float = EXPECTED_PERIOD_S) -> set[int]:
     """missing, out_of_range, stuck, spike on a sensor column. Returns every
     position whose value is not usable — what corrected_temp's offset check
     must leave out (and inherits, where the flag was stuck or spike)."""
@@ -305,7 +306,7 @@ def _check_sensor(column: Column, readings: Sequence[Reading], segments: Sequenc
     if column.stuck_check:
         for run in _stuck_runs(values):
             held = (f"held at exactly {values[run[0]]:.3f} {sym} for {len(run)} readings "
-                    f"({len(run) * EXPECTED_PERIOD_S:.1f} s; limit {STUCK_SAMPLES})")
+                    f"({len(run) * period_s:.1f} s; limit {STUCK_SAMPLES})")
             for at in (int(i) for i in run):
                 flag(readings[at].index, name, "stuck",
                      f"{name} {held}: the sensor stopped updating.")
@@ -313,7 +314,7 @@ def _check_sensor(column: Column, readings: Sequence[Reading], segments: Sequenc
             values[run] = np.nan             # a stuck value is no neighbour
 
     spike, median, limit = _hampel(values, segments, floor)
-    span = WINDOW * EXPECTED_PERIOD_S
+    span = WINDOW * period_s
     for at in (int(i) for i in np.flatnonzero(spike)):
         x = values[at]
         flag(readings[at].index, name, "spike",
