@@ -1,28 +1,80 @@
 SENSOR-FAULT MEASUREMENTS — where every number in the cleaner comes from
 =======================================================================
 
-The cleaner (backend/agent/cropwatcher/pipeline/stages/clean/hampel.py) cites
+The cleaner (backend/agent/cropwatcher/pipeline/stages/clean/robust.py) cites
 this file for each threshold. Change a threshold → change its line here, with
 the measurement that justifies it.
 
-STATUS (2026-10-03): ONE flight measured — the pipeline fixture,
-backend/agent/tests/pipeline/fixtures/data/flights/2026-09-24/, 400 rows
-(about 40 s at 10 Hz) of a real lab flight flown by hand, in °C. Missing, gap and
-out-of-range are FINAL. Spike and stuck are PROVISIONAL until three or more
-flights, one with a hand-warmer test, are measured
-(docs/handoffs/sprint-1/undone/dpp-clean.txt, step 1). Add each flight below
-and re-run the script at the end.
+STATUS (2026-10-09): robust@1 replaced hampel@1 (Kevin's, 2026-10-03), on the
+owner's call, after scoring BOTH on the same 66 real flights with the same
+planted faults (THE COMPARISON, below). Measured on 158 real flights recorded
+on the lab laptop (88 590 readings, 2026-09-16 … 10-09), of which the 66 with
+≥ 287 rows are long enough to plant into. The flights stay on that laptop —
+the repository is public; only the pipeline fixture flight is committed.
+
+  Re-run on any folder of flights:
+    cd backend/agent && .venv/bin/python ../../ml/sensor-faults/evaluate.py \
+        --quiet --cleaner robust --seeds 0-4 "<data folder>/flights"
+    (--cleaner hampel scores hampel@1, read from the commit that last held it)
+
+
+THE COMPARISON  (66 flights × seeds 0–4, identical plants)
+──────────────────────────────────────────────────────────
+
+                         hampel@1            robust@1          target
+  planted faults caught  17 621 / 18 095     18 095 / 18 095   ≥ 99.9 %
+                         (97.38 %)           (100.00 %)
+  false flags            1 567 / 1 117 266   119 / 1 117 266   ≤ 0.05 %
+                         (0.140 %)           (0.011 %)
+  flags inside the       632                 0                 0
+  hand-warmer ramp
+  time per flight        38.7 ms             19.5 ms           ≤ hampel's
+  position and battery   not checked         945 / 945 caught
+
+  Planted per flight (plant_faults.plant): a spike in raw_temp, corrected_temp
+  and pressure; a missing raw_temp and pressure; an out-of-range raw_temp and
+  pressure; 15 stuck raw_temp and pressure readings; one lost row and three
+  lost rows; then a hand-warmer ramp (+5 °C over 10 s, held) on both
+  temperatures — a REAL event, never to be flagged. plant_extras: a 1 m
+  position jump where a base station was received and the estimate was
+  steady; a 0 V battery reading; a battery jump of 1.1 V from the reading
+  before.
+
+  Scoring rules (evaluate.py): a gap the recording itself proves (a skipped
+  index, lost time — 16 in the corpus) counts as real, not false; a raw_temp
+  spike or stuck run is also one in corrected_temp, which is computed from it.
+
+
+WHY hampel@1 FLAGGED WHAT IT DID  (measured before robust@1 was written)
+───────────────────────────────────────────────────────────────────────
+
+  Of hampel@1's 332 false flags on seed 0, 292 were corrected_temp "spikes",
+  every one within 0.6 s of a thermal_state change, 278 of them with raw_temp
+  clean. The correction engine scales the board's offset per state
+  (telemetry/correction.py), so corrected_temp STEPS each time the state flips
+  — and the state flips a median of 4 times a flight, up to 79, with 60 % of
+  state stretches under 5 readings. A held step shorter than half the window
+  is what a median calls a spike. The same steps inside the planted ramp made
+  most of its ramp flags. Its 23 missed faults (seed 0) were all stuck runs
+  (15 pressure, 4 raw_temp, 4 corrected_temp). It restarted its count at
+  every gap; counting across gaps is the only change to robust@1's stuck
+  check, and robust@1 misses none.
+
+  → robust@1 judges corrected_temp by the OFFSET (raw − corrected) against
+    neighbours in the SAME thermal state, inherits raw_temp's spike and stuck
+    flags, and counts stuck runs across gaps.
 
 
 TIMING  (gap)
 ─────────────
   Interval between readings     min 0.080 s · median 0.100 s · p99 0.104 s ·
-                                max 0.120 s
+                                max 0.120 s (the fixture flight)
   → EXPECTED_PERIOD_S = 0.1, GAP_S = 2.5 × 0.1 = 0.25 s: twice the worst
     interval seen.
   The row index is consecutive in the CSV: the recorder numbers each row as
   it builds it (telemetry/reader.py, rows_written). A skipped index is a lost
   row, and catches the single lost row that time alone cannot (0.2 s < 0.25 s).
+  Real gaps in the corpus: 16 in 158 flights.
 
 
 RANGE  (out_of_range)
@@ -32,77 +84,82 @@ RANGE  (out_of_range)
     pressure                    300 … 1250 hPa
     operating temperature       −40 … +85 °C
   → applied to raw_temp, corrected_temp (converted for °F flights) and
-    station_pressure_hpa. CHECK THESE AGAINST THE PDF: it is not in
-    docs/hardware/, so they were taken from the published datasheet, not the
-    repo.
-  Seen in the fixture: raw_temp 29.9 … 34.2 °C (the board runs warm),
-  corrected_temp 20.5 … 26.7 °C, pressure 1026 … 1027 hPa.
+    station_pressure_hpa.
+  Battery: a one-cell LiPo; the corpus ranges 2.79 … 4.19 V (2.79 V is sag
+    under full thrust). → 2.5 … 4.4 V.
+  Position: Lighthouse V2 reaches a few metres from its base station.
+    → |x|, |y|, |z| ≤ 20 m.
 
 
 MISSING
 ───────
-  0 missing values in all 400 rows. The recorder skips a row whose
-  temperature, pressure, battery or position has not arrived
-  (telemetry/reader.py, _build), so a missing value means the file was damaged
-  or a NaN came off the sensor. The loader turns an empty cell into None and
-  "nan" into NaN (pipeline/sources.py, _number): both are flagged.
+  The recorder skips a row whose temperature, pressure, battery or position
+  has not arrived (telemetry/reader.py, _build), so a missing value means the
+  file was damaged or a NaN came off the sensor. The loader turns an empty
+  cell into None and "nan" into NaN (pipeline/sources.py, _number): both are
+  flagged.
 
 
-SPIKE  (Hampel, PROVISIONAL)
-────────────────────────────
-  Over a rolling window of 11 readings (1.1 s), on the fixture:
+SPIKE  (Hampel identifier)
+──────────────────────────
+  Over a rolling window of 11 readings (1.1 s), on the fixture flight:
 
                          scaled MAD (1.4826 × MAD)   largest |value − median|
                          median     5th pct   min
   raw_temp      °C       0.0378     0.0030    0.0015   0.0374
-  corrected     °C       0.0424     0.0018    0.0005   0.0090
   pressure      hPa      0.0127     0.0054    0.0016   0.0443
 
-  The scaled MAD falls near zero on quiet stretches, so without a floor the
-  threshold would too, and ordinary noise would be called a spike.
   → WINDOW = 11, K = 3.
-  → noise floor 0.05 °C for both temperatures: threshold ≥ 0.15 °C, four times
-    the largest real deviation (0.037 °C).
-  → noise floor 0.03 hPa for pressure: threshold ≥ 0.09 hPa, twice the
-    largest real deviation (0.044 hPa).
+  → noise floor 0.05 °C (threshold ≥ 0.15 °C, four times the largest real
+    deviation) and 0.03 hPa (threshold ≥ 0.09 hPa, twice it).
 
-  Largest real step from one reading to the next: raw_temp 0.055 °C,
-  pressure 0.050 hPa, corrected_temp 4.64 °C. That last one is NOT noise: at
-  row 27 thermal_state goes IDLE → FLIGHT (COOLING) as the drone takes off,
-  and the correction engine moves corrected_temp from 22.01 to 26.65 °C and
-  holds it, while raw_temp stays flat at 34.22 °C. It is why the cleaner has
-  no rate-of-change rule: a held step moves the median with it.
+  THE 119 FLAGS THAT REMAIN "FALSE" (robust@1, all seeds) are not sensor
+  faults and are flagged on purpose:
+    114  pressure pulses of ~0.1 hPa lasting 2–3 readings, IN FLIGHT, at
+         full-thrust bursts (thrust jumping to 65 535, mostly at takeoff): the
+         propellers' own pressure, not the room's. Both cleaners flag them;
+         the classifier must not read them as the room.
+      5  pressure held to the last digit for 10+ readings — the same 5 in
+         hampel@1.
+  They stay counted as false above so the comparison is like for like.
 
 
-STUCK  (PROVISIONAL)
-────────────────────
-  Longest run of exactly identical consecutive values, and how often two
-  readings in a row are identical:
-    raw_temp                2     0.3 %
-    station_pressure_hpa    2     0.5 %
-    corrected_temp          1     0 %     (computed: not checked itself)
-    battery_v               28            (logged at a slower rate)
+OFFSET  (corrected_temp)
+────────────────────────
+  Between two readings in the SAME thermal_state, the engine's offset
+  (raw − corrected) moves at most 0.076 °C (p99.9 0.040 °C; 158 flights). It
+  jumps when the state changes — by design.
+  → OFFSET_FLOOR_C = 0.05 °C: threshold ≥ 0.15 °C, twice the largest real
+    in-state step. MIN_SAME_STATE = 2 neighbours to judge it at all.
+
+
+STUCK
+─────
+  Longest run of exactly identical consecutive values: raw_temp 2,
+  station_pressure_hpa 2 (fixture); battery_v 28 (logged at a slower rate).
   → STUCK_SAMPLES = 10 (1 s), five times the longest real run, on raw_temp and
-    station_pressure_hpa only. corrected_temp is flagged with raw_temp,
-    because it is computed from it. battery_v is never checked for stuck.
+    station_pressure_hpa only, counted across gaps. corrected_temp inherits
+    raw_temp's. battery_v is never checked for stuck.
 
 
-NOT YET CHECKED  (the ticket's SHOULD columns)
-──────────────────────────────────────────────
-  x_m, y_m, z_m, battery_v. In the fixture the Lighthouse never locked:
-  lighthouse_received is 0 from row 2 on, x_m and y_m are exactly 0.0, and
-  z_m is about −91 m (no ground reference was captured). Every position value
-  in that flight would be flagged, so it cannot show what a clean flight
-  looks like. Measure on flights with a Lighthouse lock first.
+POSITION  (untrusted, implausible)
+──────────────────────────────────
+  lighthouse_received is 0 for every row of the median flight in the corpus
+  (the older flights never received a base station). A position with no
+  station received is the IMU coasting → untrusted, all three axes.
+  With a station received, the step speed between readings: p50 0.007 m/s,
+  p99 7.5 m/s — the estimate does jump (the agent's own log warns "a position
+  that jumped 6 cm in 22 ms … check the base-station geometry").
+  → implausible above MAX_PLAUSIBLE_SPEED_M_S = 2.0 m/s, the flight guard's
+    own number (safety/flight_guard.py — imported, not copied), against the
+    last good position no more than 0.5 s back (PLAUSIBLE_HORIZON_S); after
+    that the estimate that stayed somewhere new is believed.
+  On the real flights robust@1 marks about 20 readings a flight implausible
+  (6 820 over 66 flights × 5 seeds): real estimator jumps.
 
 
-SCORE  (ml/sensor-faults/evaluate.py, faults planted by plant_faults.py)
-──────────────────────────────────────────────────────────────────────
-  Fixture flight, seeds 0–7:  caught 54/54 planted values every time ·
-  false flags 0 of 1188 checked values (0.00 %) · ramp flags 0 ·
-  31–44 ms to clean the whole 400-row flight as one point (a dev machine,
-  NOT the lab laptop — the ticket's timing is still owed).
-
-  Re-run on new flights:
-    cd backend/agent && .venv/bin/python ../../ml/sensor-faults/evaluate.py \
-        <flight.csv> [...] --seed 0
+BATTERY  (implausible)
+──────────────────────
+  Largest step between two readings: 0.78 V (p99.9 0.36 V) — sag under a
+  throttle step. → BATTERY_STEP_V = 1.0 V, against the last good reading no
+  more than 0.5 s back.

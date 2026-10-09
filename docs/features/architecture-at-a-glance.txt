@@ -95,8 +95,8 @@ DESIGNED BUT NOT WIRED
                           the Auto page are built; the controller that walks
                           the points is Hannah's and refuses to fly until it
                           lands (missions/mission-controller.txt)
-  Pipeline stages         clean is built for temperature and pressure
-                          (hampel@1, thresholds provisional); enhance and
+  Pipeline stages         clean is built: robust@1 — temperature, pressure,
+                          position, battery (pipeline/data-pipeline.txt); enhance and
                           classify are stubs until Kevin's and Reagan's land;
                           no live runner yet. The TRIGGER is
                           wired: with DPP on, each flight is processed when
