@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { SESSIONS } from "@/lib/routes";
 import { flightDuration } from "@/lib/flight-format";
 import { LocalTime } from "@/components/ui/local-time";
+import { Owner } from "@/components/ui/owner";
 
 export const metadata = { title: "Sessions" };
 
@@ -45,7 +46,7 @@ export default async function SessionsPage() {
               <th scope="col" className="px-4 py-3 font-medium">Status</th>
               <th scope="col" className="px-4 py-3 font-medium">Duration</th>
               <th scope="col" className="px-4 py-3 font-medium">Mode</th>
-              <th scope="col" className="px-4 py-3 font-medium">Operator</th>
+              <th scope="col" className="px-4 py-3 font-medium">Run by</th>
               <th scope="col" className="px-4 py-3 font-medium">Drone</th>
               <th scope="col" className="px-4 py-3 font-medium">Flights</th>
               <th scope="col" className="px-4 py-3 font-medium">
@@ -65,7 +66,7 @@ export default async function SessionsPage() {
                 </td>
                 <td className="tabular px-4 py-3">{flightDuration(s.started_at, s.ended_at)}</td>
                 <td className="px-4 py-3">{s.mode_at_start ?? "—"}</td>
-                <td className="px-4 py-3">{s.operator ?? "—"}</td>
+                <td className="px-4 py-3"><Owner who={s} /></td>
                 <td className="px-4 py-3">{s.drone ?? "—"}</td>
                 <td className="tabular px-4 py-3">{s.flight_count}</td>
                 <td className="px-4 py-3 text-right">

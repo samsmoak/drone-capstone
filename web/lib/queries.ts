@@ -236,9 +236,10 @@ export const getMissions = cache(async (limit = 50): Promise<MissionRow[]> => {
 // not. Its own vitals (one a second, session_samples) cover the whole of it;
 // its flights' telemetry covers only the time the motors ran.
 
-/** A session in the list: who ran it, on which drone, and how many flights. */
+/** A session in the list: who ran it, on which drone, and how many flights.
+ *  Who ran it is on the row itself (operator_name, operator_email), stamped by
+ *  the database (migration 20261009000015) — profiles stay "read your own". */
 export type SessionSummary = SessionRow & {
-  operator: string | null;
   drone: string | null;
   flight_count: number;
 };
@@ -253,21 +254,17 @@ export const getRecentSessions = cache(async (limit = 50): Promise<SessionSummar
   if (error) failed(error, "sessions");
   if (sessions.length === 0) return [];
   const ids = sessions.map((s) => s.id);
-  const [flights, profiles, drones] = await Promise.all([
+  const [flights, drones] = await Promise.all([
     supabase.from("flights").select("session_id").in("session_id", ids),
-    supabase.from("profiles").select("id, email, full_name")
-      .in("id", sessions.map((s) => s.operator_id).filter((x): x is string => !!x)),
     supabase.from("drones").select("id, name")
       .in("id", sessions.map((s) => s.drone_id).filter((x): x is string => !!x)),
   ]);
   if (flights.error) failed(flights.error, "session flights");
   const counts = new Map<string, number>();
   for (const f of flights.data) if (f.session_id) counts.set(f.session_id, (counts.get(f.session_id) ?? 0) + 1);
-  const who = new Map((profiles.data ?? []).map((p) => [p.id, p.full_name || p.email]));
   const what = new Map((drones.data ?? []).map((d) => [d.id, d.name]));
   return sessions.map((s) => ({
     ...s,
-    operator: s.operator_id ? who.get(s.operator_id) ?? null : null,
     drone: s.drone_id ? what.get(s.drone_id) ?? null : null,
     flight_count: counts.get(s.id) ?? 0,
   }));
@@ -278,18 +275,14 @@ export const getSession = cache(async (id: string): Promise<SessionSummary | nul
   const { data, error } = await supabase.from("sessions").select("*").eq("id", id).maybeSingle();
   if (error) failed(error, "this session");
   if (!data) return null;
-  const [flights, profile, drone] = await Promise.all([
+  const [flights, drone] = await Promise.all([
     supabase.from("flights").select("id", { count: "exact", head: true }).eq("session_id", id),
-    data.operator_id
-      ? supabase.from("profiles").select("email, full_name").eq("id", data.operator_id).maybeSingle()
-      : Promise.resolve({ data: null }),
     data.drone_id
       ? supabase.from("drones").select("name").eq("id", data.drone_id).maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
   return {
     ...data,
-    operator: profile.data ? profile.data.full_name || profile.data.email : null,
     drone: drone.data?.name ?? null,
     flight_count: flights.count ?? 0,
   };

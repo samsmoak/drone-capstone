@@ -23,6 +23,7 @@ import {
   flightTone,
 } from "@/lib/flight-format";
 import { LocalTime } from "@/components/ui/local-time";
+import { Owner, OwnerStat } from "@/components/ui/owner";
 
 export const metadata = { title: "Session" };
 
@@ -141,7 +142,7 @@ export default async function SessionPage(props: PageProps<"/app/sessions/[id]">
         <Stat label="Flights" value={String(session.flight_count)} />
         <Stat label="Vitals" value={rows.length.toLocaleString()} hint="one sample a second" />
         <Stat label="Camera frames" value={frames.length.toLocaleString()} />
-        <Stat label="Operator" value={session.operator} />
+        <OwnerStat label="Run by" who={session} />
         <Stat label="Drone" value={session.drone} />
         <Stat label="Mode at start" value={session.mode_at_start} />
         <Stat label="Positioned" value={rows.length ? `${Math.round((path.length / rows.length) * 100)}%` : null}
@@ -214,6 +215,7 @@ export default async function SessionPage(props: PageProps<"/app/sessions/[id]">
                   <th scope="col" className="px-4 py-3 font-medium">Status</th>
                   <th scope="col" className="px-4 py-3 font-medium">Duration</th>
                   <th scope="col" className="px-4 py-3 font-medium">What flew</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Flown by</th>
                   <th scope="col" className="px-4 py-3 font-medium"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
@@ -226,6 +228,7 @@ export default async function SessionPage(props: PageProps<"/app/sessions/[id]">
                     </td>
                     <td className="tabular px-4 py-3">{flightDuration(f.started_at, f.ended_at)}</td>
                     <td className="px-4 py-3">{f.program ?? f.mode ?? "—"}{f.abort_reason ? ` · ${f.abort_reason}` : ""}</td>
+                    <td className="px-4 py-3"><Owner who={f} /></td>
                     <td className="px-4 py-3 text-right">
                       <Link href={`${FLIGHTS}/${f.id}`} className="inline-flex min-h-11 items-center underline underline-offset-4">
                         Open<span className="sr-only">{" "}flight from <LocalTime iso={f.started_at} /></span>
