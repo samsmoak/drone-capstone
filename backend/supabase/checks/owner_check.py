@@ -7,8 +7,9 @@ Two operators, A and B. Checks that:
   4  B, another operator, reads A's session and flight AND sees who ran them;
   5  B still cannot read A's profile row.
 
-Defaults to the local stack (`cd backend && supabase start`). Creates its own
-users and rows and deletes them after. Exit code 0 = every check held.
+Runs against the LOCAL stack (`cd backend && supabase start`): it cleans up
+as the database owner through the database container. Creates its own users
+and rows and deletes them after. Exit code 0 = every check held.
 
     python backend/supabase/checks/owner_check.py
 """
@@ -37,6 +38,21 @@ def call(method, path, token, body=None, headers=None):
             return response.status, json.loads(response.read() or b"null")
     except urllib.error.HTTPError as e:
         return e.code, json.loads(e.read() or b"null")
+
+
+#: The local stack's database container — cleanup runs as the database owner.
+DB_CONTAINER = os.environ.get("SUPABASE_DB_CONTAINER", "supabase_db_backend")
+
+
+def sql(statement):
+    """Run SQL as the database owner in the local stack's container. Cleanup
+    goes this way: this project revokes the platform's default privileges, so
+    service_role cannot delete rows over the API — a cleanup through the API
+    silently leaves them behind."""
+    import subprocess
+    return subprocess.run(["docker", "exec", DB_CONTAINER, "psql", "-U", "postgres", "-d",
+                           "postgres", "-v", "ON_ERROR_STOP=1", "-qtAc", statement],
+                          check=True, capture_output=True, text=True).stdout.strip()
 
 
 def user(email, name):
@@ -104,10 +120,11 @@ def main():
         status, rows = call("GET", f"/rest/v1/profiles?id=eq.{a_id}", b)
         check("B still cannot read A's profile", status == 200 and rows == [], rows)
     finally:
-        for table, rid in (("flights", orphan), ("flights", flight), ("sessions", session)):
-            call("DELETE", f"/rest/v1/{table}?id=eq.{rid}", SERVICE)
-        for uid in (a_id, b_id):
-            call("DELETE", f"/auth/v1/admin/users/{uid}", SERVICE)
+        sql(f"delete from public.flights where id in ('{orphan}', '{flight}')")
+        sql(f"delete from public.sessions where id = '{session}'")
+        sql(f"delete from auth.users where id in ('{a_id}', '{b_id}')")
+        left = sql(f"select count(*) from auth.users where id in ('{a_id}', '{b_id}')")
+        assert left == "0", f"cleanup left {left} test users behind"
     print(f"\n  {sum(results)}/{len(results)} held")
     return 0 if all(results) else 1
 
