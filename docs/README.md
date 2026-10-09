@@ -49,7 +49,12 @@ Feature docs are plain `.txt`, grouped by the surface they describe.
 
 | Doc | What it covers |
 |---|---|
-| [features/pipeline/data-pipeline.txt](features/pipeline/data-pipeline.txt) | `cropwatcher process`: clean → enhance → classify → interpret, a verdict per inspection point, laptop-first |
+| [features/pipeline/data-pipeline.txt](features/pipeline/data-pipeline.txt) | **The index**: `cropwatcher process` — clean → enhance → classify → interpret once over the flight, laptop-first, resumed when the app restarts |
+| [features/pipeline/clean.txt](features/pipeline/clean.txt) | robust@1: sensor faults flagged, never edited — scored against hampel@1 on 66 real flights |
+| [features/pipeline/enhance.txt](features/pipeline/enhance.txt) | clahe@1: clearer copies of dark frames, and each frame's quality |
+| [features/pipeline/classify.txt](features/pipeline/classify.txt) | blocks@1: stretches where temperature or pressure departs from what was expected |
+| [features/pipeline/interpret.txt](features/pipeline/interpret.txt) | findings@1: each stretch judged and put into words, a verdict per point |
+| [features/pipeline/results.txt](features/pipeline/results.txt) | Results on the web: uploaded, on the session and flight pages, notified until read |
 
 ## Frontend — the web app (`web/`)
 
@@ -107,6 +112,8 @@ are the only thing that survives a session.
 [plans/2026-09-25-linux.txt](plans/2026-09-25-linux.txt) — the 40-stage plan that brought the terminal install, a real sign-in check and the radio's USB permission to Linux.
 
 [plans/2026-09-28-missions-and-pipeline.txt](plans/2026-09-28-missions-and-pipeline.txt) — the 100-stage plan for autonomous missions (floor plans, the mission controller through the manual system), the data pipeline, and the Control page remodelled for Auto. What shipped is in features/missions/, features/pipeline/ and features/desktop/auto-control.txt.
+
+[plans/2026-10-09-data-pipeline-v2.txt](plans/2026-10-09-data-pipeline-v2.txt) — the plan for the pipeline built whole: clean, enhance, classify, interpret, results on the web, notifications and owners. What shipped is in features/pipeline/.
 
 ## Handoffs — work orders given to teammates
 
