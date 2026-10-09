@@ -42,6 +42,7 @@ Feature docs are plain `.txt`, grouped by the surface they describe.
 | Doc | What it covers |
 |---|---|
 | [features/missions/README.txt](features/missions/README.txt) | The index: what to fly, and how it is flown |
+| [features/missions/how-autonomous-flight-works.txt](features/missions/how-autonomous-flight-works.txt) | **The whole autonomous system in one page**: light → position → green → plan → plan that will fly → Start → flight |
 | [features/missions/floor-plans.txt](features/missions/floor-plans.txt) | Rooms (closed geofence, obstacles, the room's map), missions, inspection points, the agent's checks, saving |
 | [features/missions/mission-controller.txt](features/missions/mission-controller.txt) | How a mission flies: fly_to in the manual system, run_mission, point_id stamping; the controller body is Hannah's, its proof (simulated drone, mission report, lab flights) Yordi's |
 
