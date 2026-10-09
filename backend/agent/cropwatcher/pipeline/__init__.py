@@ -23,4 +23,4 @@ pipeline must run with no radio, and in a process of its own beside a flight.
 """
 
 #: Bumped whenever the shape of a result changes. Recorded in every result.
-PIPELINE_VERSION = "2"
+PIPELINE_VERSION = "3"

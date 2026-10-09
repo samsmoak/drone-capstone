@@ -221,6 +221,18 @@ class Label:
 
 
 @dataclass(frozen=True)
+class ViewChange:
+    """Whether the camera's view changed at a frame (scene@1): the camera cannot
+    see heat, but it can see something move in front of the drone."""
+
+    seq: int                                # Frame.seq
+    score: float | None                     # None = not comparable (see note)
+    against: int | None                     # the frame it was compared with
+    note: str
+    changed: bool = False
+
+
+@dataclass(frozen=True)
 class ImageVerdict:
     seq: int                                # Frame.seq
     source: Literal["original", "enhanced"]
@@ -288,6 +300,8 @@ class ClassifyResult:
     tracks: tuple[Track, ...] = ()
     segments: tuple[Segment, ...] = ()
     events: tuple[Event, ...] = ()
+    #: One per frame, same order, when measured (scene@1); () = not measured.
+    views: tuple[ViewChange, ...] = ()
 
 
 class Classifier(Protocol):
@@ -385,6 +399,10 @@ class FrameRecord:
     method: str
     quality: FrameQuality | None
     label: Label
+    #: scene@1: how much the view changed from the frame before (None = not
+    #: comparable), and in words.
+    view_change: float | None = None
+    view_note: str | None = None
 
 
 @dataclass(frozen=True)

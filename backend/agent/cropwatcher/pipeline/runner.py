@@ -110,14 +110,17 @@ def _summary(data: PointData, plan: tuple[InspectionPoint, ...],
 def _frames(enhanced: EnhanceResult, classified: ClassifyResult,
             ctx: FlightContext) -> tuple[FrameRecord, ...]:
     labels = {v.seq: v.label for v in classified.images}
+    views = {v.seq: v for v in classified.views}
     records = []
     for e in enhanced.frames:
         relative = None
         if e.path is not None:
             relative = str(e.path.relative_to(ctx.workdir))
         label = labels.get(e.frame.seq) or Label("unknown", None, "none@0", "not classified")
+        view = views.get(e.frame.seq)
         records.append(FrameRecord(e.frame.seq, e.frame.t_s, e.frame.point_id, relative,
-                                   e.method, e.quality, label))
+                                   e.method, e.quality, label,
+                                   view.score if view else None, view.note if view else None))
     return tuple(records)
 
 

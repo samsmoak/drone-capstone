@@ -243,9 +243,12 @@ class BlocksClassifier:
             sensors = Label("normal", None, model)
         else:
             sensors = Label("unknown", None, model, "; ".join(why_not) or "nothing to analyse")
+        from cropwatcher.pipeline.stages.classify.scene import measure
+
         return ClassifyResult(images=images, sensors=sensors, features=features,
                               tracks=tuple(tracks), segments=tuple(segments),
-                              events=tuple(sorted(events, key=lambda e: e.start_index)))
+                              events=tuple(sorted(events, key=lambda e: e.start_index)),
+                              views=measure(enhanced.frames))
 
 
 def _images(enhanced: EnhanceResult, model: str) -> tuple[ImageVerdict, ...]:

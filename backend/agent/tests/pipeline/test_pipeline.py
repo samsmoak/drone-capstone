@@ -91,7 +91,7 @@ class TestRunning:
         assert [p.verdict for p in result.points] == ["normal", "normal", "insufficient_data"]
         assert result.stages == {"clean": "robust@1", "enhance": "clahe@1",
                                  "classify": "blocks@1", "interpret": "findings@1"}
-        assert result.pipeline_version == "2"
+        assert result.pipeline_version == "3"
         saved = json.loads(Path(where).read_text())
         assert saved["flight_id"] == FLIGHT
         assert saved["summary"]["_transit"] == {"readings": 280}

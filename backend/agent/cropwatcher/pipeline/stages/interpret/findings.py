@@ -4,8 +4,11 @@ on, and a verdict for every inspection point.
 THE TELEMETRY IS THE EVIDENCE; THE FRAMES ONLY SUPPORT IT (the owner,
 2026-10-09). A finding is made from an event in the readings. The frames
 taken during it are attached so a person can look — the camera may have been
-facing away — and no image model judges them yet, so image support is
-"cannot tell" and says why.
+facing away. No image model judges the equipment (the camera cannot see heat);
+scene@1 says whether the camera's VIEW CHANGED during the stretch — something
+moving in front of the drone — and that, and only that, "supports" a finding.
+A steady view is "cannot tell", never "contradicts": what changed may simply
+not be visible.
 
 SEVERITY is tied to the measurement, never invented (CLAUDE.md, invariant 1).
 The classifier only raises an event beyond the most a NORMAL flight's blocks
@@ -180,6 +183,8 @@ def _frames(event: Event, enhanced: EnhanceResult,
         return (), "cannot_tell", (f"{len(during)} frames were taken during this stretch and "
                                    f"none can be read ({', '.join(why)}).")
     seqs = tuple(e.frame.seq for e in readable)
+    views = {v.seq: v for v in classified.views if v.seq in seqs}
+    changed = [views[s] for s in seqs if s in views and views[s].changed]
     labels = {v.seq: v.label for v in classified.images if v.seq in seqs}
     faulty = [s for s in seqs if s in labels and labels[s].value == "faulty"]
     judged = [s for s in seqs if s in labels and labels[s].value != "unknown"]
@@ -192,9 +197,23 @@ def _frames(event: Event, enhanced: EnhanceResult,
         return seqs, "contradicts", (f"{model} saw nothing faulty in the {len(seqs)} readable "
                                      f"frames taken during this stretch — the camera may have "
                                      f"been facing away; the readings stand.")
+    if changed:
+        first = changed[0]
+        return seqs, "supports", (
+            f"The camera's view changed during this stretch (frame {first.seq}, "
+            f"{first.score:.2f} against frame {first.against}; "
+            f"{len(changed)} of {len(seqs)} readable frames changed): something moved in front "
+            f"of the drone as the reading departed. Look at the frames.")
+    steady = [s for s in seqs if s in views and views[s].score is not None]
+    if steady:
+        return seqs, "cannot_tell", (
+            f"{len(seqs)} readable frames were taken during this stretch and the camera's view "
+            f"held steady — whatever changed was not visible to it (a grayscale camera does "
+            f"not see heat). Look at them beside the readings.")
     return seqs, "cannot_tell", (f"{len(seqs)} readable frames were taken during this stretch. "
-                                 f"No image model judges them yet — look at them beside the "
-                                 f"readings; the camera may have been facing away.")
+                                 f"The drone was moving, so the view could not be compared — "
+                                 f"look at them beside the readings; the camera may have been "
+                                 f"facing away.")
 
 
 def _height_measured(tracks: Sequence[Track]) -> bool:

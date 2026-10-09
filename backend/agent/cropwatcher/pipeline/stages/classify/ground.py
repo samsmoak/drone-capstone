@@ -50,6 +50,7 @@ from cropwatcher.pipeline.stages.classify.blocks import (
     _temperature,
     _usable,
 )
+from cropwatcher.pipeline.stages.classify.scene import measure
 
 #: The phase a session reading is in (Reading.text["phase"], pipeline/sources.py).
 GROUND = "ground"
@@ -172,4 +173,5 @@ class GroundClassifier:
                             "; ".join(dict.fromkeys(why_not)) or "nothing to analyse")
         return ClassifyResult(images=images, sensors=sensors, features=features,
                               tracks=tracks, segments=tuple(segments),
-                              events=tuple(sorted(events, key=lambda e: e.start_index)))
+                              events=tuple(sorted(events, key=lambda e: e.start_index)),
+                              views=measure(enhanced.frames))
