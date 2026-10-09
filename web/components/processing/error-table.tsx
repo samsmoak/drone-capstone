@@ -75,100 +75,147 @@ export function ErrorTable({ marks, rows, indexKey = "index", table, unit, what 
   const show = (index: number) => window.dispatchEvent(
     new CustomEvent<JumpDetail>(JUMP_EVENT, { detail: { table, index } }));
 
+  // Everything one span says, computed once for the table and the cards.
+  const spans = visible.map((m, i) => {
+    const span: ReadingRow[] = [];
+    for (let k = m.start; k <= m.end; k++) {
+      const r = byIndex.get(k);
+      if (r) span.push(r);
+    }
+    const prev = i > 0 ? visible[i - 1] : page > 0 ? ordered[page * PAGE_SIZE - 1] : null;
+    const later = prev && m.tStart !== null && prev.tEnd !== null ? m.tStart - prev.tEnd : null;
+    const firstRow = span[0];
+    const points = [...new Set(span.map((r) => r.point_id).filter(Boolean))] as string[];
+    const x = mean(span, "x_m"), y = mean(span, "y_m"), z = mean(span, "z_m");
+    const where = points.length ? points.join(", ")
+      : x !== null && y !== null ? `(${x.toFixed(2)}, ${y.toFixed(2)})${z !== null ? `, z ${z.toFixed(2)}` : ""}`
+        : null;
+    const about = (keys: string[]) => keys.some((k) => m.columns.includes(k));
+    const value = (keys: string[], key: string) => (about(keys) ? range(span, key, 2) ?? "—" : "");
+    const values = VALUES.map((v) => ({
+      key: v.key, label: v.key === "temp" ? `Temp (${sym})` : v.label,
+      text: v.key === "temp" ? value(v.keys, "raw_temp")
+        : v.key === "pressure" ? value(v.keys, "station_pressure_hpa")
+          : v.key === "position" ? (about(v.keys) && x !== null && y !== null
+            ? `${x.toFixed(2)}, ${y.toFixed(2)}, ${(z ?? 0).toFixed(2)}` : about(v.keys) ? "—" : "")
+            : value(v.keys, "battery_v"),
+    }));
+    const at = client && typeof firstRow?.recorded_at === "string"
+      ? formatLocal(firstRow.recorded_at, "time") : null;
+    const clockRange = m.tStart !== null && m.tEnd !== null
+      ? `${clock(m.tStart)}–${clock(m.tEnd)} · ${Math.max(0, Math.round(m.tEnd - m.tStart))} s` : null;
+    const readingsText = m.start === m.end ? `#${m.start} · 1 reading`
+      : `#${m.start}–${m.end} · ${m.end - m.start + 1} readings`;
+    return { m, later, where, values, at, clockRange, readingsText };
+  });
+  const gap = (later: number | null) => later !== null && later > 0.5
+    ? (later >= 1 ? `${Math.round(later).toLocaleString()} s later` : "moments later") : null;
+  const chip = (m: Mark) => (
+    <span className="inline-flex items-center gap-1.5 rounded border-l-4 px-2 py-1"
+          style={{ borderLeftColor: groupColor(m.group), background: groupTint(m.group, m.severity) }}>
+      <MarkShape mark={m} />
+      <span>{GROUPS[m.group].label} · {SEVERITY[m.severity].label}</span>
+    </span>
+  );
+  const showButton = (m: Mark) => (
+    <button type="button" onClick={() => show(m.start)}
+            className="mt-1 inline-flex min-h-11 items-center rounded-md border border-[var(--border)] px-3 hover:bg-[var(--surface-2)]">
+      Show<span className="sr-only">{" "}readings {m.start} to {m.end}</span>
+    </button>
+  );
+
   return (
     <div className="space-y-3">
-      <div className="relative overflow-x-auto rounded-lg border border-[var(--border)]">
-        <table className="w-full border-collapse text-left text-xs">
+      {/* Wide screens: a table that fits — fixed column widths, the words
+          wrap, nothing scrolls sideways. */}
+      <div className="hidden rounded-lg border border-[var(--border)] xl:block">
+        <table className="w-full table-fixed border-collapse text-left text-xs">
           <caption className="sr-only">
             What went wrong, in time order: {ordered.length} spans, {visible.length} on this page.
           </caption>
+          <colgroup>
+            <col className="w-40" />
+            <col className="w-44" />
+            <col />
+            {VALUES.map((v) => <col key={v.key} className="w-24" />)}
+          </colgroup>
           <thead className="bg-[var(--surface-2)]">
             <tr>
-              {["When", "Readings", "Where", "Data", "What happened"].map((h) => (
-                <th key={h} scope="col" className="whitespace-nowrap px-3 py-2 font-medium">{h}</th>
-              ))}
+              <th scope="col" className="px-3 py-2 font-medium">When · where</th>
+              <th scope="col" className="px-3 py-2 font-medium">Data</th>
+              <th scope="col" className="px-3 py-2 font-medium">What happened</th>
               {VALUES.map((v) => (
-                <th key={v.key} scope="col" className="whitespace-nowrap px-3 py-2 text-right font-medium">
+                <th key={v.key} scope="col" className="px-3 py-2 text-right font-medium">
                   {v.key === "temp" ? `Temp (${sym})` : v.label}
                 </th>
               ))}
-              <th scope="col" className="px-3 py-2"><span className="sr-only">Show the readings</span></th>
             </tr>
           </thead>
           <tbody>
-            {visible.map((m, i) => {
-              const span: ReadingRow[] = [];
-              for (let k = m.start; k <= m.end; k++) {
-                const r = byIndex.get(k);
-                if (r) span.push(r);
-              }
-              const prev = i > 0 ? visible[i - 1] : page > 0 ? ordered[page * PAGE_SIZE - 1] : null;
-              const later = prev && m.tStart !== null && prev.tEnd !== null ? m.tStart - prev.tEnd : null;
-              const firstRow = span[0];
-              const points = [...new Set(span.map((r) => r.point_id).filter(Boolean))] as string[];
-              const x = mean(span, "x_m"), y = mean(span, "y_m"), z = mean(span, "z_m");
-              const where = points.length ? points.join(", ")
-                : x !== null && y !== null ? `(${x.toFixed(2)}, ${y.toFixed(2)})${z !== null ? `, z ${z.toFixed(2)}` : ""}`
-                  : "—";
-              const about = (keys: string[]) => keys.some((k) => m.columns.includes(k));
-              const value = (keys: string[], key: string, digits: number) =>
-                about(keys) ? range(span, key, digits) ?? "—" : "";
-              const position = about(["x_m", "y_m", "z_m"]) && x !== null && y !== null
-                ? `${x.toFixed(2)}, ${y.toFixed(2)}, ${(z ?? 0).toFixed(2)}` : about(["x_m"]) ? "—" : "";
-              return [
-                later !== null && later > 0.5 && (
-                  <tr key={`${m.id}-gap`} aria-hidden="true">
-                    <td colSpan={6 + VALUES.length} className="border-t border-dashed border-[var(--border)] px-3 py-1 text-center text-[11px] text-[var(--muted)]">
-                      {later >= 1 ? `${Math.round(later).toLocaleString()} s later` : "moments later"}
-                    </td>
-                  </tr>
-                ),
-                <tr key={m.id} className="border-t border-[var(--border)] align-top">
-                  <th scope="row" className="whitespace-nowrap px-3 py-2 font-normal">
-                    {client && typeof firstRow?.recorded_at === "string" && (
-                      <span className="block font-medium">{formatLocal(firstRow.recorded_at, "time")}</span>
-                    )}
-                    {m.tStart !== null && m.tEnd !== null && (
-                      <span className="block text-[var(--muted)]">
-                        {clock(m.tStart)}–{clock(m.tEnd)} · {Math.max(0, Math.round(m.tEnd - m.tStart))} s
-                      </span>
-                    )}
-                  </th>
-                  <td className="tabular whitespace-nowrap px-3 py-2">
-                    {m.start === m.end ? `#${m.start}` : `#${m.start}–${m.end}`}
-                    <span className="block text-[var(--muted)]">{m.end - m.start + 1} reading{m.end === m.start ? "" : "s"}</span>
+            {spans.map(({ m, later, where, values, at, clockRange, readingsText }) => [
+              gap(later) && (
+                <tr key={`${m.id}-gap`} aria-hidden="true">
+                  <td colSpan={3 + VALUES.length} className="border-t border-dashed border-[var(--border)] px-3 py-1 text-center text-[11px] text-[var(--muted)]">
+                    {gap(later)}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2">{where}</td>
-                  <td className="whitespace-nowrap px-3 py-2">
-                    <span className="inline-flex items-center gap-1.5 rounded border-l-4 px-2 py-1"
-                          style={{ borderLeftColor: groupColor(m.group), background: groupTint(m.group, m.severity) }}>
-                      <MarkShape mark={m} />
-                      <span>{GROUPS[m.group].label} · {SEVERITY[m.severity].label}</span>
-                    </span>
-                    <span className="block pt-1 text-[var(--muted)]">{m.kind === "anomaly" ? "anomaly" : "flagged"}</span>
-                  </td>
-                  <td className="min-w-[18rem] px-3 py-2">
-                    <span className="font-semibold">{m.title}.</span> {m.body}
-                  </td>
-                  {VALUES.map((v) => (
-                    <td key={v.key} className="tabular whitespace-nowrap px-3 py-2 text-right">
-                      {v.key === "temp" ? value(v.keys, "raw_temp", 2)
-                        : v.key === "pressure" ? value(v.keys, "station_pressure_hpa", 2)
-                          : v.key === "position" ? position : value(v.keys, "battery_v", 2)}
-                    </td>
-                  ))}
-                  <td className="px-3 py-2 text-right">
-                    <button type="button" onClick={() => show(m.start)}
-                            className="inline-flex min-h-11 items-center rounded-md border border-[var(--border)] px-3 hover:bg-[var(--surface-2)]">
-                      Show<span className="sr-only">{" "}readings {m.start} to {m.end}</span>
-                    </button>
-                  </td>
-                </tr>,
-              ];
-            })}
+                </tr>
+              ),
+              <tr key={m.id} className="border-t border-[var(--border)] align-top">
+                <th scope="row" className="px-3 py-2 font-normal">
+                  {at && <span className="block font-medium">{at}</span>}
+                  {clockRange && <span className="block text-[var(--muted)]">{clockRange}</span>}
+                  <span className="tabular block">{readingsText}</span>
+                  {where && <span className="block text-[var(--muted)]">{where}</span>}
+                  {showButton(m)}
+                </th>
+                <td className="px-3 py-2">
+                  {chip(m)}
+                  <span className="block pt-1 text-[var(--muted)]">{m.kind === "anomaly" ? "anomaly" : "flagged"}</span>
+                </td>
+                <td className="px-3 py-2 [overflow-wrap:anywhere]">
+                  <span className="font-semibold">{m.title}.</span> {m.body}
+                </td>
+                {values.map((v) => (
+                  <td key={v.key} className="tabular px-3 py-2 text-right [overflow-wrap:anywhere]">{v.text}</td>
+                ))}
+              </tr>,
+            ])}
           </tbody>
         </table>
       </div>
+
+      {/* Narrow screens: the same spans as cards — nothing to scroll. */}
+      <ol className="grid gap-2 xl:hidden" aria-label="What went wrong, in time order">
+        {spans.map(({ m, later, where, values, at, clockRange, readingsText }) => (
+          <li key={m.id} className="grid gap-2">
+            {gap(later) && (
+              <p aria-hidden="true" className="text-center text-[11px] text-[var(--muted)]">{gap(later)}</p>
+            )}
+            <article className="grid gap-1.5 rounded-lg border border-[var(--border)] border-l-4 bg-[var(--surface)] p-3 text-xs"
+                     style={{ borderLeftColor: groupColor(m.group) }}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                {chip(m)}
+                <span className="text-[var(--muted)]">{m.kind === "anomaly" ? "anomaly" : "flagged"}</span>
+              </div>
+              <p><span className="font-semibold">{m.title}.</span> {m.body}</p>
+              <p className="text-[var(--muted)]">
+                {[at, clockRange, readingsText, where].filter(Boolean).join(" · ")}
+              </p>
+              {values.some((v) => v.text) && (
+                <dl className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+                  {values.filter((v) => v.text).map((v) => (
+                    <div key={v.key} className="contents">
+                      <dt className="text-[var(--muted)]">{v.label}</dt>
+                      <dd className="tabular text-right">{v.text}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+              <div>{showButton(m)}</div>
+            </article>
+          </li>
+        ))}
+      </ol>
       {pages > 1 && (
         <nav aria-label="Error pages" className="flex flex-wrap items-center justify-between gap-3 text-sm">
           <p className="text-[var(--muted)]" aria-live="polite">
