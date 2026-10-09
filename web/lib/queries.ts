@@ -776,3 +776,132 @@ export const getEditedPages = cache(async (): Promise<Map<string, string>> => {
   if (error) failed(error, "the pages");
   return new Map(data.map((row) => [row.key, row.updated_at]));
 });
+
+// ── the Processed data pages ─────────────────────────────────────────────
+
+/** A processed flight in the overview: its result's headline, not its JSON. */
+export type ProcessedFlight = Pick<PipelineResultRow,
+  "flight_id" | "session_id" | "findings_count" | "worst_severity" | "created_at" | "pipeline_version">;
+
+/** A session with processed flights: who ran it, and how far processing got. */
+export type ProcessedSession = SessionRow & {
+  flights: number;
+  processed: number;
+  findings: number;
+  worst: string | null;
+};
+
+/**
+ * Everything the pipeline has processed, newest first — the Processed data
+ * page's list. `migrated: false` while the database has no pipeline tables.
+ * Findings come worst first, then newest; `limit` caps them, and the page says
+ * when it did.
+ */
+export const getProcessedOverview = cache(async (limit = 200): Promise<{
+  migrated: boolean;
+  flights: ProcessedFlight[];
+  sessions: ProcessedSession[];
+  findings: FindingRow[];
+  findingsTotal: number;
+}> => {
+  const supabase = await createClient();
+  const results = await supabase.from("pipeline_results")
+    .select("flight_id, session_id, findings_count, worst_severity, created_at, pipeline_version")
+    .order("created_at", { ascending: false }).limit(2000);
+  if (results.error) {
+    if (notMigrated(results.error, "pipeline_results")) {
+      return { migrated: false, flights: [], sessions: [], findings: [], findingsTotal: 0 };
+    }
+    failed(results.error, "processed flights");
+  }
+  const findings = await supabase.from("pipeline_findings").select("*", { count: "exact" })
+    .order("created_at", { ascending: false }).limit(limit);
+  if (findings.error) {
+    if (notMigrated(findings.error, "pipeline_findings")) {
+      return { migrated: false, flights: [], sessions: [], findings: [], findingsTotal: 0 };
+    }
+    failed(findings.error, "findings");
+  }
+  const sessionIds = [...new Set(results.data.map((r) => r.session_id).filter((x): x is string => !!x))];
+  let sessions: ProcessedSession[] = [];
+  if (sessionIds.length) {
+    const [rows, flights] = await Promise.all([
+      supabase.from("sessions").select("*").in("id", sessionIds).order("started_at", { ascending: false }),
+      supabase.from("flights").select("session_id").in("session_id", sessionIds),
+    ]);
+    if (rows.error) failed(rows.error, "sessions");
+    if (flights.error) failed(flights.error, "session flights");
+    const count = (id: string) => flights.data.filter((f) => f.session_id === id).length;
+    const rank = { critical: 2, warning: 1, info: 0 } as Record<string, number>;
+    sessions = rows.data.map((s) => {
+      const mine = results.data.filter((r) => r.session_id === s.id);
+      const worst = mine.reduce<string | null>((w, r) => (r.worst_severity
+        && (w === null || (rank[r.worst_severity] ?? 0) > (rank[w] ?? 0)) ? r.worst_severity : w), null);
+      return { ...s, flights: count(s.id), processed: mine.length,
+               findings: mine.reduce((n, r) => n + r.findings_count, 0), worst };
+    });
+  }
+  const rank = { critical: 2, warning: 1, info: 0 } as Record<string, number>;
+  return {
+    migrated: true,
+    flights: results.data,
+    sessions,
+    findings: [...findings.data].sort((a, b) => (rank[b.severity] ?? 0) - (rank[a.severity] ?? 0)),
+    findingsTotal: findings.count ?? findings.data.length,
+  };
+});
+
+/** The readings a stretch covers (telemetry `index`, inclusive) — the
+ *  evidence an anomaly's card shows. Finding id → rows, in order. */
+export const getStretchReadings = cache(
+  async (findings: readonly Pick<FindingRow, "id" | "flight_id" | "start_index" | "end_index">[],
+  ): Promise<Record<string, TelemetryRow[]>> => {
+    if (findings.length === 0) return {};
+    const supabase = await createClient();
+    const all = await Promise.all(findings.map((f) => supabase.from("telemetry").select("*")
+      .eq("flight_id", f.flight_id).gte("index", f.start_index).lte("index", f.end_index)
+      .order("index", { ascending: true }).limit(5000)));
+    const out: Record<string, TelemetryRow[]> = {};
+    all.forEach((r, i) => {
+      if (r.error) failed(r.error, "an anomaly's readings");
+      out[findings[i].id] = r.data;
+    });
+    return out;
+  },
+);
+
+/** Signed links to some of a session's frames — the original and, when the
+ *  pipeline made one, the enhanced copy. Seq → links. */
+export const getFrameLinks = cache(
+  async (sessionId: string, seqs: readonly number[]): Promise<Record<number, { original?: string; enhanced?: string }>> => {
+    if (seqs.length === 0) return {};
+    const supabase = await createClient();
+    const bucket = supabase.storage.from(FRAMES_BUCKET);
+    // The original's extension is whatever the camera wrote: ask, never guess.
+    const { data: files, error } = await bucket.list(`${sessionId}/frames`, {
+      limit: 2000, sortBy: { column: "name", order: "asc" },
+    });
+    if (error) failed({ message: error.message }, "camera frames");
+    const wanted = new Set(seqs);
+    const originals = (files ?? []).map((f) => f.name)
+      .filter((n) => /^\d+\.(png|jpg)$/.test(n) && wanted.has(Number(n.split(".")[0])));
+    const enhancedPaths = [...wanted].map((seq) => `${sessionId}/enhanced/${seq}.png`);
+    const [o, e] = await Promise.all([
+      originals.length ? bucket.createSignedUrls(originals.map((n) => `${sessionId}/frames/${n}`), FRAME_LINK_S)
+        : Promise.resolve({ data: [], error: null }),
+      bucket.createSignedUrls(enhancedPaths, FRAME_LINK_S),
+    ]);
+    if (o.error) failed({ message: o.error.message }, "camera frame links");
+    const out: Record<number, { original?: string; enhanced?: string }> = {};
+    originals.forEach((n, i) => {
+      const url = o.data?.[i]?.signedUrl;
+      if (url) (out[Number(n.split(".")[0])] ??= {}).original = url;
+    });
+    // A frame with no enhanced copy is not an error: it was not enhanced.
+    [...wanted].forEach((seq, i) => {
+      const item = e.data?.[i];
+      if (item && !item.error && item.signedUrl) (out[seq] ??= {}).enhanced = item.signedUrl;
+    });
+    return out;
+  },
+);

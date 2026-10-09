@@ -14,14 +14,14 @@ import {
 } from "@/lib/queries";
 import { FindingsList, type FrameLinks } from "@/components/processing/findings";
 import { FlightProcessing } from "@/components/processing/flight-processing";
-import { SEVERITY, severityOf } from "@/lib/pipeline";
+import { SEVERITY, excerptsFor, frameMarks, highlightsOf, readTracks, severityOf } from "@/lib/pipeline";
 import { FrameGallery } from "@/components/flight/FrameGallery";
 import { Stat, StatusBadge } from "@/components/ui/states";
 import { PageHeader } from "@/components/ui/page-header";
 import { TimeSeries } from "@/components/ui/time-series";
 import { FlightPath } from "@/components/ui/flight-path";
 import { RawReadings, type ReadingColumn } from "@/components/ui/raw-readings";
-import { FLIGHTS, SESSIONS } from "@/lib/routes";
+import { FLIGHTS, SESSIONS, processedPath } from "@/lib/routes";
 import {
   elapsedSeconds,
   flightDuration,
@@ -107,6 +107,11 @@ export default async function SessionPage(props: PageProps<"/app/sessions/[id]">
     ? { label: `Flight ${flightNumber.get(flightId)} of the session`, href: `${FLIGHTS}/${flightId}` }
     : undefined;
   const processed = flights.filter((f) => resultOf.has(f.id)).length;
+  const marks = frameMarks(findings.rows);
+  const excerpts = excerptsFor(findings.rows,
+    (flightId) => readTracks(resultOf.get(flightId)?.tracks ?? []),
+    Object.fromEntries(findings.rows.map((f) => [f.id, (telemetry[f.flight_id] ?? [])
+      .filter((r) => r.index >= f.start_index && r.index <= f.end_index)])));
 
   const rows = samples.rows;
   const first = rows[0]?.recorded_at;
@@ -187,8 +192,8 @@ export default async function SessionPage(props: PageProps<"/app/sessions/[id]">
         ) : processed === 0 ? (
           <Note>
             None of this session&apos;s {flights.length} flight{flights.length === 1 ? " has" : "s have"} been
-            processed. Turn on Data processing in the desktop app (Control page), or press Process this
-            flight there; the result uploads here.
+            processed. Leave Process flights (DPP) on at the top of the desktop app&apos;s Control page, or
+            press Process this flight there; the result uploads here.
           </Note>
         ) : findings.rows.length === 0 ? (
           <Note>
@@ -204,8 +209,15 @@ export default async function SessionPage(props: PageProps<"/app/sessions/[id]">
                 ? ` — ${flights.length - processed} not processed yet` : ""}. The readings are the
               evidence; the frames show what the camera saw then.
             </p>
-            <FindingsList findings={findings.rows} frames={frameLinks} flightOf={flightOf} />
+            <FindingsList findings={findings.rows} frames={frameLinks} flightOf={flightOf} excerpts={excerpts} />
           </>
+        )}
+        {processed > 0 && (
+          <p className="text-sm">
+            <Link href={processedPath(id)} className="inline-flex min-h-11 items-center underline underline-offset-4">
+              This session&apos;s processed data, on its own page →
+            </Link>
+          </p>
         )}
       </section>
 
@@ -338,7 +350,7 @@ export default async function SessionPage(props: PageProps<"/app/sessions/[id]">
 
       <section aria-labelledby="camera-heading" className="space-y-3">
         <h2 id="camera-heading" className="text-lg font-semibold text-[var(--heading)]">Camera</h2>
-        <FrameGallery frames={frames} enhanced={enhanced} />
+        <FrameGallery frames={frames} enhanced={enhanced} marks={marks} />
       </section>
 
 
@@ -382,13 +394,15 @@ export default async function SessionPage(props: PageProps<"/app/sessions/[id]">
         <h3 className="text-base font-semibold">The session, one a second</h3>
         {noVitals ?? <RawReadings rows={rows} unit="C" columns={SAMPLE_COLUMNS} what="session" />}
         {flights.map((f) => (
-          <details key={f.id} className="rounded-lg border border-[var(--border)] p-3">
+          <details key={f.id} className="rounded-lg border border-[var(--border)] p-3"
+                   open={findings.rows.some((x) => x.flight_id === f.id)}>
             <summary className="min-h-11 cursor-pointer content-center text-sm font-semibold">
               Flight {flightNumber.get(f.id)} — {(telemetry[f.id] ?? []).length.toLocaleString()} readings, ten a
               second
             </summary>
             <div className="mt-3">
-              <RawReadings rows={telemetry[f.id] ?? []} unit={f.temp_unit} />
+              <RawReadings rows={telemetry[f.id] ?? []} unit={f.temp_unit}
+                           highlights={highlightsOf(findings.rows.filter((x) => x.flight_id === f.id))} />
             </div>
           </details>
         ))}
