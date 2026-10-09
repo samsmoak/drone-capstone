@@ -188,6 +188,13 @@ class TestResuming:
         status = syncer.sync_once()
         assert status.pending_flights == 1
 
+    def test_a_flight_with_no_rows_is_sent_once_its_record_is_up(self, rig):
+        outbox, cloud, syncer, tmp_path = rig
+        add_flight(outbox, tmp_path, rows=0)
+        status = syncer.sync_once()
+        assert cloud.flights[0]["id"] == "flight-1"
+        assert status.pending_flights == 0
+
     def test_a_missing_csv_still_records_the_flight(self, rig):
         outbox, cloud, syncer, tmp_path = rig
         add_flight(outbox, tmp_path)
