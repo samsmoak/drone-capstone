@@ -113,6 +113,11 @@ def test_the_sentence_says_when_where_how_much_and_how_long():
     assert finding.title == "Warmer than expected near P2"
 
 
+def test_a_huge_departure_is_far_beyond_the_noise_not_a_huge_number():
+    (finding,) = run((replace(event(4.0), z=436.0),)).findings
+    assert "far beyond its noise" in finding.sentence and "436" not in finding.sentence
+
+
 def test_an_event_in_transit_with_no_position_says_both():
     (finding,) = run((event(-2.0, points=(), placed=False),)).findings
     assert "between inspection points (position not measured)" in finding.sentence

@@ -123,6 +123,15 @@ def _title(event: Event) -> str:
         " than expected" + place
 
 
+#: Past this many noise σ, "N× its noise" reads as a number nobody can
+#: picture (a sensor with 0.009 °C of noise makes a 4 °C patch "436×").
+FAR_BEYOND_NOISE = 100
+
+
+def _beyond_noise(z: float) -> str:
+    return "far beyond its noise" if z >= FAR_BEYOND_NOISE else f"{z:.0f}× its noise"
+
+
 def _sentence(event: Event, height_measured: bool) -> str:
     sym = _symbol(event.unit)
     word = "above" if event.direction == "rise" else "below"
@@ -131,13 +140,13 @@ def _sentence(event: Event, height_measured: bool) -> str:
     if event.signal == "temperature":
         what = (f"the temperature sensor read {abs(event.peak):.1f} {sym} {word} the drone's "
                 f"normal cooling curve at its peak ({abs(event.delta):.1f} {sym} on average, "
-                f"{event.z:.0f}× its noise)")
+                f"{_beyond_noise(event.z)})")
     else:
         corrected = "corrected for height" if height_measured else \
             "NOT corrected for height (not measured — a climb would look the same)"
         what = (f"the station pressure, {corrected}, was {abs(event.peak):.2f} {sym} {word} "
                 f"its trend at its peak ({abs(event.delta):.2f} {sym} on average, "
-                f"{event.z:.0f}× its noise)")
+                f"{_beyond_noise(event.z)})")
     return f"{when}, {what}, for {held:.0f} s."
 
 
