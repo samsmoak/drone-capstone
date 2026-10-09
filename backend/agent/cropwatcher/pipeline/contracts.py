@@ -74,6 +74,9 @@ class Reading:
     values: Mapping[str, float | None]
     #: The inspection point being held when it was taken; None in transit.
     point_id: str | None = None
+    #: The row's words: mode, thermal_state, event (the correction engine's
+    #: state — the cleaner and classifier need to know when it switched).
+    text: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
