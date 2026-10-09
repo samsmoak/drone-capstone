@@ -323,8 +323,8 @@ MODELS.json (a JSON list; empty today):
 HOW YOU PLUG IN
 ───────────────
 
-1. Put your class in your stage's folder: stages/clean/hampel.py →
-   class HampelCleaner (with `name` and `version`).
+1. Put your class in your stage's folder: stages/clean/robust.py →
+   class RobustCleaner (with `name` and `version`).
 2. Add it to the list in tests/pipeline/conformance.py. Every check in
    test_conformance.py now runs against it.
 3. Change the one line in compose.py from the stub to your class.

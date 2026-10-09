@@ -19,11 +19,10 @@ STATUS  (Last verified: 2026-10-05)
   trigger   BUILT — the DPP switch: a session's flights are processed when they
             land, in a child process (cropwatcher/processing.py); results on
             the desktop's Fly step and Manual's Data processing panel
-  clean     BUILT for temperature and pressure (2026-10-03) — hampel@1, Kevin.
-            Spike and stuck thresholds PROVISIONAL (one flight measured);
-            position and battery not checked yet. Ticket stays open for the
-            three-flight acceptance and the lab-laptop timing
-            (../../handoffs/sprint-1/undone/dpp-clean.txt)
+  clean     BUILT (2026-10-09) — robust@1, Samuel, which replaced hampel@1
+            (Kevin): temperature, pressure, position, battery; scored on 66
+            real flights against hampel@1 (ml/sensor-faults/MEASUREMENTS.txt).
+            Follow-ups for Kevin: ../../handoffs/sprint-1/done/dpp-clean.txt
   enhance   STUB — Kevin (../../handoffs/sprint-1/undone/dpp-enhance.txt)
   classify  BUILT for the sensors (2026-10-09) — blocks@1, Samuel: temperature
             against the drone's cooling curve, pressure corrected for height,
@@ -57,9 +56,10 @@ backend/agent/cropwatcher/pipeline/runner.py       run_point, run_flight
 backend/agent/cropwatcher/pipeline/compose.py      which implementation per stage
 backend/agent/cropwatcher/pipeline/stages/         enhance, classify (stubs),
                                                    interpret/labels.py
-backend/agent/cropwatcher/pipeline/stages/clean/hampel.py   the cleaner
+backend/agent/cropwatcher/pipeline/stages/clean/robust.py   the cleaner
 ml/sensor-faults/                                  MEASUREMENTS.txt (every
-                                                   cleaner threshold's source),
+                                                   cleaner threshold's source,
+                                                   the comparison with hampel@1),
                                                    plant_faults.py, evaluate.py
 backend/agent/cropwatcher/cli.py                   `cropwatcher process`
 backend/agent/cropwatcher/processing.py            the queue: one flight at a
@@ -97,13 +97,20 @@ backend/agent/tests/pipeline/                      fixture, conformance, tests
   labels everything unknown; each failure is recorded with its reason.
 • THE CLEANER FLAGS, NEVER EDITS (story 4.2's "removed" = skipped
   downstream via CleanResult.usable). Checks, first that fits wins: missing
-  (None/NaN), out_of_range (the BMP388's own limits), stuck (10 identical
-  readings, on raw_temp and pressure only — corrected_temp is flagged with
-  raw_temp, battery_v repeats 28 readings normally; a missing or
-  out-of-range value inside the run is skipped, not a break), spike (Hampel: 11
-  readings, k = 3, a floor under the MAD), gap (> 0.25 s, or a skipped row
-  index — the only way one lost row shows). Windows never cross a gap. Every
-  number cites ml/sensor-faults/MEASUREMENTS.txt.
+  (None/NaN), out_of_range (the BMP388's own limits; a one-cell battery;
+  ±20 m), untrusted (a position with no base station received), stuck (10
+  identical readings on raw_temp and pressure, counted ACROSS gaps;
+  battery_v repeats 28 readings normally), implausible (a position faster
+  than the flight guard's 2.0 m/s; a battery step over 1.0 V), spike
+  (Hampel: 11 readings, k = 3, a floor under the MAD), gap (> 0.25 s, or a
+  skipped row index — the only way one lost row shows). Spike windows never
+  cross a gap. Every number cites ml/sensor-faults/MEASUREMENTS.txt.
+• CORRECTED_TEMP IS JUDGED BY THE ENGINE'S OFFSET, not its own values: it is
+  raw_temp minus an offset the correction engine scales per thermal_state,
+  so it steps whenever the state flips (a median 4 times a flight, up to 79).
+  hampel@1 called those steps spikes — 294 of its 332 false flags on 66
+  flights. robust@1 checks the offset (raw − corrected) against neighbours in
+  the same state, and corrected_temp inherits raw_temp's spike and stuck.
 • NO RATE-OF-CHANGE RULE in the cleaner. A real heat event is a sustained
   rise, and the correction engine steps corrected_temp 4.6 °C at takeoff and
   holds it (fixture row 27); both move the Hampel median with them, where a

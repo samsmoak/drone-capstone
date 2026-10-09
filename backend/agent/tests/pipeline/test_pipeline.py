@@ -89,7 +89,7 @@ class TestRunning:
         # A real flight's readings: nothing departs from expected at P1 and P2;
         # P3 was never reached.
         assert [p.verdict for p in result.points] == ["normal", "normal", "insufficient_data"]
-        assert result.stages == {"clean": "hampel@1", "enhance": "stub@0",
+        assert result.stages == {"clean": "robust@1", "enhance": "clahe@1",
                                  "classify": "blocks@1", "interpret": "findings@1"}
         assert result.pipeline_version == "2"
         saved = json.loads(Path(where).read_text())
