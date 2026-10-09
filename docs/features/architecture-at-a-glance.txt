@@ -102,8 +102,8 @@ DESIGNED BUT NOT WIRED
                           uploaded, shown on the web and notified
                           (pipeline/data-pipeline.txt). NOT wired: the live
                           runner (verdicts in the air), an image model
-                          (story 4.4), the hosted database's migrations
-                          0015–0017 (the owner applies them)
+                          (story 4.4). The hosted database has every
+                          migration (0015–0017 applied 2026-10-09)
 
   Web-queued missions     queued_missions() / claim_mission() exist and are
                           never called; Auto runs from the desktop app only
