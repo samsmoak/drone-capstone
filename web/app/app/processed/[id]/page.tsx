@@ -6,14 +6,17 @@ import {
   getFlightsTelemetry,
   getPipelineResults,
   getSession,
+  getSessionFindings,
   getSessionFlights,
   getSessionFrames,
-  type TelemetryRow,
+  getSessionResult,
+  getSessionSamples,
 } from "@/lib/queries";
 import { FindingsList, type FrameLinks } from "@/components/processing/findings";
 import { FlightProcessing } from "@/components/processing/flight-processing";
+import { ErrorTable } from "@/components/processing/error-table";
 import { FrameGallery } from "@/components/flight/FrameGallery";
-import { RawReadings } from "@/components/ui/raw-readings";
+import { RawReadings, SESSION_COLUMNS } from "@/components/ui/raw-readings";
 import { Stat, StatusBadge } from "@/components/ui/states";
 import { PageHeader } from "@/components/ui/page-header";
 import { LocalTime } from "@/components/ui/local-time";
@@ -23,7 +26,8 @@ import {
   SEVERITY,
   excerptsFor,
   frameMarks,
-  highlightsOf,
+  marksOf,
+  readFlags,
   readFrames,
   readTracks,
   severityOf,
@@ -32,11 +36,18 @@ import {
 export const metadata = { title: "Processed data · session" };
 
 /**
- * One session's processed data: its anomalies with their readings, frames and
- * meaning; then each processed flight — what ran, a verdict per point, raw vs
- * clean against what was expected with the anomalous stretches shaded, and
- * every reading with those stretches tinted (hover for what they mean); then
- * the camera, the frames taken during an anomaly outlined.
+ * One session's processed data — everything the pipeline made of it, in Auto
+ * and Manual alike (the owner, 2026-10-09: "as long as a session is started we
+ * process whatever data comes"):
+ *
+ *   the anomalies     every finding of the session — its flights' and its own
+ *                     on the ground — with its readings, frames and meaning
+ *   each flight       what ran, a verdict per point, raw vs clean against what
+ *                     was expected, what went wrong (the error table), and
+ *                     every reading with the marks tinted
+ *   the session       its own result: the one-a-second samples around the
+ *                     flights, judged on the ground — the same four parts
+ *   the camera        every frame, those taken during an anomaly outlined
  *
  * The session page (app/app/sessions/[id]) still holds everything in the
  * session; this is the pipeline's view of it.
@@ -54,11 +65,14 @@ export default async function ProcessedSessionPage(props: PageProps<"/app/proces
   const { id } = await props.params;
   if (!UUID.test(id)) notFound();
 
-  const [session, flights, frames, enhanced] = await Promise.all([
+  const [session, flights, frames, enhanced, own, ownFindings, samples] = await Promise.all([
     getSession(id),
     getSessionFlights(id),
     getSessionFrames(id),
     getEnhancedFrames(id),
+    getSessionResult(id),
+    getSessionFindings(id),
+    getSessionSamples(id),
   ]);
   if (!session) notFound();
   const flightIds = flights.map((f) => f.id);
@@ -71,18 +85,27 @@ export default async function ProcessedSessionPage(props: PageProps<"/app/proces
   const processed = flights.filter((f) => resultOf.has(f.id));
   const notProcessed = flights.filter((f) => !resultOf.has(f.id));
   const flightNumber = new Map(flights.map((f, i) => [f.id, i + 1]));
+  const sampleRows = samples.rows.map((r) => ({ ...r, index: r.seq }));
+  const all = [...findings.rows, ...ownFindings.rows];
 
-  // Each anomaly's readings come from its flight's telemetry, already read.
-  const readings: Record<string, TelemetryRow[]> = Object.fromEntries(findings.rows.map((f) => [
-    f.id, (telemetry[f.flight_id] ?? []).filter((r) => r.index >= f.start_index && r.index <= f.end_index),
-  ]));
-  const excerpts = excerptsFor(findings.rows,
-    (flightId) => readTracks(resultOf.get(flightId)?.tracks ?? []), readings);
+  // Each anomaly's readings: its flight's telemetry, or the session's samples.
+  const readings = Object.fromEntries([
+    ...findings.rows.map((f) => [f.id, (telemetry[f.flight_id ?? ""] ?? [])
+      .filter((r) => r.index >= f.start_index && r.index <= f.end_index)]),
+    ...ownFindings.rows.map((f) => [f.id, sampleRows
+      .filter((r) => r.seq >= f.start_index && r.seq <= f.end_index)]),
+  ]);
+  const excerpts = excerptsFor(all, (key) => key === id
+    ? readTracks(own.row?.tracks ?? []) : readTracks(resultOf.get(key)?.tracks ?? []), readings);
   const frameLinks: FrameLinks = Object.fromEntries(
     frames.map((f) => [f.seq, { original: f.url, enhanced: enhanced[f.seq] }]));
-  const marks = frameMarks(findings.rows);
-  const enhancedCount = results.rows.reduce((n, r) => n + readFrames(r.frames).filter((f) => f.enhanced).length, 0);
-  const bySeverity = (s: string) => findings.rows.filter((f) => severityOf(f.severity) === s).length;
+  const marks = frameMarks(all);
+  const sessionMarks = marksOf(ownFindings.rows, own.row ? readFlags(own.row.flags) : [],
+                               samples.rows, "seq");
+  const enhancedCount = [...results.rows, ...(own.row ? [own.row] : [])]
+    .reduce((n, r) => n + readFrames(r.frames).filter((f) => f.enhanced).length, 0);
+  const bySeverity = (s: string) => all.filter((f) => severityOf(f.severity) === s).length;
+  const nothingProcessed = processed.length === 0 && !own.row;
 
   return (
     <div className="space-y-10">
@@ -97,14 +120,15 @@ export default async function ProcessedSessionPage(props: PageProps<"/app/proces
         </p>
         <PageHeader
           title={<>Processed data · <LocalTime iso={session.started_at} /></>}
-          description="What the data pipeline made of this session's flights."
+          description="What the data pipeline made of this session — its flights, and the readings around them."
         />
       </div>
 
       <section aria-label="Summary" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Flights processed" value={`${processed.length} of ${flights.length}`} />
-        <Stat label="Anomalies" value={findings.rows.length
-          ? `${findings.rows.length} · ${bySeverity("critical")} critical, ${bySeverity("warning")} warning`
+        <Stat label="Flights processed" value={`${processed.length} of ${flights.length}`}
+              hint={own.row ? "and the session itself" : "the session itself not yet"} />
+        <Stat label="Anomalies" value={all.length
+          ? `${all.length} · ${bySeverity("critical")} critical, ${bySeverity("warning")} warning`
           : "None"} />
         <Stat label="Frames enhanced" value={`${enhancedCount} of ${frames.length}`} />
         <OwnerStat label="Run by" who={session} />
@@ -115,11 +139,11 @@ export default async function ProcessedSessionPage(props: PageProps<"/app/proces
           Pipeline results are not on the web yet: the database has no pipeline tables. Apply
           migration 20261009000016_pipeline_results.sql.
         </Note>
-      ) : processed.length === 0 ? (
+      ) : nothingProcessed ? (
         <Note>
-          None of this session&apos;s {flights.length} flight{flights.length === 1 ? " has" : "s have"} been
-          processed. Leave Process flights (DPP) on at the top of the desktop app&apos;s Control page,
-          or press Process this flight there; the result uploads here.
+          Nothing in this session has been processed yet. Leave Process flights (DPP) on at the top of
+          the desktop app&apos;s Control page: each flight is processed when it lands and the session when
+          it ends, and the results upload here.
         </Note>
       ) : (
         <>
@@ -127,15 +151,15 @@ export default async function ProcessedSessionPage(props: PageProps<"/app/proces
             <h2 id="anomalies-heading" className="text-lg font-semibold text-[var(--heading)]">
               Anomalies in this session
             </h2>
-            {findings.rows.length === 0 ? (
+            {all.length === 0 ? (
               <Note>
-                Nothing departed from what was expected in the {processed.length} processed flight
-                {processed.length === 1 ? "" : "s"}. The readings below are cleaned and checked; there is
-                simply nothing to flag.
+                Nothing departed from what was expected — in the {processed.length} processed flight
+                {processed.length === 1 ? "" : "s"}{own.row ? " or on the ground around them" : ""}. The
+                readings below are cleaned and checked; there is simply nothing to flag.
               </Note>
             ) : (
               <FindingsList
-                findings={findings.rows}
+                findings={all}
                 frames={frameLinks}
                 excerpts={excerpts}
                 flightOf={(flightId) => flightNumber.has(flightId)
@@ -148,6 +172,8 @@ export default async function ProcessedSessionPage(props: PageProps<"/app/proces
           {processed.map((f) => {
             const mine = findings.rows.filter((x) => x.flight_id === f.id);
             const r = resultOf.get(f.id)!;
+            const rows = telemetry[f.id] ?? [];
+            const flightMarks = marksOf(mine, readFlags(r.flags), rows);
             const sev = r.worst_severity ? SEVERITY[severityOf(r.worst_severity)] : null;
             return (
               <section key={f.id} id={`flight-${f.id}`} aria-labelledby={`flight-${f.id}-heading`}
@@ -167,10 +193,16 @@ export default async function ProcessedSessionPage(props: PageProps<"/app/proces
                     </Link>
                   </span>
                 </div>
-                <FlightProcessing result={r} telemetry={telemetry[f.id] ?? []} findings={mine} />
+                <FlightProcessing result={r} telemetry={rows} findings={mine} />
+                <div className="space-y-3">
+                  <h3 className="text-base font-semibold">What went wrong</h3>
+                  <ErrorTable marks={flightMarks} rows={rows} table={`flight-${f.id}-readings`}
+                              unit={f.temp_unit} />
+                </div>
                 <div className="space-y-3">
                   <h3 className="text-base font-semibold">Every reading</h3>
-                  <RawReadings rows={telemetry[f.id] ?? []} unit={f.temp_unit} highlights={highlightsOf(mine)} />
+                  <RawReadings rows={rows} unit={f.temp_unit} marks={flightMarks}
+                               id={`flight-${f.id}-readings`} />
                 </div>
               </section>
             );
@@ -183,6 +215,39 @@ export default async function ProcessedSessionPage(props: PageProps<"/app/proces
               app to add {notProcessed.length === 1 ? "it" : "them"}.
             </Note>
           )}
+
+          <section id="session-own" aria-labelledby="own-heading"
+                   className="scroll-mt-24 space-y-6 border-t border-[var(--border)] pt-6">
+            <h2 id="own-heading" className="text-lg font-semibold text-[var(--heading)]">
+              Around the flights — the session, one reading a second
+            </h2>
+            {!own.migrated ? (
+              <Note>
+                The session&apos;s own results are not on the web yet: apply migration
+                20261009000018_session_results.sql; the laptop keeps them until it can upload.
+              </Note>
+            ) : !own.row ? (
+              <Note>
+                The session itself has not been processed yet: it is processed when it ends, with
+                Process flights (DPP) on, and uploads here.
+              </Note>
+            ) : (
+              <>
+                <FlightProcessing result={own.row} telemetry={sampleRows} findings={ownFindings.rows}
+                                  over="session" />
+                <div className="space-y-3">
+                  <h3 className="text-base font-semibold">What went wrong</h3>
+                  <ErrorTable marks={sessionMarks} rows={samples.rows} indexKey="seq"
+                              table="session-readings" unit="C" what="session" />
+                </div>
+                <div className="space-y-3">
+                  <h3 className="text-base font-semibold">Every reading</h3>
+                  <RawReadings rows={samples.rows} unit="C" columns={SESSION_COLUMNS} indexKey="seq"
+                               what="session" marks={sessionMarks} id="session-readings" />
+                </div>
+              </>
+            )}
+          </section>
         </>
       )}
 

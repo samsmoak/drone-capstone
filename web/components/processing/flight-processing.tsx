@@ -1,4 +1,12 @@
-import type { FindingRow, PipelineResultRow, TelemetryRow } from "@/lib/queries";
+import type { FindingRow, PipelineResultRow } from "@/lib/queries";
+
+/** The result fields this reads — a flight's, or a session's own (same shape). */
+type Processed = Pick<PipelineResultRow, "tracks" | "flags" | "frames" | "points" | "stages"
+  | "failures" | "created_at" | "pipeline_version">;
+/** A reading as the charts need it: a flight's row, or a session sample with
+ *  its seq as the index. */
+type Reading = { index: number; recorded_at: string; raw_temp: number | null;
+                 station_pressure_hpa: number | null };
 import type { Band } from "@/components/ui/time-series";
 import { StatusBadge } from "@/components/ui/states";
 import { LocalTime } from "@/components/ui/local-time";
@@ -6,6 +14,8 @@ import { SignalPanel } from "@/components/processing/signal-panel";
 import { elapsedSeconds } from "@/lib/flight-format";
 import {
   SEVERITY,
+  SHADE,
+  groupColor,
   readFlags,
   readFrames,
   readPoints,
@@ -37,9 +47,12 @@ export function FlightProcessing({
   result,
   telemetry,
   findings,
+  over = "flight",
 }: {
-  result: PipelineResultRow;
-  telemetry: TelemetryRow[];
+  /** "session" for a session's own result: its charts count session time. */
+  over?: string;
+  result: Processed;
+  telemetry: Reading[];
   findings: FindingRow[];
 }) {
   const tracks = readTracks(result.tracks);
@@ -53,7 +66,9 @@ export function FlightProcessing({
 
   const bandsFor = (signal: string): Band[] =>
     findings.filter((f) => f.signal === signal).map((f) => ({
-      x1: f.t_start_s, x2: f.t_end_s, tone: SEVERITY[severityOf(f.severity)].status,
+      x1: f.t_start_s, x2: f.t_end_s,
+      color: groupColor(f.signal === "pressure" ? "pressure" : "temperature"),
+      depth: SHADE[severityOf(f.severity)] / 100,
       label: `${SEVERITY[severityOf(f.severity)].label} — ${f.title}`,
     }));
   const flagsOn = (column: string): Flag[] =>
@@ -147,10 +162,10 @@ export function FlightProcessing({
 
       <div className="grid gap-10 xl:grid-cols-2">
         <SignalPanel title="Temperature" track={tracks.find((x) => x.signal === "temperature") ?? null}
-                     raw={raw("raw_temp")} flags={flagsOn("raw_temp")} bands={bandsFor("temperature")} />
+                     raw={raw("raw_temp")} flags={flagsOn("raw_temp")} bands={bandsFor("temperature")} over={over} />
         <SignalPanel title="Pressure" track={tracks.find((x) => x.signal === "pressure") ?? null}
                      raw={raw("station_pressure_hpa")} flags={flagsOn("station_pressure_hpa")}
-                     bands={bandsFor("pressure")} />
+                     bands={bandsFor("pressure")} over={over} />
       </div>
     </div>
   );

@@ -30,7 +30,10 @@ export function SignalPanel({
   raw,
   flags,
   bands,
+  over = "flight",
 }: {
+  /** What the clock counts from: "flight", or "session" for a session's own. */
+  over?: string;
   title: string;
   track: Track | null;
   /** The track's column as recorded, every reading, on the flight's clock. */
@@ -93,10 +96,10 @@ export function SignalPanel({
           : `Every value as recorded; ${flagged.size.toLocaleString()} flagged by the cleaner and left out of the analysis.`}
       </p>
       {view === "clean" ? (
-        <TimeSeries rows={cleanRows} series={cleanSeries} xKey="t" xLabel="Time in flight (s)"
+        <TimeSeries rows={cleanRows} series={cleanSeries} xKey="t" xLabel={`Time in ${over} (s)`}
                     xFormat="seconds" yLabel={unit} digits={pressure ? 3 : 2} bands={bands} />
       ) : (
-        <TimeSeries rows={rawRows} series={rawSeries} xKey="t" xLabel="Time in flight (s)"
+        <TimeSeries rows={rawRows} series={rawSeries} xKey="t" xLabel={`Time in ${over} (s)`}
                     xFormat="seconds" yLabel={unit} digits={pressure ? 3 : 2} bands={bands} />
       )}
     </div>

@@ -16,7 +16,8 @@ import { TimeSeries } from "@/components/ui/time-series";
 import { FlightPath } from "@/components/ui/flight-path";
 import { RawReadings } from "@/components/ui/raw-readings";
 import { FLIGHTS, processedPath } from "@/lib/routes";
-import { excerptsFor, frameMarks, highlightsOf, readTracks } from "@/lib/pipeline";
+import { excerptsFor, frameMarks, marksOf, readFlags, readTracks } from "@/lib/pipeline";
+import { ErrorTable } from "@/components/processing/error-table";
 import {
   elapsedSeconds,
   flightDuration,
@@ -60,7 +61,7 @@ export default async function FlightPage(props: PageProps<"/app/flights/[id]">) 
     frames.map((f) => [f.seq, { original: f.url, enhanced: enhanced[f.seq] }]));
   // The anomalies, marked where they show: their readings in the table, the
   // frames taken during them, and each card's own excerpt.
-  const highlights = highlightsOf(findings.rows);
+  const readingMarks = marksOf(findings.rows, result ? readFlags(result.flags) : [], telemetry);
   const marks = frameMarks(findings.rows);
   const excerpts = excerptsFor(findings.rows, () => (result ? readTracks(result.tracks) : []),
     Object.fromEntries(findings.rows.map((f) => [
@@ -261,11 +262,24 @@ export default async function FlightPage(props: PageProps<"/app/flights/[id]">) 
       </section>
 
 
+      {result && (
+        <section aria-labelledby="errors-heading" className="space-y-3">
+          <h2 id="errors-heading" className="text-lg font-semibold text-[var(--heading)]">
+            What went wrong
+          </h2>
+          <p className="text-sm text-[var(--muted)]">
+            Every anomaly and every reading the cleaner flagged, in time order — only the data each
+            one is about is filled in. Show opens it in the readings below.
+          </p>
+          <ErrorTable marks={readingMarks} rows={telemetry} table="flight-readings" unit={unit} />
+        </section>
+      )}
+
       <section aria-labelledby="raw-heading" className="space-y-3">
         <h2 id="raw-heading" className="text-lg font-semibold text-[var(--heading)]">
           Raw readings
         </h2>
-        <RawReadings rows={telemetry} unit={unit} highlights={highlights} />
+        <RawReadings rows={telemetry} unit={unit} marks={readingMarks} id="flight-readings" />
       </section>
     </div>
   );

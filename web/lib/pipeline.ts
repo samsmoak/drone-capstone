@@ -43,6 +43,10 @@ export type FrameRecord = {
   method: string;
   quality: FrameQuality | null;
   label: { value: string; reason: string | null; model: string };
+  /** scene@1: how much the view changed from the frame before (null = not
+   *  comparable), and in words. */
+  view_change: number | null;
+  view_note: string | null;
 };
 
 export type PointVerdict = {
@@ -94,6 +98,8 @@ export function readFrames(value: Json): FrameRecord[] {
         ? { sharpness: q.sharpness, brightness: q.brightness, usable: q.usable !== false,
             reason: typeof q.reason === "string" ? q.reason : null }
         : null,
+      view_change: typeof f.view_change === "number" ? f.view_change : null,
+      view_note: typeof f.view_note === "string" ? f.view_note : null,
       label: {
         value: typeof label.value === "string" ? label.value : "unknown",
         reason: typeof label.reason === "string" ? label.reason : null,
@@ -138,20 +144,58 @@ export function clock(seconds: number): string {
 }
 
 /**
- * A stretch of a flight the pipeline found anomalous, as the readings table
- * and the camera mark it: the readings it covers (telemetry `index`,
- * inclusive — the agent's Reading.index), its time, and what it means.
+ * WHAT THE PAGES HIGHLIGHT — "marks" (the owner, 2026-10-09: "a different
+ * colour for each data group; the severity is the shade — lighter is less
+ * severe, deeper is more").
+ *
+ *   anomaly  a finding: a stretch whose temperature (orange) or pressure
+ *            (blue) departed from what was expected
+ *   fault    the cleaner's flags, merged into spans: a sensor value that was
+ *            missing, stuck, a spike or out of range (purple); a position the
+ *            drone did not measure, or a battery reading no load explains
+ *            (teal); time lost between readings (purple, on the time cells)
+ *
+ * The hue is the data group (tokens --group-*, app/globals.css); the depth of
+ * the tint is the severity (SHADE). Never colour alone: every mark has a
+ * shape and a word beside it, and its meaning on hover, focus or tap.
  */
-export type Highlight = {
+
+export type Group = "temperature" | "pressure" | "fault" | "position";
+
+export const GROUPS: Record<Group, { label: string }> = {
+  temperature: { label: "Temperature" },
+  pressure: { label: "Pressure" },
+  fault: { label: "Sensor fault" },
+  position: { label: "Position & battery" },
+};
+
+/** Tint strength per severity, % of the group colour: lighter = less severe. */
+export const SHADE: Record<Severity, number> = { info: 14, warning: 28, critical: 48 };
+
+export function groupColor(group: Group): string {
+  return `var(--group-${group})`;
+}
+
+/** The cell tint for a group at a severity. */
+export function groupTint(group: Group, severity: Severity): string {
+  return `color-mix(in srgb, ${groupColor(group)} ${SHADE[severity]}%, transparent)`;
+}
+
+export type Mark = {
   id: string;
-  signal: string;
+  kind: "anomaly" | "fault";
+  group: Group;
   severity: Severity;
+  /** Reading index (telemetry `index`, or a session sample's `seq`), inclusive. */
   start: number;
   end: number;
-  tStart: number;
-  tEnd: number;
+  /** Seconds into the flight (or session); null when not known. */
+  tStart: number | null;
+  tEnd: number | null;
+  /** The table columns it tints. */
+  columns: string[];
   title: string;
-  sentence: string;
+  body: string;
 };
 
 type FindingLike = {
@@ -159,42 +203,137 @@ type FindingLike = {
   t_start_s: number; t_end_s: number; title: string; sentence: string; evidence_frames: number[];
 };
 
-export function highlightsOf(findings: readonly FindingLike[]): Highlight[] {
+/** The columns each signal's anomaly tints. */
+const ANOMALY_COLUMNS: Record<string, string[]> = {
+  temperature: ["raw_temp", "corrected_temp"],
+  pressure: ["station_pressure_hpa"],
+};
+
+export function anomalyMarks(findings: readonly FindingLike[]): Mark[] {
   return findings.map((f) => ({
-    id: f.id, signal: f.signal, severity: severityOf(f.severity),
-    start: f.start_index, end: f.end_index, tStart: f.t_start_s, tEnd: f.t_end_s,
-    title: f.title, sentence: f.sentence,
+    id: f.id, kind: "anomaly" as const,
+    group: f.signal === "pressure" ? "pressure" as const : "temperature" as const,
+    severity: severityOf(f.severity), start: f.start_index, end: f.end_index,
+    tStart: f.t_start_s, tEnd: f.t_end_s,
+    columns: ANOMALY_COLUMNS[f.signal] ?? [], title: f.title, body: f.sentence,
   })).sort((a, b) => a.start - b.start);
 }
 
-/** The worst highlight covering a reading, or undefined. */
-export function highlightAt(highlights: readonly Highlight[], index: number): Highlight | undefined {
-  let worst: Highlight | undefined;
-  for (const h of highlights) {
-    if (index < h.start || index > h.end) continue;
-    if (!worst || SEVERITY[h.severity].rank > SEVERITY[worst.severity].rank) worst = h;
+/** Which family a flagged column belongs to, and the words for it. */
+const FAMILY: Record<string, { family: string; group: Group; words: string; columns: string[] }> = {
+  raw_temp: { family: "temperature", group: "fault", words: "temperature",
+              columns: ["raw_temp", "corrected_temp"] },
+  corrected_temp: { family: "temperature", group: "fault", words: "temperature",
+                    columns: ["raw_temp", "corrected_temp"] },
+  station_pressure_hpa: { family: "pressure", group: "fault", words: "pressure",
+                          columns: ["station_pressure_hpa"] },
+  x_m: { family: "position", group: "position", words: "position", columns: ["x_m", "y_m", "z_m"] },
+  y_m: { family: "position", group: "position", words: "position", columns: ["x_m", "y_m", "z_m"] },
+  z_m: { family: "position", group: "position", words: "position", columns: ["x_m", "y_m", "z_m"] },
+  battery_v: { family: "battery", group: "position", words: "battery", columns: ["battery_v"] },
+};
+const TIME_FAMILY = { family: "time", group: "fault" as Group, words: "readings",
+                      columns: ["index", "seq", "recorded_at"] };
+
+/** How severe each kind of flag is: a value that should not be trusted at all
+ *  is a warning; one missing or briefly off, slight. */
+const KIND: Record<string, { severity: Severity; title: (words: string) => string }> = {
+  missing: { severity: "info", title: (w) => `No ${w} recorded` },
+  spike: { severity: "info", title: (w) => `A ${w} spike` },
+  gap: { severity: "info", title: () => "Time lost between readings" },
+  untrusted: { severity: "info", title: () => "Position not measured (no base station)" },
+  stuck: { severity: "warning", title: (w) => `The ${w} sensor stuck` },
+  out_of_range: { severity: "warning", title: (w) => `A ${w} reading out of range` },
+  implausible: { severity: "warning", title: (w) => `An impossible ${w} jump` },
+};
+
+/**
+ * The cleaner's flags as marks: consecutive readings with the same kind of
+ * fault in the same family of columns are ONE span. `timeOf` gives a reading's
+ * seconds into the flight (or session), when known.
+ */
+export function faultMarks(flags: readonly Flag[],
+                           timeOf: (index: number) => number | null = () => null): Mark[] {
+  const sorted = [...flags].sort((a, b) => a.index - b.index);
+  const open = new Map<string, Mark & { reasons: string[]; count: number }>();
+  const out: Mark[] = [];
+  const close = (key: string) => {
+    const m = open.get(key);
+    if (!m) return;
+    open.delete(key);
+    const { reasons, count, ...mark } = m;
+    // The count, unless the cleaner's own sentence already gives it.
+    const said = /\d+ readings/.test(reasons[0]);
+    out.push({ ...mark, body: count > 1 && !said ? `${reasons[0]} (${count} readings.)` : reasons[0] });
+  };
+  for (const f of sorted) {
+    const fam = f.column === null ? TIME_FAMILY : FAMILY[f.column];
+    if (!fam) continue;                       // a column no table shows
+    const kind = KIND[f.kind] ?? { severity: "info" as Severity, title: (w: string) => `A ${w} fault` };
+    const key = `${fam.family}:${f.kind}`;
+    const m = open.get(key);
+    if (m && f.index <= m.end + 1) {
+      if (f.index > m.end) { m.end = f.index; m.tEnd = timeOf(f.index); m.count += 1; }
+      continue;
+    }
+    close(key);
+    open.set(key, {
+      id: `${key}:${f.index}`, kind: "fault", group: fam.group, severity: kind.severity,
+      start: f.index, end: f.index, tStart: timeOf(f.index), tEnd: timeOf(f.index),
+      columns: fam.columns, title: kind.title(fam.words), body: "", reasons: [f.reason], count: 1,
+    });
   }
-  return worst;
+  for (const key of [...open.keys()]) close(key);
+  return out.sort((a, b) => a.start - b.start || a.id.localeCompare(b.id));
 }
 
-/** Frame seq → the findings that frame was taken during. */
-export function frameMarks(findings: readonly FindingLike[]): Record<number, Highlight[]> {
-  const out: Record<number, Highlight[]> = {};
-  const all = highlightsOf(findings);
+/** A reading's seconds since the first row, by its index (or seq). */
+export function timesOf(rows: readonly { [key: string]: unknown }[],
+                        indexKey = "index"): (index: number) => number | null {
+  const first = rows.find((r) => typeof r.recorded_at === "string")?.recorded_at;
+  const t0 = typeof first === "string" ? Date.parse(first) : Number.NaN;
+  const at = new Map<number, number>();
+  for (const r of rows) {
+    const i = r[indexKey];
+    if (typeof i === "number" && typeof r.recorded_at === "string") {
+      at.set(i, (Date.parse(r.recorded_at) - t0) / 1000);
+    }
+  }
+  return (index) => at.get(index) ?? null;
+}
+
+/** Everything a table marks for one flight or session: its anomalies and the
+ *  cleaner's flags as spans. */
+export function marksOf(findings: readonly FindingLike[], flags: readonly Flag[],
+                        rows: readonly { [key: string]: unknown }[], indexKey = "index"): Mark[] {
+  return [...anomalyMarks(findings), ...faultMarks(flags, timesOf(rows, indexKey))]
+    .sort((a, b) => a.start - b.start);
+}
+
+/** Every mark covering a reading. */
+export function marksAt(marks: readonly Mark[], index: number): Mark[] {
+  return marks.filter((m) => index >= m.start && index <= m.end);
+}
+
+/** The worst mark of a list (by severity, then anomaly over fault). */
+export function worstMark(marks: readonly Mark[]): Mark | undefined {
+  return [...marks].sort((a, b) => SEVERITY[b.severity].rank - SEVERITY[a.severity].rank
+    || (a.kind === b.kind ? 0 : a.kind === "anomaly" ? -1 : 1))[0];
+}
+
+/** Frame seq → the anomalies it was taken during, worst first. */
+export function frameMarks(findings: readonly FindingLike[]): Record<number, Mark[]> {
+  const out: Record<number, Mark[]> = {};
+  const all = anomalyMarks(findings);
   findings.forEach((f) => {
-    const h = all.find((x) => x.id === f.id);
-    if (!h) return;
-    for (const seq of f.evidence_frames) (out[seq] ??= []).push(h);
+    const m = all.find((x) => x.id === f.id);
+    if (!m) return;
+    for (const seq of f.evidence_frames) (out[seq] ??= []).push(m);
   });
   for (const list of Object.values(out)) {
     list.sort((a, b) => SEVERITY[b.severity].rank - SEVERITY[a.severity].rank);
   }
   return out;
-}
-
-/** The CSS colour of a severity — a status token, never a raw colour. */
-export function severityColor(severity: Severity): string {
-  return `var(--status-${SEVERITY[severity].status})`;
 }
 
 /** One reading of an anomalous stretch: the stored value, and what the
@@ -253,13 +392,15 @@ export function rawColumnOf(signal: string, track: Track | null): { column: stri
 
 /** Each finding's excerpt, from its flight's result and its stretch's readings. */
 export function excerptsFor(
-  findings: readonly { id: string; flight_id: string; signal: string; t_start_s: number }[],
+  findings: readonly { id: string; flight_id: string | null; session_id?: string | null;
+                       signal: string; t_start_s: number }[],
   tracksOf: (flightId: string) => Track[],
   readings: Record<string, { index: number; recorded_at: string; [key: string]: unknown }[]>,
 ): Record<string, { rows: ExcerptRow[]; total: number; rawLabel: string }> {
   const out: Record<string, { rows: ExcerptRow[]; total: number; rawLabel: string }> = {};
   for (const f of findings) {
-    const track = tracksOf(f.flight_id).find((t) => t.signal === f.signal) ?? null;
+    const track = tracksOf(f.flight_id ?? f.session_id ?? "").find((t) => t.signal === f.signal)
+      ?? null;
     const raw = rawColumnOf(f.signal, track);
     out[f.id] = { ...excerptOf(readings[f.id] ?? [], track, f.t_start_s, raw.column), rawLabel: raw.label };
   }

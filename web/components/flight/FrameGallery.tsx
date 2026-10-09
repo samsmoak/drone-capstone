@@ -5,7 +5,8 @@ import { useRef, useState } from "react";
 import type { SessionFrame } from "@/lib/queries";
 import { PhotoViewer, type ViewerPhoto } from "@/components/media/PhotoViewer";
 import { useHint, type HintText } from "@/components/ui/hint";
-import { SEVERITY, severityColor, type Highlight } from "@/lib/pipeline";
+import { GROUPS, SEVERITY, groupColor, type Mark } from "@/lib/pipeline";
+import { MarkShape } from "@/components/ui/mark-legend";
 
 /**
  * A session's camera frames: one large at a time with previous / next, a strip
@@ -29,25 +30,23 @@ import { SEVERITY, severityColor, type Highlight } from "@/lib/pipeline";
  * — a marked frame shows what the camera saw then, which may be nothing.
  */
 
-const ICON = { critical: "■", serious: "▲", warning: "▲" } as const;
-
-function hintOf(marks: Highlight[]): HintText {
+function hintOf(marks: Mark[]): HintText {
   const worst = marks[0];
   return {
     title: marks.length > 1 ? `${worst.title} (and ${marks.length - 1} more)` : worst.title,
-    body: `Taken during this anomaly. ${worst.sentence}`,
-    label: SEVERITY[worst.severity].label,
-    color: severityColor(worst.severity),
+    body: `Taken during this anomaly. ${worst.body}`,
+    label: `${GROUPS[worst.group].label} · ${SEVERITY[worst.severity].label}`,
+    color: groupColor(worst.group),
   };
 }
 
-function MarkBadge({ marks, large = false }: { marks: Highlight[]; large?: boolean }) {
+function MarkBadge({ marks, large = false }: { marks: Mark[]; large?: boolean }) {
   const worst = marks[0];
   const sev = SEVERITY[worst.severity];
   return (
     <span className={`pointer-events-none absolute left-1 top-1 inline-flex items-center gap-1 rounded bg-black/75 font-semibold text-white ${
       large ? "px-2 py-1 text-xs" : "px-1 py-0.5 text-[10px]"}`}>
-      <span aria-hidden="true" style={{ color: severityColor(worst.severity) }}>{ICON[sev.status]}</span>
+      <MarkShape mark={worst} />
       {large ? `${sev.label} · ${worst.title}` : sev.label}
     </span>
   );
@@ -79,7 +78,7 @@ export function FrameGallery({ frames: allFrames, enhanced = {}, marks = {} }: {
   /** Frame seq → a link to its enhanced copy. */
   enhanced?: Record<number, string>;
   /** Frame seq → the anomalies it was taken during, worst first. */
-  marks?: Record<number, Highlight[]>;
+  marks?: Record<number, Mark[]>;
 }) {
   const [onlyMarked, setOnlyMarked] = useState(false);
   const hint = useHint();
@@ -105,7 +104,7 @@ export function FrameGallery({ frames: allFrames, enhanced = {}, marks = {} }: {
   const currentMarks = marks[current.seq] ?? [];
   const markStyle = (f: SessionFrame) => {
     const m = marks[f.seq];
-    return m?.length ? { boxShadow: `inset 0 0 0 3px ${severityColor(m[0].severity)}` } : undefined;
+    return m?.length ? { boxShadow: `inset 0 0 0 3px ${groupColor(m[0].group)}` } : undefined;
   };
   const hover = (f: SessionFrame) => {
     const m = marks[f.seq];
@@ -257,7 +256,7 @@ export function FrameGallery({ frames: allFrames, enhanced = {}, marks = {} }: {
               {currentMarks.length > 0 && (
                 <>
                   <span aria-hidden="true" className="pointer-events-none absolute inset-0 rounded-xl"
-                        style={{ boxShadow: `inset 0 0 0 4px ${severityColor(currentMarks[0].severity)}` }} />
+                        style={{ boxShadow: `inset 0 0 0 4px ${groupColor(currentMarks[0].group)}` }} />
                   <span className="pointer-events-none absolute left-3 top-3"><MarkBadge marks={currentMarks} large /></span>
                 </>
               )}
@@ -273,8 +272,8 @@ export function FrameGallery({ frames: allFrames, enhanced = {}, marks = {} }: {
             <ul className="max-w-3xl space-y-1.5" aria-label="Anomalies this frame was taken during">
               {currentMarks.map((m) => (
                 <li key={m.id} className="rounded-md border border-[var(--border)] border-l-4 bg-[var(--surface)] p-2 text-sm"
-                    style={{ borderLeftColor: severityColor(m.severity) }}>
-                  <span className="font-semibold">{SEVERITY[m.severity].label} · {m.title}.</span> {m.sentence}
+                    style={{ borderLeftColor: groupColor(m.group) }}>
+                  <span className="font-semibold">{SEVERITY[m.severity].label} · {m.title}.</span> {m.body}
                 </li>
               ))}
             </ul>
