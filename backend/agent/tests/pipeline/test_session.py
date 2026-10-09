@@ -141,6 +141,18 @@ class TestTheCleanerAtOneHertz:
         assert len([f for f in flags if f.kind == "gap"]) == 19
 
 
+    def test_a_stuck_sensor_is_said_in_seconds_at_one_hertz(self, tmp_path):
+        readings = tuple(
+            Reading(i + 1, T0 + timedelta(seconds=i), float(i),
+                    {"raw_temp": 30.0 + 0.01 * i,
+                     "station_pressure_hpa": 1013.25 if 40 <= i < 54 else 1013.0 + 0.003 * i})
+            for i in range(120))
+        data = PointData(InspectionPoint(WHOLE_SESSION, None, 0, 0, 0), readings, ())
+        stuck = [f for f in RobustCleaner().clean(data, _ctx(tmp_path)).flags if f.kind == "stuck"]
+        assert len(stuck) == 14
+        assert "14 readings (14.0 s" in stuck[0].reason
+
+
 class TestGroundStretches:
     def test_flights_split_the_session_and_their_edges_are_left_out(self, tmp_path):
         s = LocalSessionSource(write_session(tmp_path, seconds=300, flights=[(100, 160)])
