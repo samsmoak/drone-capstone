@@ -19,11 +19,12 @@ from cropwatcher.pipeline.stages.classify.blocks import BlocksClassifier
 from cropwatcher.pipeline.stages.classify.stub import StubClassifier
 from cropwatcher.pipeline.stages.clean.robust import RobustCleaner
 from cropwatcher.pipeline.stages.clean.stub import StubCleaner
+from cropwatcher.pipeline.stages.enhance.clahe import ClaheEnhancer
 from cropwatcher.pipeline.stages.enhance.stub import StubEnhancer
 
 #: Every cleaner, checked against the contract.
 CLEANERS = [StubCleaner, RobustCleaner]
-#: Add your enhancer here (Kevin).
-ENHANCERS = [StubEnhancer]
+#: Every enhancer, checked against the contract.
+ENHANCERS = [StubEnhancer, ClaheEnhancer]
 #: Every classifier, checked against the contract.
 CLASSIFIERS = [StubClassifier, BlocksClassifier]
