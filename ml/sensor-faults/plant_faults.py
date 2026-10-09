@@ -68,6 +68,8 @@ def plant(rows: list[dict[str, str]], seed: int = 0) -> Planted:
             size = temp_delta(size)
         rows[pos][column] = repr(float(rows[pos][column]) + size)
         out.truth.append((index(pos), column, "spike"))
+        if column == "raw_temp":         # the cleaner flags what is computed from it
+            out.truth.append((index(pos), "corrected_temp", "spike"))
 
     def missing(pos: int, column: str, text: str) -> None:
         rows[pos][column] = text
@@ -124,6 +126,71 @@ def plant(rows: list[dict[str, str]], seed: int = 0) -> Planted:
 
     out.rows = [r for p, r in enumerate(rows) if p not in drop]
     return out
+
+
+def plant_extras(rows: list[dict[str, str]], seed: int = 0) -> Planted:
+    """Plant the faults the position and battery checks look for (robust@1):
+    a position jump on a row where a base station WAS received, a battery
+    reading no cell can give, and a battery jump. Kept apart from plant() so
+    hampel@1 and robust@1 are scored on identical sensor plants."""
+    rng = random.Random(seed + 1000)
+    rows = [dict(r) for r in rows]
+    out = Planted(rows)
+
+    def index(pos: int) -> int:
+        return int(float(rows[pos]["index"]))
+
+    def positioned(pos: int) -> bool:
+        """A base station received, and the real estimate steady (well inside
+        the room, every step under the speed limit), from 3 rows before to 3
+        after — so the planted jump is the only thing wrong there."""
+        span = range(pos - 3, pos + 4)
+        if any(rows[p].get("lighthouse_received", "") in ("", "0", "0.0") for p in span):
+            return False
+        xyz = [tuple(float(rows[p][c]) for c in ("x_m", "y_m", "z_m")) for p in span]
+        if any(abs(v) > 15.0 for point in xyz for v in point):
+            return False
+        return all(sum((a - b) ** 2 for a, b in zip(p, q, strict=True)) ** 0.5 < 0.1
+                   for p, q in zip(xyz, xyz[1:], strict=False))
+
+    spots = [p for p in range(MARGIN, len(rows) - MARGIN) if positioned(p)]
+    if spots:
+        pos = rng.choice(spots)
+        rows[pos]["x_m"] = repr(float(rows[pos]["x_m"]) + 1.0)          # 10 m/s
+        for column in ("x_m", "y_m", "z_m"):
+            out.truth.append((index(pos), column, "implausible"))
+    taken = {pos - 2, pos - 1, pos, pos + 1, pos + 2} if spots else set()
+    free = [p for p in range(MARGIN, len(rows) - MARGIN)
+            if not any(abs(p - t) < 4 for t in taken)]
+    first = rng.choice(free)
+    rows[first]["battery_v"] = "0.0"
+    out.truth.append((index(first), "battery_v", "out_of_range"))
+    # A jump bigger than any load step (1.1 V > the 1.0 V limit) that stays a
+    # possible cell voltage — otherwise it is out_of_range, not implausible.
+    # Measured from the reading BEFORE it, which is what the check compares.
+    jumpable = [p for p in free if abs(p - first) >= 4
+                and (float(rows[p - 1]["battery_v"]) - 1.1 >= 2.6
+                     or float(rows[p - 1]["battery_v"]) + 1.1 <= 4.3)]
+    if jumpable:          # a flight held at 3.4–3.5 V throughout has no such row
+        second = rng.choice(jumpable)
+        before = float(rows[second - 1]["battery_v"])
+        rows[second]["battery_v"] = repr(before - 1.1 if before - 1.1 >= 2.6 else before + 1.1)
+        out.truth.append((index(second), "battery_v", "implausible"))
+    return out
+
+
+def real_gaps(rows: list[dict[str, str]]) -> set[int]:
+    """Indexes of the rows that follow lost time IN THE RECORDING ITSELF — a
+    gap is a fact the index and the clock prove, so flagging one is right."""
+    from datetime import datetime
+    found = set()
+    for prev, cur in zip(rows, rows[1:], strict=False):
+        a, b = int(float(prev["index"])), int(float(cur["index"]))
+        dt = (datetime.fromisoformat(cur["recorded_at"])
+              - datetime.fromisoformat(prev["recorded_at"])).total_seconds()
+        if b - a > 1 or dt > 0.25:
+            found.add(b)
+    return found
 
 
 def write(planted: Planted, out_dir: Path) -> Path:

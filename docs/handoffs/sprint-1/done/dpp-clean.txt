@@ -1,0 +1,74 @@
+TICKET — Data pipeline stage 1: clean the sensor readings
+=========================================================
+
+STATUS: DONE (2026-10-09, branch dpp/clean). REWRITTEN — robust@1 (Samuel)
+replaced hampel@1 (Kevin, 2026-10-03) on the owner's call, after both were
+scored on the same 66 real flights. What is left for Kevin is under FOLLOW-UPS.
+The code is the authority: backend/agent/cropwatcher/pipeline/stages/clean/
+robust.py.
+
+  Owner           Kevin (hampel@1, the planter, the evaluator); Samuel
+                  (robust@1, which replaced hampel@1)
+  Story           4.2: "As an inspector, I want erroneous sensor readings
+                  removed, so that a faulty sensor is not mistaken for faulty
+                  equipment."
+  PDF acceptance  "Erroneous values planted in a flight data file are flagged,
+                  while correct rows are left untouched."
+
+
+WHAT HAPPENED, IN ONE PARAGRAPH
+
+Kevin's hampel@1 met this ticket's acceptance on the one flight in the repo.
+Scored on 66 real flights from the lab laptop, it caught 97.4 % of planted
+faults, raised 0.14 % false flags and 632 flags inside the planted hand-warmer
+ramps (where the rule is zero). Measuring why showed one cause for most of it:
+corrected_temp steps every time the correction engine's thermal_state
+switches, and a short held step is what a median calls a spike. robust@1
+keeps everything hampel@1 got right — the five checks, the window, K, the
+floors, no rate-of-change rule, flag-never-edit — and judges corrected_temp by
+the engine's offset within each thermal state instead, counts stuck runs
+across gaps, and adds position and battery. On the same flights and seeds it
+catches 100 %, raises 0.011 % false flags (all of them the propellers' own
+pressure pulses, flagged on purpose) and 0 ramp flags, in half the time.
+Every number: ml/sensor-faults/MEASUREMENTS.txt.
+
+
+WHAT IS BUILT
+
+  backend/agent/cropwatcher/pipeline/stages/clean/robust.py   robust@1
+  backend/agent/tests/pipeline/test_clean.py                  every rule
+  ml/sensor-faults/plant_faults.py      plant() for the sensors; plant_extras()
+                                        for position and battery; real_gaps()
+  ml/sensor-faults/evaluate.py          --cleaner robust|hampel, a folder of
+                                        flights, --seeds 0-4, totals
+  ml/sensor-faults/hampel_v1.py         hampel@1, read from git for the
+                                        comparison (no second copy)
+  ml/sensor-faults/MEASUREMENTS.txt     every threshold and the comparison
+
+  Flags, first that fits: missing · out_of_range · untrusted (a position with
+  no base station received) · stuck · implausible (a position faster than
+  2.0 m/s, a battery step over 1.0 V) · spike · gap.
+
+
+ACCEPTANCE
+
+  [x] Every planted fault flagged with the right column and kind: 18 095 /
+      18 095 sensor faults, 945 / 945 position and battery faults
+      (66 flights × 5 seeds).
+  [x] Correct rows left untouched: 0.011 % false flags; 0 inside the
+      hand-warmer ramp.
+  [x] A °F flight gets the same flags as the same flight in °C
+      (test_clean.py).
+  [x] The pipeline fixture flight: no sensor or battery flag.
+  [x] Gates: ruff · mypy · pytest.
+
+
+FOLLOW-UPS (Kevin)
+
+  - TIME ON THE LAB LAPTOP: 19.5 ms per flight on the development Mac; run
+    evaluate.py there and add the number to MEASUREMENTS.txt.
+  - THE HAND-WARMER FLIGHTS (story 4.6, with Hannah and Yordanos): re-run
+    evaluate.py on them; a real heat event must get no flag.
+  - The 5 pressure runs held to the last digit for 10+ readings (in
+    MEASUREMENTS.txt, "Spike"): look at those flights and say whether the
+    sensor really froze.
