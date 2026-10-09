@@ -67,7 +67,9 @@ export function ProcessingSwitch({ session, run }: { session: Session; run: Run 
 /** Which flight to show: the session's most recent flight to land, with its
  *  job if it has one; else the most recent job (a flight processed by hand). */
 function lastFlight(session: Session): { id: string; job: ProcessingJob | null } | null {
-  const jobs = session.processing?.jobs ?? [];
+  // Flight jobs only: a session's own job and a point judged in flight are not
+  // a flight's result.
+  const jobs = (session.processing?.jobs ?? []).filter((j) => (j.kind ?? "flight") === "flight");
   const landed = session.processing?.last_flight_id ?? null;
   if (landed) return { id: landed, job: jobs.find((j) => j.flight_id === landed) ?? null };
   return jobs[0] ? { id: jobs[0].flight_id, job: jobs[0] } : null;
@@ -86,7 +88,7 @@ const VERDICT: Record<string, { tone: Tone; text: string }> = {
 };
 
 export function FlightResults({ session, run, flightId }: { session: Session; run: Run; flightId?: string }) {
-  const found = flightId ? { id: flightId, job: session.processing?.jobs?.find((j) => j.flight_id === flightId) ?? null } : lastFlight(session);
+  const found = flightId ? { id: flightId, job: session.processing?.jobs?.find((j) => j.flight_id === flightId && (j.kind ?? "flight") === "flight") ?? null } : lastFlight(session);
   const [result, setResult] = useState<FlightResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
