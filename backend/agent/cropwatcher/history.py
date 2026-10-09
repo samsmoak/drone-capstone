@@ -342,6 +342,21 @@ def interrupted_flights(*, root: Path | None = None) -> list[str]:
     return [flight_id for _, flight_id in sorted(found)]
 
 
+def recorded_flights(*, root: Path | None = None) -> list[str]:
+    """Every flight the sessions on this laptop recorded, oldest first —
+    what `cropwatcher process --all` walks."""
+    found: list[tuple[str, str]] = []
+    for meta_file in (root or sessions_dir()).glob("*/meta.json"):
+        try:
+            raw = json.loads(meta_file.read_text())
+        except (OSError, ValueError):
+            continue
+        for flight in raw.get("flights") or []:
+            if flight.get("id"):
+                found.append((str(flight.get("started_at") or ""), str(flight["id"])))
+    return [flight_id for _, flight_id in sorted(found)]
+
+
 #: One writer at a time for closed sessions' meta.json. A processing job
 #: reports "queued" from the caller's thread and "running"/"done" from the
 #: queue's worker; two unguarded read-modify-writes through one temp file
