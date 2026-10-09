@@ -291,9 +291,11 @@ RULES EVERY STAGE FOLLOWS
     convert them yourself, and name converted features with their unit.
  9. VERSION HONESTLY: bump `version` whenever your output could change.
 10. LOGGING: log = logging.getLogger(__name__). No print.
-11. RUNTIME DEPENDENCIES are numpy, Pillow, opencv-contrib-python-headless and
-    onnxruntime — they go into the desktop installer. Anything else, ask
-    Samuel. Training in ml/ may use anything.
+11. RUNTIME DEPENDENCIES are numpy, Pillow, opencv-python-headless (the
+    contrib build only if a super-resolution model needs dnn_superres) and
+    onnxruntime — they go into the desktop installer (OpenCV took the frozen
+    agent from 43 to 86 MB, 2026-10-09). Anything else, ask Samuel. Training
+    in ml/ may use anything.
 12. TIME: measure your stage per point on the lab laptop and put it in the PR.
     Targets: clean < 0.2 s; enhance and classify each < 2 s for 20 frames.
 

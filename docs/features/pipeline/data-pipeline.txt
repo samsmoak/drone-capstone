@@ -23,7 +23,10 @@ STATUS  (Last verified: 2026-10-05)
             (Kevin): temperature, pressure, position, battery; scored on 66
             real flights against hampel@1 (ml/sensor-faults/MEASUREMENTS.txt).
             Follow-ups for Kevin: ../../handoffs/sprint-1/done/dpp-clean.txt
-  enhance   STUB — Kevin (../../handoffs/sprint-1/undone/dpp-enhance.txt)
+  enhance   BUILT (2026-10-09) — clahe@1, Samuel: CLAHE (clip 2.0, 4×4 tiles)
+            and each frame's quality, chosen on 600 real frames
+            (ml/enhance-eval/RESULTS.txt). Kevin's upscaler evaluation can
+            replace it: ../../handoffs/sprint-1/done/dpp-enhance.txt
   classify  BUILT for the sensors (2026-10-09) — blocks@1, Samuel: temperature
             against the drone's cooling curve, pressure corrected for height,
             blocks by PELT; 0 events on 115 normal flights, planted warm
@@ -64,6 +67,8 @@ ml/sensor-faults/                                  MEASUREMENTS.txt (every
 backend/agent/cropwatcher/cli.py                   `cropwatcher process`
 backend/agent/cropwatcher/processing.py            the queue: one flight at a
                                                    time, in a child process
+backend/agent/cropwatcher/history.py               interrupted_flights — what a
+                                                   closed app left unfinished
 backend/agent/cropwatcher/session.py               processing_on, set_processing,
                                                    process_flight
 backend/agent/cropwatcher/api/rest.py              POST /session/processing,
@@ -118,8 +123,15 @@ backend/agent/tests/pipeline/                      fixture, conformance, tests
   "unknown" must say why — a stub that said "normal" would write confident
   nonsense, as the greenhouse model would have (../architecture.txt).
 • Runtime models are ONNX run by onnxruntime; the runtime dependencies are
-  numpy, Pillow, opencv-contrib-python-headless, onnxruntime. None is added
-  yet — the stubs need none.
+  numpy, Pillow, opencv-python-headless, onnxruntime. numpy (clean) and
+  opencv-python-headless (enhance) are added; OpenCV doubled the frozen agent
+  (43 → 86 MB), verified by build_sidecar.py's self-test.
+• ENHANCEMENT IS CONTRAST, NOT RESOLUTION, AND NEVER COLOUR. The frames are
+  dark (median 61 of 255), 324×244 grayscale; CLAHE moves pixel values and
+  draws none, where a super-resolution network can invent a crack. Each
+  frame's quality (sharpness, brightness, clipping) is measured on the
+  ORIGINAL; a frame under the limits is enhanced and kept but marked
+  unusable with the reason, and is never read as evidence.
 • The batch runner runs in the command's own process. The live runner must run
   in a process of its own: CPU work beside the 50 Hz flight loop competes for
   Python's one interpreter lock.
@@ -134,6 +146,16 @@ backend/agent/tests/pipeline/                      fixture, conformance, tests
   agent's process — the interpreter lock above, and a stage that hangs must
   never take the radio with it. The frozen sidecar is the whole CLI with
   freeze_support() first, so the same command works installed.
+• PROCESSING RESUMES WHEN THE APP STARTS AGAIN (2026-10-09, the owner's
+  ask). The queue lives in memory, so an app closed mid-way used to drop a
+  flight until someone pressed Process. Now, as the agent starts (the API's
+  lifespan, never at import — a test must not process the laptop's real
+  flights), every flight whose line in meta.json still says pending, queued
+  or running is queued again, oldest first, in the background, one at a time.
+  A FAILED flight is not retried unasked: it would fail the same way at every
+  start. Each laptop processes its OWN flights — it holds every reading and
+  frame; another laptop would only have what was uploaded.
+  CROPWATCHER_RESUME=0 turns it off.
 • MANUAL FLIGHTS are processed too: a flight with no mission is one point,
   "flight" (sources.py) — the verdict is for the flight as a whole.
 
