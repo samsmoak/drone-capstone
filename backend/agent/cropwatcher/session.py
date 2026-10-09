@@ -55,7 +55,13 @@ from cropwatcher.flight.link import DEFAULT_FENCE_M, DEFAULT_MAX_HEIGHT_M, Drone
 from cropwatcher.flight.manual import CLIMB_RATE_M_S, MOVE_SPEED_M_S
 from cropwatcher.flight.preflight import reset_estimator
 from cropwatcher.flight.programs import HoverTest, Outcome, run_hover_test
-from cropwatcher.history import SessionLog, SessionMeta, sessions_dir, set_flight_processing
+from cropwatcher.history import (
+    SessionLog,
+    SessionMeta,
+    interrupted_flights,
+    sessions_dir,
+    set_flight_processing,
+)
 from cropwatcher.mission.controller import (
     TERMINAL_STATES,
     MissionController,
@@ -585,6 +591,27 @@ class Session:
         audit.record(Action.PROCESSING_RUN, session_id=self._snapshot.session_id,
                      flight_id=flight_id)
         return job.to_dict()
+
+    def resume_processing(self) -> list[str]:
+        """Process again every flight whose processing the last run of the
+        app left unfinished (history.interrupted_flights) — in the background,
+        one at a time, at low priority, like any flight that lands. Called once
+        as the agent starts. Returns the flights queued."""
+        try:
+            flights = interrupted_flights()
+        except OSError:
+            log.exception("could not look for unfinished processing")
+            return []
+        queued = []
+        for flight_id in flights:
+            try:
+                self.processing.submit(flight_id, on_change=self._processing_changed)
+                queued.append(flight_id)
+            except (ValueError, RuntimeError) as e:
+                log.warning("could not resume processing flight %s: %s", flight_id, e)
+        if queued:
+            log.info("resuming processing of %d flight(s) left unfinished", len(queued))
+        return queued
 
     def _processing_changed(self, job: Job) -> None:
         """A job moved: the flight's line in its session history, the app."""

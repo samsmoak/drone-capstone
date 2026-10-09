@@ -260,3 +260,60 @@ class TestTheRoutes:
     def test_an_id_that_could_leave_the_folder_is_a_404(self, api):
         response = api.client.get("/flights/..%2Fx/result", headers=self.headers())
         assert response.status_code == 404
+
+
+class TestResumingAfterTheAppClosed:
+    """The app closed while flights waited or were being processed: the next
+    start processes them, in the background. A failed one waits to be asked."""
+
+    def write_session(self, root, name, flights):
+        folder = root / "sessions" / name
+        folder.mkdir(parents=True)
+        (folder / "meta.json").write_text(json.dumps({"id": name, "flights": flights}))
+
+    def test_unfinished_flights_are_found_oldest_first(self, tmp_path):
+        self.write_session(tmp_path, "s1", [
+            {"id": "f-running", "started_at": "2026-10-09T08:03:00Z", "processing": "running"},
+            {"id": "f-done", "started_at": "2026-10-09T08:00:00Z", "processing": "done"},
+            {"id": "f-off", "started_at": "2026-10-09T08:01:00Z", "processing": None}])
+        self.write_session(tmp_path, "s2", [
+            {"id": "f-pending", "started_at": "2026-10-09T08:02:00Z", "processing": "pending"},
+            {"id": "f-queued", "started_at": "2026-10-09T08:04:00Z", "processing": "queued"},
+            {"id": "f-failed", "started_at": "2026-10-09T08:05:00Z", "processing": "failed"}])
+        assert history.interrupted_flights(root=tmp_path / "sessions") == [
+            "f-pending", "f-running", "f-queued"]
+
+    def test_an_unreadable_session_file_is_skipped(self, tmp_path):
+        folder = tmp_path / "sessions" / "bad"
+        folder.mkdir(parents=True)
+        (folder / "meta.json").write_text("{not json")
+        assert history.interrupted_flights(root=tmp_path / "sessions") == []
+
+    def test_the_session_queues_them_and_records_the_outcome(self, rig, tmp_path):
+        self.write_session(tmp_path, "old", [
+            {"id": "f1", "started_at": "2026-10-09T08:00:00Z", "processing": "running"},
+            {"id": "f2", "started_at": "2026-10-09T08:01:00Z", "processing": "failed"}])
+        assert rig.session.resume_processing() == ["f1"]
+        assert wait_for(lambda: (job := rig.queue.job("f1")) is not None
+                        and job.state == JobState.DONE)
+        flights = json.loads((tmp_path / "sessions" / "old" / "meta.json").read_text())["flights"]
+        assert wait_for(lambda: json.loads((tmp_path / "sessions" / "old" / "meta.json")
+                                           .read_text())["flights"][0]["processing"] == "done")
+        assert flights[1]["processing"] == "failed"         # left for the operator
+
+    def test_nothing_unfinished_queues_nothing(self, rig):
+        assert rig.session.resume_processing() == []
+
+
+@pytest.mark.parametrize(("setting", "resumed"), [("1", True), ("0", False)])
+def test_the_agent_resumes_as_it_starts_unless_told_not_to(monkeypatch, tmp_path, setting,
+                                                           resumed):
+    monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("CROPWATCHER_STANDBY", "0")
+    monkeypatch.setenv("CROPWATCHER_RESUME", setting)
+    called = []
+    monkeypatch.setattr(rest.agent.session, "resume_processing", lambda: called.append(1))
+    with TestClient(rest.app):
+        if resumed:
+            assert wait_for(lambda: bool(called))
+    assert bool(called) is resumed

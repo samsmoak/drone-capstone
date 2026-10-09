@@ -364,6 +364,13 @@ async def lifespan(api: FastAPI):
     if os.environ.get("CROPWATCHER_STANDBY", "1").strip() != "0":
         agent.session.start_standby()
         threading.Thread(target=agent.watchdog, name="camera-watchdog", daemon=True).start()
+    # Flights the last run left half-processed (the app closed first) are
+    # processed again, in the background. NOT in Agent(): that is built when
+    # this module is imported, and a test importing it must never start
+    # processing the laptop's real flights. CROPWATCHER_RESUME=0 turns it off.
+    if os.environ.get("CROPWATCHER_RESUME", "1").strip() != "0":
+        threading.Thread(target=agent.session.resume_processing, daemon=True,
+                         name="resume-processing").start()
     log.info("agent API on %s:%d", DEFAULT_HOST, DEFAULT_PORT)
     yield
     # A SIGTERM or Ctrl+C ends the session the same way closing the app does,
