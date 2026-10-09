@@ -1,4 +1,5 @@
-import { getCurrentProfile } from "@/lib/queries";
+import { getCurrentProfile, getNotifications, getUnreadCount } from "@/lib/queries";
+import { NotificationsProvider } from "./notifications";
 import { OperatorMobileNav } from "./OperatorMobileNav";
 import { OperatorSidebar } from "./OperatorSidebar";
 
@@ -11,10 +12,17 @@ export async function OperatorShell({ children, wide = false }: { children: Reac
   const profile = await getCurrentProfile();
   const account = profile ? { email: profile.email, name: profile.full_name, role: profile.role } : null;
   const isOperator = profile?.role === "operator";
+  // Notifications are an operator's (migration 20261009000017): the latest for
+  // the bell, and the unread count. A database without the table reads none.
+  const [notes, unread] = profile && isOperator
+    ? await Promise.all([getNotifications(20), getUnreadCount()])
+    : [{ rows: [], migrated: true }, 0];
 
-  return (
+  const shell = (
     <div className="min-h-screen bg-[var(--background)]">
-      <div className="fixed inset-y-0 left-0 hidden w-64 border-r border-[var(--border)] bg-[var(--surface)] lg:block">
+      {/* z-40: the notifications panel opens out of the sidebar over the page;
+          the page's own stacking contexts (overflow tables) must not cover it. */}
+      <div className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-[var(--border)] bg-[var(--surface)] lg:block">
         <OperatorSidebar account={account} isOperator={isOperator} />
       </div>
       <div className="lg:pl-64">
@@ -25,4 +33,9 @@ export async function OperatorShell({ children, wide = false }: { children: Reac
       </div>
     </div>
   );
+  return profile && isOperator ? (
+    <NotificationsProvider userId={profile.id} initial={notes.rows} unread={unread}>
+      {shell}
+    </NotificationsProvider>
+  ) : shell;
 }

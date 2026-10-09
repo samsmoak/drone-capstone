@@ -20,7 +20,8 @@
  * says so.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { announceFindings } from "@/lib/os-notify";
 import type { Run } from "@/App";
 import { api, AgentError, type FlightResult, type PipelineFinding, type ProcessingJob, type Session } from "@/lib/agent";
 import { formatTime } from "@/lib/format";
@@ -85,13 +86,29 @@ export function FlightResults({ session, run, flightId }: { session: Session; ru
   const [loading, setLoading] = useState(false);
   const id = found?.id ?? null;
   const state = found?.job?.state ?? null;
+  // A job seen queued or running, then done, finished while the app was open:
+  // its findings are announced to the OS once (lib/os-notify.ts).
+  const seenRunning = useRef<string | null>(null);
+  const announce = useRef<string | null>(null);
+  useEffect(() => {
+    if (id && (state === "queued" || state === "running")) seenRunning.current = id;
+    if (id && state === "done" && seenRunning.current === id) {
+      announce.current = id;
+      seenRunning.current = null;
+    }
+  }, [id, state]);
 
   const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
     setError(null);
     try {
-      setResult(await api.flightResult(id));
+      const loaded = await api.flightResult(id);
+      setResult(loaded);
+      if (announce.current === id) {
+        announce.current = null;
+        void announceFindings(id, loaded.result.findings ?? []);
+      }
     } catch (e) {
       setResult(null);
       setError(e instanceof AgentError ? e.message : "The result could not be read.");

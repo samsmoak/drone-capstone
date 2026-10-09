@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { ADMIN_GALLERY, ADMIN_PROJECTS, ADMIN_TEAM, FLIGHTS, GALLERY, HOME, PLAN, PROJECTS, TEAM } from "@/lib/routes";
+import { ADMIN_GALLERY, ADMIN_PROJECTS, ADMIN_TEAM, FLIGHTS, GALLERY, HOME, NOTIFICATIONS, PLAN, PROJECTS, TEAM } from "@/lib/routes";
 import { youtubeId } from "@/lib/video";
 import { PAGE_SPECS, isPageKey, normalizeContent } from "@/lib/site-content";
 import * as profile from "@/lib/team-profile";
@@ -121,6 +121,34 @@ export async function deleteFlight(flightId: string): Promise<ActionResult> {
   }
 
   revalidatePath(FLIGHTS);
+  return { ok: true };
+}
+
+/**
+ * Mark one of the signed-in operator's notifications read. Row-level security
+ * lets anyone update only their own, and only read_at (migration
+ * 20261009000017) — an id that is not theirs changes nothing.
+ */
+export async function markNotificationRead(id: string): Promise<ActionResult> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const { error } = await supabase.from("notifications").update({ read_at: new Date().toISOString() })
+    .eq("id", id).eq("user_id", user.id).is("read_at", null);
+  if (error) return { ok: false, error: "Could not mark it read. Please try again." };
+  revalidatePath(NOTIFICATIONS);
+  return { ok: true };
+}
+
+/** Mark every unread notification of the signed-in operator read. */
+export async function markAllNotificationsRead(): Promise<ActionResult> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const { error } = await supabase.from("notifications").update({ read_at: new Date().toISOString() })
+    .eq("user_id", user.id).is("read_at", null);
+  if (error) return { ok: false, error: "Could not mark them read. Please try again." };
+  revalidatePath(NOTIFICATIONS);
   return { ok: true };
 }
 

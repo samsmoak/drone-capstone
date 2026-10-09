@@ -26,6 +26,7 @@ export const ZONES = "/app/zones";
 export const PLAN = "/app/plan";
 export const MANUAL = "/app/manual";
 export const SETTINGS = "/app/settings";
+export const NOTIFICATIONS = "/app/notifications";
 
 export const ADMIN = "/admin";
 export const ADMIN_PROJECTS = "/admin/projects";
