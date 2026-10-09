@@ -239,3 +239,5 @@ consumed-by       ../desktop/drone-wifi.txt
                   a link that passes its checks sends the deck its network (on_link_ready)
 shares-data-with  ../desktop/setup.txt
                   pauses and resumes standby
+consumed-by       ../pipeline/session.txt
+                  End session queues the session's own processing (DPP on)

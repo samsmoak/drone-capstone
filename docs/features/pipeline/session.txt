@@ -1,0 +1,123 @@
+================================================================================
+THE SESSION, PROCESSED — whatever a session records, not only its flights
+Last verified: 2026-10-09 against dpp/session … data/session-results — 179
+real sessions through `cropwatcher process --session` (14 s, slowest 2 s), the
+ground classifier measured on them (ml/session-eval/MEASUREMENTS.txt), the
+upload through the real client to the local stack, session_results_check
+12/12, the web pages in a browser at 390 and 1440 px in both themes.
+SOURCE: backend/agent/cropwatcher/pipeline/stages/classify/ground.py
+================================================================================
+
+--------------------------------------------------------------------------------
+STATUS  (Last verified: 2026-10-09)
+--------------------------------------------------------------------------------
+  agent     BUILT — LocalSessionSource, run_session, ground@1, the cleaner at
+            1 Hz, `process --session` and `--all`, queued at session end,
+            resumed after a restart
+  database  BUILT — migration 20261009000018 (pipeline_session_results,
+            session-scope findings); proved on the local stack, NOT YET on the
+            hosted database until it is applied there
+  web       BUILT — the session's own result on the session and Processed data
+            pages: its findings, error table, readings and charts
+  NOT BUILT the desktop's Sessions page does not show a session's own
+            processing state yet (it is in meta.json, "processing")
+
+--------------------------------------------------------------------------------
+1. WHAT IT IS
+--------------------------------------------------------------------------------
+The owner, 2026-10-09: "data processing should happen in both Auto and Manual
+— as long as a session is started we process whatever data comes, not only
+data in flight." A session records its own samples once a second from Start
+session to End session (samples.csv, the same file the web's session vitals
+come from) and the camera throughout. A flight's result covers its flight; the
+session's run covers everything around them: its samples cleaned, the frames
+taken outside its flights enhanced, and the stretches when the drone sat on the
+ground judged for anomalies.
+
+--------------------------------------------------------------------------------
+2. WHERE IT LIVES
+--------------------------------------------------------------------------------
+backend/agent/cropwatcher/pipeline/sources.py      LocalSessionSource,
+                                                   session_values (the flight
+                                                   CSV's names), phase
+backend/agent/cropwatcher/pipeline/runner.py       run_session (scope "session",
+                                                   period 1 s)
+backend/agent/cropwatcher/pipeline/compose.py      session_stages
+backend/agent/cropwatcher/pipeline/stages/classify/ground.py   ground@1
+backend/agent/cropwatcher/pipeline/stages/clean/robust.py      gap_limit_s,
+                                                   plausible_horizon_s
+backend/agent/cropwatcher/cli.py                   process --session, --all,
+                                                   _queue_session_result_upload
+backend/agent/cropwatcher/session.py               queued at End session
+backend/agent/cropwatcher/history.py               processing on the session's
+                                                   meta; interrupted_sessions,
+                                                   recorded_sessions
+backend/agent/cropwatcher/processing.py            kind "session"
+backend/agent/cropwatcher/sync/results.py          session_result_row
+backend/agent/cropwatcher/sync/syncer.py           _send_session_results
+backend/supabase/migrations/20261009000018_session_results.sql
+backend/supabase/checks/session_results_check.py
+backend/agent/tests/pipeline/test_session.py
+ml/session-eval/evaluate.py, MEASUREMENTS.txt
+<data folder>/results/sessions/<session id>/result.json
+
+--------------------------------------------------------------------------------
+3. DECISIONS
+--------------------------------------------------------------------------------
+• THE SAME FOUR STAGES, one swapped. The cleaner, enhancer and interpreter are
+  the flight's; the classifier is ground@1. A flight is judged against the
+  board cooling in the propellers' air at 10 Hz; on the ground the board does
+  the opposite (it warms, towards a level) at 1 Hz. Same model family —
+  T∞ + A·e^(−t/τ) fits warming as well as cooling — fitted per ground stretch.
+• ONLY THE GROUND IS JUDGED. Every reading in a flight, or within
+  GROUND_SETTLE_S (10 s) of one, is left out: the flights have results of their
+  own at ten times the rate, and a flight's cooling is not a ground event.
+• QUEUED AT END SESSION, read from the DPP switch as it ends, after the samples
+  file is closed — in Auto and Manual alike. A session the app closed before
+  its job finished is processed again when the app starts.
+• ITS OWN TABLE, pipeline_session_results, and findings with scope 'session'
+  and no flight. A session finding is deleted with its session (a trigger: the
+  findings' session link is "set null", which would orphan it).
+• THE WORDS SAY SO: "Warmer than expected on the ground", "its own trend
+  there", never a cooling curve, an inspection point or a height — on the
+  ground z is the floor's Lighthouse height, not a height above it.
+
+--------------------------------------------------------------------------------
+4. INVARIANTS
+--------------------------------------------------------------------------------
+• A SESSION'S READINGS COME ONCE A SECOND. Every limit counted in seconds
+  scales with FlightContext.period_s: the cleaner's gap (2.5 periods), its
+  plausibility horizon, and the seconds its sentences quote ("14 readings
+  (14.0 s"). A 10 Hz constant used at 1 Hz flagged every reading a gap, and
+  said 1.4 s for 14 s (found 2026-10-09, in the browser).
+• Ground thresholds are measured, not copied from flights: a normal ground
+  block wanders up to 0.93 °C and 0.16 hPa, so the minimums are 1.0 °C and
+  0.2 hPa. At the flight's 0.8 °C one normal session raised an event.
+  0 false events on 179 sessions; every 2–5 °C bump and 0.3–0.5 hPa step
+  planted into 31 of them found (MEASUREMENTS.txt, "Grid").
+• A reading's index is its samples.csv row, 1-based — the same `seq` as
+  public.session_samples, so the web tints exactly the rows a finding names.
+• A flight that never closed (the app quit mid-flight) does not mark the rest
+  of the session as flying: the motor thrust decides there.
+
+--------------------------------------------------------------------------------
+5. RELATED
+--------------------------------------------------------------------------------
+depends-on        data-pipeline.txt
+                  the contract (scope, period_s), the runner, the stages
+depends-on        clean.txt
+                  robust@1, at the session's own period
+depends-on        classify.txt
+                  blocks@1's block-finding, with ground@1's Tuning
+depends-on        interpret.txt
+                  findings@1, said for the ground
+consumed-by       results.txt
+                  the session's own result, uploaded and shown
+shares-data-with  ../backend/session-history.txt
+                  samples.csv and meta.json; the session's processing state
+depends-on        ../backend/offline-sync.txt
+                  Kind.SESSION_RESULTS, after the session's row
+depends-on        ../backend/sessions-and-modes.txt
+                  End session queues it, from the DPP switch
+shares-data-with  ../supabase/data-model.txt
+                  pipeline_session_results, session-scope findings (0018)

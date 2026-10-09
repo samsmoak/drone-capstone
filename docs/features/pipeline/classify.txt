@@ -10,7 +10,10 @@ SOURCE: backend/agent/cropwatcher/pipeline/stages/classify/blocks.py
 --------------------------------------------------------------------------------
 STATUS  (Last verified: 2026-10-09)
 --------------------------------------------------------------------------------
-  agent     BUILT for the sensors — blocks@1 (Samuel)
+  agent     BUILT for the sensors — blocks@1 (Samuel), its block-finding now
+            run on a Tuning (the flight's constants by default); ground@1 for a
+            session on the ground (session.txt); scene@1 for the camera
+            (scene.txt)
   NOT BUILT an image model (story 4.4, Reagan — frames are "unknown — no image
             model yet"); minimums measured on a real heat source (the
             hand-warmer flights) — ../../handoffs/sprint-1/done/dpp-classify.txt
@@ -78,3 +81,9 @@ depends-on        enhance.txt
                   a frame's quality decides its label
 consumed-by       interpret.txt
                   events become findings; the minimums ride in `features`
+consumed-by       session.txt
+                  ground@1 reuses the fits, PELT and the merging, with its own Tuning
+consumed-by       scene.txt
+                  both classifiers measure the frames' view change
+consumed-by       calibrate.txt
+                  MIN_EVENT_C, measured against a real heat source

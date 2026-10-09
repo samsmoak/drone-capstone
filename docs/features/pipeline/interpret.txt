@@ -13,8 +13,10 @@ STATUS  (Last verified: 2026-10-09)
             labels and no events
   desktop   BUILT — the findings under the verdicts (DataPipeline.tsx), and an
             OS notification when a job finishes with a warning or worse
+  agent     a finding is "supported" when the camera's view changed during it
+            (scene@1); a session's findings are said for the ground
   NOT BUILT severities measured on a real heat source (PROVISIONAL until the
-            hand-warmer flights)
+            hand-warmer flights — `cropwatcher calibrate`, calibrate.txt)
 
 --------------------------------------------------------------------------------
 1. WHAT IT IS
@@ -71,3 +73,9 @@ depends-on        classify.txt
                   its events and the minimums in its features
 consumed-by       results.txt
                   findings are uploaded, shown and notified
+depends-on        scene.txt
+                  image support: supports when the view changed, never contradicts
+consumed-by       session.txt
+                  the words for a session's ground findings
+consumed-by       calibrate.txt
+                  WARNING_FACTOR and CRITICAL_FACTOR, measured

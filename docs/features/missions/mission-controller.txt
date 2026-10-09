@@ -154,3 +154,5 @@ consumed-by       ../desktop/auto-control.txt
 consumed-by       ../pipeline/data-pipeline.txt
                   point_id groups the readings; the plan flown names the points;
                   POINT_COMPLETE will feed the live runner
+consumed-by       ../pipeline/live.txt
+                  POINT_COMPLETE queues that point's live verdict

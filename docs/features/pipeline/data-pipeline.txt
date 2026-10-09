@@ -14,6 +14,10 @@ THIS IS THE INDEX. One doc per stage, plus the results on the web:
   enhance.txt     clahe@1 — clearer frames, and how usable each one is
   classify.txt    blocks@1 — stretches that depart from what was expected
   interpret.txt   findings@1 — those stretches judged and put into words
+  scene.txt       scene@1 — whether the camera's view changed during one
+  session.txt     the session around its flights, processed too (ground@1)
+  live.txt        each point's verdict while the mission flies (story 4.9)
+  calibrate.txt   the hand-warmer flights, measured (`cropwatcher calibrate`)
   results.txt     the result uploaded, shown on the web, notified
 
 DRIFT, SAID AS DRIFT (2026-10-09): until this pass this doc said the unit of
@@ -27,16 +31,21 @@ STATUS  (Last verified: 2026-10-09)
   skeleton  BUILT — contract v2, sources, sinks, runner, compose, the command
   clean     BUILT — robust@1 (clean.txt)
   enhance   BUILT — clahe@1 (enhance.txt)
-  classify  BUILT for the sensors — blocks@1; no image model yet (classify.txt)
+  classify  BUILT for the sensors — blocks@1 (flights), ground@1 (a session on
+            the ground); the camera — scene@1, whether its view changed
+            (scene.txt); no model judges the equipment in a frame
   interpret BUILT — findings@1 (interpret.txt)
-  trigger   BUILT — the DPP switch; a closed app's unfinished flights resume
+  trigger   BUILT — the DPP switch; each flight when it lands, the session
+            itself when it ends (session.txt), each inspection point as its
+            hold ends (live.txt); a closed app's unfinished work resumes
             when it starts again
   results   BUILT — uploaded, on the session and flight pages, notified
             (results.txt). Migrations 0015–0017 live on the hosted database
             since 2026-10-09
-  NOT BUILT the live runner (story 4.9: verdicts after landing, not per point
-            in the air); an image model (story 4.4, Reagan); thresholds
-            measured on a real heat source (the hand-warmer flights)
+  calibrate BUILT — `cropwatcher calibrate` (calibrate.txt); the flights
+            themselves are OWED: every threshold stays PROVISIONAL until then
+  NOT BUILT an image model that judges the equipment (story 4.4, Reagan — no
+            labelled photos, and the camera cannot see heat)
 
 --------------------------------------------------------------------------------
 1. WHAT IT IS
@@ -166,3 +175,11 @@ consumed-by       ../desktop/auto-control.txt
                   the DPP switch and the results on ② and ③
 depends-on        ../backend/agent-api.txt
                   POST /session/processing, GET /flights/{id}/result
+consumed-by       session.txt
+                  the contract's scope and period_s; run_session beside run_flight
+consumed-by       live.txt
+                  run_live_point: the flight so far, FlightContext.mode "live"
+consumed-by       scene.txt
+                  ClassifyResult.views, FrameRecord.view_change
+consumed-by       calibrate.txt
+                  the stages, run again over the hand-warmer flights

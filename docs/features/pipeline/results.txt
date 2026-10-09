@@ -23,6 +23,8 @@ STATUS  (Last verified: 2026-10-09)
             and flight pages, the bell, /app/notifications
   backfill  BUILT — `cropwatcher process --all` (flights recorded before
             processing, or by an older pipeline)
+  session   BUILT — a session's own result (migration 20261009000018,
+            Kind.SESSION_RESULTS); NOT YET applied to the hosted database
   NOT BUILT email or push to a phone (in-app and desktop only, by choice)
 
 --------------------------------------------------------------------------------
@@ -92,13 +94,29 @@ web/app/app/sessions/[id]/page.tsx, web/app/app/flights/[id]/page.tsx
   Per session (/app/processed/<id>): the anomalies, each processed flight's
   processing and EVERY reading, then the camera. The session and flight
   pages keep everything too and link here.
-• ANOMALIES ARE MARKED WHERE THEY SHOW: readings inside a stretch tinted in
-  the severity's colour with its shape in the first cell (never colour
-  alone), a list above the table jumping to each stretch; frames taken during
-  one outlined, badged, and spelled out under the large frame. The meaning is
-  a tooltip on hover, keyboard focus or a tap (hint.tsx, WCAG 1.4.13:
-  Escape dismisses it, the pointer can move onto it, it follows its anchor
-  when the page scrolls).
+• MARKS — COLOUR IS THE DATA, DEPTH IS HOW SEVERE (the owner, 2026-10-09).
+  Everything highlighted is a mark (web/lib/pipeline.ts): an ANOMALY (a
+  finding — temperature orange, pressure blue) or a FAULT (the cleaner's flags
+  merged into spans — a sensor fault purple, position and battery teal, lost
+  time purple on the time cells). The tint deepens with severity (14 %
+  slight, 28 % warning, 48 % critical — text measured ≥ 6.4:1 on the deepest,
+  either theme); the severity's shape (● ▲ ■) and its word are always beside
+  it, and the meaning is a tooltip on hover, keyboard focus or a tap (hint.tsx,
+  WCAG 1.4.13). The same key everywhere: the readings, the error table, the
+  charts' bands, the frames (components/ui/mark-legend.tsx).
+• THE READINGS TABLE (components/ui/raw-readings.tsx): the columns the pipeline
+  processes by default, grouped (Reading · Position · Power · Temperature ·
+  Pressure) — "Show all columns" adds the ones it only stores. 25 rows a page,
+  every row visible, every page the same height but the last; only a narrow
+  screen scrolls sideways, the reading's number held in place. A mark tints
+  only the cells it is about.
+• THE ERROR TABLE (components/processing/error-table.tsx, "What went wrong"):
+  one row per anomaly or flagged span, in time order, "N s later" between
+  spans; only the value columns a row is about are filled (and only those a
+  table needs are shown); Show opens the readings at it. On the flight page,
+  each flight of a session, and the session's own result.
+• A SESSION'S OWN RESULT (session.txt) sits beside its flights': its findings
+  "on the ground", its error table, its one-a-second readings and charts.
 • "NO ANOMALIES" IS AN ANSWER, not an absence: a processed flight with none
   says so, distinct from "not processed".
 
@@ -138,3 +156,7 @@ depends-on        ../supabase/data-model.txt
 consumed-by       ../frontend/operator-dashboard.txt
                   Processed data, the session and flight pages, the bell,
                   /app/notifications
+depends-on        session.txt
+                  the session's own result, uploaded beside its flights'
+shares-data-with  ../../design/components.txt
+                  the readings table, the error table, the mark legend

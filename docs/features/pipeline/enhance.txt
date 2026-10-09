@@ -66,3 +66,5 @@ consumed-by       classify.txt
                   frame quality decides a frame's label
 consumed-by       results.txt
                   the enhanced copies are uploaded and shown beside originals
+consumed-by       scene.txt
+                  each frame's quality: an unusable frame is never compared

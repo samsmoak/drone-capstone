@@ -127,3 +127,6 @@ RELATED
 consumed-by       ../pipeline/results.txt
                   Kind.RESULTS: a processed flight's result, findings and
                   enhanced frames, uploaded last in a pass
+consumed-by       ../pipeline/session.txt
+                  Kind.SESSION_RESULTS: a session's own result, after the
+                  session's row, last in a pass

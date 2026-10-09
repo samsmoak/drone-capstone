@@ -80,3 +80,6 @@ RELATED
 shares-data-with  ../pipeline/data-pipeline.txt
                   meta.json names each session's flights; the pipeline finds a
                   flight's frames and plan by it
+shares-data-with  ../pipeline/session.txt
+                  samples.csv is the session's own pipeline input; meta.json
+                  carries the session's processing state

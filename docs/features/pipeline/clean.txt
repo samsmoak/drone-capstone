@@ -67,6 +67,12 @@ ml/sensor-faults/hampel_v1.py         hampel@1 read from git, for comparison
   stuck, implausible, spike, gap.
 • Spike windows never cross a gap; no module state — two flights may be
   cleaned at once.
+• EVERY LIMIT IN SECONDS FOLLOWS THE READING PERIOD (FlightContext.period_s:
+  0.1 s for a flight, 1 s for a session): the gap (2.5 periods), the
+  plausibility horizon, and the seconds the sentences quote. A 10 Hz constant
+  at 1 Hz flagged every reading a gap and said "1.4 s" for 14 s (2026-10-09).
+  Counted limits (WINDOW, STUCK_SAMPLES) stay in readings — no value repeats
+  more than twice at 1 Hz either (ml/session-eval/MEASUREMENTS.txt).
 
 --------------------------------------------------------------------------------
 5. RELATED
@@ -75,3 +81,5 @@ depends-on        data-pipeline.txt
                   the contract (CleanResult, FlagKind) and the runner
 consumed-by       classify.txt
                   only usable values reach the models
+consumed-by       session.txt
+                  the same cleaner over a session's 1 Hz samples

@@ -1,0 +1,36 @@
+THE PIPELINE, COMPLETED — what the owner asked on 2026-10-09, and what shipped
+================================================================================
+
+THE ASK (the owner, 2026-10-09): process whatever a session records, in Auto
+and Manual — not only flights; finish what was left of the pipeline (the live
+runner, the camera's part, the thresholds); the readings table with the
+processed columns, fixed all-visible pages, anomalies highlighted per data
+group with the severity as the shade; a separate table of only what went
+wrong, in time order with its gaps; tables that look better. "Use as many
+stages as you need."
+
+STAGES, EACH ITS OWN BRANCH (lab), MERGED INTO experiment/samuel
+  1  dpp/session            the session processed: LocalSessionSource,
+                            run_session, ground@1 measured on 179 sessions,
+                            the cleaner at 1 Hz, End session queues it,
+                            resume, process --session / --all
+  2  dpp/scene              scene@1 measured on 8 760 frames; a finding
+                            supported when the view changed; pipeline 3
+  3  dpp/live               story 4.9: a point's verdict from the flight so
+                            far, ahead in the queue
+     desktop/live-verdicts  the verdicts in the Fly step's Progress
+  4  dpp/calibrate          cropwatcher calibrate and the lab procedure
+  5  data/session-results   migration 0018, Kind.SESSION_RESULTS,
+                            session_results_check 12/12
+  6  web/tables             marks (colour = data, depth = severity), the
+                            readings table, the error table, the session's own
+                            result on the pages
+  7  docs/pipeline-completion
+
+WHAT IS OWED (not code)
+  • The hand-warmer flights: every anomaly threshold stays PROVISIONAL until
+    `cropwatcher calibrate` has measured a real heat source (calibrate.txt).
+  • Migration 20261009000018 on the hosted database.
+  • A real mission flown with live verdicts on.
+  • An image model that judges the equipment stays Reagan's (story 4.4); there
+    are no labelled photos, and the camera cannot see heat.
