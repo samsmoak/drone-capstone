@@ -123,6 +123,8 @@ class Cloud(Protocol):
     def upsert_result(self, row: dict[str, Any]) -> None: ...
     def upsert_findings(self, rows: list[dict[str, Any]]) -> None: ...
     def delete_findings_except(self, flight_id: str, keep: list[str]) -> None: ...
+    def upsert_session_result(self, row: dict[str, Any]) -> None: ...
+    def delete_session_findings_except(self, session_id: str, keep: list[str]) -> None: ...
 
 
 class SupabaseCloud:
@@ -503,6 +505,30 @@ class SupabaseCloud:
             query.execute()
         except Exception as e:
             raise self._results_error("the findings", e) from e
+
+    _SESSION_RESULTS_HINT = " — apply migration 20261009000018_session_results.sql"
+
+    def upsert_session_result(self, row: dict[str, Any]) -> None:
+        """A session's own pipeline result; re-processing replaces it."""
+        try:
+            self._table("pipeline_session_results").upsert(
+                row, on_conflict="session_id").execute()
+        except Exception as e:
+            hint = self._SESSION_RESULTS_HINT if "pipeline_session" in str(e) else ""
+            raise CloudError(f"could not upload the session's result: "
+                             f"{type(e).__name__}{hint}") from e
+
+    def delete_session_findings_except(self, session_id: str, keep: list[str]) -> None:
+        """Retract the session findings a re-process no longer makes — never a
+        flight's (scope 'flight')."""
+        try:
+            query = (self._table("pipeline_findings").delete()
+                     .eq("session_id", session_id).eq("scope", "session"))
+            if keep:
+                query = query.not_.in_("id", keep)
+            query.execute()
+        except Exception as e:
+            raise self._results_error("the session's findings", e) from e
 
     def request_backfill(self, flight_id: str, object_path: str) -> None:
         """Ask the server to fill any missing rows from the uploaded file.

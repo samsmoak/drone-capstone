@@ -125,8 +125,24 @@ def build_parser() -> argparse.ArgumentParser:
     which.add_argument("--flight", help="the flight's id (a session's flights list it)")
     which.add_argument("--fixture", action="store_true",
                        help="run on the test fixture in tests/pipeline (source checkout only)")
+    process.add_argument("--live-point", metavar="POINT",
+                         help="with --flight: the flight so far, as the drone finishes "
+                              "holding at POINT (story 4.9); writes that point's verdict")
+    which.add_argument("--session",
+                       help="a session's id: its samples around the flights, on the ground")
     which.add_argument("--all", action="store_true",
-                       help="every flight this laptop recorded that has no current result")
+                       help="every flight and session this laptop recorded that has no "
+                            "current result")
+
+    calibrate = sub.add_parser(
+        "calibrate",
+        help="measure what a KNOWN heat source did to the sensor (the hand-warmer flights) "
+             "and recommend the anomaly thresholds; never connects, never edits code")
+    calibrate.add_argument("--flight", action="append", required=True,
+                           help="a flight flown with the heat source; repeat for several")
+    calibrate.add_argument("--at", action="append", required=True, metavar="POINT",
+                           help="the inspection point the heat source sat at — one per "
+                                "--flight, in the same order")
 
     report = sub.add_parser(
         "mission-report",
@@ -540,6 +556,10 @@ def cmd_process(args: argparse.Namespace) -> int:
 
     if args.all:
         return _process_all()
+    if args.session:
+        return _process_session(args.session)
+    if args.live_point:
+        return _process_live(args.flight, args.live_point)
     if args.fixture:
         root = Path(__file__).resolve().parents[1] / "tests" / "pipeline" / "fixtures" / "data"
         if not root.exists():
@@ -586,6 +606,7 @@ def _process_all() -> int:
 
     source, sink = LocalFlightSource(paths.data_dir()), LocalResultSink(paths.results_dir())
     done = skipped = failed = findings = 0
+    sessions_done = sessions_failed = 0
     for flight_id in history.recorded_flights():
         if _result_version(paths.results_dir() / flight_id) == PIPELINE_VERSION:
             continue
@@ -605,9 +626,89 @@ def _process_all() -> int:
         print(f"  {flight_id[:8]} {len(result.findings)} finding(s)")
         history.set_flight_processing(flight_id, "done")
         _queue_result_upload(result.flight_id, Path(where).parent)
-    print(f"\n  processed {done}, {findings} finding(s); "
+    for session_id in history.recorded_sessions():
+        if _result_version(session_results_dir() / session_id) == PIPELINE_VERSION:
+            continue
+        code = _process_session(session_id, quiet=True)
+        if code == 0:
+            sessions_done += 1
+        elif code == 1:
+            sessions_failed += 1
+    print(f"\n  processed {done} flight(s), {findings} finding(s); "
           f"{skipped} with no readings, {failed} failed")
-    return 1 if failed else 0
+    print(f"  processed {sessions_done} session(s); {sessions_failed} failed")
+    return 1 if failed or sessions_failed else 0
+
+
+def _process_live(flight_id: str | None, point_id: str) -> int:
+    """Story 4.9: one point's verdict while the flight goes on."""
+    from cropwatcher.pipeline.compose import default_stages
+    from cropwatcher.pipeline.runner import run_live_point
+    from cropwatcher.pipeline.sources import FlightNotFound, LocalFlightSource
+    from cropwatcher.processing import FLIGHT_ID, POINT_ID
+
+    if not flight_id:
+        print("  --live-point needs --flight")
+        return 2
+    if not FLIGHT_ID.match(flight_id) or not POINT_ID.match(point_id):
+        print("  not a flight id and point id")
+        return 2
+    try:
+        out, where = run_live_point(flight_id, point_id,
+                                    source=LocalFlightSource(paths.data_dir()),
+                                    results_root=paths.results_dir(), stages=default_stages())
+    except (FlightNotFound, ValueError) as e:
+        print(f"  {e}")
+        return 2
+    print(f"  {point_id}: {out['verdict']} — {len(out['findings'])} finding(s)")
+    print(f"  saved {where}")
+    return 0
+
+
+def session_results_dir() -> Path:
+    """<data folder>/results/sessions/<session id>/ — a session's own result."""
+    return paths.results_dir() / "sessions"
+
+
+def _process_session(session_id: str, *, quiet: bool = False) -> int:
+    """A session around its flights: its one-a-second samples and the frames
+    taken outside its flights (pipeline/runner.py run_session). 0 done, 1
+    failed, 2 nothing to process."""
+    from cropwatcher import history
+    from cropwatcher.pipeline.compose import session_stages
+    from cropwatcher.pipeline.runner import run_session
+    from cropwatcher.pipeline.sinks import LocalResultSink
+    from cropwatcher.pipeline.sources import LocalSessionSource, SessionNotFound
+    from cropwatcher.processing import FLIGHT_ID
+
+    if not FLIGHT_ID.match(session_id):
+        print(f"  {session_id!r} is not a session id")
+        return 2
+    try:
+        result, where = run_session(session_id, source=LocalSessionSource(paths.data_dir()),
+                                    sink=LocalResultSink(session_results_dir()),
+                                    stages=session_stages())
+    except SessionNotFound as e:
+        if not quiet:
+            print(f"  {e}")
+        return 2
+    except Exception as e:  # noqa: BLE001 — said, recorded, and the caller goes on
+        print(f"  session {session_id[:8]} FAILED {type(e).__name__}: {e}")
+        history.set_session_processing(session_id, "failed", str(e))
+        return 1
+    history.set_session_processing(session_id, "done")
+    _queue_session_result_upload(session_id, Path(where).parent)
+    point = result.points[0] if result.points else None
+    print(f"  session {session_id[:8]}: {point.verdict if point else 'no verdict'}, "
+          f"{len(result.findings)} finding(s), {len(result.flags)} flag(s), "
+          f"{len(result.frames)} frame(s)")
+    if not quiet:
+        for finding in result.findings:
+            print(f"  {finding.severity.upper():8} {finding.sentence}")
+        for failure in result.failures:
+            print(f"  FAILED   {failure.stage}: {failure.reason}")
+        print(f"\n  saved {where}")
+    return 0
 
 
 def _result_version(folder: Path) -> str | None:
@@ -616,6 +717,57 @@ def _result_version(folder: Path) -> str | None:
     except (OSError, ValueError):
         return None
     return str(raw.get("pipeline_version")) if isinstance(raw, dict) else None
+
+
+def cmd_calibrate(args: argparse.Namespace) -> int:
+    """The hand-warmer flights → the anomaly thresholds, measured
+    (pipeline/calibrate.py). Prints the measurements and a recommendation, and
+    saves the report under <data folder>/calibration/."""
+    import tempfile
+
+    from cropwatcher.pipeline.calibrate import Marked, measure, save
+    from cropwatcher.pipeline.sources import FlightNotFound, LocalFlightSource
+
+    if len(args.flight) != len(args.at):
+        print("  give one --at for every --flight, in the same order")
+        return 2
+    marked = [Marked(f, p) for f, p in zip(args.flight, args.at, strict=True)]
+    try:
+        with tempfile.TemporaryDirectory() as work:
+            report = measure(marked, LocalFlightSource(paths.data_dir()), Path(work))
+    except (FlightNotFound, ValueError) as e:
+        print(f"  {e}")
+        return 2
+    print("\n  marked point            readings  noise °C  peak °C   peak/σ  found  severity")
+    for p in report.points:
+        print(f"  {p.flight_id[:8]} {p.point_id:<12} {p.readings:8d}  {p.noise_c:8.3f}  "
+              f"{p.peak_c:+7.2f}  {p.peak_z:7.1f}  {'yes' if p.detected else 'no ':>5}  "
+              f"{p.severity or '—'}")
+    print(f"\n  normal wander elsewhere on these flights: up to {report.normal_wander_c:.2f} °C")
+    for key, value in report.recommended.items():
+        mark = "" if value == report.current[key] else f"   (now {report.current[key]})"
+        print(f"  {key:<16} {value}{mark}")
+    for note in report.notes:
+        print(f"  • {note}")
+    print(f"\n  saved {save(report, paths.data_dir())}")
+    print("  Change a constant in a reviewed pull request, citing this report in "
+          "ml/anomaly-eval/MEASUREMENTS.txt.")
+    return 0
+
+
+def _queue_session_result_upload(session_id: str, folder: Path) -> None:
+    """Queue a session's own result for the web (sync: Kind.SESSION_RESULTS)."""
+    from datetime import UTC, datetime
+
+    from cropwatcher.sync.outbox import Kind, Outbox
+
+    try:
+        Outbox().put(Kind.SESSION_RESULTS, session_id, {
+            "session_id": session_id, "folder": str(folder),
+            "occurred_at": datetime.now(UTC).isoformat(),
+        })
+    except OSError as e:
+        print(f"  could not queue the upload ({e}); the result stays on this computer")
 
 
 def _queue_result_upload(flight_id: str, folder: Path) -> None:
@@ -753,6 +905,7 @@ def main(argv: list[str] | None = None) -> int:
         "mission": cmd_mission,
         "process": cmd_process,
         "mission-report": cmd_mission_report,
+        "calibrate": cmd_calibrate,
         "serve": cmd_serve,
         "selftest": cmd_selftest,
     }

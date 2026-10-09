@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 from cropwatcher.pipeline.contracts import Classifier, Cleaner, Enhancer, Interpreter
 from cropwatcher.pipeline.stages.classify.blocks import BlocksClassifier
+from cropwatcher.pipeline.stages.classify.ground import GroundClassifier
 from cropwatcher.pipeline.stages.clean.robust import RobustCleaner
 from cropwatcher.pipeline.stages.enhance.clahe import ClaheEnhancer
 from cropwatcher.pipeline.stages.interpret.findings import FindingInterpreter
@@ -39,3 +40,11 @@ def default_stages() -> Stages:
         classifier=BlocksClassifier(),    # blocks against expected: ml/anomaly-eval/
         interpreter=FindingInterpreter(), # events → findings and verdicts
     )
+
+
+def session_stages() -> Stages:
+    """A session around its flights: the same cleaner, enhancer and interpreter;
+    the ground classifier in place of the flight's (stages/classify/ground.py)."""
+    stages = default_stages()
+    return Stages(cleaner=stages.cleaner, enhancer=stages.enhancer,
+                  classifier=GroundClassifier(), interpreter=stages.interpreter)

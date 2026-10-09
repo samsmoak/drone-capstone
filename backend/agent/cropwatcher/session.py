@@ -59,11 +59,14 @@ from cropwatcher.history import (
     SessionLog,
     SessionMeta,
     interrupted_flights,
+    interrupted_sessions,
     sessions_dir,
     set_flight_processing,
+    set_session_processing,
 )
 from cropwatcher.mission.controller import (
     TERMINAL_STATES,
+    EventKind,
     MissionController,
     MissionEvent,
     MissionState,
@@ -76,7 +79,7 @@ from cropwatcher.mission.plan.mission import Mission
 from cropwatcher.mission.plan.store import NotFound, PlanStore
 from cropwatcher.mission.plan.validate import errors, flyable_bound
 from cropwatcher.paths import flights_dir
-from cropwatcher.processing import Job, JobState, ProcessingQueue
+from cropwatcher.processing import LIVE, SESSION, Job, JobState, ProcessingQueue
 from cropwatcher.safety.flight_guard import Action as GuardAction
 from cropwatcher.safety.flight_guard import Reason as GuardReason
 from cropwatcher.safety.flight_guard import Verdict as GuardVerdict
@@ -304,6 +307,10 @@ class Session:
         self._flight_process = False
         #: The session's most recent flight to land (Snapshot.processing).
         self._last_flight_id: str | None = None
+        #: Story 4.9: each inspection point's verdict while the mission flies —
+        #: {point id: {verdict, reasons, findings, ...}} for the flight in the air.
+        self._live_flight_id: str | None = None
+        self._live_points: dict[str, dict[str, Any]] = {}
         #: Rooms and missions on this laptop (mission/plan/store.py).
         self.plans = plans or PlanStore()
         #: Builds the mission controller for a flight. A parameter so tests can
@@ -568,7 +575,9 @@ class Session:
         self._set(processing={"on": self.processing_on(),
                               "chosen": self._processing_choice is not None,
                               "jobs": self.processing.jobs(),
-                              "last_flight_id": self._last_flight_id})
+                              "last_flight_id": self._last_flight_id,
+                              "live": {"flight_id": self._live_flight_id,
+                                       "points": dict(self._live_points)}})
 
     def set_processing(self, on: bool) -> None:
         """Turn the DPP on or off for this session. Takes effect from the next
@@ -600,6 +609,7 @@ class Session:
         as the agent starts. Returns the flights queued."""
         try:
             flights = interrupted_flights()
+            sessions = interrupted_sessions()
         except OSError:
             log.exception("could not look for unfinished processing")
             return []
@@ -610,15 +620,29 @@ class Session:
                 queued.append(flight_id)
             except (ValueError, RuntimeError) as e:
                 log.warning("could not resume processing flight %s: %s", flight_id, e)
+        # A session goes after its flights: the web shows them together.
+        for session_id in sessions:
+            try:
+                self.processing.submit(session_id, on_change=self._processing_changed,
+                                       kind=SESSION)
+                queued.append(session_id)
+            except (ValueError, RuntimeError) as e:
+                log.warning("could not resume processing session %s: %s", session_id, e)
         if queued:
             log.info("resuming processing of %d flight(s) left unfinished", len(queued))
         return queued
 
     def _processing_changed(self, job: Job) -> None:
-        """A job moved: the flight's line in its session history, the app."""
+        """A job moved: the flight's line in its session history (or the
+        session's own, for a session job), the app."""
+        if job.kind == LIVE:
+            self._live_changed(job)
+            return
         history = self.history
         try:
-            if history is not None and history.has_flight(job.flight_id):
+            if job.kind == SESSION:
+                set_session_processing(job.flight_id, job.state, job.error)
+            elif history is not None and history.has_flight(job.flight_id):
                 history.flight_processing(job.flight_id, job.state, job.error)
             else:
                 set_flight_processing(job.flight_id, job.state, job.error)
@@ -1578,8 +1602,45 @@ class Session:
             "last_event": event.to_dict() if event is not None else None,
         }
 
+    def _live_changed(self, job: Job) -> None:
+        """A live job moved (story 4.9): its point's line in the app — waiting,
+        then the verdict it wrote, or why it could not."""
+        from cropwatcher.paths import results_dir
+        from cropwatcher.pipeline.runner import live_path
+
+        if job.flight_id != self._live_flight_id or job.point_id is None:
+            return                      # a point of a flight that has since ended
+        line: dict[str, Any] = {"state": job.state}
+        if job.state == JobState.DONE:
+            try:
+                line.update(json.loads(live_path(results_dir(), job.flight_id,
+                                                 job.point_id).read_text(encoding="utf-8")))
+            except (OSError, ValueError) as e:
+                line.update(state=JobState.FAILED, error=f"the verdict could not be read: {e}")
+        elif job.state == JobState.FAILED:
+            line["error"] = job.error
+        self._live_points[job.point_id] = line
+        self._refresh_processing()
+        self._emit("processing", {"live": {"flight_id": job.flight_id,
+                                           "point_id": job.point_id, **line}})
+
+    def _queue_live(self, point_id: str | None) -> None:
+        """A point's hold is done: its verdict now, from the flight so far, if
+        the flight is being processed."""
+        flight_id = self._flight_id
+        if not (self._flight_process and flight_id and point_id):
+            return
+        try:
+            self.processing.submit(flight_id, kind=LIVE, point_id=point_id,
+                                   on_change=self._processing_changed)
+        except (ValueError, RuntimeError):
+            log.exception("point %s of flight %s could not be judged in flight",
+                          point_id, flight_id)
+
     def _on_mission_event(self, event: MissionEvent) -> None:
         """The mission controller's events → the app, and the audit trail."""
+        if event.kind is EventKind.POINT_COMPLETE:
+            self._queue_live(event.point_id)
         mission, flying = self._mission_plan, self.mission
         if mission is None:
             return
@@ -1936,12 +1997,19 @@ class Session:
 
         if self._flight_id is not None:
             self._finish_flight(status="completed", outcome="ended_with_session")
+        # The session itself is processed too — its samples around the flights,
+        # in Auto and Manual alike — when the DPP switch is on as it ends (the
+        # owner, 2026-10-09: "as long as a session is started we process
+        # whatever data comes"). Queued below, once its samples are closed.
+        process_session: str | None = None
         if self.history is not None:
             try:
                 self.history.close(reason)
             except OSError:
                 log.warning("could not close the session history")
             ended_id = self.history.meta.id
+            if self.processing_on():
+                process_session = ended_id
             self._outbox.update(Kind.SAMPLES, ended_id, lambda p: p.__setitem__("ended", True))
             self.history = None
         if self._on_session_close is not None:
@@ -1949,6 +2017,12 @@ class Session:
                 self._on_session_close()
             except Exception:
                 log.exception("session-close hook failed")
+        if process_session is not None:
+            try:
+                self.processing.submit(process_session, on_change=self._processing_changed,
+                                       kind=SESSION)
+            except (ValueError, RuntimeError):
+                log.exception("session %s could not be queued for processing", process_session)
         self._height_reference = None
 
         session_id = self._snapshot.session_id
@@ -2183,6 +2257,7 @@ class Session:
             "rows_written": None, "csv_uploaded": False,
         })
         self._flight_process = self.processing_on()
+        self._live_flight_id, self._live_points = flight_id, {}
         if self.history is not None:
             self.history.flight_started(flight_id, str(mode), program,
                                         processing=self._flight_process)

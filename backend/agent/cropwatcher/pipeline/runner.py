@@ -28,14 +28,20 @@ runner makes sure a regression in the field still cannot write a verdict on
 data that does not line up.
 
 THIS RUNS IN THE CALLER'S PROCESS. The CLI is not flying anything. The live
-runner (story 4.9) will run in a process of its own — never a thread beside the
-50 Hz flight loop, which shares one interpreter lock.
+runner (story 4.9, run_live_point) runs in a process of its own too — the
+agent starts it as a child at a lower priority when the drone finishes holding
+at a point — never a thread beside the 50 Hz flight loop, which shares one
+interpreter lock.
 """
 
 from __future__ import annotations
 
+import json
 import logging
+import os
+import tempfile
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from cropwatcher.pipeline import PIPELINE_VERSION
@@ -59,7 +65,7 @@ from cropwatcher.pipeline.contracts import (
     StageFailure,
 )
 from cropwatcher.pipeline.sinks import ResultSink
-from cropwatcher.pipeline.sources import FlightSource
+from cropwatcher.pipeline.sources import FlightSource, LocalSessionSource
 
 log = logging.getLogger(__name__)
 
@@ -110,14 +116,17 @@ def _summary(data: PointData, plan: tuple[InspectionPoint, ...],
 def _frames(enhanced: EnhanceResult, classified: ClassifyResult,
             ctx: FlightContext) -> tuple[FrameRecord, ...]:
     labels = {v.seq: v.label for v in classified.images}
+    views = {v.seq: v for v in classified.views}
     records = []
     for e in enhanced.frames:
         relative = None
         if e.path is not None:
             relative = str(e.path.relative_to(ctx.workdir))
         label = labels.get(e.frame.seq) or Label("unknown", None, "none@0", "not classified")
+        view = views.get(e.frame.seq)
         records.append(FrameRecord(e.frame.seq, e.frame.t_s, e.frame.point_id, relative,
-                                   e.method, e.quality, label))
+                                   e.method, e.quality, label,
+                                   view.score if view else None, view.note if view else None))
     return tuple(records)
 
 
@@ -148,6 +157,7 @@ def run_stages(data: PointData, ctx: FlightContext,
             tracks=classified.tracks if classified else (),
             segments=classified.segments if classified else (),
             frames=_frames(enhanced, classified, ctx) if enhanced and classified else (),
+            scope=ctx.scope,
         )
 
     # ── clean ────────────────────────────────────────────────────────────
@@ -214,3 +224,75 @@ def run_flight(flight_id: str, *, source: FlightSource, sink: ResultSink,
     )
     result, _ = run_stages(flight.whole, ctx, stages)
     return result, sink.save(result)
+
+
+#: A session's samples come once a second (sync/samples.py, the 1 Hz writer).
+SESSION_PERIOD_S = 1.0
+
+
+def run_session(session_id: str, *, source: LocalSessionSource, sink: ResultSink,
+                stages: Stages) -> tuple[FlightResult, str]:
+    """The session around its flights — its one-a-second samples and the frames
+    taken outside its flights — through every stage once. The result carries
+    scope "session" and the session's id in flight_id."""
+    session = source.load(session_id)
+    ctx = FlightContext(
+        flight_id=session.session_id, session_id=session.session_id, temp_unit="C",
+        ground_z_m=None, started_at=session.started_at,
+        workdir=sink.workdir(session.session_id), mode="batch", points=(),
+        scope="session", period_s=SESSION_PERIOD_S,
+    )
+    result, _ = run_stages(session.whole, ctx, stages)
+    return result, sink.save(result)
+
+
+#: <results>/<flight id>/live/<point id>.json — one point's verdict, in flight.
+LIVE_FOLDER = "live"
+
+
+def live_path(results_root: Path, flight_id: str, point_id: str) -> Path:
+    return results_root / flight_id / LIVE_FOLDER / f"{point_id}.json"
+
+
+def run_live_point(flight_id: str, point_id: str, *, source: Any, results_root: Path,
+                   stages: Stages) -> tuple[dict[str, Any], Path]:
+    """Story 4.9: the flight SO FAR — still being recorded — through every stage
+    once, as soon as the drone has finished holding at `point_id`; that point's
+    verdict and the findings that touch it are written to
+    <results>/<flight>/live/<point>.json for the app.
+
+    The whole flight so far, not the point alone: a stretch can start in
+    transit, and the expected curve needs everything flown. The result after
+    landing (run_flight) replaces it; this one is never uploaded."""
+    flight = source.load(flight_id, partial=True)
+    work = results_root / flight_id / LIVE_FOLDER / "work"
+    work.mkdir(parents=True, exist_ok=True)
+    ctx = FlightContext(
+        flight_id=flight.flight_id, session_id=flight.session_id,
+        temp_unit=flight.temp_unit, ground_z_m=flight.ground_z_m,
+        started_at=flight.started_at, workdir=work, mode="live", points=flight.plan,
+    )
+    result, _ = run_stages(flight.whole, ctx, stages)
+    point = next((p for p in result.points if p.point_id == point_id), None)
+    if point is None:
+        raise ValueError(f"{point_id} is not an inspection point of flight {flight_id}")
+    here = [f for f in result.findings if point_id in f.point_ids]
+    readings = sum(1 for r in flight.whole.readings if r.point_id == point_id)
+    out: dict[str, Any] = {
+        "flight_id": flight_id, "point_id": point_id, "verdict": point.verdict,
+        "reasons": list(point.reasons), "readings": readings,
+        "findings": [{"id": f.id, "title": f.title, "severity": f.severity,
+                      "sentence": f.sentence, "signal": f.signal} for f in here],
+        "pipeline_version": result.pipeline_version, "created_at": result.created_at,
+        "failures": [{"stage": x.stage, "reason": x.reason} for x in result.failures],
+    }
+    path = live_path(results_root, flight_id, point_id)
+    fd, temp = tempfile.mkstemp(dir=path.parent, prefix=".live.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(out, f, indent=2)
+        os.replace(temp, path)
+    except BaseException:
+        Path(temp).unlink(missing_ok=True)
+        raise
+    return out, path

@@ -77,12 +77,31 @@ FINDING_COLUMNS = ("id", "signal", "severity", "title", "sentence", "start_index
                    "image_support", "image_note")
 
 
+def is_session(result: Mapping[str, Any]) -> bool:
+    """A session's own result (scope "session"): flight_id holds the session's id."""
+    return result.get("scope") == "session"
+
+
+def session_result_row(result: Mapping[str, Any]) -> dict[str, Any]:
+    """public.pipeline_session_results (migration 20261009000018) ← a session's
+    result.json — a flight's row with the session in place of the flight."""
+    row = result_row(result)
+    del row["flight_id"]
+    row["session_id"] = result.get("session_id") or result["flight_id"]
+    return row
+
+
 def finding_rows(result: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """public.pipeline_findings ← result.json's findings."""
+    """public.pipeline_findings ← result.json's findings. A session's findings
+    belong to the session (scope "session") and to no flight."""
+    session = is_session(result)
     return [{**{c: f.get(c) for c in FINDING_COLUMNS},
              "point_ids": list(f.get("point_ids") or []),
              "evidence_frames": list(f.get("evidence_frames") or []),
-             "flight_id": result["flight_id"], "session_id": result.get("session_id"),
+             "flight_id": None if session else result["flight_id"],
+             "session_id": (result.get("session_id") or result["flight_id"]) if session
+             else result.get("session_id"),
+             "scope": "session" if session else "flight",
              "pipeline_version": str(result.get("pipeline_version", ""))}
             for f in result.get("findings") or []]
 

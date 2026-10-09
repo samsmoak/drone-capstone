@@ -30,6 +30,12 @@ from typing import Any, Literal, Protocol
 #: A flight flown without a mission is one inspection point with this id, and
 #: the whole flight handed to a stage carries it too.
 WHOLE_FLIGHT = "flight"
+#: A session processed as a whole (its one-a-second readings, on the ground and
+#: between flights) is one point with this id.
+WHOLE_SESSION = "session"
+#: What a run covers: one flight (10 readings a second, airborne), or the
+#: session around its flights (1 a second, the drone on the ground).
+Scope = Literal["flight", "session"]
 
 
 class StageError(RuntimeError):
@@ -61,6 +67,13 @@ class FlightContext:
     #: The inspection points of the mission flown, in order; () when the
     #: flight flew no mission.
     points: tuple[InspectionPoint, ...] = ()
+    #: "session": flight_id holds the SESSION's id, the readings are its
+    #: one-a-second samples, and only the stretches on the ground are analysed
+    #: for events (the flights have results of their own).
+    scope: Scope = "flight"
+    #: Seconds between readings when nothing is lost: 0.1 for a flight, 1.0 for
+    #: a session. The cleaner's gap limit is measured in these.
+    period_s: float = 0.1
 
 
 @dataclass(frozen=True)
@@ -208,6 +221,18 @@ class Label:
 
 
 @dataclass(frozen=True)
+class ViewChange:
+    """Whether the camera's view changed at a frame (scene@1): the camera cannot
+    see heat, but it can see something move in front of the drone."""
+
+    seq: int                                # Frame.seq
+    score: float | None                     # None = not comparable (see note)
+    against: int | None                     # the frame it was compared with
+    note: str
+    changed: bool = False
+
+
+@dataclass(frozen=True)
 class ImageVerdict:
     seq: int                                # Frame.seq
     source: Literal["original", "enhanced"]
@@ -275,6 +300,8 @@ class ClassifyResult:
     tracks: tuple[Track, ...] = ()
     segments: tuple[Segment, ...] = ()
     events: tuple[Event, ...] = ()
+    #: One per frame, same order, when measured (scene@1); () = not measured.
+    views: tuple[ViewChange, ...] = ()
 
 
 class Classifier(Protocol):
@@ -372,6 +399,10 @@ class FrameRecord:
     method: str
     quality: FrameQuality | None
     label: Label
+    #: scene@1: how much the view changed from the frame before (None = not
+    #: comparable), and in words.
+    view_change: float | None = None
+    view_note: str | None = None
 
 
 @dataclass(frozen=True)
@@ -392,3 +423,5 @@ class FlightResult:
     tracks: tuple[Track, ...] = ()
     segments: tuple[Segment, ...] = ()
     frames: tuple[FrameRecord, ...] = ()
+    #: "session": flight_id is the session's id (see FlightContext.scope).
+    scope: Scope = "flight"
