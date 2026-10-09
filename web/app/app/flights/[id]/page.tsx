@@ -21,6 +21,7 @@ import {
   flightTone,
 } from "@/lib/flight-format";
 import { LocalTime } from "@/components/ui/local-time";
+import { OwnerStat } from "@/components/ui/owner";
 
 export const metadata = { title: "Flight" };
 
@@ -102,6 +103,7 @@ export default async function FlightPage(props: PageProps<"/app/flights/[id]">) 
       )}
 
       <section aria-label="Summary" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <OwnerStat label="Flown by" who={flight} />
         <Stat label="Duration" value={flightDuration(flight.started_at, flight.ended_at)} />
         <Stat label="Samples" value={telemetry.length.toLocaleString()} />
         <Stat
