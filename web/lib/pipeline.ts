@@ -262,9 +262,11 @@ export function faultMarks(flags: readonly Flag[],
     if (!m) return;
     open.delete(key);
     const { reasons, count, ...mark } = m;
-    // The count, unless the cleaner's own sentence already gives it.
-    const said = /\d+ readings/.test(reasons[0]);
-    out.push({ ...mark, body: count > 1 && !said ? `${reasons[0]} (${count} readings.)` : reasons[0] });
+    // The cleaner's sentence, without the column name it starts with ("x_m: …")
+    // — the mark already says what it is about; how many readings, the
+    // tables and the tooltip say beside it.
+    void count;
+    out.push({ ...mark, body: reasons[0].replace(/^[a-z_]+: /, "").replace(/^./, (c) => c.toUpperCase()) });
   };
   for (const f of sorted) {
     const fam = f.column === null ? TIME_FAMILY : FAMILY[f.column];
