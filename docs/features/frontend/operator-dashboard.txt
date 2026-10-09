@@ -18,6 +18,12 @@ WHERE IT LIVES
                      web/app/app/flights/[id]/page.tsx; this doc owns both)
   /app/flights       app/app/flights/
                      components/ui/time-series.tsx, flight-path.tsx, raw-readings.tsx
+  processing         components/processing/findings.tsx (FindingsList, FindingCard),
+                     flight-processing.tsx (one flight's verdicts, cleaning,
+                     frames, signals), signal-panel.tsx (raw vs clean);
+                     lib/pipeline.ts (the result's JSON, read defensively);
+                     components/flight/FrameGallery.tsx (original / enhanced /
+                     side by side); components/ui/owner.tsx (who ran it)
   /app/zones         app/app/zones/page.tsx, components/ui/zone-map.tsx
   /app/compare       app/app/compare/page.tsx, lib/compare.ts
   /app/plan          app/app/plan/page.tsx — see mission-planner.txt
@@ -31,6 +37,33 @@ WHERE IT LIVES
 
 DECISIONS
 
+- THE DATA PIPELINE ON BOTH PAGES (2026-10-09, Samuel: "the dirty data
+  versus the clean data, the grayscale image versus the enhanced image, and
+  what we can interpret from it"). From pipeline_results and
+  pipeline_findings (migration 20261009000016), in this order:
+    What the pipeline found  every finding, worst first: severity in icon and
+                             word, the agent's sentence word for word, when,
+                             where, the change against expected, the camera
+                             note, and each evidence frame original | enhanced
+    Data processing          per flight: stage versions, a verdict per point,
+                             what the cleaner flagged (sensor values apart from
+                             "position not measured"), frames enhanced and
+                             unreadable, and per signal a Clean / Raw switch —
+                             Clean is what was analysed against what was
+                             expected, the findings' stretches shaded AND named
+                             under the chart; Raw is every value as recorded,
+                             flagged ones as points
+    Camera                   Original / Enhanced / Side by side; an enhanced
+                             image is always labelled as one
+  The session page shows every flight's processing and every flight's raw
+  telemetry beside its own 1 Hz vitals — a session is the superset of its
+  flights. "Zone health" (the greenhouse predictions table) is gone from both
+  pages; the table stays in the database. Not processed, and not migrated,
+  are said in words. Checked in a browser against the local stack at 390 and
+  1440 px, both themes: no sideways overflow (2026-10-09).
+- WHO RAN IT is on every session and flight (operator_name, operator_email,
+  stamped by the database — supabase/data-model.txt), shown as name + email,
+  "Not recorded" for records from before.
 - SESSIONS: EVERYTHING IN A SESSION, NOT JUST ITS FLIGHTS (2026-10-06,
   Samuel). /app/sessions lists every session (who, drone, mode, duration,
   flight count); one session reads like the flight page — summary, sensor
@@ -46,7 +79,9 @@ DECISIONS
   error and never "nothing recorded".
 
 - One chart component, TimeSeries, with no second-axis seam. Different units are
-  different charts. It always ships a table view, because light-mode --series-3
+  different charts. It takes shaded bands (always listed in words beneath) and
+  points-only series; its y-axis widens to its longest tick (a fixed 52 px put
+  "hPa" on top of "1026.55"). It always ships a table view, because light-mode --series-3
   and --series-4 measure under 3:1 (2.74 and 2.11).
 - Compare keeps each flight's colour in the URL (?f=<id>:<slot>), so removing one
   flight never repaints the others. Four flights maximum — the four validated

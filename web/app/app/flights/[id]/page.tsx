@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import {
   getFlight,
   getFlightTelemetry,
-  getPredictionsForFlight,
+  getEnhancedFrames,
+  getFindings,
+  getPipelineResults,
   getSessionFrames,
   getZones,
 } from "@/lib/queries";
@@ -21,6 +23,8 @@ import {
   flightTone,
 } from "@/lib/flight-format";
 import { LocalTime } from "@/components/ui/local-time";
+import { FindingsList, type FrameLinks } from "@/components/processing/findings";
+import { FlightProcessing } from "@/components/processing/flight-processing";
 import { OwnerStat } from "@/components/ui/owner";
 
 export const metadata = { title: "Flight" };
@@ -37,16 +41,22 @@ export default async function FlightPage(props: PageProps<"/app/flights/[id]">) 
   // reject it as invalid uuid syntax and the operator would see "could not load".
   if (!UUID.test(id)) notFound();
 
-  const [flight, telemetry, zones, predictions] = await Promise.all([
+  const [flight, telemetry, zones, results, findings] = await Promise.all([
     getFlight(id),
     getFlightTelemetry(id, TELEMETRY_CAP),
     getZones(),
-    getPredictionsForFlight(id),
+    getPipelineResults([id]),
+    getFindings([id]),
   ]);
   if (!flight) notFound();
   // The camera belongs to the SESSION the flight was part of: frames are
   // recorded from session start to end (camera/recording.py).
-  const frames = flight.session_id ? await getSessionFrames(flight.session_id) : [];
+  const [frames, enhanced] = flight.session_id
+    ? await Promise.all([getSessionFrames(flight.session_id), getEnhancedFrames(flight.session_id)])
+    : [[], {}];
+  const result = results.rows[0] ?? null;
+  const frameLinks: FrameLinks = Object.fromEntries(
+    frames.map((f) => [f.seq, { original: f.url, enhanced: enhanced[f.seq] }]));
 
   const unit = flight.temp_unit;
   const first = telemetry[0]?.recorded_at;
@@ -118,6 +128,39 @@ export default async function FlightPage(props: PageProps<"/app/flights/[id]">) 
           hint="Lighthouse z captured at takeoff"
         />
       </section>
+
+      <section aria-labelledby="findings-heading" className="space-y-3">
+        <h2 id="findings-heading" className="text-lg font-semibold text-[var(--heading)]">
+          What the pipeline found
+        </h2>
+        {!results.migrated || !findings.migrated ? (
+          <p className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-6 text-sm text-[var(--muted)]">
+            Pipeline results are not on the web yet: the database has no pipeline tables. Apply
+            migration 20261009000016_pipeline_results.sql; the laptop keeps every result and uploads
+            it once they exist.
+          </p>
+        ) : !result ? (
+          <p className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-6 text-sm text-[var(--muted)]">
+            This flight has not been processed. Turn on Data processing in the desktop app (Control
+            page) before it flies, or press Process this flight there; the result uploads here.
+          </p>
+        ) : findings.rows.length === 0 ? (
+          <p className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-6 text-sm">
+            Nothing in this flight departed from what was expected.
+          </p>
+        ) : (
+          <FindingsList findings={findings.rows} frames={frameLinks} />
+        )}
+      </section>
+
+      {result && (
+        <section aria-labelledby="processing-heading" className="space-y-3">
+          <h2 id="processing-heading" className="text-lg font-semibold text-[var(--heading)]">
+            Data processing
+          </h2>
+          <FlightProcessing result={result} telemetry={telemetry} findings={findings.rows} />
+        </section>
+      )}
 
       <section aria-labelledby="temp-heading" className="space-y-3">
         <h2 id="temp-heading" className="text-lg font-semibold text-[var(--heading)]">
@@ -198,49 +241,9 @@ export default async function FlightPage(props: PageProps<"/app/flights/[id]">) 
         <h2 id="camera-heading" className="text-lg font-semibold text-[var(--heading)]">
           Camera
         </h2>
-        <FrameGallery frames={frames} />
+        <FrameGallery frames={frames} enhanced={enhanced} />
       </section>
 
-      <section aria-labelledby="health-heading" className="space-y-3">
-        <h2 id="health-heading" className="text-lg font-semibold text-[var(--heading)]">
-          Zone health
-        </h2>
-        {predictions.length === 0 ? (
-          <p className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-6 text-sm text-[var(--muted)]">
-            No health estimates for this flight. Estimates are produced by the agent after
-            a flight, once the inspection pipeline (clean, classify, interpret) runs on it.
-          </p>
-        ) : (
-          <div className="overflow-x-auto [contain:paint] rounded-lg border border-[var(--border)]">
-            <table className="w-full border-collapse text-left text-sm">
-              <thead className="bg-[var(--surface-2)]">
-                <tr>
-                  <th scope="col" className="px-4 py-3 font-medium">Zone</th>
-                  <th scope="col" className="px-4 py-3 font-medium">Health score</th>
-                  <th scope="col" className="px-4 py-3 font-medium">Disease risk</th>
-                  <th scope="col" className="px-4 py-3 font-medium">Label</th>
-                  <th scope="col" className="px-4 py-3 font-medium">Samples</th>
-                  <th scope="col" className="px-4 py-3 font-medium">Model</th>
-                </tr>
-              </thead>
-              <tbody>
-                {predictions.map((p) => (
-                  <tr key={p.id} className="border-t border-[var(--border)]">
-                    <th scope="row" className="px-4 py-3 font-normal">
-                      {zones.find((z) => z.id === p.zone_id)?.label ?? "Unassigned"}
-                    </th>
-                    <td className="tabular px-4 py-3">{p.health_score?.toFixed(2) ?? "—"}</td>
-                    <td className="tabular px-4 py-3">{p.disease_risk?.toFixed(2) ?? "—"}</td>
-                    <td className="px-4 py-3">{p.label ?? "—"}</td>
-                    <td className="tabular px-4 py-3">{p.sample_count ?? "—"}</td>
-                    <td className="px-4 py-3 text-[var(--muted)]">{p.model}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
 
       <section aria-labelledby="raw-heading" className="space-y-3">
         <h2 id="raw-heading" className="text-lg font-semibold text-[var(--heading)]">

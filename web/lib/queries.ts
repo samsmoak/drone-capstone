@@ -15,6 +15,8 @@ export type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
 export type SessionRow = Database["public"]["Tables"]["sessions"]["Row"];
 export type SessionSampleRow = Database["public"]["Tables"]["session_samples"]["Row"];
 export type AuditEventRow = Database["public"]["Tables"]["audit_events"]["Row"];
+export type PipelineResultRow = Database["public"]["Tables"]["pipeline_results"]["Row"];
+export type FindingRow = Database["public"]["Tables"]["pipeline_findings"]["Row"];
 
 /**
  * A read that failed, as opposed to a read that found nothing.
@@ -212,6 +214,32 @@ export const getSessionFrames = cache(async (sessionId: string): Promise<Session
   });
 });
 
+/**
+ * The pipeline's enhanced copies of a session's frames (clahe@1: contrast for
+ * dark frames), uploaded beside the originals as <session>/enhanced/<seq>.png
+ * (agent sync/results.py). Seq → a signed link. Empty when none were uploaded.
+ */
+export const getEnhancedFrames = cache(async (sessionId: string): Promise<Record<number, string>> => {
+  const supabase = await createClient();
+  const bucket = supabase.storage.from(FRAMES_BUCKET);
+  const { data: files, error } = await bucket.list(`${sessionId}/enhanced`, {
+    limit: 2000,
+    sortBy: { column: "name", order: "asc" },
+  });
+  if (error) failed({ message: error.message }, "enhanced frames");
+  const names = (files ?? []).map((f) => f.name).filter((n) => /^\d+\.png$/.test(n));
+  if (names.length === 0) return {};
+  const { data: signed, error: signError } = await bucket.createSignedUrls(
+    names.map((n) => `${sessionId}/enhanced/${n}`), FRAME_LINK_S);
+  if (signError) failed({ message: signError.message }, "enhanced frame links");
+  const out: Record<number, string> = {};
+  names.forEach((name, i) => {
+    const url = signed?.[i]?.signedUrl;
+    if (url) out[Number(name.split(".")[0])] = url;
+  });
+  return out;
+});
+
 export const getZones = cache(async (): Promise<ZoneRow[]> => {
   const supabase = await createClient();
   const { data, error } = await supabase.from("zones").select("*").order("label");
@@ -335,25 +363,51 @@ export const getSessionEvents = cache(async (sessionId: string): Promise<AuditEv
   return data;
 });
 
-export const getPredictionsForFlights = cache(
-  async (flightIds: string[]): Promise<PredictionRow[]> => {
-    if (flightIds.length === 0) return [];
+// ── the data pipeline's results (migration 20261009000016) ────────────────
+
+/** A table this deployment's database does not have yet — said on the page
+ *  ("apply migration …"), never shown as an error or as "nothing". */
+function notMigrated(error: { code?: string; message: string }, table: string): boolean {
+  return error.code === "PGRST205" || error.code === "42P01" || error.message.includes(table);
+}
+
+/** Every flight's pipeline result, by flight. */
+export const getPipelineResults = cache(
+  async (flightIds: readonly string[]): Promise<{ rows: PipelineResultRow[]; migrated: boolean }> => {
+    if (flightIds.length === 0) return { rows: [], migrated: true };
     const supabase = await createClient();
-    const { data, error } = await supabase.from("predictions").select("*").in("flight_id", flightIds);
-    if (error) failed(error, "predictions");
-    return data;
+    const { data, error } = await supabase.from("pipeline_results").select("*")
+      .in("flight_id", [...flightIds]);
+    if (error) {
+      if (notMigrated(error, "pipeline_results")) return { rows: [], migrated: false };
+      failed(error, "pipeline results");
+    }
+    return { rows: data, migrated: true };
   },
 );
 
-export const getPredictionsForFlight = cache(
-  async (flightId: string): Promise<PredictionRow[]> => {
+/** Every finding of these flights, worst first, then in time. */
+export const getFindings = cache(
+  async (flightIds: readonly string[]): Promise<{ rows: FindingRow[]; migrated: boolean }> => {
+    if (flightIds.length === 0) return { rows: [], migrated: true };
     const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("predictions")
-      .select("*")
-      .eq("flight_id", flightId);
-    if (error) failed(error, "predictions");
-    return data;
+    const { data, error } = await supabase.from("pipeline_findings").select("*")
+      .in("flight_id", [...flightIds]).order("t_start_s", { ascending: true });
+    if (error) {
+      if (notMigrated(error, "pipeline_findings")) return { rows: [], migrated: false };
+      failed(error, "findings");
+    }
+    const rank = { critical: 2, warning: 1, info: 0 } as Record<string, number>;
+    return { rows: [...data].sort((a, b) => (rank[b.severity] ?? 0) - (rank[a.severity] ?? 0)),
+             migrated: true };
+  },
+);
+
+/** Each flight's telemetry, capped per flight like the flight page. */
+export const getFlightsTelemetry = cache(
+  async (flightIds: readonly string[], perFlight = 5000): Promise<Record<string, TelemetryRow[]>> => {
+    const all = await Promise.all(flightIds.map((id) => getFlightTelemetry(id, perFlight)));
+    return Object.fromEntries(flightIds.map((id, i) => [id, all[i]]));
   },
 );
 
