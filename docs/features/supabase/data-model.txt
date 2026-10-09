@@ -19,8 +19,14 @@ WHERE IT LIVES
   backend/supabase/migrations/…0007_portfolio.sql            projects, team
   backend/supabase/migrations/20260917000008_gallery.sql     albums, items
   backend/supabase/migrations/20260917000009_site_pages.sql  editable wording
-  web/types/database.ts                                      generated types
-                                                             (0007's added by hand)
+  backend/supabase/migrations/20261009000015_owner_identity.sql   who ran it
+  backend/supabase/checks/owner_check.py                     its proof (10 checks)
+  web/types/database.ts                                      generated types —
+                                                             regenerated 2026-10-09
+                                                             with `supabase gen types
+                                                             typescript --local`; it
+                                                             had drifted (no
+                                                             telemetry.point_id)
 
 Applied to the hosted project (fuwojlqpavvfgmqardfo) through 0009.
 
@@ -33,7 +39,11 @@ THE TABLES
                 This is what ties sensor and flight data to the machine that
                 produced it when two people fly two drones.
   sessions      one operation: who, which drone, which mode, when it started
-                and ended.
+                and ended. operator_email and operator_name: who ran it,
+                STAMPED BY THE DATABASE from profiles on every insert and
+                update (trigger stamp_session_owner, migration 20261009000015),
+                so a client can neither set nor change them, and the web shows
+                every owner while profiles stay "read own".
   pipeline_results  ONE ROW PER PROCESSED FLIGHT (migration 20261009000016):
                 the whole result.json — verdicts per point, the cleaner's
                 flags [index, column, kind, reason], the tracks (observed and
@@ -55,7 +65,9 @@ THE TABLES
                 select, insert to authenticated, as telemetry — are 0014). Read by
                 /app/sessions (../frontend/operator-dashboard.txt).
   flights       belongs to a session. Carries mode, program, outcome,
-                abort_reason, ground_z_m, ambient_start, temp_unit, csv_path.
+                abort_reason, ground_z_m, ambient_start, temp_unit, csv_path,
+                and operator_email / operator_name stamped like sessions' from
+                created_by — or, when that is empty, the session's operator.
   telemetry     one row per 10 Hz sample, UNIQUE (flight_id, index), with the
                 position, attitude, motion, power and environment columns the
                 stream publishes.

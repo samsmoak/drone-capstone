@@ -126,6 +126,8 @@ export type Database = {
           ground_z_m: number | null
           id: string
           mode: string | null
+          operator_email: string | null
+          operator_name: string | null
           outcome: string | null
           program: string | null
           session_id: string | null
@@ -144,6 +146,8 @@ export type Database = {
           ground_z_m?: number | null
           id?: string
           mode?: string | null
+          operator_email?: string | null
+          operator_name?: string | null
           outcome?: string | null
           program?: string | null
           session_id?: string | null
@@ -162,6 +166,8 @@ export type Database = {
           ground_z_m?: number | null
           id?: string
           mode?: string | null
+          operator_email?: string | null
+          operator_name?: string | null
           outcome?: string | null
           program?: string | null
           session_id?: string | null
@@ -342,6 +348,84 @@ export type Database = {
           },
         ]
       }
+      predictions: {
+        Row: {
+          created_at: string
+          disease_risk: number | null
+          flight_id: string
+          health_score: number | null
+          id: string
+          label: string | null
+          model: string
+          notes: string | null
+          sample_count: number | null
+          zone_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          disease_risk?: number | null
+          flight_id: string
+          health_score?: number | null
+          id?: string
+          label?: string | null
+          model?: string
+          notes?: string | null
+          sample_count?: number | null
+          zone_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          disease_risk?: number | null
+          flight_id?: string
+          health_score?: number | null
+          id?: string
+          label?: string | null
+          model?: string
+          notes?: string | null
+          sample_count?: number | null
+          zone_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "predictions_flight_id_fkey"
+            columns: ["flight_id"]
+            isOneToOne: false
+            referencedRelation: "flights"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "predictions_zone_id_fkey"
+            columns: ["zone_id"]
+            isOneToOne: false
+            referencedRelation: "zones"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string
+          full_name: string | null
+          id: string
+          role: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          full_name?: string | null
+          id: string
+          role?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          full_name?: string | null
+          id?: string
+          role?: string
+        }
+        Relationships: []
+      }
       project_members: {
         Row: {
           display_order: number
@@ -429,84 +513,6 @@ export type Database = {
         }
         Relationships: []
       }
-      predictions: {
-        Row: {
-          created_at: string
-          disease_risk: number | null
-          flight_id: string
-          health_score: number | null
-          id: string
-          label: string | null
-          model: string
-          notes: string | null
-          sample_count: number | null
-          zone_id: string | null
-        }
-        Insert: {
-          created_at?: string
-          disease_risk?: number | null
-          flight_id: string
-          health_score?: number | null
-          id?: string
-          label?: string | null
-          model?: string
-          notes?: string | null
-          sample_count?: number | null
-          zone_id?: string | null
-        }
-        Update: {
-          created_at?: string
-          disease_risk?: number | null
-          flight_id?: string
-          health_score?: number | null
-          id?: string
-          label?: string | null
-          model?: string
-          notes?: string | null
-          sample_count?: number | null
-          zone_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "predictions_flight_id_fkey"
-            columns: ["flight_id"]
-            isOneToOne: false
-            referencedRelation: "flights"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "predictions_zone_id_fkey"
-            columns: ["zone_id"]
-            isOneToOne: false
-            referencedRelation: "zones"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      profiles: {
-        Row: {
-          created_at: string
-          email: string
-          full_name: string | null
-          id: string
-          role: string
-        }
-        Insert: {
-          created_at?: string
-          email: string
-          full_name?: string | null
-          id: string
-          role?: string
-        }
-        Update: {
-          created_at?: string
-          email?: string
-          full_name?: string | null
-          id?: string
-          role?: string
-        }
-        Relationships: []
-      }
       session_samples: {
         Row: {
           battery_v: number | null
@@ -586,7 +592,9 @@ export type Database = {
           ended_at: string | null
           id: string
           mode_at_start: string | null
+          operator_email: string | null
           operator_id: string | null
+          operator_name: string | null
           started_at: string
         }
         Insert: {
@@ -596,7 +604,9 @@ export type Database = {
           ended_at?: string | null
           id: string
           mode_at_start?: string | null
+          operator_email?: string | null
           operator_id?: string | null
+          operator_name?: string | null
           started_at?: string
         }
         Update: {
@@ -606,7 +616,9 @@ export type Database = {
           ended_at?: string | null
           id?: string
           mode_at_start?: string | null
+          operator_email?: string | null
           operator_id?: string | null
+          operator_name?: string | null
           started_at?: string
         }
         Relationships: [
@@ -735,6 +747,7 @@ export type Database = {
           motor_m3: number | null
           motor_m4: number | null
           pitch_deg: number | null
+          point_id: string | null
           pressure_altitude_m: number | null
           raw_temp: number | null
           recorded_at: string
@@ -778,6 +791,7 @@ export type Database = {
           motor_m3?: number | null
           motor_m4?: number | null
           pitch_deg?: number | null
+          point_id?: string | null
           pressure_altitude_m?: number | null
           raw_temp?: number | null
           recorded_at: string
@@ -821,6 +835,7 @@ export type Database = {
           motor_m3?: number | null
           motor_m4?: number | null
           pitch_deg?: number | null
+          point_id?: string | null
           pressure_altitude_m?: number | null
           raw_temp?: number | null
           recorded_at?: string
