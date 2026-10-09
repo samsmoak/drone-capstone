@@ -55,6 +55,43 @@ def _column_types() -> dict[str, type]:
 _TYPES = _column_types()
 
 
+def close_orphaned_flights(outbox: Outbox) -> list[str]:
+    """Close every flight record a previous run of the agent left open.
+
+    A flight's record is ended when it lands (Session._finish_flight). An app
+    closed — or killed — mid-flight never gets there, so the record stays
+    "still flying" for ever: the syncer keeps polling its telemetry, never
+    uploads its CSV, and its pipeline result waits behind it (eight such
+    flights from the 2026-09-22 bring-up, found 2026-10-09). Called once as
+    the agent starts, before any flight can begin, so every open record is
+    an orphan. Ended at the CSV's last row (else when it began), marked
+    aborted, with the rows the CSV holds. Returns the flights closed."""
+    closed = []
+    for record in outbox.pending(Kind.FLIGHT):
+        if record.payload.get("ended_at"):
+            continue
+        ended_at, rows = record.payload.get("started_at"), 0
+        csv_path = Path(record.payload.get("csv_path") or "")
+        if csv_path.is_file():
+            try:
+                with csv_path.open(newline="") as handle:
+                    for row in csv.DictReader(handle):
+                        rows += 1
+                        ended_at = row.get("recorded_at") or ended_at
+            except (OSError, csv.Error):
+                log.warning("flight %s: its CSV could not be read; closing it as begun",
+                            record.id)
+        outbox.update(Kind.FLIGHT, record.id, lambda p, e=ended_at, n=rows: p.update({
+            "ended_at": e, "status": "aborted", "outcome": "interrupted",
+            "error": "The app closed while this flight was recording.",
+            "rows_written": n,
+        }))
+        closed.append(record.id)
+    if closed:
+        log.info("closed %d flight record(s) the last run left open", len(closed))
+    return closed
+
+
 def parse_csv_row(raw: dict[str, str]) -> dict[str, Any]:
     """One CSV line back into the types Postgres expects."""
     row: dict[str, Any] = {}
