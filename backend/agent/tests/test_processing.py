@@ -127,15 +127,29 @@ def flight_line(rig, flight_id):
 
 
 class TestTheSwitch:
-    def test_off_by_default_in_manual_on_by_default_in_auto(self, rig):
+    def test_on_by_default_in_manual_and_in_auto(self, rig):
         sign_in(rig)
-        assert rig.session.snapshot().processing["on"] is False
+        assert rig.session.snapshot().processing["on"] is True
         rig.session.set_mode(Mode.AUTO)
         assert rig.session.snapshot().processing == {"on": True, "chosen": False, "jobs": [],
                                                       "last_flight_id": None}
 
+    def test_a_manual_flight_lands_and_is_processed_by_default(self, rig):
+        start_and_confirm(rig, Mode.MANUAL)
+        flight_id = fly_manual_and_land(rig)
+        assert rig.queue.wait_idle()
+        assert rig.queue.job(flight_id).state == JobState.DONE
+
+    def test_turned_off_before_the_session_starts_it_holds_for_that_session(self, rig):
+        sign_in(rig)
+        rig.session.set_processing(False)
+        start_and_confirm(rig, Mode.MANUAL)
+        flight_id = fly_manual_and_land(rig)
+        assert rig.queue.job(flight_id) is None
+
     def test_a_manual_flight_with_it_off_is_not_processed(self, rig):
         start_and_confirm(rig, Mode.MANUAL)
+        rig.session.set_processing(False)
         flight_id = fly_manual_and_land(rig)
         assert rig.queue.job(flight_id) is None
         assert flight_line(rig, flight_id)["processing"] is None
@@ -154,6 +168,7 @@ class TestTheSwitch:
 
     def test_the_choice_is_read_as_a_flight_begins(self, rig):
         start_and_confirm(rig, Mode.MANUAL)
+        rig.session.set_processing(False)
         rig.session.arm_manual()
         flight_id = rig.session.snapshot().flight["id"]
         assert flight_line(rig, flight_id)["processing"] is None
@@ -162,20 +177,17 @@ class TestTheSwitch:
         assert wait_for(lambda: rig.session.snapshot().state is State.READY)
         assert rig.queue.job(flight_id) is None
 
-    def test_a_mode_change_with_no_session_resets_to_that_modes_default(self, rig):
-        # A session cannot change mode (sessions-and-modes.txt), so the
-        # operator's choice can never meet a mode change inside one.
+    def test_a_choice_made_before_a_session_survives_a_mode_change(self, rig):
         sign_in(rig)
+        rig.session.set_processing(False)
         rig.session.set_mode(Mode.AUTO)
-        assert rig.session.snapshot().processing["on"] is True
-        rig.session.set_mode(Mode.MANUAL)
         assert rig.session.snapshot().processing["on"] is False
 
     def test_the_choice_is_per_session(self, rig):
         start_and_confirm(rig, Mode.MANUAL)
-        rig.session.set_processing(True)
+        rig.session.set_processing(False)
         rig.session.end()
-        assert rig.session.snapshot().processing["on"] is False
+        assert rig.session.snapshot().processing["on"] is True
         assert rig.session.snapshot().processing["chosen"] is False
 
     def test_it_is_in_the_audit_trail(self, rig):
@@ -192,6 +204,7 @@ class TestTheSwitch:
 
     def test_a_flight_can_be_processed_by_hand_afterwards(self, rig):
         start_and_confirm(rig, Mode.MANUAL)
+        rig.session.set_processing(False)
         flight_id = fly_manual_and_land(rig)
         rig.session.process_flight(flight_id)
         assert rig.queue.wait_idle()

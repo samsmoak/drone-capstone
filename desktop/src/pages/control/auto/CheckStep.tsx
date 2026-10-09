@@ -21,7 +21,6 @@ import type { Run } from "@/App";
 import { api, type MissionView, type Session } from "@/lib/agent";
 import { Button, Message, Panel, Spinner, StatusDot } from "@/components/ui";
 import { Checklist, HealthTestPanel, RetryPanel } from "../ControlPage";
-import { ProcessingSwitch } from "../DataPipeline";
 
 export function checkComplete(session: Session): boolean {
   return session.state === "ready" && !session.retry_required;
@@ -54,7 +53,6 @@ export function CheckStep({ session, run, mission }: {
               <Button variant="primary" onClick={() => void run(api.start, "Start session")}>Start session</Button>
               <span className="text-xs text-[var(--muted)]">Also in Actions, on the right.</span>
             </div>
-            <ProcessingSwitch session={session} run={run} />
           </div>
         </Panel>
       )}

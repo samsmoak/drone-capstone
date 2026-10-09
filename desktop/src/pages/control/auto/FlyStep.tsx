@@ -30,7 +30,7 @@ import {
 import { formatDuration } from "@/lib/format";
 import { Button, Message, Panel, Spinner, StatusDot, type Tone } from "@/components/ui";
 import { Field } from "../ControlPage";
-import { FlightResults, ProcessingSwitch } from "../DataPipeline";
+import { FlightResults } from "../DataPipeline";
 import { checkComplete } from "./CheckStep";
 import { dronePosition } from "./plan/MissionStep";
 import { flownPoints, landsAt, returnsHome, type PathSource } from "./plan/path";
@@ -197,9 +197,6 @@ export function FlyStep({ session, run, telemetry, mission, ambient, setAmbient,
         )}
         {!flying && (!blockers || blockers.length === 0) && why && <div className="w-full"><Message tone="warning" text={why} /></div>}
         {!flying && askError && <div className="w-full"><Message tone="critical" text={askError} /></div>}
-        <div className="w-full border-t border-[var(--border)] pt-2">
-          <ProcessingSwitch session={session} run={run} />
-        </div>
         {flying && (
           <p className="w-full text-xs">
             Use <strong>Land</strong> at the top (or <kbd>L</kbd>) to bring it down now. Any movement key takes the drone back from the mission.
