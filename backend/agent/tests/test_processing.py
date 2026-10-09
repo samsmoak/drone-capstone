@@ -344,3 +344,45 @@ def test_the_agent_resumes_as_it_starts_unless_told_not_to(monkeypatch, tmp_path
         if resumed:
             assert wait_for(lambda: bool(called))
     assert bool(called) is resumed
+
+
+class TestProcessAll:
+    """`cropwatcher process --all`: the flights recorded before processing
+    existed, or by an older pipeline, get a current result and go to the web."""
+
+    @pytest.fixture
+    def data(self, tmp_path, monkeypatch):
+        import shutil
+        from pathlib import Path
+
+        fixture = Path(__file__).parent / "pipeline" / "fixtures" / "data"
+        root = tmp_path / "data"
+        shutil.copytree(fixture, root)
+        empty = root / "sessions" / "empty-session"
+        empty.mkdir()
+        (empty / "meta.json").write_text(json.dumps({"id": "empty-session", "flights": [
+            {"id": "00000000-0000-4000-8000-000000000000", "mode": "manual",
+             "started_at": "2026-09-25T08:00:00+00:00"}]}))
+        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(root))
+        return root
+
+    def test_every_flight_is_processed_and_queued_and_an_empty_one_skipped(self, data, capsys):
+        from cropwatcher import cli, paths
+
+        assert cli.main(["process", "--all"]) == 0
+        out = capsys.readouterr().out
+        assert "processed 1" in out and "1 with no readings" in out
+        flight = "372bbdc4-d323-42bb-9e6c-29ef02e3794c"
+        assert (paths.results_dir() / flight / "result.json").exists()
+        assert Outbox().get(Kind.RESULTS, flight) is not None
+        meta = json.loads((data / "sessions" / "a5788fe1-02fb-49d7-ac1c-b400d825d45f"
+                           / "meta.json").read_text())
+        assert meta["flights"][0]["processing"] == "done"
+
+    def test_running_it_again_only_does_what_is_left(self, data, capsys):
+        from cropwatcher import cli
+
+        cli.main(["process", "--all"])
+        capsys.readouterr()
+        assert cli.main(["process", "--all"]) == 0
+        assert "processed 0" in capsys.readouterr().out

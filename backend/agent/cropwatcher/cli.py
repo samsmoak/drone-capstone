@@ -125,6 +125,8 @@ def build_parser() -> argparse.ArgumentParser:
     which.add_argument("--flight", help="the flight's id (a session's flights list it)")
     which.add_argument("--fixture", action="store_true",
                        help="run on the test fixture in tests/pipeline (source checkout only)")
+    which.add_argument("--all", action="store_true",
+                       help="every flight this laptop recorded that has no current result")
 
     report = sub.add_parser(
         "mission-report",
@@ -536,6 +538,8 @@ def cmd_process(args: argparse.Namespace) -> int:
     from cropwatcher.pipeline.sinks import LocalResultSink
     from cropwatcher.pipeline.sources import FlightNotFound, LocalFlightSource
 
+    if args.all:
+        return _process_all()
     if args.fixture:
         root = Path(__file__).resolve().parents[1] / "tests" / "pipeline" / "fixtures" / "data"
         if not root.exists():
@@ -566,6 +570,52 @@ def cmd_process(args: argparse.Namespace) -> int:
     if not args.fixture:
         _queue_result_upload(result.flight_id, Path(where).parent)
     return 0
+
+
+def _process_all() -> int:
+    """`process --all`: every recorded flight whose result is missing or from
+    an older pipeline, oldest first, each queued for the web. A flight with no
+    readings is skipped, not a failure — a session can end before a row is
+    written. Running it again only does what is left."""
+    from cropwatcher import history
+    from cropwatcher.pipeline import PIPELINE_VERSION
+    from cropwatcher.pipeline.compose import default_stages
+    from cropwatcher.pipeline.runner import run_flight
+    from cropwatcher.pipeline.sinks import LocalResultSink
+    from cropwatcher.pipeline.sources import FlightNotFound, LocalFlightSource
+
+    source, sink = LocalFlightSource(paths.data_dir()), LocalResultSink(paths.results_dir())
+    done = skipped = failed = findings = 0
+    for flight_id in history.recorded_flights():
+        if _result_version(paths.results_dir() / flight_id) == PIPELINE_VERSION:
+            continue
+        try:
+            result, where = run_flight(flight_id, source=source, sink=sink,
+                                       stages=default_stages())
+        except FlightNotFound:
+            skipped += 1
+            continue
+        except Exception as e:  # noqa: BLE001 — one bad flight must not stop the rest
+            failed += 1
+            print(f"  {flight_id[:8]} FAILED {type(e).__name__}: {e}")
+            history.set_flight_processing(flight_id, "failed", str(e))
+            continue
+        done += 1
+        findings += len(result.findings)
+        print(f"  {flight_id[:8]} {len(result.findings)} finding(s)")
+        history.set_flight_processing(flight_id, "done")
+        _queue_result_upload(result.flight_id, Path(where).parent)
+    print(f"\n  processed {done}, {findings} finding(s); "
+          f"{skipped} with no readings, {failed} failed")
+    return 1 if failed else 0
+
+
+def _result_version(folder: Path) -> str | None:
+    try:
+        raw = json.loads((folder / "result.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return str(raw.get("pipeline_version")) if isinstance(raw, dict) else None
 
 
 def _queue_result_upload(flight_id: str, folder: Path) -> None:
