@@ -133,6 +133,16 @@ def build_parser() -> argparse.ArgumentParser:
                        help="every flight and session this laptop recorded that has no "
                             "current result")
 
+    calibrate = sub.add_parser(
+        "calibrate",
+        help="measure what a KNOWN heat source did to the sensor (the hand-warmer flights) "
+             "and recommend the anomaly thresholds; never connects, never edits code")
+    calibrate.add_argument("--flight", action="append", required=True,
+                           help="a flight flown with the heat source; repeat for several")
+    calibrate.add_argument("--at", action="append", required=True, metavar="POINT",
+                           help="the inspection point the heat source sat at — one per "
+                                "--flight, in the same order")
+
     sub.add_parser("selftest", help="load every library the agent only loads on demand")
     return parser
 
@@ -683,6 +693,42 @@ def _result_version(folder: Path) -> str | None:
     return str(raw.get("pipeline_version")) if isinstance(raw, dict) else None
 
 
+def cmd_calibrate(args: argparse.Namespace) -> int:
+    """The hand-warmer flights → the anomaly thresholds, measured
+    (pipeline/calibrate.py). Prints the measurements and a recommendation, and
+    saves the report under <data folder>/calibration/."""
+    import tempfile
+
+    from cropwatcher.pipeline.calibrate import Marked, measure, save
+    from cropwatcher.pipeline.sources import FlightNotFound, LocalFlightSource
+
+    if len(args.flight) != len(args.at):
+        print("  give one --at for every --flight, in the same order")
+        return 2
+    marked = [Marked(f, p) for f, p in zip(args.flight, args.at, strict=True)]
+    try:
+        with tempfile.TemporaryDirectory() as work:
+            report = measure(marked, LocalFlightSource(paths.data_dir()), Path(work))
+    except (FlightNotFound, ValueError) as e:
+        print(f"  {e}")
+        return 2
+    print("\n  marked point            readings  noise °C  peak °C   peak/σ  found  severity")
+    for p in report.points:
+        print(f"  {p.flight_id[:8]} {p.point_id:<12} {p.readings:8d}  {p.noise_c:8.3f}  "
+              f"{p.peak_c:+7.2f}  {p.peak_z:7.1f}  {'yes' if p.detected else 'no ':>5}  "
+              f"{p.severity or '—'}")
+    print(f"\n  normal wander elsewhere on these flights: up to {report.normal_wander_c:.2f} °C")
+    for key, value in report.recommended.items():
+        mark = "" if value == report.current[key] else f"   (now {report.current[key]})"
+        print(f"  {key:<16} {value}{mark}")
+    for note in report.notes:
+        print(f"  • {note}")
+    print(f"\n  saved {save(report, paths.data_dir())}")
+    print("  Change a constant in a reviewed pull request, citing this report in "
+          "ml/anomaly-eval/MEASUREMENTS.txt.")
+    return 0
+
+
 def _queue_result_upload(flight_id: str, folder: Path) -> None:
     """Queue the result for the web (sync/results.py). The agent's syncer —
     whichever process runs it — uploads it once the flight's own row is up.
@@ -817,6 +863,7 @@ def main(argv: list[str] | None = None) -> int:
         "hover": cmd_hover,
         "mission": cmd_mission,
         "process": cmd_process,
+        "calibrate": cmd_calibrate,
         "serve": cmd_serve,
         "selftest": cmd_selftest,
     }
