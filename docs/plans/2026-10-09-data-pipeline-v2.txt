@@ -26,9 +26,11 @@ features/pipeline/ (an index and one doc per stage) and the docs it names.
     published after the pages anyway.
   - ADDED on the owner's ask mid-session: dpp/resume-processing (a closed
     app's unfinished flights are processed when it starts again).
-  - Not done: step 91's backfill command (superseded by the resume); the
-    hosted migrations (the owner's step); the docs/README.md router lines
-    wait on the owner's own uncommitted change to that file.
+  - Not done: step 91's backfill command (superseded by the resume).
+  - Done after the report, on the owner's go: the hosted migrations
+    (0015–0017, 2026-10-09); the owner's uncommitted router line committed
+    (docs/autonomous-flight-overview) and the pipeline's router lines merged
+    (docs/router-pipeline); the desktop app rebuilt.
 
   OWED BY THE OWNER: see the section at the end, unchanged.
 

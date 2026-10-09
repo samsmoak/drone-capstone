@@ -28,7 +28,11 @@ WHERE IT LIVES
                                                              had drifted (no
                                                              telemetry.point_id)
 
-Applied to the hosted project (fuwojlqpavvfgmqardfo) through 0009.
+Applied to the hosted project (fuwojlqpavvfgmqardfo) through 0017 — 0015–0017
+on 2026-10-09 (`supabase db push --db-url` from .env.team's SUPABASE_DB_URL;
+the live list showed 0001–0014 already there). Verified read-only as the
+operator: the three new tables answer, every session (188) and flight (187)
+carries its owner, anonymous gets 401.
 
 
 THE TABLES
@@ -128,7 +132,8 @@ INVARIANTS
 
 - telemetry.point_id (migration 20260928000012_telemetry_point_id.sql, text,
   indexed with flight_id where set): the inspection point a reading was taken
-  at. NOT YET APPLIED to the hosted project — `cd backend && supabase db push`.
+  at. Applied to the hosted project (this doc said otherwise until
+  2026-10-09: the live migration list had it).
 
 RELATED
 

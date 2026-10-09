@@ -32,8 +32,8 @@ STATUS  (Last verified: 2026-10-09)
   trigger   BUILT — the DPP switch; a closed app's unfinished flights resume
             when it starts again
   results   BUILT — uploaded, on the session and flight pages, notified
-            (results.txt). Needs migrations 0015–0017 applied to the hosted
-            database — the owner's step
+            (results.txt). Migrations 0015–0017 live on the hosted database
+            since 2026-10-09
   NOT BUILT the live runner (story 4.9: verdicts after landing, not per point
             in the air); an image model (story 4.4, Reagan); thresholds
             measured on a real heat source (the hand-warmer flights)

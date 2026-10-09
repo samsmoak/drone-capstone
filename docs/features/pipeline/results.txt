@@ -13,9 +13,10 @@ STATUS  (Last verified: 2026-10-09)
 --------------------------------------------------------------------------------
   agent     BUILT — queued by `cropwatcher process`, uploaded by the syncer
   database  BUILT — migrations 20261009000015 (owners), 0016 (results), 0017
-            (notifications); proved on the local stack. NOT APPLIED to the
-            hosted database yet — the owner's step: `cd backend && supabase
-            db push`
+            (notifications); proved on the local stack, APPLIED to the
+            hosted database 2026-10-09 and checked there read-only (tables
+            answer; 188 sessions and 187 flights backfilled with owners;
+            anonymous 401)
   web       BUILT — the session and flight pages, the bell, /app/notifications
   NOT BUILT email or push to a phone (in-app and desktop only, by choice)
 
