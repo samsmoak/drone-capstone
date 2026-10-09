@@ -12,14 +12,17 @@
  * the pipeline adds: being processed (queued, running), failed with the
  * pipeline's own words and a way to run it again, not processed (DPP was off)
  * with a way to process it now, and the verdicts — one per inspection point,
- * or one for a Manual flight ("flight"). Until the team's stages land every
- * verdict is "insufficient data — no classifier yet", which is the honest
- * answer (features/pipeline/data-pipeline.txt), and the panel says so.
+ * or one for a Manual flight ("flight") — then the FINDINGS: each stretch of
+ * the flight whose temperature or pressure departed from what was expected,
+ * worst first, in the pipeline's own words (features/pipeline/
+ * data-pipeline.txt). A version 1 result (before 2026-10-09) has none, and
+ * one from before the classifier existed reads "no classifier yet" — the panel
+ * says so.
  */
 
 import { useCallback, useEffect, useState } from "react";
 import type { Run } from "@/App";
-import { api, AgentError, type FlightResult, type ProcessingJob, type Session } from "@/lib/agent";
+import { api, AgentError, type FlightResult, type PipelineFinding, type ProcessingJob, type Session } from "@/lib/agent";
 import { formatTime } from "@/lib/format";
 import { Button, Message, Panel, Spinner, StatusDot, type Tone } from "@/components/ui";
 
@@ -62,6 +65,12 @@ function lastFlight(session: Session): { id: string; job: ProcessingJob | null }
   if (landed) return { id: landed, job: jobs.find((j) => j.flight_id === landed) ?? null };
   return jobs[0] ? { id: jobs[0].flight_id, job: jobs[0] } : null;
 }
+
+const SEVERITY: Record<PipelineFinding["severity"], { tone: Tone; text: string; rank: number }> = {
+  critical: { tone: "critical", text: "Critical", rank: 2 },
+  warning: { tone: "warning", text: "Warning", rank: 1 },
+  info: { tone: "idle", text: "Slight", rank: 0 },
+};
 
 const VERDICT: Record<string, { tone: Tone; text: string }> = {
   normal: { tone: "good", text: "Normal" },
@@ -160,6 +169,27 @@ export function FlightResults({ session, run, flightId }: { session: Session; ru
           );
         })}
       </ul>
+      {r.findings && (
+        <div className="grid gap-1.5 border-t border-[var(--border)] pt-2">
+          <p className="text-xs font-semibold">
+            {r.findings.length === 0 ? "No findings — nothing departed from what was expected." : `Findings (${r.findings.length})`}
+          </p>
+          {r.findings.length > 0 && (
+            <ul className="grid gap-1.5">
+              {[...r.findings].sort((a, b) => SEVERITY[b.severity].rank - SEVERITY[a.severity].rank || a.t_start_s - b.t_start_s).map((f) => (
+                <li key={f.id} className="grid gap-0.5 border-l-2 border-[var(--border)] pl-2 text-xs">
+                  <span className="flex flex-wrap items-baseline justify-between gap-2">
+                    <span className="font-semibold">{f.title}</span>
+                    <StatusDot tone={SEVERITY[f.severity].tone}>{SEVERITY[f.severity].text}</StatusDot>
+                  </span>
+                  <span>{f.sentence}</span>
+                  <span className="text-[var(--muted)]">{f.image_note}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       {r.failures.length > 0 && (
         <ul className="grid gap-1">
           {r.failures.map((f, i) => (

@@ -11,7 +11,11 @@ SOURCE: backend/agent/cropwatcher/pipeline/runner.py
 STATUS  (Last verified: 2026-10-05)
 --------------------------------------------------------------------------------
   skeleton  BUILT — contracts, sources, sinks, runner, compose, the command
-  interpret BUILT — labels → verdicts; no threshold until one is measured
+  interpret BUILT (2026-10-09) — findings@1, Samuel: every event a finding
+            with a severity tied to the measured minimum (PROVISIONAL), a
+            sentence from a template, its frames attached; a verdict per
+            inspection point. The telemetry decides; an image supports or
+            contradicts, never decides
   trigger   BUILT — the DPP switch: a session's flights are processed when they
             land, in a child process (cropwatcher/processing.py); results on
             the desktop's Fly step and Manual's Data processing panel

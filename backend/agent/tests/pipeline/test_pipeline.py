@@ -90,7 +90,7 @@ class TestRunning:
         # P3 was never reached.
         assert [p.verdict for p in result.points] == ["normal", "normal", "insufficient_data"]
         assert result.stages == {"clean": "hampel@1", "enhance": "stub@0",
-                                 "classify": "blocks@1", "interpret": "labels@2"}
+                                 "classify": "blocks@1", "interpret": "findings@1"}
         assert result.pipeline_version == "2"
         saved = json.loads(Path(where).read_text())
         assert saved["flight_id"] == FLIGHT
@@ -104,7 +104,35 @@ class TestRunning:
         _, where = run(tmp_path)
         assert sorted(p.name for p in Path(where).parent.iterdir()) == ["result.json", "work"]
 
-    def test_a_faulty_label_is_an_anomaly_with_its_evidence(self, tmp_path):
+    def test_a_warm_patch_is_a_finding_and_its_point_an_anomaly(self, tmp_path):
+        """End to end on the real fixture flight: a warm patch planted at P1's
+        readings is found, judged, put into words and pinned to P1."""
+        import csv
+        import shutil
+        root = tmp_path / "data"
+        shutil.copytree(FIXTURE, root)
+        (path,) = (root / "flights" / "2026-09-24").glob("*.csv")
+        with path.open(newline="") as f:
+            rows = list(csv.DictReader(f))
+        for k, row in enumerate(rows[100:160]):              # P1's readings
+            lift = 4.0 * min(k / 15, 1.0, (59 - k) / 15)
+            for column in ("raw_temp", "corrected_temp"):
+                row[column] = repr(float(row[column]) + lift)
+        with path.open("w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=list(rows[0]))
+            writer.writeheader()
+            writer.writerows(rows)
+        result, _ = run_flight(FLIGHT, source=LocalFlightSource(root),
+                               sink=LocalResultSink(tmp_path / "out"), stages=default_stages())
+        (finding,) = [f for f in result.findings if f.signal == "temperature"]
+        assert finding.point_ids == ("P1",) and finding.severity in ("warning", "critical")
+        assert finding.sentence.startswith("From ") and "near P1" in finding.sentence
+        assert result.points[0].verdict == "anomaly"
+
+    def test_an_image_alone_never_makes_an_anomaly(self, tmp_path):
+        """The telemetry is the source of truth (the owner, 2026-10-09): frames
+        an image model calls faulty, with no event in the readings, leave every
+        point short of an anomaly."""
         class SaysFaulty:
             name, version = "fake", "1"
 
@@ -115,9 +143,8 @@ class TestRunning:
                     Label("normal", 0.1, "fake@1"), {"temp_max_c": 31.0})
 
         result, _ = run(tmp_path, replace(default_stages(), classifier=SaysFaulty()))
-        p1 = result.points[0]
-        assert p1.verdict == "anomaly"
-        assert p1.alerts[0].evidence_frames == (2, 3)
+        assert all(p.verdict != "anomaly" for p in result.points)
+        assert result.findings == ()
 
     def test_a_failing_stage_is_recorded_and_the_flight_still_finishes(self, tmp_path):
         class Broken:
