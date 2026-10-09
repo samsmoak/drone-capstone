@@ -551,6 +551,7 @@ SELFTEST_MODULES = (
     "supabase",                                         # sign-in, sync
     "cryptography.hazmat.bindings._rust",               # its native half, via PyJWT
     "numpy",                                            # geometry
+    "cv2",                                              # the pipeline's enhancer
     "cflib.localization.lighthouse_geo_estimation_manager",   # geometry (scipy)
     "cflib.localization",                               # geometry, config writer
     "cflib.crazyflie.mem.lighthouse_memory",            # geometry
