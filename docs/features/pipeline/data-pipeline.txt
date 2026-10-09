@@ -55,6 +55,8 @@ ml/sensor-faults/                                  MEASUREMENTS.txt (every
 backend/agent/cropwatcher/cli.py                   `cropwatcher process`
 backend/agent/cropwatcher/processing.py            the queue: one flight at a
                                                    time, in a child process
+backend/agent/cropwatcher/history.py               interrupted_flights — what a
+                                                   closed app left unfinished
 backend/agent/cropwatcher/session.py               processing_on, set_processing,
                                                    process_flight
 backend/agent/cropwatcher/api/rest.py              POST /session/processing,
@@ -118,6 +120,16 @@ backend/agent/tests/pipeline/                      fixture, conformance, tests
   agent's process — the interpreter lock above, and a stage that hangs must
   never take the radio with it. The frozen sidecar is the whole CLI with
   freeze_support() first, so the same command works installed.
+• PROCESSING RESUMES WHEN THE APP STARTS AGAIN (2026-10-09, the owner's
+  ask). The queue lives in memory, so an app closed mid-way used to drop a
+  flight until someone pressed Process. Now, as the agent starts (the API's
+  lifespan, never at import — a test must not process the laptop's real
+  flights), every flight whose line in meta.json still says pending, queued
+  or running is queued again, oldest first, in the background, one at a time.
+  A FAILED flight is not retried unasked: it would fail the same way at every
+  start. Each laptop processes its OWN flights — it holds every reading and
+  frame; another laptop would only have what was uploaded.
+  CROPWATCHER_RESUME=0 turns it off.
 • MANUAL FLIGHTS are processed too: a flight with no mission is one point,
   "flight" (sources.py) — the verdict is for the flight as a whole.
 
