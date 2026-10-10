@@ -18,6 +18,10 @@ dependencies = [
     # The data pipeline's enhancer (pipeline/stages/enhance/clahe.py): CLAHE
     # and the frame-quality measure. Headless — the agent opens no window.
     "opencv-python-headless>=4.10,<6",
+    # The image model (pipeline/stages/classify/image.py, story 4.4): an ONNX
+    # file run on the CPU. Allowed by dpp-contract.txt rule 11; imported only
+    # when a model is listed in pipeline/models/MODELS.json.
+    "onnxruntime>=1.18",
     # Setting a base station's channel over its micro-USB port (flight/
     # basestation.py) — what Bitcraze's client does in "Set BS channel".
     "pyserial>=3.5",
@@ -45,6 +49,8 @@ dev = [
     # The classifier's PELT is checked against this reference implementation
     # (tests/pipeline/test_classify.py). Tests only — never shipped.
     "ruptures>=1.1",
+    # Builds the tiny model tests/pipeline/test_image_model.py runs. Tests only.
+    "onnx>=1.16",
 ]
 # Freezing the agent into the desktop app's sidecar (packaging/build_sidecar.py).
 # One declaration, so `node scripts/setup.mjs` and CI install the same thing.
@@ -84,7 +90,7 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 python_version = "3.11"
 warn_return_any = true
 warn_unused_ignores = true
-# cflib ships no type stubs.
+# cflib and onnxruntime ship no type stubs.
 [[tool.mypy.overrides]]
-module = ["cflib.*", "supabase.*", "serial.*"]
+module = ["cflib.*", "supabase.*", "serial.*", "onnxruntime.*"]
 ignore_missing_imports = true

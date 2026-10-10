@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from cropwatcher.pipeline.contracts import Classifier, Cleaner, Enhancer, Interpreter
 from cropwatcher.pipeline.stages.classify.blocks import BlocksClassifier
 from cropwatcher.pipeline.stages.classify.ground import GroundClassifier
+from cropwatcher.pipeline.stages.classify.image import load_image_model
 from cropwatcher.pipeline.stages.clean.robust import RobustCleaner
 from cropwatcher.pipeline.stages.enhance.clahe import ClaheEnhancer
 from cropwatcher.pipeline.stages.interpret.findings import FindingInterpreter
@@ -34,10 +35,11 @@ class Stages:
 
 
 def default_stages() -> Stages:
+    image_model = load_image_model()      # None until MODELS.json lists one (story 4.4)
     return Stages(
         cleaner=RobustCleaner(),          # replaced hampel@1 (Kevin) on 2026-10-09
         enhancer=ClaheEnhancer(),         # contrast, not resolution: ml/enhance-eval/RESULTS.txt
-        classifier=BlocksClassifier(),    # blocks against expected: ml/anomaly-eval/
+        classifier=BlocksClassifier(image_model),  # blocks against expected: ml/anomaly-eval/
         interpreter=FindingInterpreter(), # events → findings and verdicts
     )
 
@@ -47,4 +49,5 @@ def session_stages() -> Stages:
     the ground classifier in place of the flight's (stages/classify/ground.py)."""
     stages = default_stages()
     return Stages(cleaner=stages.cleaner, enhancer=stages.enhancer,
-                  classifier=GroundClassifier(), interpreter=stages.interpreter)
+                  classifier=GroundClassifier(load_image_model()),
+                  interpreter=stages.interpreter)

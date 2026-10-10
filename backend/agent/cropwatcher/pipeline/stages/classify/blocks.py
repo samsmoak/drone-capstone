@@ -1,7 +1,7 @@
 """The classifier — stage 3, story 4.6: find the BLOCKS of a flight where the
 temperature or the pressure departs from what was expected, and say so in
 numbers. The telemetry is the evidence; frames are labelled, never judged
-(no image model exists yet — story 4.4).
+(the image model, story 4.4, is image.py and is optional).
 
 WHAT "EXPECTED" MEANS, AND WHY (ml/anomaly-eval/MEASUREMENTS.txt)
 
@@ -59,6 +59,7 @@ from cropwatcher.pipeline.contracts import (
     Signal,
     Track,
 )
+from cropwatcher.pipeline.stages.classify.image import ImageModel
 from cropwatcher.pipeline.stages.classify.pelt import pelt
 
 FloatArray = NDArray[np.float64]
@@ -215,10 +216,16 @@ class BlocksClassifier:
     name = "blocks"
     version = "1"
 
+    def __init__(self, image_model: ImageModel | None = None) -> None:
+        self._image_model = image_model
+        if image_model is not None:
+            # The output can differ with a model, so the version says which.
+            self.version = f"1+{image_model.name}@{image_model.version}"
+
     def classify(self, data: PointData, clean: CleanResult, enhanced: EnhanceResult,
                  ctx: FlightContext) -> ClassifyResult:
         model = f"{self.name}@{self.version}"
-        images = _images(enhanced, model)
+        images = _images(enhanced, model, self._image_model)
         airborne = _airborne(data.readings)
         tracks: list[Track] = []
         segments: list[Segment] = []
@@ -251,13 +258,19 @@ class BlocksClassifier:
                               views=measure(enhanced.frames))
 
 
-def _images(enhanced: EnhanceResult, model: str) -> tuple[ImageVerdict, ...]:
+def _images(enhanced: EnhanceResult, model: str,
+            image_model: ImageModel | None = None) -> tuple[ImageVerdict, ...]:
+    """A verdict per frame: the image model's when there is one and the frame
+    is usable; otherwise "unknown", and why."""
     out = []
     for e in enhanced.frames:
         if e.quality is not None and not e.quality.usable:
             reason = f"frame unusable — {e.quality.reason}"
         elif e.path is None and e.note and "could not be read" in e.note:
             reason = "frame unreadable"
+        elif image_model is not None:
+            out.append(image_model.label(e))
+            continue
         else:
             reason = "no image model yet"
         out.append(ImageVerdict(e.frame.seq, "original", Label("unknown", None, model, reason)))

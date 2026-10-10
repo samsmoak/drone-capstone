@@ -50,6 +50,7 @@ from cropwatcher.pipeline.stages.classify.blocks import (
     _temperature,
     _usable,
 )
+from cropwatcher.pipeline.stages.classify.image import ImageModel
 from cropwatcher.pipeline.stages.classify.scene import measure
 
 #: The phase a session reading is in (Reading.text["phase"], pipeline/sources.py).
@@ -130,10 +131,15 @@ class GroundClassifier:
     name = "ground"
     version = "1"
 
+    def __init__(self, image_model: ImageModel | None = None) -> None:
+        self._image_model = image_model
+        if image_model is not None:
+            self.version = f"1+{image_model.name}@{image_model.version}"
+
     def classify(self, data: PointData, clean: CleanResult, enhanced: EnhanceResult,
                  ctx: FlightContext) -> ClassifyResult:
         model = f"{self.name}@{self.version}"
-        images = _images(enhanced, model)
+        images = _images(enhanced, model, self._image_model)
         stretches = [s for s in ground_stretches(data.readings)
                      if len(s) >= MIN_GROUND_READINGS]
         parts: dict[str, list[Track]] = {"temperature": [], "pressure": []}
