@@ -1,0 +1,16 @@
+file,label,defect_type,angle,session,date
+s1/Screenshot 2026-10-06 at 3.55.41 PM.png,normal,,front,s1,2026-10-06
+s1/Screenshot 2026-10-06 at 3.55.55 PM.png,normal,,front,s1,2026-10-06
+s1/Screenshot 2026-10-06 at 3.56.26 PM.png,normal,,front,s1,2026-10-06
+s1/Screenshot 2026-10-06 at 3.56.43 PM.png,normal,,top,s1,2026-10-06
+s1/Screenshot 2026-10-06 at 3.56.59 PM.png,normal,,top,s1,2026-10-06
+s1/Screenshot 2026-10-06 at 3.57.14 PM.png,normal,,top,s1,2026-10-06
+s1/Screenshot 2026-10-06 at 3.57.28 PM.png,normal,,top,s1,2026-10-06
+s1/Screenshot 2026-10-06 at 3.57.48 PM.png,normal,,front_closeup_pressure,s1,2026-10-06
+s1/Screenshot 2026-10-06 at 3.58.04 PM.png,faulty,needle_in_high_zone,front_closeup_pressure,s1,2026-10-06
+s1/Screenshot 2026-10-06 at 3.58.15 PM.png,normal,,front_closeup_status,s1,2026-10-06
+s1/Screenshot 2026-10-06 at 3.58.30 PM.png,normal,,front,s1,2026-10-06
+s1/Screenshot 2026-10-06 at 3.58.41 PM.png,normal,,front,s1,2026-10-06
+s1/Screenshot 2026-10-06 at 3.59.00 PM.png,normal,,left,s1,2026-10-06
+s1/Screenshot 2026-10-06 at 3.59.13 PM.png,normal,,back,s1,2026-10-06
+s1/Screenshot 2026-10-06 at 3.59.27 PM.png,normal,,right,s1,2026-10-06
