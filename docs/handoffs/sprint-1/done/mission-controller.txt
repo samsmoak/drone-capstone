@@ -1,26 +1,13 @@
 TICKET — The mission controller: the state machine
 ==================================================
 
-STATUS: BUILT (2026-10-10, integrate/public: Samuel's body; #102 merged into
-it). REWRITTEN on the owner's call — one implementation, never two. Samuel
-built this ticket's body on experiment/samuel (2026-09-30) and it is the one
-on main: backend/agent/cropwatcher/mission/controller/mission_controller.py,
+STATUS: BUILT (2026-10-10, #104). Hannah's #102 was merged alongside
+Samuel's implementation of the same ticket; the team kept one controller —
+one implementation, never two. The one on main: backend/agent/cropwatcher/mission/controller/mission_controller.py,
 BUILT = True, with tests/mission/test_controller.py (94 tests, one or more
 per rule of THE SPEC). The code is the authority.
 
-Hannah's body (#102) is merged into the history under her name; its code was
-not kept. Run against THE SPEC's 94 tests it passed 49. Each failure that
-matters in flight was confirmed by flying it in the test harness:
-  - with return_to_start it flies home and then holds there, never landing
-  - the return leg's timeout is computed from where it is going (0 m), so
-    any return longer than TRANSIT_MARGIN_S aborts
-  - start() after abort() still takes off (THE SPEC: raises, commands nothing)
-  - fly_to() is never given the mission's speed: a Steady mission flies Brisk
-  - current_point_id is not cleared on a terminal state, and a terminal
-    event mid-point carries no point id (E3)
-Kept from #102: the stale "hers to build" note removed from
-mission/controller/__init__.py. Its follow-ups are the lab rungs in
-mission-verification.txt.
+Its follow-ups are the lab rungs in mission-verification.txt.
 
 SPLIT 2026-09-29. This was one ticket, Hannah's. It is now two, built side
 by side and joined at a fixed seam:

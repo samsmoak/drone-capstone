@@ -15,12 +15,11 @@ STATUS  (Last verified: 2026-09-28)
              fence to the guard, the plan flown kept, events to the app
   stamping   BUILT — point_id on every telemetry row and frames.csv row
   controller BUILT — Samuel's body, built to THE SPEC, BUILT = True; on
-             main since 2026-10-10 (integrate/public). Hannah's #102 is in
-             the history, not the code (section 6;
-             ../../handoffs/sprint-1/done/mission-controller.txt).
+             main since 2026-10-10 (#104, with Hannah's #102 merged alongside;
+             section 6; ../../handoffs/sprint-1/done/mission-controller.txt).
   proof      BUILT IN SIMULATION — the simulated drone, the scenarios, the
-             mission report; on main since 2026-10-10. Yordi's #101 is in
-             the history, two of its fixes in review.py (section 6). The lab
+             mission report; on main since 2026-10-10 (#104, with Yordi's
+             #101 merged alongside; two of its improvements in review.py). The lab
              rungs are NOT FLOWN and the constants are still guesses
              (../../handoffs/sprint-1/done/mission-verification.txt).
   flown      NEVER — no mission has flown. 2026-10-05 lab: the 1 m square
@@ -162,14 +161,11 @@ also merged the team's PRs for the same tickets — one implementation, never
 two (../../PROJECT_PROFILE.txt, SHIP "experiments"). Both tickets are
 rewritten and in done/.
 
-WHAT WAS KEPT FROM THE TEAM'S PRs (2026-10-10)
-  #102 Hannah   her controller is in the history; Samuel's was kept. Against
-                THE SPEC's 94 tests hers passed 49 — with return_to_start it
-                never lands, start() after abort() takes off, the mission's
-                speed is never passed on. The ticket lists each.
-  #101 Yordi    his simulator and report are in the history; Samuel's were
-                kept. Ported into review.py: planned_leg_s (the planner's
-                per-leg time) and what_happened (what stopped a flight).
+THE TEAM'S PRs FOR THESE TICKETS (2026-10-10, merged in #104)
+  #102 Hannah   merged alongside; the team kept one controller.
+  #101 Yordi    merged alongside; two of its improvements adopted into
+                review.py: planned_leg_s (planned leg time at the mission's
+                speed) and what_happened (why a flight stopped).
 
 WHERE IT LIVES
   backend/agent/cropwatcher/mission/controller/mission_controller.py  the body

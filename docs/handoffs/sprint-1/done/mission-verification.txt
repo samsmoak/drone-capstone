@@ -2,17 +2,16 @@ TICKET — Proving the mission controller: the simulated drone, the mission
 report, the scenarios, the lab flights
 ========================================================================
 
-STATUS: BUILT IN SIMULATION (2026-10-10, integrate/public: Samuel's
-simulator and report; #101 merged into it). REWRITTEN on the owner's call —
-one implementation, never two. On main: tests/sim_drone.py,
+STATUS: BUILT IN SIMULATION (2026-10-10, #104). Yordi's #101 was merged
+alongside Samuel's implementation of the same ticket — one implementation,
+never two. On main: tests/sim_drone.py,
 tests/mission/test_mission_sim.py, mission/review.py and `cropwatcher
 mission-report`. The code is the authority. OPEN: PART 3's lab rungs are
 NOT FLOWN, so the constants are still guesses — those are this ticket's
 follow-ups, and still Yordi's.
 
-Yordi's simulator and report (#101) are merged into the history under his
-name. They run against Samuel's controller (381 tests passed with them in
-place); Samuel's files were kept. Ported from #101 into review.py, with tests:
+Two of #101's improvements were adopted into the mission report
+(review.py, with tests):
   - planned_leg_s(): a leg's planned time is the planner's own (the
     mission's speed and the climb rate, as Mission.estimated_duration_s
     counts it), not leg / MOVE_SPEED_M_S — a Steady mission's legs no longer

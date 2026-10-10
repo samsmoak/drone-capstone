@@ -47,8 +47,8 @@ THE TICKETS — SPRINT 1
   ──────────────────────────────────────────────────────────────────────────────
   done/mission-controller.txt     Samuel,  3.4, 3.5 (flying half),    built —
                                   Hannah   autonomous flight — the    Samuel's
-                                           controller                 body; #102
-                                                                      in history
+                                           controller                 with #102
+                                                                      alongside
   done/mission-verification.txt   Samuel,  autonomous flight — the    built in
                                   Yordi    proof: simulated drone,    simulation;
                                            mission report, lab        lab rungs
