@@ -3,12 +3,17 @@ grayscale frame `scale` times as wide. Only runtime-legal libraries here —
 numpy, OpenCV contrib, ONNX Runtime (contract rule 11) — so whichever wins
 moves into stages/enhance/ as it was measured.
 
+THE WINNER'S STEPS ARE IMPORTED FROM THE AGENT (runtime, below): the ESPCN
+call, CLAHE and the edge sharpen are the functions the pipeline runs, not a
+copy of them, so a score here is a score of what ships.
+
 Bicubic is not a candidate. It is the floor: an upscaler that cannot beat
 plain interpolation at its own scale has not earned its model file.
 """
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import cache
@@ -16,7 +21,10 @@ from functools import cache
 import cv2
 import numpy as np
 import onnxruntime as ort
-from common import MODELS
+from common import HERE, MODELS
+
+sys.path.insert(0, str(HERE.parents[1] / "backend" / "agent"))
+from cropwatcher.pipeline.stages.enhance import espcn as runtime  # noqa: E402
 
 Fn = Callable[[np.ndarray], np.ndarray]
 
@@ -50,15 +58,12 @@ def bicubic(scale: int) -> Fn:
 # pairs are the sweep of 2026-10-07. CLAHE changes contrast on purpose, which
 # PSNR and SSIM count as error — judge it by the sheets as much as the table.
 
-CLAHE_TILES, UNSHARP_SIGMA = (8, 8), 1.0
-
-
 def clahe(clip: float, unsharp: float) -> Fn:
     def run(img: np.ndarray) -> np.ndarray:
-        out = cv2.createCLAHE(clipLimit=clip, tileGridSize=CLAHE_TILES).apply(img)
+        out = runtime.clahe(img, clip)
         if unsharp == 0:
             return out
-        blur = cv2.GaussianBlur(out, (0, 0), UNSHARP_SIGMA)
+        blur = cv2.GaussianBlur(out, (0, 0), runtime.UNSHARP_SIGMA)
         return cv2.addWeighted(out, 1 + unsharp, blur, -unsharp, 0)
 
     return run
@@ -69,6 +74,24 @@ clahe_unsharp = clahe(2.0, 0.6)
 
 def then(first: Fn, second: Fn) -> Fn:
     return lambda img: second(first(img))
+
+
+# ── denoise first, and sharpen edges only: CLAHE's look with less grain ─────
+# CLAHE and unsharp boost sensor noise as readily as edges — the "flat texture"
+# column. Non-local means on the native frame removes noise before anything
+# amplifies it; h is its strength in grey levels (OpenCV's default is 3).
+
+
+def nlm(h: float) -> Fn:
+    return lambda img: cv2.fastNlMeansDenoising(img, None, h, 7, 21)
+
+
+# Unsharp weighted by edge strength — runtime.edge_sharpen, whose comment
+# gives the measurement behind its thresholds.
+
+
+def edge_sharpen(amount: float) -> Fn:
+    return lambda img: runtime.edge_sharpen(img, amount)
 
 
 # ── FSRCNN / ESPCN: OpenCV dnn_superres ─────────────────────────────────────
@@ -86,11 +109,7 @@ def _superres(algo: str, scale: int) -> cv2.dnn_superres.DnnSuperResImpl:
 
 
 def superres(algo: str, scale: int) -> Fn:
-    def run(img: np.ndarray) -> np.ndarray:
-        out = _superres(algo, scale).upsample(cv2.cvtColor(img, cv2.COLOR_GRAY2BGR))
-        return cv2.cvtColor(out, cv2.COLOR_BGR2GRAY)
-
-    return run
+    return lambda img: runtime.upscale(_superres(algo, scale), img)
 
 
 # ── Real-ESRGAN realesr-general-x4v3: ONNX Runtime ──────────────────────────
@@ -140,6 +159,42 @@ METHODS: list[Method] = [
         )
         for clip, unsharp in [(1.0, 0.0), (1.5, 0.3), (2.0, 0.6)]
     ),
+    # the team's pick (espcn-x2+clahe-2.0-0.6), with its grain attacked two ways
+    *(
+        Method(
+            f"nlm-{h}+espcn-x2+clahe-2.0-0.6",
+            2,
+            then(nlm(h), then(superres("espcn", 2), clahe(2.0, 0.6))),
+            "sr-cnn",
+            ("ESPCN_x2.pb",),
+        )
+        for h in (3, 5)
+    ),
+    *(
+        Method(
+            f"espcn-x2+clahe-{clip}+edge-{amount}",
+            2,
+            then(superres("espcn", 2), then(clahe(clip, 0), edge_sharpen(amount))),
+            "sr-cnn",
+            ("ESPCN_x2.pb",),
+        )
+        # CLAHE 1.5 attacks the grain at its source, without a denoiser to soften faint texture
+        for clip in (2.0, 1.5)
+        for amount in (0.6, 1.0)
+    ),
+    *(
+        Method(
+            f"nlm-{h}+espcn-x2+clahe-2.0+edge-{amount}",
+            2,
+            then(
+                nlm(h),
+                then(superres("espcn", 2), then(clahe(2.0, 0), edge_sharpen(amount))),
+            ),
+            "sr-cnn",
+            ("ESPCN_x2.pb",),
+        )
+        for h, amount in [(3, 0.6), (3, 1.0), (5, 1.0)]
+    ),
     Method("realesrgan-x4", 4, realesrgan, "sr-gan", ("realesr-general-x4v3.onnx",)),
 ]
 
@@ -154,3 +209,6 @@ def pick(names: str) -> list[Method]:
     if unknown:
         raise SystemExit(f"unknown method(s) {unknown}; known: {', '.join(BY_NAME)}")
     return [BY_NAME[n] for n in names.split(",")]
+
+# The pipeline's method must be one this registry scored, under the same name.
+assert runtime.METHOD in BY_NAME, f"{runtime.METHOD} is not a scored candidate"
