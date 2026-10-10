@@ -1,8 +1,12 @@
 TICKET — Data pipeline stage 2: enhance the camera frames
 =========================================================
 
-STATUS: READY TO START (2026-09-28). The skeleton your stage plugs into is on
-the branch feat/missions-and-pipeline; the code is the authority.
+STATUS: BUILT (branch feat/dpp-enhance, 2026-10-09; the pull request that
+lands it adds its number here). What is left is the FOLLOW-UPS list at the
+end. What shipped is described in
+../../../features/pipeline/image-enhancement.txt and the evaluation in
+../../../../ml/upscaling-eval/RESULTS.txt — those are the authority; where
+this ticket and the code disagree, the code wins.
 
   Owner           Kevin
   Story           4.3: "As an inspector, I want clearer images, so that even
@@ -178,20 +182,24 @@ STEP BY STEP
 
 ACCEPTANCE
 
-  [ ] RESULTS.txt compares at least CLAHE, FSRCNN or ESPCN, and Real-ESRGAN
+  [x] RESULTS.txt compares at least CLAHE, FSRCNN or ESPCN, and Real-ESRGAN
       on PSNR, SSIM, time and size, and names the winner and why.
-  [ ] A before/after sheet of at least 10 frames (real ones if the camera
+  [x] A before/after sheet of at least 10 frames (real ones if the camera
       works by then), committed as a small image in ml/upscaling-eval/. This
-      is the PDF's criterion.
-  [ ] Every conformance check passes: one output per frame, same order, and
+      is the PDF's criterion. (10 real camera frames.)
+  [x] Every conformance check passes: one output per frame, same order, and
       files written only under ctx.workdir.
-  [ ] No frames gives an empty result. A corrupt frame gives path=None with a
+  [x] No frames gives an empty result. A corrupt frame gives path=None with a
       note, and every other frame is still enhanced.
-  [ ] The original frame file is byte-identical after the stage runs (test
+  [x] The original frame file is byte-identical after the stage runs (test
       it).
-  [ ] The time for 20 frames is measured and reported. Target: under 2 s.
-  [ ] The model file is under 20 MB, with a complete MODELS.json entry.
-  [ ] Gates pass: ruff check . && mypy cropwatcher && pytest
+  [x] The time for 20 frames is measured and reported. Target: under 2 s.
+      (0.83 s on an i9-11900H; the lab laptop is a follow-up.)
+  [x] The model file is under 20 MB, with a complete MODELS.json entry.
+      (0.09 MB.)
+  [x] Gates pass: ruff check . && mypy cropwatcher && pytest
+      (test_recording's read-only-folder test fails only when run as root,
+      which ignores permissions; this ticket touches neither.)
 
 
 OUT OF SCOPE
@@ -207,3 +215,21 @@ WHEN YOU SHIP
 Add the method, the evaluation numbers and the known limits (invented detail
 especially) to docs/features/pipeline/, then delete this ticket in the same
 pull request.
+
+
+FOLLOW-UPS — OPEN
+─────────────────
+
+  [ ] Time the stage on the lab laptop (RESULTS.txt, RE-RUNNING) and put the
+      figure in the pull request, as contract rule 12 asks.
+  [ ] Run it on a real flight's frames (`cropwatcher process --flight <id>`)
+      and look at the output, once the camera delivers whole frames.
+  [ ] Tell Reagan the method (espcn-clahe@1): the classifier trains on the
+      images it will be given in use.
+  [ ] Re-score on the story 4.1 photos when they arrive (protocol
+      "reference", README.txt) — 30 images, with a sharper reference.
+  [ ] Samuel: the contract's MODEL FILES says ONNX; the enhancer runs its .pb
+      through OpenCV dnn_superres (image-enhancement.txt, DECISIONS). Accept
+      the exception in dpp-contract.txt, or ask for an ONNX export.
+  [ ] Colorize (the stretch), if wanted: a separate enhancer, never the
+      default, labelled "colorized (estimated)".

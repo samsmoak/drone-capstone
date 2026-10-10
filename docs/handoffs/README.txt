@@ -54,8 +54,6 @@ THE TICKETS — SPRINT 1
                                            flights, constants
   undone/dpp-clean.txt            Kevin    4.2                        can start
                                                                       now
-  undone/dpp-enhance.txt          Kevin    4.3 (and the colorize      can start
-                                           stretch)                   now
   undone/dpp-classify.txt         Reagan   4.4, 4.6 (the classifier   can start
                                            half)                      now
   done/mission-planner.txt        Samuel   mission planning; 3.4      built —
@@ -69,6 +67,9 @@ THE TICKETS — SPRINT 1
                                                                       open
   done/control-layout.txt         Samuel   — (the standing layout     built —
                                            rule)                      follow-ups
+                                                                      open
+  done/dpp-enhance.txt            Kevin    4.3 (the colorize stretch  built —
+                                           not taken up)              follow-ups
                                                                       open
   done/dpp-contract.txt           every    4.5                        built —
                                   pipeline                            the shared
