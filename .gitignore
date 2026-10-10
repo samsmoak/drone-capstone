@@ -45,6 +45,12 @@ mission_paths/
 *.csv
 !**/tests/**/*.csv
 
+# ── ML datasets ───────────────────────────────────────────
+# Datasets are never committed (dpp-contract.txt, MODEL FILES): the photos stay
+# on the machine that has them, and a manifest CSV records what was used.
+ml/*/data/
+!ml/*/manifests/*.csv
+
 # ── OS ────────────────────────────────────────────────────
 .DS_Store
 
