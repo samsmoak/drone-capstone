@@ -96,9 +96,9 @@ DESIGNED BUT NOT WIRED
                           the points is Hannah's and refuses to fly until it
                           lands (missions/mission-controller.txt)
   Pipeline stages         clean is built for temperature and pressure
-                          (hampel@1, thresholds provisional); enhance and
-                          classify are stubs until Kevin's and Reagan's land;
-                          no live runner yet. The TRIGGER is
+                          (hampel@1, thresholds provisional); enhance is built
+                          (espcn-clahe@1); classify is a stub until Reagan's
+                          lands; no live runner yet. The TRIGGER is
                           wired: with DPP on, each flight is processed when
                           it lands and its verdicts show on the desktop
                           (pipeline/data-pipeline.txt)

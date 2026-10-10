@@ -1,0 +1,109 @@
+================================================================================
+IMAGE ENHANCEMENT — a clearer copy of every camera frame (pipeline stage 2)
+Last verified: 2026-10-09 against feat/dpp-enhance — tests/pipeline/ (70),
+`cropwatcher process --fixture`, ml/upscaling-eval/score.py on 15 camera
+frames, and the frozen sidecar's selftest (desktop/scripts/sidecar.mjs).
+SOURCE: backend/agent/cropwatcher/pipeline/stages/enhance/espcn.py
+================================================================================
+
+--------------------------------------------------------------------------------
+STATUS  (Last verified: 2026-10-09)
+--------------------------------------------------------------------------------
+  stage       BUILT — espcn-clahe@1, the pipeline's enhancer (compose.py)
+  evaluation  BUILT — ml/upscaling-eval/: 22 methods scored, RESULTS.txt
+  NOT BUILT   any screen that shows an enhanced frame; colorize (the ticket's
+              stretch); timing on the lab laptop and a run on a real flight's
+              frames (../../handoffs/sprint-1/done/dpp-enhance.txt, FOLLOW-UPS)
+
+--------------------------------------------------------------------------------
+1. WHAT IT IS
+--------------------------------------------------------------------------------
+Story 4.3: "As an inspector, I want clearer images, so that even small defects
+are visible." For every frame of an inspection point the stage writes an
+enhanced copy, twice the size, beside the original and never over it:
+
+  ESPCN ×2       a small super-resolution network: 324×244 → 648×488
+  CLAHE 1.5      local contrast, 8×8 tiles — most of the visible gain
+  edge sharpen   unsharp 0.6, only where the gradient is a real edge
+
+Classify can then use either image. 20 frames take 0.83 s; the model is
+0.09 MB. ml/upscaling-eval/before-after-camera-frames.jpg is the PDF's
+before/after sheet.
+
+--------------------------------------------------------------------------------
+2. WHERE IT LIVES
+--------------------------------------------------------------------------------
+backend/agent/cropwatcher/pipeline/stages/enhance/espcn.py   EspcnEnhancer, and
+                                       the three steps as functions
+backend/agent/cropwatcher/pipeline/models/ESPCN_x2.pb        the network
+backend/agent/cropwatcher/pipeline/models/MODELS.json        its sha256, source,
+                                       licence (Apache-2.0) and runtime
+backend/agent/tests/pipeline/test_enhance.py                 the ticket's criteria
+backend/agent/packaging/cropwatcher-agent.spec               bundles models/
+backend/agent/cropwatcher/cli.py                             selftest loads the model
+ml/upscaling-eval/                     the evaluation: RESULTS.txt (the table,
+                                       the winner, the limits), README.txt (how
+                                       to run it), methods.py, score.py, sheet.py
+
+Output: <workdir>/enhanced/<seq:06d>.png, 8-bit grayscale. EnhancedFrame.method
+is "espcn-x2+clahe-1.5+edge-0.6", scale 2.
+
+--------------------------------------------------------------------------------
+3. DECISIONS
+--------------------------------------------------------------------------------
+• CONTRAST, NOT RESOLUTION, IS WHAT SHOWS MORE. On the camera's frames ESPCN
+  and FSRCNN tie bicubic (ΔPSNR −0.03 / +0.02 dB): the frames hold nothing
+  finer than the camera's resolution for a network to recover. ESPCN stays
+  for its ×2 size and costs 36 ms a frame. Chosen by the team from the
+  sheets; ml/upscaling-eval/RESULTS.txt, WHY THIS ONE.
+• SHARPEN EDGES ONLY. A plain unsharp mask turns sensor noise into grain;
+  weighting it by edge strength (none below 3 grey levels/px, full above 8 —
+  measured on the camera frames) cut the grain score from 3.70 to 2.37 at
+  the same edge sharpness.
+• NO DENOISER. Non-local means scored the same and looked cleaner, but it
+  softens faint real texture — a hairline crack is that — and took 1.8 s for
+  20 frames, at the edge of the 2 s budget.
+• ×2, NOT ×4, AND NO GAN. ×4 adds pixels and no detail; Real-ESRGAN invented
+  panes, dividers and stripes that are not in the scene.
+• RUN AS MEASURED, WITH OPENCV — AN EXCEPTION TO THE CONTRACT'S "ONNX". The
+  model is TensorFlow's .pb run by OpenCV dnn_superres, the runtime the
+  ticket named for ESPCN; opencv-contrib is already on the contract's
+  dependency list (rule 11). Converting to ONNX would ship a model nobody
+  scored. MODELS.json records the runtime per model.
+• ONE COPY OF THE STEPS. ml/upscaling-eval/methods.py imports espcn.py's
+  functions rather than keeping its own; on all 15 frames the evaluation's
+  winner is byte-identical to the stage's output.
+
+--------------------------------------------------------------------------------
+4. INVARIANTS
+--------------------------------------------------------------------------------
+• THE ENHANCED IMAGE IS NEVER EVIDENCE ON ITS OWN, AND IS LABELLED "ENHANCED"
+  WHEREVER IT IS SHOWN. It keeps faint grain on smooth surfaces (2.37 against
+  bicubic's 1.18) and no step recovers detail the camera did not capture.
+  No screen shows one yet; the first that does carries the label.
+• NEVER READ BRIGHTNESS FROM AN ENHANCED FRAME. CLAHE equalises contrast tile
+  by tile: on the fixture's smooth ramp it flattened the gradient into blotchy
+  grey and put a halo along strong edges. Intensity, and any comparison of
+  two regions, comes from the original.
+• Classify must be trained on the images it is given in use. Whichever it
+  takes (ImageVerdict.source), it trains on the same kind — enhanced means
+  espcn-clahe@1's output, not another enhancer's.
+• Bump `version` whenever the output could change: a step, a constant, the
+  model, or OpenCV's major version (pinned >=5.0,<6 in pyproject.toml — the
+  method was measured on 5.0).
+• A missing or altered model raises StageError and the runner uses the
+  originals. The frozen agent's selftest loads the model, so a bundle without
+  it fails the build instead of every flight quietly going unenhanced.
+• One bad frame gets path=None and a note; the others are still enhanced.
+
+--------------------------------------------------------------------------------
+5. RELATED
+--------------------------------------------------------------------------------
+depends-on        data-pipeline.txt
+                  the Enhancer contract, the workdir, and the runner's fallback
+                  to originals when the stage fails
+depends-on        ../desktop/camera.txt
+                  frames.csv and the session's 324×244 grayscale PNG frames
+shares-data-with  ../desktop/desktop-app.txt
+                  the sidecar bundles pipeline/models/; its selftest loads the
+                  enhancer's model

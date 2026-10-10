@@ -277,6 +277,8 @@ RELATED
 
 consumed-by       ../pipeline/data-pipeline.txt
                   frames.csv (now with point_id) and the frames in a flight's window
+consumed-by       ../pipeline/image-enhancement.txt
+                  the 324×244 grayscale PNG frames it enhances, read only
 
 consumed-by       setup.txt
                   installs the patched ESP32 and the GAP8 streamer

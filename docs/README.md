@@ -50,6 +50,7 @@ Feature docs are plain `.txt`, grouped by the surface they describe.
 | Doc | What it covers |
 |---|---|
 | [features/pipeline/data-pipeline.txt](features/pipeline/data-pipeline.txt) | `cropwatcher process`: clean → enhance → classify → interpret, a verdict per inspection point, laptop-first |
+| [features/pipeline/image-enhancement.txt](features/pipeline/image-enhancement.txt) | Stage 2, the enhancer: ESPCN ×2 + CLAHE + edges-only sharpen, why it won (ml/upscaling-eval/RESULTS.txt), and what an enhanced frame must never be used for |
 
 ## Frontend — the web app (`web/`)
 
@@ -110,7 +111,7 @@ are the only thing that survives a session.
 
 ## Handoffs — work orders given to teammates
 
-[handoffs/](handoffs/README.txt) — one ticket per piece of work, filed by sprint: `sprint-1/done/` (built — the mission planner, mission start, the DPP switch, the Control layout, the pipeline contract; only follow-ups left) and `sprint-1/undone/` (the mission controller, split between Hannah (the controller) and Yordi (its proof), and the data pipeline's clean and enhance (Kevin) and classify (Reagan) stages). We are in sprint 1. Not feature docs: a ticket moves to `done/` when its work is on main, and is deleted once its follow-ups are closed and what shipped is written into `features/`.
+[handoffs/](handoffs/README.txt) — one ticket per piece of work, filed by sprint: `sprint-1/done/` (built — the mission planner, mission start, the DPP switch, the Control layout, the pipeline contract, the enhance stage; only follow-ups left) and `sprint-1/undone/` (the mission controller, split between Hannah (the controller) and Yordi (its proof), and the data pipeline's clean (Kevin) and classify (Reagan) stages). We are in sprint 1. Not feature docs: a ticket moves to `done/` when its work is on main, and is deleted once its follow-ups are closed and what shipped is written into `features/`.
 
 ## Platform — not written yet
 

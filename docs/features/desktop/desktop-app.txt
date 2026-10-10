@@ -261,7 +261,10 @@ INVARIANTS
 - EVERY BUILD PROVES ITS LAZY IMPORTS LOAD: `cropwatcher-agent selftest`
   imports each library the agent loads only on demand (SELFTEST_MODULES in
   cli.py), and verify_sidecar.py runs it offline. Add a module there when new
-  code imports a third-party library inside a function.
+  code imports a third-party library inside a function. It also loads the
+  pipeline enhancer's model: a data file the .spec leaves out fails no
+  import, so a bundle without pipeline/models/ would build, serve, and
+  process every flight on unenhanced frames.
 - CI SIGNS IN FOR REAL on every machine (packaging/check_sign_in.py): a
   probe account that cannot exist must get the agent's own 409 refusal —
   proof the client loaded and Supabase was reached. Run it by hand against an
@@ -328,3 +331,5 @@ depends-on        ../development/releases.txt
                   CI runs install.mjs, the same path people use
 shares-data-with  ../backend/running-from-source.txt
                   the same venv, set up by setup.mjs
+shares-data-with  ../pipeline/image-enhancement.txt
+                  the sidecar bundles pipeline/models/; selftest loads the model
