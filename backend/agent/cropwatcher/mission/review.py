@@ -196,7 +196,8 @@ def what_happened(rows: Sequence[TraceRow], after_s: float) -> str:
             return f"the drone disarmed at {row.t_s:.1f} s"
     if not later:
         return "the trace ends here"
-    return f"the trace ends at {later[-1].t_s:.1f} s with the loop {later[-1].state or 'in no state'}"
+    last = later[-1]
+    return f"the trace ends at {last.t_s:.1f} s with the loop {last.state or 'in no state'}"
 
 
 def review(plan: Mission, trace: Sequence[TraceRow] | None, stamps: Sequence[StampRow], *,

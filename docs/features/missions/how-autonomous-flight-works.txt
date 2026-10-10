@@ -1,5 +1,5 @@
 HOW AUTONOMOUS FLIGHT WORKS — the whole system, briefly
-As of 2026-10-05, branch experiment/samuel (samsmoak/drone-capstone-lab).
+As of 2026-10-10, on main (built on experiment/samuel, 2026-10-05).
 Detail for each part lives in the doc named in brackets.
 
 ================================================================================

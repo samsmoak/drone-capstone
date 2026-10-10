@@ -1,5 +1,5 @@
 """The mission controller against THE SPEC, rule by rule
-(docs/handoffs/sprint-1/undone/mission-controller.txt).
+(docs/handoffs/sprint-1/done/mission-controller.txt).
 
 The flight here is SCRIPTED: a stand-in satisfying MissionFlight whose state,
 goal_active, drift_m and operator_override each test sets by hand, and which

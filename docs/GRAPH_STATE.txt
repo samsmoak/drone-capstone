@@ -3,14 +3,12 @@ GRAPH STATE — WHAT IS OUT OF SYNC, AND WHAT THAT STOPS
 Read this BEFORE starting a feature. It is the one file that says whether the
 docs can be trusted for the area you are about to work in.
 Generated from `python3 graph_check.py` plus what passes noticed by hand.
-Last run: 2026-10-09 on docs/pipeline-v2 (the data pipeline built whole) —
-42 docs · 58 findings. Blocking classes: DANGLING 0 · ONE-WAY 0 · STALE 1
-(design/layout.txt: desktop/src/harness.tsx moved on 2026-10-06, before this
-work — not re-verified here, see WARN). features/pipeline/ became a folder:
-data-pipeline.txt is its index (every existing edge still lands on it), plus
-clean, enhance, classify, interpret and results — typed both ways. ORPHAN 16 →
-11: offline-sync, data-model, rls-and-grants and operator-dashboard now
-carry typed edges.
+Last run: 2026-10-10 on integrate/public (experiment/samuel with the team's
+PRs #101, #102, #103 merged, for main) — 47 docs. Blocking classes:
+DANGLING 0 · ONE-WAY 0 · STALE 1 (design/layout.txt, as before — see WARN).
+UNMERGED BRANCH 62 is the lab's feature branches, all inside experiment/
+samuel: they reach main with it. mission-controller.txt and both mission
+tickets rewritten (done/); the ticket move re-pointed every reference.
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -97,6 +95,11 @@ WATCH  (2)
             deleting the merged local branches clears the noise.
 2026-09-27  APPROACHING SIZE (3): backend/manual-control.txt 257,
             desktop/camera.txt 279, desktop/desktop-app.txt 251 lines.
+2026-10-10  APPROACHING SIZE: features/missions/mission-controller.txt 257
+            lines after the integration. Split section 6 out when next edited.
+2026-10-10  ml/upscaling-eval/ (#103) is outside every gate, like the other
+            ml/ folders: score.py has 6 ruff findings as Kevin wrote it.
+            espcn_steps.py and methods.py were touched and lint clean.
 
 --------------------------------------------------------------------------------
 OVERRIDES

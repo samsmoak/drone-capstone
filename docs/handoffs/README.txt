@@ -45,13 +45,14 @@ THE TICKETS — SPRINT 1
 
   Ticket                          Owner    Stories (planning PDF)     State
   ──────────────────────────────────────────────────────────────────────────────
-  undone/mission-controller.txt   Hannah   3.4, 3.5 (flying half),    can start
-                                           autonomous flight — the    now
-                                           controller
-  undone/mission-verification.txt Yordi    autonomous flight — the    can start
-                                           proof: simulated drone,    now
-                                           mission report, lab
-                                           flights, constants
+  done/mission-controller.txt     Samuel,  3.4, 3.5 (flying half),    built —
+                                  Hannah   autonomous flight — the    Samuel's
+                                           controller                 body; #102
+                                                                      in history
+  done/mission-verification.txt   Samuel,  autonomous flight — the    built in
+                                  Yordi    proof: simulated drone,    simulation;
+                                           mission report, lab        lab rungs
+                                           flights, constants         open
   done/dpp-clean.txt              Kevin,   4.2 — robust@1 replaced    built —
                                   Samuel   hampel@1 (2026-10-09)      follow-ups
                                                                       open

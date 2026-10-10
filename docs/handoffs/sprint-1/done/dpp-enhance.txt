@@ -3,7 +3,7 @@ TICKET — Data pipeline stage 2: enhance the camera frames
 
 STATUS: DONE (2026-10-09, branch dpp/enhance). REWRITTEN — Samuel built the
 stage (clahe@1) on the owner's call. Kevin's evaluation of upscalers
-(origin/feat/dpp-enhance, ml/upscaling-eval/) stays his and is the way an
+(ml/upscaling-eval/, #103 — on main since 2026-10-10) stays his and is the way an
 upscaler replaces CLAHE — see FOLLOW-UPS. The code is the authority:
 backend/agent/cropwatcher/pipeline/stages/enhance/clahe.py.
 

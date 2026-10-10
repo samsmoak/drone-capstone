@@ -26,10 +26,10 @@ WHAT IT DOES
     fly back over home (the real start) if the mission says so  RETURNING
     land                                       LANDING → DONE
 
-THIS BODY IS SAMUEL'S EXPERIMENT (experiment/samuel, 2026-09-30), built to THE
-SPEC in docs/handoffs/sprint-1/undone/mission-controller.txt — every rule is
-cited by its number below (S1, T8, E5 ...). Hannah's ticket for the same body
-is still open; this is not it.
+THIS BODY IS SAMUEL'S (2026-09-30, landed on main 2026-10-10), built to THE
+SPEC in docs/handoffs/sprint-1/done/mission-controller.txt — every rule is
+cited by its number below (S1, T8, E5 ...). Hannah's body for the same ticket
+(#102) is in the history; this one was kept (that ticket's STATUS says why).
 
 HOW IT KEEPS THE SPEC'S PROMISES ACROSS THREADS
     One lock guards the state machine, and every command to the flight

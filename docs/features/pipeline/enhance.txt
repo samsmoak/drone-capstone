@@ -11,9 +11,11 @@ STATUS  (Last verified: 2026-10-09)
 --------------------------------------------------------------------------------
   agent     BUILT — clahe@1 (Samuel)
   web       BUILT — Original / Enhanced / Side by side (results.txt)
-  NOT BUILT an upscaler: Kevin's evaluation (origin/feat/dpp-enhance,
-            ml/upscaling-eval) can replace or follow CLAHE if it shows real
-            detail on real frames; colour (never as evidence)
+  NOT BUILT an upscaler. Kevin's evaluation is on main (ml/upscaling-eval/,
+            #103, 2026-10-10): ESPCN ×2 and FSRCNN ×2 tie bicubic on 15
+            real frames, Real-ESRGAN invents detail — so none ships. His
+            espcn-clahe@1 stage was not kept; its steps are in
+            ml/upscaling-eval/espcn_steps.py. Colour: never as evidence.
 
 --------------------------------------------------------------------------------
 1. WHAT IT IS
