@@ -549,6 +549,7 @@ SELFTEST_MODULES = (
     "supabase",                                         # sign-in, sync
     "cryptography.hazmat.bindings._rust",               # its native half, via PyJWT
     "numpy",                                            # geometry
+    "cv2",                                              # the pipeline's enhancer
     "cflib.localization.lighthouse_geo_estimation_manager",   # geometry (scipy)
     "cflib.localization",                               # geometry, config writer
     "cflib.crazyflie.mem.lighthouse_memory",            # geometry
@@ -587,10 +588,19 @@ def cmd_selftest(_args: argparse.Namespace) -> int:
         if not has_crypto:
             failed.append("jwt crypto")
             print("  FAILED  PyJWT loaded without cryptography")
+    # A model file left out of the bundle fails no import: the enhancer would
+    # fall back to the original frames on every flight, and nothing would say.
+    try:
+        from cropwatcher.pipeline.stages.enhance.espcn import EspcnEnhancer
+
+        EspcnEnhancer().check()
+    except Exception as e:
+        failed.append("pipeline models")
+        print(f"  FAILED  pipeline models: {type(e).__name__}: {e}")
     if failed:
-        print(f"\n  {len(failed)} of {len(SELFTEST_MODULES) + 1} did not load")
+        print(f"\n  {len(failed)} of {len(SELFTEST_MODULES) + 2} did not load")
         return 1
-    print(f"  imports ok ({len(SELFTEST_MODULES) + 1} checked)")
+    print(f"  imports ok ({len(SELFTEST_MODULES) + 2} checked)")
     return 0
 
 

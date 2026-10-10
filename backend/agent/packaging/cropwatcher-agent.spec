@@ -47,7 +47,12 @@ a = Analysis(
     binaries=[],
     # The camera firmware Set up installs on a drone (drone_setup.py).
     datas=[(os.path.join(SPECPATH, "..", "cropwatcher", "firmware_bundle"),
-            "cropwatcher/firmware_bundle")],
+            "cropwatcher/firmware_bundle"),
+           # The data pipeline's model files and MODELS.json. Left out, the
+           # enhancer cannot find its model and every flight is processed on
+           # the original frames (pipeline/stages/enhance/espcn.py).
+           (os.path.join(SPECPATH, "..", "cropwatcher", "pipeline", "models"),
+            "cropwatcher/pipeline/models")],
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
