@@ -15,8 +15,8 @@ STATUS  (Last verified: 2026-10-10)
   web       BUILT — Original / Enhanced / Side by side (results.txt)
   NOT BUILT an upscaler. Kevin's evaluation is on main (ml/upscaling-eval/,
             #103, 2026-10-10): ESPCN ×2 and FSRCNN ×2 tie bicubic on 15
-            real frames, Real-ESRGAN invents detail — so none ships. His
-            espcn-clahe@1 stage was not kept; its steps are in
+            real frames, Real-ESRGAN invents detail — so none ships. The
+            espcn-clahe@1 steps it proposes are in
             ml/upscaling-eval/espcn_steps.py. Colour: never as evidence.
 
 --------------------------------------------------------------------------------
