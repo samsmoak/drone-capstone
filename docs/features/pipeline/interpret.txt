@@ -1,0 +1,81 @@
+================================================================================
+INTERPRET — findings@1: each event judged, put into words, pinned to its point,
+with the frames taken then
+Last verified: 2026-10-09 against docs/pipeline-v2 — tests/pipeline/
+test_interpret.py, the end-to-end test of a warm patch on the fixture flight.
+SOURCE: backend/agent/cropwatcher/pipeline/stages/interpret/findings.py
+================================================================================
+
+--------------------------------------------------------------------------------
+STATUS  (Last verified: 2026-10-09)
+--------------------------------------------------------------------------------
+  agent     BUILT — findings@1 (Samuel); labels@2 kept, for a classifier with
+            labels and no events
+  desktop   BUILT — the findings under the verdicts (DataPipeline.tsx), and an
+            OS notification when a job finishes with a warning or worse
+  agent     a finding is "supported" when the camera's view changed during it
+            (scene@1); a session's findings are said for the ground
+  NOT BUILT severities measured on a real heat source (PROVISIONAL until the
+            hand-warmer flights — `cropwatcher calibrate`, calibrate.txt)
+
+--------------------------------------------------------------------------------
+1. WHAT IT IS
+--------------------------------------------------------------------------------
+"What this means at a particular point" (the owner). Every event becomes a
+FINDING: a severity, a title, one sentence with when, where, how much and for
+how long, and the frames taken during it. Every inspection point gets a
+verdict: anomaly when a warning-or-worse finding overlaps its readings,
+normal when it was analysed and nothing did, insufficient data otherwise.
+
+--------------------------------------------------------------------------------
+2. WHERE IT LIVES
+--------------------------------------------------------------------------------
+backend/agent/cropwatcher/pipeline/stages/interpret/findings.py   FindingInterpreter
+backend/agent/cropwatcher/pipeline/stages/interpret/labels.py     LabelInterpreter
+backend/agent/tests/pipeline/test_interpret.py
+desktop/src/pages/control/DataPipeline.tsx     the findings on the desktop
+desktop/src/lib/os-notify.ts                   the OS notification
+
+--------------------------------------------------------------------------------
+3. DECISIONS
+--------------------------------------------------------------------------------
+• SEVERITY ON THE PEAK, AGAINST THE MEASURED MINIMUM the classifier reports in
+  its features: info = an event (beyond any normal flight's wander); warning
+  ≥ 2×; critical ≥ 5× (1.6 / 4.0 °C, 0.4 / 1.0 hPa). PROVISIONAL. Cooler
+  counts like warmer. A pressure event with no measured height is at most
+  info — a climb would look the same.
+• WORDS FROM TEMPLATES, numbers exact — no LLM. Past 100× the noise it says
+  "far beyond its noise" (a 0.009 °C-noise sensor made a 4 °C patch "436×").
+• THE TELEMETRY DECIDES, THE IMAGE SUPPORTS (the owner). Frames within ±1 s of
+  the stretch are attached (readable ones only). An image model's faulty
+  label in that window → "supports"; all judged normal → "contradicts — the
+  readings stand"; no model → "cannot tell", said. An image alone never
+  makes an anomaly (tested).
+• DETERMINISTIC FINDING IDS (uuid5 of flight, signal, start, end): processing
+  a flight again replaces a finding instead of duplicating it — and never
+  re-notifies.
+
+--------------------------------------------------------------------------------
+4. INVARIANTS
+--------------------------------------------------------------------------------
+• Exactly one verdict per inspection point, in order (the runner breaks an
+  interpreter that skips one).
+• A °F flight's minimum is a difference: 0.8 °C is 1.44 °F, never 33.44.
+• An exact severity boundary counts as reached in either unit (1e-9).
+• A point never reached is insufficient data, and says why.
+
+--------------------------------------------------------------------------------
+5. RELATED
+--------------------------------------------------------------------------------
+depends-on        data-pipeline.txt
+                  the contract (Finding, InterpretResult) and the runner
+depends-on        classify.txt
+                  its events and the minimums in its features
+consumed-by       results.txt
+                  findings are uploaded, shown and notified
+depends-on        scene.txt
+                  image support: supports when the view changed, never contradicts
+consumed-by       session.txt
+                  the words for a session's ground findings
+consumed-by       calibrate.txt
+                  WARNING_FACTOR and CRITICAL_FACTOR, measured

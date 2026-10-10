@@ -94,11 +94,26 @@ export type Controls = {
 };
 
 export type ProcessingJob = {
+  /** The flight's id — or the session's, for a session job. */
   flight_id: string;
   state: "queued" | "running" | "done" | "failed";
   queued_at: string;
   finished_at: string | null;
   error: string | null;
+  /** "flight", "session" (the session around its flights) or "live" (one
+   *  point's verdict in flight, story 4.9). Absent from an older agent. */
+  kind?: "flight" | "session" | "live";
+  point_id?: string | null;
+};
+
+/** One inspection point's verdict while the mission still flies (story 4.9,
+ *  agent pipeline/runner.py run_live_point). */
+export type LivePoint = {
+  state: ProcessingJob["state"];
+  verdict?: "normal" | "anomaly" | "insufficient_data";
+  reasons?: string[];
+  findings?: { id: string; title: string; severity: "info" | "warning" | "critical"; sentence: string; signal: string }[];
+  error?: string | null;
 };
 
 export type Processing = {
@@ -107,6 +122,8 @@ export type Processing = {
   jobs: ProcessingJob[];
   /** The session's most recent flight to land — processed or not. */
   last_flight_id: string | null;
+  /** The flight in the air's points, judged as each hold ends. */
+  live?: { flight_id: string | null; points: Record<string, LivePoint> };
 };
 
 /** One inspection point's verdict (pipeline/contracts.py PointResult). */
@@ -117,7 +134,25 @@ export type PointVerdict = {
   alerts: { severity: "info" | "warning" | "critical"; message?: string; [key: string]: unknown }[];
 };
 
-/** results/<flight id>/result.json, as the pipeline wrote it. */
+/** One finding (pipeline/contracts.py Finding): a block of readings that
+ *  departed from what was expected, judged and put into words. */
+export type PipelineFinding = {
+  id: string;
+  signal: "temperature" | "pressure";
+  severity: "info" | "warning" | "critical";
+  title: string;
+  sentence: string;
+  t_start_s: number;
+  t_end_s: number;
+  point_ids: string[];
+  evidence_frames: number[];
+  image_support: "supports" | "contradicts" | "cannot_tell";
+  image_note: string;
+};
+
+/** results/<flight id>/result.json, as the pipeline wrote it. Version 1
+ *  results (before 2026-10-09) have no findings — every v2 field is optional
+ *  so a result already on disk still reads. */
 export type FlightResult = {
   flight_id: string;
   job: ProcessingJob | null;
@@ -129,6 +164,7 @@ export type FlightResult = {
     points: PointVerdict[];
     failures: { point_id: string; stage: string; reason: string }[];
     summary: Record<string, { readings?: number; frames?: number; flags?: number }>;
+    findings?: PipelineFinding[];
   };
 };
 

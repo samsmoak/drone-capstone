@@ -1,0 +1,131 @@
+HOW AUTONOMOUS FLIGHT WORKS — the whole system, briefly
+As of 2026-10-10, on main (built on experiment/samuel, 2026-10-05).
+Detail for each part lives in the doc named in brackets.
+
+================================================================================
+THE ONE RULE EVERYTHING FOLLOWS
+================================================================================
+- Only the laptop with the Crazyradio can command the drone. The agent
+  (Python, on that laptop) is the only thing that talks to the radio. The
+  desktop app talks to the agent. [CLAUDE.md]
+
+================================================================================
+1. THE DRONE KNOWING WHERE IT IS  (light → angles → distance → position)
+================================================================================
+- Base station: sweeps laser lines across the room many times a second.
+- Lighthouse deck (ON TOP of the drone): 4 light sensors. The drone times
+  when each sweep hits each sensor → two ANGLES per sensor (a direction to
+  the station). This decoding happens on the drone itself, not in our code.
+- Every station needs its own CHANNEL (1, 2…), or its sweeps overlap and no
+  angles decode. Set in Set up › 3 over the station's USB cable.
+- Angles alone are directions, not distances. To get distance the drone needs
+  the station's GEOMETRY: where it stands and which way it points.
+- GEOMETRY (② Position, one press, drone where it sits): one sample of the 4
+  sensors; their known 3 cm layout gives the station's distance (closer =
+  the sensors look further apart). Two answers come out as mirror images;
+  the one with the station standing UPRIGHT is kept. Stored on the drone
+  (survives power-off). That spot becomes the origin (0, 0, 0).
+- From then on the drone computes its own x, y, z many times a second
+  (Kalman filter, "sweep angle" method — works with one station).
+- A position counts only when the drone trusts it: a station in use AND its
+  own uncertainty under 10 cm (under 5 cm to start a flight). Otherwise the
+  app shows "no position" — never a drifting number.
+  [desktop/setup.txt, desktop/auto-control.txt, backend/flight-safety.txt]
+
+================================================================================
+2. THE FLYABLE SPACE  (the green)
+================================================================================
+- Computed, not walked: from the stored geometry and the station's field of
+  view (150° wide, 110° tall), over the whole map, in the room's height band.
+- Green = where the drone can trust its position. It is real (tied to where
+  the station is), unlike the drawn room.
+- Shown on every map, including the editor; points outside it are ringed red.
+  [missions/floor-plans.txt]
+
+================================================================================
+3. THE PLAN  (what you draw — ① Plan)
+================================================================================
+- ROOM: a closed fence + obstacles (optionally with a height to fly over).
+  Drawn inside the agent's 4 m × 4 m area. Never limited by the green.
+- MISSION: a planned start, inspection points (x, y, height, hold time), one
+  speed (Steady 0.10 / Normal 0.15 / Brisk 0.20 m/s), return to start or an
+  end point. Ceiling 1.0 m.
+- Saved exactly as drawn. Nothing that happens at flight time changes it.
+  [missions/floor-plans.txt]
+
+================================================================================
+4. THE PLAN THAT WILL FLY  (④ Auto-correct — automatic)
+================================================================================
+- Takes your saved plan and makes a COPY for this flight:
+  1. moves the WHOLE PATH so its start is where the drone is now
+     (shape, spacing and heights kept; no rotation);
+  2. walls and obstacles stay where they are — the moved path is checked
+     against them (0.25 m clearance);
+  3. any point outside the green (or too close to an edge/obstacle) is moved
+     to the nearest fine spot inside; points already fine never move;
+  4. checks every point AND every leg between them.
+- Each move is named on screen. If it cannot be made safe, it says why and
+  the mission cannot start.
+- The same function feeds ④'s map, ⑤'s map and Start — what you see is what
+  flies. The copy flown is kept with the flight.
+- The landing spot becomes the next flight's start.
+  [missions/floor-plans.txt, missions/mission-controller.txt]
+
+================================================================================
+5. STARTING  (⑤ Fly)
+================================================================================
+- Session start runs the checks: radio, battery, motors unlocked, deck,
+  base stations, position settled. Then you confirm the area is clear.
+- Before Start, the agent lists EVERY reason it would refuse, each with what
+  to do (session not ready, wrong mode, no position, drone's motors LOCKED,
+  plan unsafe, battery too low for the path). Start refuses on the first.
+- A LOCKED drone (its supervisor locks after some landings; only a restart
+  clears it) is named, with Reset drone beside it.
+  [missions/mission-controller.txt, backend/sessions-and-modes.txt]
+
+================================================================================
+6. FLYING  (the mission controller + the manual flight system)
+================================================================================
+- The mission controller decides WHERE NEXT and WHEN; the manual flight
+  system (the tuned 50 Hz loop Manual uses) decides HOW to fly there.
+- Sequence: take off to cruise height → fly to P1 at the mission's speed →
+  arrive → settle → HOLD (readings and camera frames tagged with the point's
+  id only while holding) → next point → … → return over the start, or land
+  at the end point → land.
+- Any key pressed takes over at once; the mission ends and the drone is
+  yours. L lands.
+- The guard watches every tick: leaving the fence → land; low battery →
+  land; position lost → stop; motors not spinning (LOCKED, or all four at
+  zero 1.5 s after arming) → ended as "the motors did not start".
+- The app's window must keep talking to the agent; if it goes quiet, the
+  drone lands.
+  [missions/mission-controller.txt, backend/manual-control.txt,
+   backend/flight-safety.txt]
+
+================================================================================
+7. AFTER LANDING
+================================================================================
+- The flight's readings are written to CSV on the laptop first, then uploaded
+  (best effort, retried). The plan flown and its moves are kept beside it.
+- The data pipeline turns each point's tagged readings into a verdict, shown
+  under ⑤ Fly. [pipeline/data-pipeline.txt, backend/offline-sync.txt]
+
+================================================================================
+HOW IT CONNECTS, IN ONE LINE EACH
+================================================================================
+- Channels → sweeps decode → angles.
+- Angles + geometry (② Position) → position → the green (③).
+- Your plan (①) + the drone's position + the green → the plan that will
+  fly (④).
+- Checks + the reasons list → Start (⑤) → the mission controller flies the
+  plan through the manual flight system, the guard watching.
+- Landing spot → next start.
+
+================================================================================
+KNOWN, NOT YET SOLVED
+================================================================================
+- After some landings the drone locks its motors (the landing ends at ~5 cm
+  with motors high, then cuts). The landing is in manual.py, which is
+  locked — Samuel's decision. Today: Reset drone between missions if asked.
+- One base station only: if it is blocked mid-flight there is no second view
+  (a second station on channel 2 fixes this).

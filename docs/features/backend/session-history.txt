@@ -47,6 +47,12 @@ INVARIANTS
 
 - meta.json is written atomically (temp file + rename): a crash leaves the last
   whole record, never half of one. It is re-saved every ten samples.
+- A CLOSED session's meta.json has ONE WRITER AT A TIME, through a temp file of
+  its own (history.set_flight_processing). A processing job reports from the
+  caller's thread and the queue's worker at once; with one shared temp name
+  and no lock the two writes interleaved and left meta.json not JSON — found
+  2026-10-09 by the resume tests (2 runs in 15); test_processing.py hammers
+  it from 8 threads.
 - A session id comes from a URL, so any id containing "/", "\" or "." is refused
   before it touches the filesystem.
 - Height in a sample is relative to the reference the flight is using — the
@@ -74,3 +80,6 @@ RELATED
 shares-data-with  ../pipeline/data-pipeline.txt
                   meta.json names each session's flights; the pipeline finds a
                   flight's frames and plan by it
+shares-data-with  ../pipeline/session.txt
+                  samples.csv is the session's own pipeline input; meta.json
+                  carries the session's processing state

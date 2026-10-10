@@ -499,8 +499,9 @@ instead of Land and Emergency stop. Found while giving the Auto full screen
 the strip's controls; no mission had flown yet, so nobody met it.
 
 Manual's right column also carries the DATA PROCESSING panel (DataPipeline.tsx:
-the DPP switch, off by default in Manual, and the last flight's verdict) at
-its foot, below everything that was there.
+the last flight's verdict and findings) at its foot. The DPP SWITCH itself is
+in the page header, beside Recent sessions, in Auto and Manual alike — on by
+default (2026-10-09).
 
 
 DELIBERATE DIVERGENCES FROM web/

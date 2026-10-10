@@ -1,0 +1,69 @@
+================================================================================
+CALIBRATION — the hand-warmer flights, measured
+Last verified: 2026-10-09 against dpp/calibrate — the fixture flight with a
+3 °C and a 0.3 °C heat source planted at P1. NOT YET MEASURED: no real
+hand-warmer flight has been flown.
+SOURCE: backend/agent/cropwatcher/pipeline/calibrate.py
+================================================================================
+
+--------------------------------------------------------------------------------
+STATUS  (Last verified: 2026-10-09)
+--------------------------------------------------------------------------------
+  agent     BUILT — `cropwatcher calibrate --flight <id> --at P2` (repeatable),
+            the report saved to <data folder>/calibration/
+  OWED      the flights themselves: until they are flown, every anomaly
+            threshold is PROVISIONAL (measured on normal flights only)
+
+--------------------------------------------------------------------------------
+1. WHAT IT IS
+--------------------------------------------------------------------------------
+Story 4.6, "define normal thresholds". The classifier's minimums and the
+interpreter's severity factors were measured on flights with nothing there.
+This measures what a REAL heat source does to the sensor and recommends the
+constants, with the measurements behind them.
+
+THE LAB PROCEDURE
+  1. Put a hand warmer (or any steady heat source) at one inspection point of
+     a mission, at the height the drone holds there. Note the point.
+  2. Fly the mission with Process flights (DPP) on. Repeat — two or three
+     flights, the warmer at different points if you can.
+  3. On the laptop:
+       cropwatcher calibrate --flight <id> --at P2 [--flight <id> --at P3 …]
+  4. Read the table: what the sensor saw at each marked point (°C above its
+     cooling curve, and in noise units), whether today's settings find it and
+     how severe they call it, and how far the rest of those flights wandered.
+  5. If it recommends a change, make it in a reviewed pull request, citing the
+     saved report in ml/anomaly-eval/MEASUREMENTS.txt.
+
+--------------------------------------------------------------------------------
+2. WHERE IT LIVES
+--------------------------------------------------------------------------------
+backend/agent/cropwatcher/pipeline/calibrate.py   measure, Report, save
+backend/agent/cropwatcher/cli.py                  cmd_calibrate
+backend/agent/tests/pipeline/test_calibrate.py
+
+--------------------------------------------------------------------------------
+3. DECISIONS
+--------------------------------------------------------------------------------
+• IT NEVER EDITS THE CODE. A threshold is a reviewed change; the report is the
+  evidence for it.
+• RECOMMENDATIONS FOLLOW TWO RULES: the minimum stays above the most a block
+  wanders with nothing there; the weakest real heat source should read at
+  least "warning" (WARNING_FACTOR is lowered to make it so, never below 1.1).
+• A heat source too weak to tell apart from a normal flight is SAID — move it
+  closer or use a warmer one — rather than lowering the minimum to it.
+
+--------------------------------------------------------------------------------
+4. INVARIANTS
+--------------------------------------------------------------------------------
+• One --at per --flight, in order; a point the flight did not fly is refused.
+
+--------------------------------------------------------------------------------
+5. RELATED
+--------------------------------------------------------------------------------
+depends-on        classify.txt
+                  blocks@1's minimums (MIN_EVENT_C) and its block-finding
+depends-on        interpret.txt
+                  findings@1's severity factors
+depends-on        data-pipeline.txt
+                  the stages and the flight source it re-runs

@@ -1,9 +1,10 @@
-"""The cleaner (stage 1, story 4.2): every fault flagged with the right kind
-and column, and a real event left alone.
+"""The cleaner (stage 1, story 4.2), robust@1: every fault flagged with the
+right kind and column, and a real event left alone.
 
 Rule by rule on small made-up points, then the ticket's acceptance on the one
-real flight we have (the pipeline fixture) with faults planted into it by
-ml/sensor-faults/plant_faults.py."""
+real flight in the repo (the pipeline fixture) with faults planted into it by
+ml/sensor-faults/plant_faults.py. The 66-flight comparison with hampel@1, which
+robust@1 replaced, is in ml/sensor-faults/MEASUREMENTS.txt."""
 
 from __future__ import annotations
 
@@ -24,7 +25,11 @@ from cropwatcher.pipeline.contracts import (
     Reading,
 )
 from cropwatcher.pipeline.sources import LocalFlightSource
-from cropwatcher.pipeline.stages.clean.hampel import STUCK_SAMPLES, HampelCleaner
+from cropwatcher.pipeline.stages.clean.robust import (
+    BATTERY_STEP_V,
+    STUCK_SAMPLES,
+    RobustCleaner,
+)
 
 FIXTURE_CSV = (Path(__file__).parent / "fixtures" / "data" / "flights" / "2026-09-24"
                / "flight_372bbdc4_2026-09-24_04-18-20.csv")
@@ -38,15 +43,18 @@ def ctx(tmp_path: Path, unit: str = "C") -> FlightContext:
 
 
 def point(columns: dict[str, list[float | None]], *, times: list[float] | None = None,
-          indexes: list[int] | None = None) -> PointData:
+          indexes: list[int] | None = None, states: list[str] | None = None) -> PointData:
     """A point at 10 Hz, one reading per value. `times` and `indexes` override
-    the regular spacing, to make a gap."""
+    the regular spacing, to make a gap; `states` gives each row a
+    thermal_state (the correction engine's)."""
     n = len(next(iter(columns.values())))
     times = times or [i * 0.1 for i in range(n)]
     indexes = indexes or list(range(n))
+    states = states or ["FLIGHT (POWER)"] * n
     readings = tuple(
         Reading(index=indexes[i], recorded_at=START + timedelta(seconds=times[i]),
-                t_s=times[i], values={c: v[i] for c, v in columns.items()})
+                t_s=times[i], values={c: v[i] for c, v in columns.items()},
+                text={"thermal_state": states[i]})
         for i in range(n))
     return PointData(InspectionPoint("P1", None, 0.0, 0.0, 0.4), readings, ())
 
@@ -58,7 +66,7 @@ def noisy(n: int, base: float, wiggle: float) -> list[float | None]:
 
 def flags_of(data: PointData, tmp_path: Path,
              unit: str = "C") -> set[tuple[int, str | None, str]]:
-    result = HampelCleaner().clean(data, ctx(tmp_path, unit))
+    result = RobustCleaner().clean(data, ctx(tmp_path, unit))
     return {(f.index, f.column, f.kind) for f in result.flags}
 
 
@@ -67,7 +75,7 @@ def flags_of(data: PointData, tmp_path: Path,
 
 def test_an_empty_point_is_an_empty_result(tmp_path):
     empty = PointData(InspectionPoint("P3", None, 0.0, 0.0, 0.4), (), ())
-    result = HampelCleaner().clean(empty, ctx(tmp_path))
+    result = RobustCleaner().clean(empty, ctx(tmp_path))
     assert result.readings == () and result.flags == ()
 
 
@@ -95,7 +103,7 @@ def test_a_value_the_sensor_cannot_measure_is_out_of_range(tmp_path):
 def test_a_one_sample_spike_is_flagged_and_says_by_how_much(tmp_path):
     temps = noisy(30, 22.0, 0.02)
     temps[15] = 25.0
-    result = HampelCleaner().clean(point({"corrected_temp": temps}), ctx(tmp_path))
+    result = RobustCleaner().clean(point({"corrected_temp": temps}), ctx(tmp_path))
     (flag,) = result.flags
     assert (flag.index, flag.column, flag.kind) == (15, "corrected_temp", "spike")
     assert "25.00 °C" in flag.reason and "limit" in flag.reason
@@ -162,7 +170,7 @@ def test_the_battery_is_never_checked_for_stuck(tmp_path):
 def test_lost_time_is_a_gap_on_the_first_reading_after_it(tmp_path):
     times = [i * 0.1 for i in range(20)] + [2.5 + i * 0.1 for i in range(20)]
     data = point({"raw_temp": noisy(40, 34.2, 0.02)}, times=times)
-    result = HampelCleaner().clean(data, ctx(tmp_path))
+    result = RobustCleaner().clean(data, ctx(tmp_path))
     (flag,) = result.flags
     assert (flag.index, flag.column, flag.kind) == (20, None, "gap")
     assert not result.usable(20, "raw_temp") and result.usable(19, "raw_temp")
@@ -177,6 +185,119 @@ def test_one_lost_row_is_a_gap_though_its_time_is_under_the_limit(tmp_path):
 
 def test_a_column_the_flight_did_not_record_is_skipped(tmp_path):
     assert flags_of(point({"x_m": [0.0] * 30}), tmp_path) == set()
+
+
+# ── corrected_temp: the correction engine's steps are not spikes ─────────
+
+
+def test_the_engine_stepping_its_offset_when_the_state_switches_is_not_a_spike(tmp_path):
+    """The cause of 294 of hampel@1's 332 false flags (MEASUREMENTS.txt): the
+    engine scales its offset per thermal_state, so corrected_temp steps for a
+    few rows each time the state flips — while raw_temp, the sensor, is calm."""
+    raw = noisy(60, 34.2, 0.01)
+    states = (["FLIGHT (POWER)"] * 20 + ["FLIGHT (COOLING)"] * 4 + ["FLIGHT (POWER)"] * 16
+              + ["FLIGHT (COOLING)"] * 3 + ["FLIGHT (POWER)"] * 17)
+    offset = {"FLIGHT (POWER)": 9.9, "FLIGHT (COOLING)": 7.6}
+    corrected = [r - offset[s] for r, s in zip(raw, states, strict=True)]
+    data = point({"raw_temp": raw, "corrected_temp": corrected}, states=states)
+    assert flags_of(data, tmp_path) == set()
+
+
+def test_a_spike_in_the_correction_alone_is_flagged_on_corrected_temp(tmp_path):
+    raw = noisy(40, 34.2, 0.01)
+    corrected = [r - 9.9 for r in raw]
+    corrected[20] += 2.5
+    result = RobustCleaner().clean(point({"raw_temp": raw, "corrected_temp": corrected}),
+                                   ctx(tmp_path))
+    (flag,) = result.flags
+    assert (flag.index, flag.column, flag.kind) == (20, "corrected_temp", "spike")
+    assert "offset" in flag.reason
+
+
+def test_a_raw_spike_is_a_spike_in_what_is_computed_from_it_too(tmp_path):
+    raw = noisy(40, 34.2, 0.01)
+    corrected = [r - 9.9 for r in raw]
+    raw[20] += 3.0
+    corrected[20] += 3.0
+    assert flags_of(point({"raw_temp": raw, "corrected_temp": corrected}), tmp_path) == {
+        (20, "raw_temp", "spike"), (20, "corrected_temp", "spike")}
+
+
+def test_a_raw_value_out_of_range_never_makes_corrected_temp_a_spike(tmp_path):
+    """150 °C in raw_temp is out_of_range there; corrected_temp beside it is a
+    different, plausible number and is not judged by the bad one."""
+    raw = noisy(40, 34.2, 0.01)
+    corrected = [r - 9.9 for r in raw]
+    raw[20] = 150.0
+    assert flags_of(point({"raw_temp": raw, "corrected_temp": corrected}), tmp_path) == {
+        (20, "raw_temp", "out_of_range")}
+
+
+def test_a_value_frozen_across_lost_time_is_still_stuck(tmp_path):
+    """hampel@1 reset its count at every gap and missed 23 planted runs."""
+    raw = noisy(40, 34.2, 0.02)
+    run = range(10, 10 + STUCK_SAMPLES + 2)
+    for i in run:
+        raw[i] = 34.21
+    indexes = [*range(15), *range(16, 41)]          # one row lost inside the run
+    times = [i * 0.1 for i in indexes]
+    flags = flags_of(point({"raw_temp": raw}, times=times, indexes=indexes), tmp_path)
+    assert {(indexes[i], "raw_temp", "stuck") for i in run} <= flags
+
+
+# ── position ─────────────────────────────────────────────────────────────
+
+
+def positions(n: int, received: list[int] | None = None,
+              x: list[float] | None = None) -> dict[str, list[float | None]]:
+    return {"x_m": list(x or [0.5 + 0.001 * i for i in range(n)]),
+            "y_m": [0.2] * n, "z_m": [0.4] * n,
+            "lighthouse_received": [float(v) for v in (received or [1] * n)]}
+
+
+def test_a_position_with_no_base_station_is_untrusted(tmp_path):
+    received = [1] * 20
+    received[5:8] = [0, 0, 0]
+    flags = flags_of(point(positions(20, received)), tmp_path)
+    assert flags == {(i, c, "untrusted") for i in (5, 6, 7) for c in ("x_m", "y_m", "z_m")}
+
+
+def test_a_position_jumping_faster_than_a_drone_flies_is_implausible(tmp_path):
+    x = [0.5] * 20
+    x[10] = 1.5                                     # 1 m in 0.1 s: 10 m/s
+    flags = flags_of(point(positions(20, x=x)), tmp_path)
+    assert flags == {(10, c, "implausible") for c in ("x_m", "y_m", "z_m")}
+
+
+def test_after_a_jump_the_estimate_that_stays_somewhere_new_becomes_the_reference(tmp_path):
+    """An estimator that re-locks elsewhere is flagged for half a second, then
+    believed — never flagged for the rest of the flight."""
+    x = [0.5] * 10 + [1.5] * 30
+    flags = flags_of(point(positions(40, x=x)), tmp_path)
+    jumped = {i for i, _, kind in flags if kind == "implausible"}
+    assert jumped and max(jumped) < 10 + 6
+
+
+def test_a_position_beyond_any_base_station_is_out_of_range(tmp_path):
+    x = [0.5] * 20
+    x[4] = 91.0
+    assert (4, "x_m", "out_of_range") in flags_of(point(positions(20, x=x)), tmp_path)
+
+
+# ── battery ──────────────────────────────────────────────────────────────
+
+
+def test_a_battery_voltage_no_cell_gives_is_out_of_range(tmp_path):
+    volts = [3.9] * 20
+    volts[7] = 0.0
+    assert flags_of(point({"battery_v": volts}), tmp_path) == {(7, "battery_v", "out_of_range")}
+
+
+def test_a_battery_jump_no_load_step_makes_is_implausible_and_a_sag_is_not(tmp_path):
+    volts = [3.9] * 30
+    volts[10] = 3.9 - 0.78                          # the largest real sag: fine
+    volts[20] = 3.9 - BATTERY_STEP_V - 0.1
+    assert flags_of(point({"battery_v": volts}), tmp_path) == {(20, "battery_v", "implausible")}
 
 
 def test_fahrenheit_limits_are_converted(tmp_path):
@@ -201,10 +322,15 @@ def whole_flight(tmp_path: Path) -> PointData:
     return data
 
 
-def test_the_real_flight_gets_no_flags(tmp_path):
+def test_the_real_flight_gets_no_flags_on_its_sensors(tmp_path):
+    """No sensor or battery flag on the real flight. Its positions are all
+    untrusted, which is true: no base station was received in that flight
+    (lighthouse_received 0 from row 2 on, MEASUREMENTS.txt)."""
     data = whole_flight(tmp_path)
     assert len(data.readings) == 400
-    assert flags_of(data, tmp_path) == set()
+    flags = flags_of(data, tmp_path)
+    assert {f for f in flags if f[1] not in ("x_m", "y_m", "z_m")} == set()
+    assert {kind for _, column, kind in flags if column in ("x_m", "y_m", "z_m")} == {"untrusted"}
 
 
 def load_evaluate():

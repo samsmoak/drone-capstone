@@ -9,6 +9,7 @@ import { ProfileMenu, type OperatorAccount } from "./ProfileMenu";
 import { ThemeToggle } from "@/components/site/ThemeToggle";
 import { Wordmark } from "@/components/site/Wordmark";
 import { Drawer, MenuButton } from "@/components/ui/drawer";
+import { NotificationBell } from "./notifications";
 
 /**
  * The phone and tablet version of the operator sidebar (below 1024 px).
@@ -37,6 +38,7 @@ export function OperatorMobileNav({ account, isOperator }: { account: OperatorAc
           <Wordmark />
         </Link>
         <div className="flex items-center gap-1">
+          <NotificationBell />
           <ThemeToggle />
           <MenuButton
             controls="operator-menu"

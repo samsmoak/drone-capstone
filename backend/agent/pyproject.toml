@@ -15,6 +15,9 @@ dependencies = [
     # installed through cflib (numpy~=2.2); declared so the stage does not
     # depend on another package's choice.
     "numpy>=2.2",
+    # The data pipeline's enhancer (pipeline/stages/enhance/clahe.py): CLAHE
+    # and the frame-quality measure. Headless — the agent opens no window.
+    "opencv-python-headless>=4.10,<6",
     # Setting a base station's channel over its micro-USB port (flight/
     # basestation.py) — what Bitcraze's client does in "Set BS channel".
     "pyserial>=3.5",
@@ -39,6 +42,9 @@ dev = [
     "httpx>=0.27",
     "ruff>=0.7",
     "mypy>=1.13",
+    # The classifier's PELT is checked against this reference implementation
+    # (tests/pipeline/test_classify.py). Tests only — never shipped.
+    "ruptures>=1.1",
 ]
 # Freezing the agent into the desktop app's sidecar (packaging/build_sidecar.py).
 # One declaration, so `node scripts/setup.mjs` and CI install the same thing.

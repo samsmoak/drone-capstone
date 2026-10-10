@@ -1,0 +1,111 @@
+ANOMALY MEASUREMENTS — where every number in the classifier comes from
+======================================================================
+
+The classifier (backend/agent/cropwatcher/pipeline/stages/classify/blocks.py,
+blocks@1) and the finding interpreter (stages/interpret/findings.py) cite this
+file for each constant. Change a constant → change its line here, with the
+measurement that justifies it.
+
+STATUS (2026-10-09): measured on the lab laptop's flights, cleaned by
+robust@1 — 115 flights with enough airborne readings, 30 of them a minute or
+more in the air (long enough to plant into). PROVISIONAL until the hand-warmer
+flights (story 4.6) measure what a real heat source does to this sensor. The
+flights stay on that laptop — the repository is public.
+
+    cd backend/agent && .venv/bin/python ../../ml/anomaly-eval/evaluate.py \
+        "<data folder>" [--grid]
+
+
+WHAT "EXPECTED" IS  (measured before the classifier was written)
+─────────────────────────────────────────────────────────────────
+
+  Temperature. On a normal mission (48b1eb79) raw_temp falls 34.7 → 29.6 °C
+  in 48 s: the board cools in the propellers' air from takeoff.
+  corrected_temp is raw_temp minus a constant offset (12.67 there) that the
+  correction engine re-scales whenever thermal_state switches — so it falls
+  the same 6 °C AND steps; ambient_est stays at the operator's typed value.
+  → expected = a first-order cooling curve T∞ + A·e^(−t/τ) fitted to raw_temp
+    (τ on a log grid 5–1200 s; Huber weights at the data's own reading-to-
+    reading noise, so an event cannot bend the curve to itself).
+
+  Pressure. On four missions pressure falls 0.16–0.36 hPa per metre of
+  height — hydrostatic is 0.12; the rest is the drone's own downwash near the
+  floor. Residual noise after a height fit: 0.024–0.033 hPa.
+  → corrected by physics, + ρ·g·z/100 (ρ from the row), never by a per-flight
+    fit (it would absorb an event that happened at one height); expected = a
+    robust straight line (the room's drift). Without a measured height
+    (robust@1 flags z untrusted) the pressure is used uncorrected and every
+    finding from it is at most "info".
+
+  Takeoff. thermal_state goes IDLE → FLIGHT and corrected_temp steps 4.6 °C
+  (fixture row 27). → SETTLE_S = 3 s left out after takeoff.
+
+
+BLOCKS
+──────
+
+  PELT on the residual, penalty PEN × σ² × ln n, every block ≥ MIN_BLOCK
+  readings; σ = 1.4826 × MAD of the residual's first differences / √2.
+  → PEN = 8, MIN_BLOCK = 20 (2 s). PEN 16 gave the same detection and the
+    same false events in the grid; 8 keeps the blocks finer for the web's
+    picture.
+  A stretch between gaps or flags shorter than MIN_BLOCK is not analysed: it
+  cannot hold a block (one such 4-reading stretch made the only pressure
+  event on a normal flight before the rule).
+
+  The numpy PELT and the `ruptures` package (Pelt, "l2") give identical
+  breakpoints on 500 of 500 random series (tests/pipeline/test_classify.py
+  checks 100 on every run). 2 000 readings in 88 ms.
+
+
+EVENTS  (the minimums)
+──────────────────────
+
+  How far the blocks of a NORMAL flight wander — the largest |block mean| per
+  flight, 115 flights:
+
+                 p50     p90     p95     p99     max
+  temperature    0.111   0.330   0.450   0.684   0.781   °C
+  pressure       0.040   0.109   0.124   0.165   0.173   hPa
+
+  → a block departs when |mean| ≥ max(Z_EVENT × σ, the minimum):
+      Z_EVENT = 4, MIN_EVENT_C = 0.8 °C, MIN_EVENT_HPA = 0.2 hPa — just above
+      the most any normal flight wandered.
+  → Adjacent departing blocks going the same way are ONE event (a ramp up and
+    down is a staircase of blocks); it carries its mean departure and its
+    peak.
+
+  An earlier rule — Z × the residual's own MAD — found a planted 5 °C patch
+  only 65 % of the time: in a short flight the patch is most of the data and
+  inflates the MAD that judges it. Replaced by the rule above.
+
+
+THE RESULT  (the settings above, seed 0)
+────────────────────────────────────────
+
+  Normal flights, 115:     temperature events 0 · pressure events 0
+
+  Planted, 30 flights ≥ 60 s in the air — a warm patch (rise 5 s, hold 5 s,
+  fall 5 s) on raw_temp and corrected_temp, a pressure step held 5 s:
+
+    warm patch 1 °C   found 97 %        pressure step 0.3 hPa   found 100 %
+    warm patch 2 °C   found 100 %       pressure step 0.5 hPa   found 100 %
+    warm patch 3 °C   found 100 %
+    warm patch 5 °C   found 100 %
+
+  What it cannot do: an event that fills most of a short flight has nothing
+  normal around it, and this method — any method with no reference but the
+  flight itself — cannot tell it from that flight's own baseline. Patches are
+  planted only in flights a minute or more in the air, a real mission's
+  length.
+
+
+SEVERITY  (stages/interpret/findings.py — PROVISIONAL)
+──────────────────────────────────────────────────────
+
+  Measured against the event minimum above, on the event's peak:
+    info       an event — beyond any normal flight's wander
+    warning    peak ≥ WARNING_FACTOR (2) × the minimum: 1.6 °C, 0.4 hPa
+    critical   peak ≥ CRITICAL_FACTOR (5) × the minimum: 4.0 °C, 1.0 hPa
+  A pressure event without a measured height: at most info.
+  To be replaced by what the hand-warmer flights show a real heat source does.

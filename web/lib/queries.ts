@@ -15,6 +15,10 @@ export type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
 export type SessionRow = Database["public"]["Tables"]["sessions"]["Row"];
 export type SessionSampleRow = Database["public"]["Tables"]["session_samples"]["Row"];
 export type AuditEventRow = Database["public"]["Tables"]["audit_events"]["Row"];
+export type PipelineResultRow = Database["public"]["Tables"]["pipeline_results"]["Row"];
+export type FindingRow = Database["public"]["Tables"]["pipeline_findings"]["Row"];
+export type SessionResultRow = Database["public"]["Tables"]["pipeline_session_results"]["Row"];
+export type NotificationRow = Database["public"]["Tables"]["notifications"]["Row"];
 
 /**
  * A read that failed, as opposed to a read that found nothing.
@@ -212,6 +216,32 @@ export const getSessionFrames = cache(async (sessionId: string): Promise<Session
   });
 });
 
+/**
+ * The pipeline's enhanced copies of a session's frames (clahe@1: contrast for
+ * dark frames), uploaded beside the originals as <session>/enhanced/<seq>.png
+ * (agent sync/results.py). Seq → a signed link. Empty when none were uploaded.
+ */
+export const getEnhancedFrames = cache(async (sessionId: string): Promise<Record<number, string>> => {
+  const supabase = await createClient();
+  const bucket = supabase.storage.from(FRAMES_BUCKET);
+  const { data: files, error } = await bucket.list(`${sessionId}/enhanced`, {
+    limit: 2000,
+    sortBy: { column: "name", order: "asc" },
+  });
+  if (error) failed({ message: error.message }, "enhanced frames");
+  const names = (files ?? []).map((f) => f.name).filter((n) => /^\d+\.png$/.test(n));
+  if (names.length === 0) return {};
+  const { data: signed, error: signError } = await bucket.createSignedUrls(
+    names.map((n) => `${sessionId}/enhanced/${n}`), FRAME_LINK_S);
+  if (signError) failed({ message: signError.message }, "enhanced frame links");
+  const out: Record<number, string> = {};
+  names.forEach((name, i) => {
+    const url = signed?.[i]?.signedUrl;
+    if (url) out[Number(name.split(".")[0])] = url;
+  });
+  return out;
+});
+
 export const getZones = cache(async (): Promise<ZoneRow[]> => {
   const supabase = await createClient();
   const { data, error } = await supabase.from("zones").select("*").order("label");
@@ -236,9 +266,10 @@ export const getMissions = cache(async (limit = 50): Promise<MissionRow[]> => {
 // not. Its own vitals (one a second, session_samples) cover the whole of it;
 // its flights' telemetry covers only the time the motors ran.
 
-/** A session in the list: who ran it, on which drone, and how many flights. */
+/** A session in the list: who ran it, on which drone, and how many flights.
+ *  Who ran it is on the row itself (operator_name, operator_email), stamped by
+ *  the database (migration 20261009000015) — profiles stay "read your own". */
 export type SessionSummary = SessionRow & {
-  operator: string | null;
   drone: string | null;
   flight_count: number;
 };
@@ -253,21 +284,17 @@ export const getRecentSessions = cache(async (limit = 50): Promise<SessionSummar
   if (error) failed(error, "sessions");
   if (sessions.length === 0) return [];
   const ids = sessions.map((s) => s.id);
-  const [flights, profiles, drones] = await Promise.all([
+  const [flights, drones] = await Promise.all([
     supabase.from("flights").select("session_id").in("session_id", ids),
-    supabase.from("profiles").select("id, email, full_name")
-      .in("id", sessions.map((s) => s.operator_id).filter((x): x is string => !!x)),
     supabase.from("drones").select("id, name")
       .in("id", sessions.map((s) => s.drone_id).filter((x): x is string => !!x)),
   ]);
   if (flights.error) failed(flights.error, "session flights");
   const counts = new Map<string, number>();
   for (const f of flights.data) if (f.session_id) counts.set(f.session_id, (counts.get(f.session_id) ?? 0) + 1);
-  const who = new Map((profiles.data ?? []).map((p) => [p.id, p.full_name || p.email]));
   const what = new Map((drones.data ?? []).map((d) => [d.id, d.name]));
   return sessions.map((s) => ({
     ...s,
-    operator: s.operator_id ? who.get(s.operator_id) ?? null : null,
     drone: s.drone_id ? what.get(s.drone_id) ?? null : null,
     flight_count: counts.get(s.id) ?? 0,
   }));
@@ -278,18 +305,14 @@ export const getSession = cache(async (id: string): Promise<SessionSummary | nul
   const { data, error } = await supabase.from("sessions").select("*").eq("id", id).maybeSingle();
   if (error) failed(error, "this session");
   if (!data) return null;
-  const [flights, profile, drone] = await Promise.all([
+  const [flights, drone] = await Promise.all([
     supabase.from("flights").select("id", { count: "exact", head: true }).eq("session_id", id),
-    data.operator_id
-      ? supabase.from("profiles").select("email, full_name").eq("id", data.operator_id).maybeSingle()
-      : Promise.resolve({ data: null }),
     data.drone_id
       ? supabase.from("drones").select("name").eq("id", data.drone_id).maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
   return {
     ...data,
-    operator: profile.data ? profile.data.full_name || profile.data.email : null,
     drone: drone.data?.name ?? null,
     flight_count: flights.count ?? 0,
   };
@@ -342,25 +365,119 @@ export const getSessionEvents = cache(async (sessionId: string): Promise<AuditEv
   return data;
 });
 
-export const getPredictionsForFlights = cache(
-  async (flightIds: string[]): Promise<PredictionRow[]> => {
-    if (flightIds.length === 0) return [];
+// ── the data pipeline's results (migration 20261009000016) ────────────────
+
+/** A table this deployment's database does not have yet — said on the page
+ *  ("apply migration …"), never shown as an error or as "nothing". */
+function notMigrated(error: { code?: string; message: string }, table: string): boolean {
+  return error.code === "PGRST205" || error.code === "42P01" || error.message.includes(table);
+}
+
+/** Every flight's pipeline result, by flight. */
+export const getPipelineResults = cache(
+  async (flightIds: readonly string[]): Promise<{ rows: PipelineResultRow[]; migrated: boolean }> => {
+    if (flightIds.length === 0) return { rows: [], migrated: true };
     const supabase = await createClient();
-    const { data, error } = await supabase.from("predictions").select("*").in("flight_id", flightIds);
-    if (error) failed(error, "predictions");
-    return data;
+    const { data, error } = await supabase.from("pipeline_results").select("*")
+      .in("flight_id", [...flightIds]);
+    if (error) {
+      if (notMigrated(error, "pipeline_results")) return { rows: [], migrated: false };
+      failed(error, "pipeline results");
+    }
+    return { rows: data, migrated: true };
   },
 );
 
-export const getPredictionsForFlight = cache(
-  async (flightId: string): Promise<PredictionRow[]> => {
+/** Every finding of these flights, worst first, then in time. */
+export const getFindings = cache(
+  async (flightIds: readonly string[]): Promise<{ rows: FindingRow[]; migrated: boolean }> => {
+    if (flightIds.length === 0) return { rows: [], migrated: true };
     const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("predictions")
-      .select("*")
-      .eq("flight_id", flightId);
-    if (error) failed(error, "predictions");
-    return data;
+    const { data, error } = await supabase.from("pipeline_findings").select("*")
+      .in("flight_id", [...flightIds]).eq("scope", "flight").order("t_start_s", { ascending: true });
+    if (error) {
+      if (notMigrated(error, "pipeline_findings")) return { rows: [], migrated: false };
+      failed(error, "findings");
+    }
+    const rank = { critical: 2, warning: 1, info: 0 } as Record<string, number>;
+    return { rows: [...data].sort((a, b) => (rank[b.severity] ?? 0) - (rank[a.severity] ?? 0)),
+             migrated: true };
+  },
+);
+
+/** A session's own result — its samples around the flights, on the ground
+ *  (migration 20261009000018). `migrated: false` while the table is missing. */
+export const getSessionResult = cache(
+  async (sessionId: string): Promise<{ row: SessionResultRow | null; migrated: boolean }> => {
+    const supabase = await createClient();
+    const { data, error } = await supabase.from("pipeline_session_results").select("*")
+      .eq("session_id", sessionId).maybeSingle();
+    if (error) {
+      if (notMigrated(error, "pipeline_session_results")) return { row: null, migrated: false };
+      failed(error, "the session's result");
+    }
+    return { row: data, migrated: true };
+  },
+);
+
+/** A session's own findings (scope "session"), worst first, then in time. */
+export const getSessionFindings = cache(
+  async (sessionId: string): Promise<{ rows: FindingRow[]; migrated: boolean }> => {
+    const supabase = await createClient();
+    const { data, error } = await supabase.from("pipeline_findings").select("*")
+      .eq("session_id", sessionId).eq("scope", "session").order("t_start_s", { ascending: true });
+    if (error) {
+      if (notMigrated(error, "scope")) return { rows: [], migrated: false };
+      failed(error, "the session's findings");
+    }
+    const rank = { critical: 2, warning: 1, info: 0 } as Record<string, number>;
+    return { rows: [...data].sort((a, b) => (rank[b.severity] ?? 0) - (rank[a.severity] ?? 0)),
+             migrated: true };
+  },
+);
+
+// ── notifications (migration 20261009000017) ─────────────────────────────
+
+/** The signed-in operator's notifications, newest first; `before` pages back.
+ *  Row-level security returns only their own — the filter on user_id is for
+ *  the index, not the guard. */
+export const getNotifications = cache(
+  async (limit = 30, before?: string): Promise<{ rows: NotificationRow[]; migrated: boolean }> => {
+    const profile = await getCurrentProfile();
+    if (!profile) return { rows: [], migrated: true };
+    const supabase = await createClient();
+    let query = supabase.from("notifications").select("*").eq("user_id", profile.id)
+      .order("created_at", { ascending: false }).limit(limit);
+    if (before) query = query.lt("created_at", before);
+    const { data, error } = await query;
+    if (error) {
+      if (notMigrated(error, "notifications")) return { rows: [], migrated: false };
+      failed(error, "notifications");
+    }
+    return { rows: data, migrated: true };
+  },
+);
+
+/** How many of the operator's notifications are unread. */
+export const getUnreadCount = cache(async (): Promise<number> => {
+  const profile = await getCurrentProfile();
+  if (!profile) return 0;
+  const supabase = await createClient();
+  const { count, error } = await supabase.from("notifications")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", profile.id).is("read_at", null);
+  if (error) {
+    if (notMigrated(error, "notifications")) return 0;
+    failed(error, "unread notifications");
+  }
+  return count ?? 0;
+});
+
+/** Each flight's telemetry, capped per flight like the flight page. */
+export const getFlightsTelemetry = cache(
+  async (flightIds: readonly string[], perFlight = 5000): Promise<Record<string, TelemetryRow[]>> => {
+    const all = await Promise.all(flightIds.map((id) => getFlightTelemetry(id, perFlight)));
+    return Object.fromEntries(flightIds.map((id, i) => [id, all[i]]));
   },
 );
 
@@ -691,3 +808,153 @@ export const getEditedPages = cache(async (): Promise<Map<string, string>> => {
   if (error) failed(error, "the pages");
   return new Map(data.map((row) => [row.key, row.updated_at]));
 });
+
+// ── the Processed data pages ─────────────────────────────────────────────
+
+/** A processed flight in the overview: its result's headline, not its JSON. */
+export type ProcessedFlight = Pick<PipelineResultRow,
+  "flight_id" | "session_id" | "findings_count" | "worst_severity" | "created_at" | "pipeline_version">;
+
+/** A session with processed flights: who ran it, and how far processing got. */
+export type ProcessedSession = SessionRow & {
+  flights: number;
+  processed: number;
+  findings: number;
+  worst: string | null;
+  /** The session itself was processed (its samples around the flights). */
+  ownResult: boolean;
+};
+
+/**
+ * Everything the pipeline has processed, newest first — the Processed data
+ * page's list. `migrated: false` while the database has no pipeline tables.
+ * Findings come worst first, then newest; `limit` caps them, and the page says
+ * when it did.
+ */
+export const getProcessedOverview = cache(async (limit = 200): Promise<{
+  migrated: boolean;
+  flights: ProcessedFlight[];
+  sessions: ProcessedSession[];
+  findings: FindingRow[];
+  findingsTotal: number;
+}> => {
+  const supabase = await createClient();
+  const results = await supabase.from("pipeline_results")
+    .select("flight_id, session_id, findings_count, worst_severity, created_at, pipeline_version")
+    .order("created_at", { ascending: false }).limit(2000);
+  if (results.error) {
+    if (notMigrated(results.error, "pipeline_results")) {
+      return { migrated: false, flights: [], sessions: [], findings: [], findingsTotal: 0 };
+    }
+    failed(results.error, "processed flights");
+  }
+  const findings = await supabase.from("pipeline_findings").select("*", { count: "exact" })
+    .order("created_at", { ascending: false }).limit(limit);
+  if (findings.error) {
+    if (notMigrated(findings.error, "pipeline_findings")) {
+      return { migrated: false, flights: [], sessions: [], findings: [], findingsTotal: 0 };
+    }
+    failed(findings.error, "findings");
+  }
+  // A session processed on its own counts too (migration 20261009000018).
+  const own = await supabase.from("pipeline_session_results")
+    .select("session_id, findings_count, worst_severity");
+  const sessionResults = own.error ? [] : own.data;
+  const sessionIds = [...new Set([
+    ...results.data.map((r) => r.session_id),
+    ...sessionResults.map((r) => r.session_id),
+  ].filter((x): x is string => !!x))];
+  let sessions: ProcessedSession[] = [];
+  if (sessionIds.length) {
+    const [rows, flights] = await Promise.all([
+      supabase.from("sessions").select("*").in("id", sessionIds).order("started_at", { ascending: false }),
+      supabase.from("flights").select("session_id").in("session_id", sessionIds),
+    ]);
+    if (rows.error) failed(rows.error, "sessions");
+    if (flights.error) failed(flights.error, "session flights");
+    const count = (id: string) => flights.data.filter((f) => f.session_id === id).length;
+    const rank = { critical: 2, warning: 1, info: 0 } as Record<string, number>;
+    sessions = rows.data.map((s) => {
+      const mine = [...results.data.filter((r) => r.session_id === s.id),
+                    ...sessionResults.filter((r) => r.session_id === s.id)];
+      const worst = mine.reduce<string | null>((w, r) => (r.worst_severity
+        && (w === null || (rank[r.worst_severity] ?? 0) > (rank[w] ?? 0)) ? r.worst_severity : w), null);
+      return { ...s, flights: count(s.id),
+               processed: results.data.filter((r) => r.session_id === s.id).length,
+               findings: mine.reduce((n, r) => n + r.findings_count, 0), worst,
+               ownResult: sessionResults.some((r) => r.session_id === s.id) };
+    });
+  }
+  const rank = { critical: 2, warning: 1, info: 0 } as Record<string, number>;
+  return {
+    migrated: true,
+    flights: results.data,
+    sessions,
+    findings: [...findings.data].sort((a, b) => (rank[b.severity] ?? 0) - (rank[a.severity] ?? 0)),
+    findingsTotal: findings.count ?? findings.data.length,
+  };
+});
+
+/** The readings a stretch covers (telemetry `index`, inclusive) — the
+ *  evidence an anomaly's card shows. Finding id → rows, in order. */
+export const getStretchReadings = cache(
+  async (findings: readonly Pick<FindingRow, "id" | "flight_id" | "session_id" | "start_index" | "end_index">[],
+  ): Promise<Record<string, { index: number; recorded_at: string; [key: string]: unknown }[]>> => {
+    if (findings.length === 0) return {};
+    const supabase = await createClient();
+    const out: Record<string, { index: number; recorded_at: string; [key: string]: unknown }[]> = {};
+    await Promise.all(findings.map(async (f) => {
+      if (f.flight_id) {
+        const r = await supabase.from("telemetry").select("*")
+          .eq("flight_id", f.flight_id).gte("index", f.start_index).lte("index", f.end_index)
+          .order("index", { ascending: true }).limit(5000);
+        if (r.error) failed(r.error, "an anomaly's readings");
+        out[f.id] = r.data;
+      } else if (f.session_id) {
+        // A session's finding: its samples, one a second, by seq.
+        const r = await supabase.from("session_samples").select("*")
+          .eq("session_id", f.session_id).gte("seq", f.start_index).lte("seq", f.end_index)
+          .order("seq", { ascending: true }).limit(5000);
+        if (r.error) failed(r.error, "an anomaly's readings");
+        out[f.id] = r.data.map((row) => ({ ...row, index: row.seq }));
+      }
+    }));
+    return out;
+  },
+);
+
+/** Signed links to some of a session's frames — the original and, when the
+ *  pipeline made one, the enhanced copy. Seq → links. */
+export const getFrameLinks = cache(
+  async (sessionId: string, seqs: readonly number[]): Promise<Record<number, { original?: string; enhanced?: string }>> => {
+    if (seqs.length === 0) return {};
+    const supabase = await createClient();
+    const bucket = supabase.storage.from(FRAMES_BUCKET);
+    // The original's extension is whatever the camera wrote: ask, never guess.
+    const { data: files, error } = await bucket.list(`${sessionId}/frames`, {
+      limit: 2000, sortBy: { column: "name", order: "asc" },
+    });
+    if (error) failed({ message: error.message }, "camera frames");
+    const wanted = new Set(seqs);
+    const originals = (files ?? []).map((f) => f.name)
+      .filter((n) => /^\d+\.(png|jpg)$/.test(n) && wanted.has(Number(n.split(".")[0])));
+    const enhancedPaths = [...wanted].map((seq) => `${sessionId}/enhanced/${seq}.png`);
+    const [o, e] = await Promise.all([
+      originals.length ? bucket.createSignedUrls(originals.map((n) => `${sessionId}/frames/${n}`), FRAME_LINK_S)
+        : Promise.resolve({ data: [], error: null }),
+      bucket.createSignedUrls(enhancedPaths, FRAME_LINK_S),
+    ]);
+    if (o.error) failed({ message: o.error.message }, "camera frame links");
+    const out: Record<number, { original?: string; enhanced?: string }> = {};
+    originals.forEach((n, i) => {
+      const url = o.data?.[i]?.signedUrl;
+      if (url) (out[Number(n.split(".")[0])] ??= {}).original = url;
+    });
+    // A frame with no enhanced copy is not an error: it was not enhanced.
+    [...wanted].forEach((seq, i) => {
+      const item = e.data?.[i];
+      if (item && !item.error && item.signedUrl) (out[seq] ??= {}).enhanced = item.signedUrl;
+    });
+    return out;
+  },
+);

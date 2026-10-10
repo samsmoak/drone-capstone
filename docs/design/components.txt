@@ -1,14 +1,24 @@
 ================================================================================
 COMPONENTS — THE SHARED BUILDING BLOCKS
 Reach for one of these before writing a new one.
-Last verified: 2026-09-27 (created by the feature-kit — not yet filled in).
+Last verified: 2026-10-09 against web/tables — the components below, in a
+browser at 390 and 1440 px in both themes.
 ================================================================================
 
 --------------------------------------------------------------------------------
 1. THE SHARED LAYER
 --------------------------------------------------------------------------------
-List each shared component with its path and the one job it does, e.g.
-  <path/to/shared/widget.ext>  <Name> — what it is for, when NOT to use it
+web/components/ui/raw-readings.tsx   RawReadings — every stored reading of a
+    flight (FLIGHT_COLUMNS) or a session (SESSION_COLUMNS, indexKey "seq"),
+    25 fixed rows a page, marks tinted. Not for a summary: it is the evidence.
+web/components/processing/error-table.tsx   ErrorTable — only what went wrong,
+    one row per mark, in time order; "Show" opens a RawReadings by its id.
+web/components/ui/mark-legend.tsx   MarkLegend, MarkShape — the key to the
+    marks, and the severity's shape in its group's colour.
+web/components/ui/hint.tsx   useHint — a tooltip that works on hover, focus and
+    tap, fixed so a scrolling box cannot clip it.
+web/lib/pipeline.ts   anomalyMarks, faultMarks, marksOf, groupTint — the one
+    place a mark's colour, depth and words are decided.
 
 --------------------------------------------------------------------------------
 2. EXTRACTION CANDIDATES  (the rule of three, written down)
@@ -22,8 +32,18 @@ the flag survives the conversation. Clear an entry when it is extracted.
 --------------------------------------------------------------------------------
 • Tokens only — no raw colours or ad-hoc sizes.
 • Every theme the project supports, every component, every time.
+• COLOUR IS THE DATA, DEPTH IS HOW SEVERE (the owner, 2026-10-09). Anything
+  the pipeline highlights takes its data group's token (--group-temperature,
+  --group-pressure, --group-fault, --group-position — app/globals.css) at
+  the severity's depth (lib/pipeline SHADE: 14 / 28 / 48 %), with the
+  severity's shape and word beside it, and the same legend. Status colours
+  (--status-*) stay for health and states, never for a data group.
+• A box that scrolls sideways is `relative`: an absolutely positioned child
+  (screen-reader text) otherwise escapes it and widens the page (found
+  2026-10-09: 139 px on the error table's Show buttons).
 
 --------------------------------------------------------------------------------
 RELATED
 --------------------------------------------------------------------------------
-(add typed edges as other design/platform docs appear)
+shares-data-with  ../features/pipeline/results.txt
+                  the readings table, the error table and the marks it shows

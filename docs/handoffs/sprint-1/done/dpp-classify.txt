@@ -1,0 +1,83 @@
+TICKET — Data pipeline stage 3: classify images and sensor readings
+===================================================================
+
+STATUS: PART B DONE (2026-10-09, branch dpp/classify). REWRITTEN — Samuel
+built the sensor half (blocks@1) on the owner's call, as BLOCKS against what
+was expected rather than an ML model: there are no labelled runs to train one
+on. PART A (the image model, story 4.4) is still Reagan's — see FOLLOW-UPS.
+The code is the authority: backend/agent/cropwatcher/pipeline/stages/classify/.
+
+  Owner           Samuel (Part B, blocks@1); Reagan (Part A, the image model)
+  Stories         4.4: "a model that looks at an image and can define it as
+                  faulty or not."
+                  4.6: "train a machine learning classifier on sensor data ...
+                  that flags any deviations ... with the reason provided."
+  PDF acceptance  4.6: "An anomaly is flagged ... (e.g., box heated with a
+                  hand warmer is flagged; while unheated box is not)."
+
+
+WHAT WAS BUILT, AND WHY IT IS NOT A TRAINED MODEL
+
+  What the owner asked for (2026-10-09): find the BLOCKS of a flight where the
+  temperature or pressure departs from what is normal — not every wiggle —
+  say what happened there, and attach the frames taken then. The telemetry is
+  the evidence; an image only supports it.
+
+  The lab's flights showed that "normal" is not a constant. The barometer's
+  own temperature COOLS from takeoff in the propellers' air (34.7 → 29.6 °C in
+  48 s on a normal mission), and pressure falls 0.12 hPa per metre climbed. So
+  blocks@1 compares each signal with what it should have read:
+
+    temperature   raw_temp against a fitted first-order cooling curve
+                  (robust: a heat event does not bend it)
+    pressure      station pressure corrected for height by physics (ρ·g·h),
+                  against its slow drift
+
+  and splits the departure into blocks with PELT (Killick 2012, numpy;
+  identical to the `ruptures` package on 500 of 500 test series). A block is
+  an EVENT when it is beyond 4 × the flight's noise AND beyond the most any
+  normal flight's blocks wander (0.8 °C, 0.2 hPa). Adjacent blocks departing
+  the same way are one event (a warm patch comes out as a staircase).
+
+  Measured on the lab laptop's flights (ml/anomaly-eval/MEASUREMENTS.txt):
+  no temperature event on any of 115 normal flights; a planted warm patch of
+  2 °C or more found every time, 1 °C in 97 %; a pressure step of 0.3 hPa
+  found every time.
+
+
+WHAT IS BUILT
+
+  stages/classify/pelt.py          PELT, exact, numpy
+  stages/classify/blocks.py        BlocksClassifier (blocks@1)
+  tests/pipeline/test_classify.py  synthetic flights that cool like the drone
+  ml/anomaly-eval/evaluate.py      the calibration on real flights
+  ml/anomaly-eval/MEASUREMENTS.txt every constant and the table
+
+
+ACCEPTANCE (Part B)
+
+  [x] Flagged readings never reach a model (tested: a flagged spike changes
+      nothing).
+  [x] A Fahrenheit flight and a Celsius flight give the same events, deltas
+      × 9/5.
+  [x] Every conformance check passes; an empty flight gives empty images and
+      an "unknown" sensor label with a reason.
+  [x] Heated vs unheated: planted on real flights (warm patches of 1–5 °C) —
+      found; normal flights — nothing. THE REAL TEST IS OWED: see FOLLOW-UPS.
+  [x] Gates: ruff · mypy · pytest.
+
+
+FOLLOW-UPS
+
+  - THE HAND-WARMER FLIGHTS (story 4.6's own acceptance, with Hannah and
+    Yordanos): fly past a box heated with a hand warmer, and past one not
+    heated. Then re-run ml/anomaly-eval/evaluate.py on them and replace the
+    PROVISIONAL minimums with what a real heat source does to this sensor.
+  - PART A, Reagan: the image model (story 4.4). The camera now delivers real
+    frames — thousands on the lab laptop — so the dataset of story 4.1 can be
+    built from them. Train on the same images the stage will see (the
+    original frames, or clahe@1's enhanced copies — decide with whoever owns
+    enhance), split BY SESSION, report on a held-out session, export to ONNX,
+    and plug it in beside blocks@1: every frame's label is "unknown — no
+    image model yet" until then, and every finding's image support says
+    "cannot tell".

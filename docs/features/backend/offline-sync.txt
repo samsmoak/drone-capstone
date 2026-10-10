@@ -17,6 +17,8 @@ WHERE IT LIVES
   backend/agent/cropwatcher/sync/cloud.py    every call made to Supabase
   backend/agent/cropwatcher/sync/syncer.py   when and in what order
   backend/agent/cropwatcher/sync/samples.py  a session's samples.csv as rows
+  backend/agent/cropwatcher/sync/results.py  a flight's result.json as rows
+  backend/agent/tests/test_results_upload.py
   backend/agent/cropwatcher/paths.py         where the data dir is
   backend/agent/cropwatcher/telemetry/sinks.py  CSV first, then cloud
   backend/agent/tests/test_outbox.py, test_syncer.py
@@ -25,13 +27,25 @@ WHERE IT LIVES
 THE ORDER (records reference each other)
 
   audit events -> drones -> sessions -> flights -> telemetry rows -> CSV file
-  -> camera frames -> session vitals (LAST: sync/samples.py, Kind.SAMPLES)
+  -> camera frames -> session vitals (sync/samples.py, Kind.SAMPLES)
+  -> pipeline results (LAST: sync/results.py, Kind.RESULTS)
 
 Session vitals go last because their table (migration 20261006000013) may not
 exist yet: until it does that step fails with "apply migration
 20261006000013", and everything before it has already gone. One outbox record
 per session, a cursor through samples.csv moved after each 500-row batch, sent
 once the session has ended and every row is up.
+
+Pipeline results go after them for the same reason (migration
+20261009000016). `cropwatcher process --flight` queues one record per flight
+once result.json is written (the agent wakes the syncer when a processing job
+finishes); the syncer waits while the flight's own record is still pending,
+then uploads the enhanced frames from a cursor (to flight-frames/<session>/
+enhanced/<seq>.png, replacing), upserts pipeline_results on flight_id, upserts
+pipeline_findings on their ids, and deletes the flight's findings the new
+result no longer makes. Processing a flight again re-queues it, which resets
+the cursor and replaces what was uploaded. Proved against the local stack
+with the real client, 2026-10-09.
 
 Audit events deliberately have NO foreign keys, so they can go first and never
 wait for a flight row that may not exist yet.
@@ -80,6 +94,17 @@ INVARIANTS
 
 - Write the CSV first, then upload. A local write cannot fail; a flight cannot
   be re-run (CLAUDE.md #6).
+- A FLIGHT THAT WROTE NO ROWS IS SENT once its record is up (rows_written 0
+  counts as complete). It used to wait for a first row that would never come,
+  so five empty flights were retried every pass for weeks — "0 of 0 rows
+  uploaded" in the log every two minutes (found 2026-10-09; test_sync.py).
+- A FLIGHT THE APP CLOSED MID-WAY IS CLOSED WHEN THE AGENT STARTS
+  (close_orphaned_flights, before the syncer): its record had no ended_at, so
+  it was "still flying" for ever — telemetry polled every pass, the CSV never
+  uploaded, its pipeline result held behind it (eight flights from the
+  2026-09-22 bring-up, found 2026-10-09). Ended at the CSV's last row, aborted,
+  outcome "interrupted", with the rows the CSV holds. Off in tests with
+  CROPWATCHER_RESUME=0, like resuming processing.
 - Write to the APPLICATION DATA DIRECTORY, never a relative path. Inside a
   bundled .app the working directory is "/", where the write fails — paths.py
   exists for exactly this.
@@ -96,3 +121,12 @@ INVARIANTS
   yet. A batch with no point id sends no point_id key; a batch refused over the
   column is re-sent without it (sync/cloud.py). One failed batch aborts a whole
   sync pass, so refusing would stall every flight and frame behind it.
+
+RELATED
+
+consumed-by       ../pipeline/results.txt
+                  Kind.RESULTS: a processed flight's result, findings and
+                  enhanced frames, uploaded last in a pass
+consumed-by       ../pipeline/session.txt
+                  Kind.SESSION_RESULTS: a session's own result, after the
+                  session's row, last in a pass

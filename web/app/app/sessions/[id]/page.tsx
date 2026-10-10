@@ -1,21 +1,30 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  getPredictionsForFlights,
+  getEnhancedFrames,
+  getFindings,
+  getFlightsTelemetry,
+  getPipelineResults,
   getSession,
   getSessionEvents,
   getSessionFlights,
+  getSessionFindings,
   getSessionFrames,
+  getSessionResult,
   getSessionSamples,
   getZones,
 } from "@/lib/queries";
+import { ErrorTable } from "@/components/processing/error-table";
+import { FindingsList, type FrameLinks } from "@/components/processing/findings";
+import { FlightProcessing } from "@/components/processing/flight-processing";
+import { SEVERITY, excerptsFor, frameMarks, marksOf, readFlags, readTracks, severityOf } from "@/lib/pipeline";
 import { FrameGallery } from "@/components/flight/FrameGallery";
 import { Stat, StatusBadge } from "@/components/ui/states";
 import { PageHeader } from "@/components/ui/page-header";
 import { TimeSeries } from "@/components/ui/time-series";
 import { FlightPath } from "@/components/ui/flight-path";
-import { RawReadings, type ReadingColumn } from "@/components/ui/raw-readings";
-import { FLIGHTS, SESSIONS } from "@/lib/routes";
+import { RawReadings, SESSION_COLUMNS } from "@/components/ui/raw-readings";
+import { FLIGHTS, SESSIONS, processedPath } from "@/lib/routes";
 import {
   elapsedSeconds,
   flightDuration,
@@ -23,14 +32,18 @@ import {
   flightTone,
 } from "@/lib/flight-format";
 import { LocalTime } from "@/components/ui/local-time";
+import { Owner, OwnerStat } from "@/components/ui/owner";
 
 export const metadata = { title: "Session" };
 
 /**
- * One session, read like the flight page (app/app/flights/[id]) — summary,
- * charts, path, camera, zone health, raw readings — over the session's OWN
- * vitals (session_samples: one a second, Start to End session, flying or
- * not), plus what only a session has: its flights and its events.
+ * One session — EVERYTHING in it (the owner, 2026-10-09: "the session is a
+ * superset of the flight page"): what the data pipeline found in any of its
+ * flights, each flight's processing (raw vs clean, expected, the stretches
+ * that departed), its flights, every camera frame (original and enhanced), the
+ * session's own vitals (session_samples: one a second, Start to End session,
+ * flying or not), its events, and the raw rows of the session AND of every
+ * flight in it.
  *
  * PARITY: web/app/app/flights/[id]/page.tsx
  */
@@ -40,25 +53,6 @@ const SAMPLE_CAP = 10000;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** The session's own samples — their columns, not a flight's. */
-const SAMPLE_COLUMNS: ReadingColumn[] = [
-  { key: "seq", label: "#" },
-  { key: "recorded_at", label: "Recorded" },
-  { key: "mode", label: "Mode" },
-  { key: "positioned", label: "Positioned" },
-  { key: "x_m", label: "x (m)", digits: 3 },
-  { key: "y_m", label: "y (m)", digits: 3 },
-  { key: "z_m", label: "z (m)", digits: 3 },
-  { key: "height_m", label: "Height (m)", digits: 3 },
-  { key: "battery_v", label: "Battery (V)", digits: 2 },
-  { key: "thrust", label: "Thrust", digits: 0 },
-  { key: "raw_temp", label: "Sensor temp (°C)", digits: 2 },
-  { key: "station_pressure_hpa", label: "Pressure (hPa)", digits: 2 },
-  { key: "roll_deg", label: "Roll (°)", digits: 1 },
-  { key: "pitch_deg", label: "Pitch (°)", digits: 1 },
-  { key: "yaw_deg", label: "Yaw (°)", digits: 1 },
-  { key: "lighthouse_received", label: "Stations received" },
-];
 
 function Note({ children }: { children: React.ReactNode }) {
   return (
@@ -82,9 +76,40 @@ export default async function SessionPage(props: PageProps<"/app/sessions/[id]">
     getSessionFrames(id),
   ]);
   if (!session) notFound();
-  const predictions = await getPredictionsForFlights(flights.map((f) => f.id));
-
+  const flightIds = flights.map((f) => f.id);
+  const [results, findings, enhanced, telemetry, own, ownFindings] = await Promise.all([
+    getPipelineResults(flightIds),
+    getFindings(flightIds),
+    getEnhancedFrames(id),
+    getFlightsTelemetry(flightIds),
+    getSessionResult(id),
+    getSessionFindings(id),
+  ]);
+  const resultOf = new Map(results.rows.map((r) => [r.flight_id, r]));
+  const frameLinks: FrameLinks = Object.fromEntries(
+    frames.map((f) => [f.seq, { original: f.url, enhanced: enhanced[f.seq] }]));
+  const flightNumber = new Map(flights.map((f, i) => [f.id, i + 1]));
+  const flightOf = (flightId: string) => flightNumber.has(flightId)
+    ? { label: `Flight ${flightNumber.get(flightId)} of the session`, href: `${FLIGHTS}/${flightId}` }
+    : undefined;
+  const processed = flights.filter((f) => resultOf.has(f.id)).length;
   const rows = samples.rows;
+  // The session's own result: its samples around the flights (scope "session").
+  const ownRows = ownFindings.rows;
+  const marks = frameMarks([...findings.rows, ...ownRows]);
+  const sampleRows = rows.map((r) => ({ ...r, index: r.seq }));
+  const excerpts = excerptsFor([...findings.rows, ...ownRows],
+    (key) => key === id ? readTracks(own.row?.tracks ?? []) : readTracks(resultOf.get(key)?.tracks ?? []),
+    Object.fromEntries([
+      ...findings.rows.map((f) => [f.id, (telemetry[f.flight_id ?? ""] ?? [])
+        .filter((r) => r.index >= f.start_index && r.index <= f.end_index)]),
+      ...ownRows.map((f) => [f.id, sampleRows
+        .filter((r) => r.seq >= f.start_index && r.seq <= f.end_index)]),
+    ]));
+  const sessionMarks = marksOf(ownRows, own.row ? readFlags(own.row.flags) : [], rows, "seq");
+  const flightMarks = (flightId: string) => marksOf(
+    findings.rows.filter((x) => x.flight_id === flightId),
+    readFlags(resultOf.get(flightId)?.flags ?? []), telemetry[flightId] ?? []);
   const first = rows[0]?.recorded_at;
   // Only the columns the charts use cross into the client bundle.
   const series = rows.map((r) => ({
@@ -141,16 +166,89 @@ export default async function SessionPage(props: PageProps<"/app/sessions/[id]">
         <Stat label="Flights" value={String(session.flight_count)} />
         <Stat label="Vitals" value={rows.length.toLocaleString()} hint="one sample a second" />
         <Stat label="Camera frames" value={frames.length.toLocaleString()} />
-        <Stat label="Operator" value={session.operator} />
+        <OwnerStat label="Run by" who={session} />
         <Stat label="Drone" value={session.drone} />
         <Stat label="Mode at start" value={session.mode_at_start} />
         <Stat label="Positioned" value={rows.length ? `${Math.round((path.length / rows.length) * 100)}%` : null}
               hint="of samples with a trusted position" />
       </section>
 
+      <section aria-labelledby="findings-heading" className="space-y-3">
+        <h2 id="findings-heading" className="text-lg font-semibold text-[var(--heading)]">
+          What the pipeline found
+        </h2>
+        {!results.migrated || !findings.migrated ? (
+          <Note>
+            Pipeline results are not on the web yet: the database has no pipeline tables. Apply
+            migration 20261009000016_pipeline_results.sql; the laptop keeps every result and uploads
+            it once they exist.
+          </Note>
+        ) : flights.length === 0 ? (
+          <Note>No flights in this session, so nothing was processed.</Note>
+        ) : processed === 0 ? (
+          <Note>
+            None of this session&apos;s {flights.length} flight{flights.length === 1 ? " has" : "s have"} been
+            processed. Leave Process flights (DPP) on at the top of the desktop app&apos;s Control page, or
+            press Process this flight there; the result uploads here.
+          </Note>
+        ) : findings.rows.length === 0 ? (
+          <Note>
+            Nothing departed from what was expected in the {processed} processed flight
+            {processed === 1 ? "" : "s"}
+            {processed < flights.length ? ` (${flights.length - processed} not processed yet)` : ""}.
+          </Note>
+        ) : (
+          <>
+            <p className="text-sm text-[var(--muted)]">
+              {findings.rows.length} finding{findings.rows.length === 1 ? "" : "s"} in {processed} processed
+              flight{processed === 1 ? "" : "s"}{processed < flights.length
+                ? ` — ${flights.length - processed} not processed yet` : ""}. The readings are the
+              evidence; the frames show what the camera saw then.
+            </p>
+            <FindingsList findings={findings.rows} frames={frameLinks} flightOf={flightOf} excerpts={excerpts} />
+          </>
+        )}
+        {ownRows.length > 0 && (
+          <>
+            <h3 className="text-base font-semibold">On the ground, around the flights</h3>
+            <FindingsList findings={ownRows} frames={frameLinks} excerpts={excerpts} />
+          </>
+        )}
+        {(processed > 0 || own.row) && (
+          <p className="text-sm">
+            <Link href={processedPath(id)} className="inline-flex min-h-11 items-center underline underline-offset-4">
+              This session&apos;s processed data, on its own page →
+            </Link>
+          </p>
+        )}
+      </section>
+
+      {results.rows.length > 0 && (
+        <section aria-labelledby="processing-heading" className="space-y-6">
+          <h2 id="processing-heading" className="text-lg font-semibold text-[var(--heading)]">
+            Data processing, flight by flight
+          </h2>
+          {flights.filter((f) => resultOf.has(f.id)).map((f) => (
+            <section key={f.id} aria-label={`Flight ${flightNumber.get(f.id)}`}
+                     className="space-y-3 border-t border-[var(--border)] pt-4">
+              <h3 className="text-base font-semibold">
+                <Link href={`${FLIGHTS}/${f.id}`} className="underline underline-offset-4">
+                  Flight {flightNumber.get(f.id)}
+                </Link>{" "}
+                <span className="font-normal text-[var(--muted)]">
+                  · <LocalTime iso={f.started_at} /> · {f.program ?? f.mode ?? "flight"}
+                </span>
+              </h3>
+              <FlightProcessing result={resultOf.get(f.id)!} telemetry={telemetry[f.id] ?? []}
+                                findings={findings.rows.filter((x) => x.flight_id === f.id)} />
+            </section>
+          ))}
+        </section>
+      )}
+
       <section aria-labelledby="temp-heading" className="space-y-3">
         <h2 id="temp-heading" className="text-lg font-semibold text-[var(--heading)]">
-          Temperature (°C)
+          Session vitals: temperature (°C)
         </h2>
         <p className="text-sm text-[var(--muted)]">
           The barometer&apos;s own sensor, which the drone warms. Corrected room temperatures are
@@ -214,6 +312,8 @@ export default async function SessionPage(props: PageProps<"/app/sessions/[id]">
                   <th scope="col" className="px-4 py-3 font-medium">Status</th>
                   <th scope="col" className="px-4 py-3 font-medium">Duration</th>
                   <th scope="col" className="px-4 py-3 font-medium">What flew</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Flown by</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Processed</th>
                   <th scope="col" className="px-4 py-3 font-medium"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
@@ -226,6 +326,17 @@ export default async function SessionPage(props: PageProps<"/app/sessions/[id]">
                     </td>
                     <td className="tabular px-4 py-3">{flightDuration(f.started_at, f.ended_at)}</td>
                     <td className="px-4 py-3">{f.program ?? f.mode ?? "—"}{f.abort_reason ? ` · ${f.abort_reason}` : ""}</td>
+                    <td className="px-4 py-3"><Owner who={f} /></td>
+                    <td className="px-4 py-3">
+                      {(() => {
+                        const r = resultOf.get(f.id);
+                        if (!r) return <span className="text-[var(--muted)]">Not yet</span>;
+                        if (!r.worst_severity) return <StatusBadge status="good" label="Nothing found" />;
+                        const sev = SEVERITY[severityOf(r.worst_severity)];
+                        return <StatusBadge status={sev.status}
+                                            label={`${r.findings_count} found · worst ${sev.label.toLowerCase()}`} />;
+                      })()}
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <Link href={`${FLIGHTS}/${f.id}`} className="inline-flex min-h-11 items-center underline underline-offset-4">
                         Open<span className="sr-only">{" "}flight from <LocalTime iso={f.started_at} /></span>
@@ -241,47 +352,9 @@ export default async function SessionPage(props: PageProps<"/app/sessions/[id]">
 
       <section aria-labelledby="camera-heading" className="space-y-3">
         <h2 id="camera-heading" className="text-lg font-semibold text-[var(--heading)]">Camera</h2>
-        <FrameGallery frames={frames} />
+        <FrameGallery frames={frames} enhanced={enhanced} marks={marks} />
       </section>
 
-      <section aria-labelledby="health-heading" className="space-y-3">
-        <h2 id="health-heading" className="text-lg font-semibold text-[var(--heading)]">Zone health</h2>
-        {predictions.length === 0 ? (
-          <Note>
-            No health estimates in this session. Estimates are produced per flight by the agent, once
-            the inspection pipeline (clean, classify, interpret) runs on it.
-          </Note>
-        ) : (
-          <div className="overflow-x-auto [contain:paint] rounded-lg border border-[var(--border)]">
-            <table className="w-full border-collapse text-left text-sm">
-              <thead className="bg-[var(--surface-2)]">
-                <tr>
-                  <th scope="col" className="px-4 py-3 font-medium">Zone</th>
-                  <th scope="col" className="px-4 py-3 font-medium">Health score</th>
-                  <th scope="col" className="px-4 py-3 font-medium">Disease risk</th>
-                  <th scope="col" className="px-4 py-3 font-medium">Label</th>
-                  <th scope="col" className="px-4 py-3 font-medium">Samples</th>
-                  <th scope="col" className="px-4 py-3 font-medium">Model</th>
-                </tr>
-              </thead>
-              <tbody>
-                {predictions.map((p) => (
-                  <tr key={p.id} className="border-t border-[var(--border)]">
-                    <th scope="row" className="px-4 py-3 font-normal">
-                      {zones.find((z) => z.id === p.zone_id)?.label ?? "Unassigned"}
-                    </th>
-                    <td className="tabular px-4 py-3">{p.health_score?.toFixed(2) ?? "—"}</td>
-                    <td className="tabular px-4 py-3">{p.disease_risk?.toFixed(2) ?? "—"}</td>
-                    <td className="px-4 py-3">{p.label ?? "—"}</td>
-                    <td className="tabular px-4 py-3">{p.sample_count ?? "—"}</td>
-                    <td className="px-4 py-3 text-[var(--muted)]">{p.model}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
 
       <section aria-labelledby="events-heading" className="space-y-3">
         <h2 id="events-heading" className="text-lg font-semibold text-[var(--heading)]">What happened</h2>
@@ -320,7 +393,34 @@ export default async function SessionPage(props: PageProps<"/app/sessions/[id]">
 
       <section aria-labelledby="raw-heading" className="space-y-3">
         <h2 id="raw-heading" className="text-lg font-semibold text-[var(--heading)]">Raw readings</h2>
-        {noVitals ?? <RawReadings rows={rows} unit="C" columns={SAMPLE_COLUMNS} what="session" />}
+        <h3 className="text-base font-semibold">The session, one a second</h3>
+        {noVitals ?? (
+          <>
+            {own.row && (
+              <ErrorTable marks={sessionMarks} rows={rows} indexKey="seq" table="session-readings"
+                          unit="C" what="session" />
+            )}
+            <RawReadings rows={rows} unit="C" columns={SESSION_COLUMNS} what="session" indexKey="seq"
+                         marks={sessionMarks} id="session-readings" />
+          </>
+        )}
+        {flights.map((f) => (
+          <details key={f.id} className="rounded-lg border border-[var(--border)] p-3"
+                   open={findings.rows.some((x) => x.flight_id === f.id)}>
+            <summary className="min-h-11 cursor-pointer content-center text-sm font-semibold">
+              Flight {flightNumber.get(f.id)} — {(telemetry[f.id] ?? []).length.toLocaleString()} readings, ten a
+              second
+            </summary>
+            <div className="mt-3 space-y-4">
+              {resultOf.has(f.id) && (
+                <ErrorTable marks={flightMarks(f.id)} rows={telemetry[f.id] ?? []}
+                            table={`flight-${f.id}-readings`} unit={f.temp_unit} />
+              )}
+              <RawReadings rows={telemetry[f.id] ?? []} unit={f.temp_unit} marks={flightMarks(f.id)}
+                           id={`flight-${f.id}-readings`} />
+            </div>
+          </details>
+        ))}
       </section>
     </div>
   );

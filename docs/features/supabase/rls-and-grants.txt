@@ -18,6 +18,27 @@ WHERE IT LIVES
   backend/supabase/migrations/…0004_revoke_platform_defaults.sql
   backend/supabase/migrations/…0006_sessions_audit_identity.sql
   backend/supabase/checks/rls_check.py                     the proof
+  backend/supabase/checks/results_check.py                 pipeline results and
+                                                           findings: operators
+                                                           write, everyone
+                                                           signed in reads, a
+                                                           viewer writes nothing
+  backend/supabase/checks/notifications_check.py           notifications: one
+                                                           per operator per
+                                                           finding, never twice,
+                                                           read and marked only
+                                                           by their owner
+  backend/supabase/checks/session_results_check.py         a session's own result
+                                                           (0018): the same access
+                                                           as a flight's; every
+                                                           finding a flight's or
+                                                           a session's; gone with
+                                                           its session
+  backend/supabase/checks/owner_check.py                   owners: A's records
+                                                           carry A, whatever A
+                                                           sends; B sees who ran
+                                                           them; B still cannot
+                                                           read A's profile
 
 
 THE CHECK
@@ -62,6 +83,12 @@ INVARIANTS
   on the hosted project as the operator: read 200, an insert for a session
   not theirs refused BY THE POLICY (not "permission denied" — so the grant is
   there), anonymous read 401.
+- WHO RAN A RECORD IS STAMPED, NEVER SENT. sessions and flights carry their
+  owner's name and email, written by SECURITY DEFINER triggers from profiles
+  on every insert and update (20261009000015) — the alternative, letting
+  every signed-in user read every profile, would hand each of them every
+  account's email. Proven locally 2026-10-09: owner_check.py 10/10,
+  rls_check.py still 15/15.
 - A GRANT WITHOUT A POLICY IS A SILENT HOLE waiting for someone to add a policy.
   audit_events carried an UPDATE grant no policy used; 0006 revokes update and
   delete explicitly so the append-only rule cannot be undone by accident.
@@ -80,3 +107,8 @@ INVARIANTS
   permitted path works in the same test, or a missing grant is indistinguishable
   from a working policy: both deny, for opposite reasons, and only one is what
   you wanted.
+
+RELATED
+
+shares-data-with  data-model.txt
+                  the policies and grants of every table described there

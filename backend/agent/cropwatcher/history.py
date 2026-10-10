@@ -28,6 +28,7 @@ import csv
 import json
 import logging
 import os
+import tempfile
 import threading
 import time
 from collections.abc import Callable, Iterable, Mapping
@@ -99,6 +100,10 @@ class SessionMeta:
     modes: list[str] = field(default_factory=list)
     flights: list[FlightSummary] = field(default_factory=list)
     summary: SessionSummary = field(default_factory=SessionSummary)
+    #: The session's own processing (its samples around the flights): queued,
+    #: running, done, failed — None when it was never processed.
+    processing: str | None = None
+    processing_error: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -319,28 +324,129 @@ def read_samples(
     return rows
 
 
+#: Processing states a closed app can leave behind: the flight was waiting,
+#: queued or being processed when the agent stopped.
+INTERRUPTED = ("pending", "queued", "running")
+
+
+def interrupted_flights(*, root: Path | None = None) -> list[str]:
+    """Flights on this laptop whose processing never finished — the app closed
+    first. Oldest first. A flight that FAILED is not among them: it failed for
+    a reason, and running it again unasked would fail the same way each time
+    the app starts; the operator can process it again from the app."""
+    found: list[tuple[str, str]] = []
+    for meta_file in (root or sessions_dir()).glob("*/meta.json"):
+        try:
+            raw = json.loads(meta_file.read_text())
+        except (OSError, ValueError):
+            continue
+        for flight in raw.get("flights") or []:
+            if flight.get("processing") in INTERRUPTED and flight.get("id"):
+                found.append((str(flight.get("started_at") or ""), str(flight["id"])))
+    return [flight_id for _, flight_id in sorted(found)]
+
+
+def recorded_flights(*, root: Path | None = None) -> list[str]:
+    """Every flight the sessions on this laptop recorded, oldest first —
+    what `cropwatcher process --all` walks."""
+    found: list[tuple[str, str]] = []
+    for meta_file in (root or sessions_dir()).glob("*/meta.json"):
+        try:
+            raw = json.loads(meta_file.read_text())
+        except (OSError, ValueError):
+            continue
+        for flight in raw.get("flights") or []:
+            if flight.get("id"):
+                found.append((str(flight.get("started_at") or ""), str(flight["id"])))
+    return [flight_id for _, flight_id in sorted(found)]
+
+
+#: One writer at a time for closed sessions' meta.json. A processing job
+#: reports "queued" from the caller's thread and "running"/"done" from the
+#: queue's worker; two unguarded read-modify-writes through one temp file
+#: interleaved and left a meta.json that was not JSON (found 2026-10-09 by the
+#: resume tests, 2 runs in 15).
+_CLOSED_META_LOCK = threading.Lock()
+
+
+def _write_meta(meta_file: Path, raw: Mapping[str, Any]) -> None:
+    """A temp file of its own, then an atomic rename: a crash mid-write leaves
+    the previous meta, never half of one. Caller holds _CLOSED_META_LOCK."""
+    fd, temp = tempfile.mkstemp(dir=meta_file.parent, prefix=".meta.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(json.dumps(raw, indent=2))
+        os.replace(temp, meta_file)
+    except BaseException:
+        Path(temp).unlink(missing_ok=True)
+        raise
+
+
+def set_session_processing(session_id: str, state: str, error: str | None = None, *,
+                           root: Path | None = None) -> bool:
+    """Record a CLOSED session's own processing state. False when this laptop
+    has no such session."""
+    meta_file = (root or sessions_dir()) / session_id / "meta.json"
+    with _CLOSED_META_LOCK:
+        try:
+            raw = json.loads(meta_file.read_text())
+        except (OSError, ValueError):
+            return False
+        raw["processing"], raw["processing_error"] = state, error
+        _write_meta(meta_file, raw)
+        return True
+
+
+def interrupted_sessions(*, root: Path | None = None) -> list[str]:
+    """Closed sessions whose own processing never finished — the app closed
+    first. Oldest first; a FAILED one is left for the operator, as a flight is."""
+    found: list[tuple[str, str]] = []
+    for meta_file in (root or sessions_dir()).glob("*/meta.json"):
+        try:
+            raw = json.loads(meta_file.read_text())
+        except (OSError, ValueError):
+            continue
+        if raw.get("ended_at") and raw.get("processing") in INTERRUPTED and raw.get("id"):
+            found.append((str(raw.get("started_at") or ""), str(raw["id"])))
+    return [session_id for _, session_id in sorted(found)]
+
+
+def recorded_sessions(*, root: Path | None = None) -> list[str]:
+    """Every CLOSED session on this laptop that recorded samples, oldest first —
+    what `cropwatcher process --all` walks besides the flights."""
+    found: list[tuple[str, str]] = []
+    for meta_file in (root or sessions_dir()).glob("*/meta.json"):
+        try:
+            raw = json.loads(meta_file.read_text())
+        except (OSError, ValueError):
+            continue
+        if raw.get("ended_at") and raw.get("id") and \
+                (meta_file.parent / "samples.csv").exists():
+            found.append((str(raw.get("started_at") or ""), str(raw["id"])))
+    return [session_id for _, session_id in sorted(found)]
+
+
 def set_flight_processing(flight_id: str, state: str, error: str | None = None, *,
                           root: Path | None = None) -> bool:
     """Record a flight's processing state in whichever CLOSED session holds it.
     An open session is written through its SessionLog instead — it keeps the
     meta in memory and would overwrite a change made to the file under it.
     False when no session on this laptop has the flight."""
-    for meta_file in (root or sessions_dir()).glob("*/meta.json"):
-        try:
-            raw = json.loads(meta_file.read_text())
-        except (OSError, ValueError):
-            continue
-        flights = raw.get("flights") or []
-        if not any(f.get("id") == flight_id for f in flights):
-            continue
-        for flight in flights:
-            if flight.get("id") == flight_id:
-                flight["processing"], flight["processing_error"] = state, error
-        temp = meta_file.with_suffix(".json.tmp")
-        temp.write_text(json.dumps(raw, indent=2))
-        os.replace(temp, meta_file)
-        return True
-    return False
+    with _CLOSED_META_LOCK:
+        for meta_file in (root or sessions_dir()).glob("*/meta.json"):
+            try:
+                raw = json.loads(meta_file.read_text())
+            except (OSError, ValueError):
+                continue
+            flights = raw.get("flights") or []
+            if not any(f.get("id") == flight_id for f in flights):
+                continue
+            for flight in flights:
+                if flight.get("id") == flight_id:
+                    flight["processing"], flight["processing_error"] = state, error
+            _write_meta(meta_file, raw)
+            return True
+        return False
 
 
 def _session_folder(session_id: str, root: Path | None) -> Path:

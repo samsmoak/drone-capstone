@@ -1,0 +1,162 @@
+================================================================================
+RESULTS ON THE WEB — every processed flight's result, findings and enhanced
+frames uploaded, shown on the session and flight pages, and notified
+Last verified: 2026-10-09 against web/processed-data — the real agent client
+uploading a planted warm patch to the local Supabase stack; /app/processed and
+/app/processed/<session> in a browser at 390 and 1440 px in both themes (43 of
+43 readings of the stretch tinted, the tooltip on hover of a row and on focus
+of a frame); the hosted database read for the owner's 2026-10-09 flight (its
+result uploaded, 0 findings).
+SOURCE: backend/agent/cropwatcher/sync/results.py
+================================================================================
+
+--------------------------------------------------------------------------------
+STATUS  (Last verified: 2026-10-09)
+--------------------------------------------------------------------------------
+  agent     BUILT — queued by `cropwatcher process`, uploaded by the syncer
+  database  BUILT — migrations 20261009000015 (owners), 0016 (results), 0017
+            (notifications); proved on the local stack, APPLIED to the
+            hosted database 2026-10-09 and checked there read-only (tables
+            answer; 188 sessions and 187 flights backfilled with owners;
+            anonymous 401)
+  web       BUILT — Processed data (/app/processed, per session), the session
+            and flight pages, the bell, /app/notifications
+  backfill  BUILT — `cropwatcher process --all` (flights recorded before
+            processing, or by an older pipeline)
+  session   BUILT — a session's own result (migration 20261009000018,
+            Kind.SESSION_RESULTS); NOT YET applied to the hosted database
+  NOT BUILT email or push to a phone (in-app and desktop only, by choice)
+
+--------------------------------------------------------------------------------
+1. WHAT IT IS
+--------------------------------------------------------------------------------
+The owner's ask: on the web, the dirty data against the clean, the grayscale
+frame against the enhanced, what it means — grouped by session (a session is
+the superset of its flights) — and notifications that stay until read.
+Then (2026-10-09, after a flight whose processed data could not be found): a
+PAGE OF ITS OWN for the processed data, every anomaly listed with its readings,
+its frames and what it means, and the anomalies HIGHLIGHTED in the readings
+table and on the frames, the meaning on hover.
+
+--------------------------------------------------------------------------------
+2. WHERE IT LIVES
+--------------------------------------------------------------------------------
+backend/agent/cropwatcher/sync/results.py       result.json → rows; frame paths
+backend/agent/cropwatcher/sync/syncer.py        _send_results (LAST in a pass)
+backend/agent/cropwatcher/sync/cloud.py         upsert_result, upsert_findings,
+                                                delete_findings_except
+backend/agent/tests/test_results_upload.py
+backend/agent/cropwatcher/cli.py                `process --all` (_process_all)
+backend/supabase/migrations/20261009000016_pipeline_results.sql
+backend/supabase/migrations/20261009000017_notifications.sql
+backend/supabase/checks/results_check.py, notifications_check.py
+web/lib/pipeline.ts                             the result's JSON, read safely
+web/components/processing/                      findings, flight processing,
+                                                signal panel (raw vs clean)
+web/components/operator/notifications.tsx       provider and bell
+web/app/app/notifications/                      every notification
+web/app/app/processed/page.tsx                  Processed data: all anomalies,
+                                                the sessions with processed flights
+web/app/app/processed/[id]/page.tsx             one session's processed data
+web/components/ui/hint.tsx                      the anomaly tooltip
+web/components/ui/raw-readings.tsx              rows tinted, jump-to list
+web/components/flight/FrameGallery.tsx          frames outlined, "Only anomaly
+                                                frames"
+web/lib/queries.ts                              getProcessedOverview,
+                                                getStretchReadings, getFrameLinks
+web/app/app/sessions/[id]/page.tsx, web/app/app/flights/[id]/page.tsx
+
+--------------------------------------------------------------------------------
+3. DECISIONS
+--------------------------------------------------------------------------------
+• LAPTOP FIRST, THEN UP (CLAUDE.md invariant 6): result.json is the record;
+  the outbox (Kind.RESULTS) uploads it once the flight's own row is up,
+  enhanced frames from a cursor, then the result, the findings, and the
+  retraction of findings a re-process no longer makes.
+• TWO TABLES: pipeline_results (the whole result per flight, replaced on
+  re-process) and pipeline_findings (one row each, ids made on the laptop).
+• NOTIFICATIONS ARE ROWS, made by a database trigger per operator for each
+  warning-or-worse finding FIRST inserted — persistent until read, never
+  twice; Realtime only delivers them at once. Each operator reads and marks
+  only their own.
+• THE PAGES: findings first (sentence, when, where, change, camera note,
+  frames original | enhanced); then per flight the verdicts, what was
+  cleaned, and per signal a Clean / Raw switch with the stretches shaded and
+  named; the camera with Original / Enhanced / Side by side; on the session
+  page every flight's raw telemetry beside its 1 Hz vitals. "Zone health"
+  (greenhouse) is gone; the predictions table stays.
+• PROCESSED DATA IS A PAGE OF ITS OWN (/app/processed, in the sidebar): every
+  anomaly, worst first, each card carrying its readings (at most 10 of the
+  stretch: first, last, the peak, evenly between — measured, expected, the
+  difference; the stored value too when it differs, i.e. pressure), its
+  frames original | enhanced, and its meaning; "What counts as an anomaly"
+  in the classifier's own numbers; then the sessions with processed flights.
+  Per session (/app/processed/<id>): the anomalies, each processed flight's
+  processing and EVERY reading, then the camera. The session and flight
+  pages keep everything too and link here.
+• MARKS — COLOUR IS THE DATA, DEPTH IS HOW SEVERE (the owner, 2026-10-09).
+  Everything highlighted is a mark (web/lib/pipeline.ts): an ANOMALY (a
+  finding — temperature orange, pressure blue) or a FAULT (the cleaner's flags
+  merged into spans — a sensor fault purple, position and battery teal, lost
+  time purple on the time cells). The tint deepens with severity (14 %
+  slight, 28 % warning, 48 % critical — text measured ≥ 6.4:1 on the deepest,
+  either theme); the severity's shape (● ▲ ■) and its word are always beside
+  it, and the meaning is a tooltip on hover, keyboard focus or a tap (hint.tsx,
+  WCAG 1.4.13). The same key everywhere: the readings, the error table, the
+  charts' bands, the frames (components/ui/mark-legend.tsx).
+• THE READINGS TABLE (components/ui/raw-readings.tsx): the columns the pipeline
+  processes by default, grouped (Reading · Position · Power · Temperature ·
+  Pressure) — "Show all columns" adds the ones it only stores. 25 rows a page,
+  every row visible, every page the same height but the last; only a narrow
+  screen scrolls sideways, the reading's number held in place. A mark tints
+  only the cells it is about.
+• THE ERROR TABLE (components/processing/error-table.tsx, "What went wrong"):
+  one row per anomaly or flagged span, in time order, "N s later" between
+  spans; only the value columns a row is about are filled (and only those a
+  table needs are shown); Show opens the readings at it. On the flight page,
+  each flight of a session, and the session's own result.
+• A SESSION'S OWN RESULT (session.txt) sits beside its flights': its findings
+  "on the ground", its error table, its one-a-second readings and charts.
+• "NO ANOMALIES" IS AN ANSWER, not an absence: a processed flight with none
+  says so, distinct from "not processed".
+
+--------------------------------------------------------------------------------
+4. INVARIANTS
+--------------------------------------------------------------------------------
+• Results go LAST in a sync pass: a database without the tables never stalls
+  sessions, flights, frames or vitals.
+• A finding's start_index/end_index are telemetry `index` values, inclusive
+  (the agent's Reading.index) — the readings table tints exactly those rows.
+• Every recorded flight before 2026-10-09 is normal: `process --all` over the
+  lab laptop's 171 flights found 0 anomalies (166 processed, 5 with no
+  readings). A page of anomalies needs a real heat source — the hand-warmer
+  flights still owed (interpret.txt).
+• A missing table is said on the page ("apply migration …"), never shown as
+  an error or as nothing.
+• Re-processing replaces: one finding (same id), one notification (proved
+  with the real client on the local stack).
+• Check scripts clean up as the database owner and prove it: this project
+  revokes the platform's default privileges, so service_role cannot delete
+  over the API — a cleanup through it silently leaves rows behind (found
+  2026-10-09).
+
+--------------------------------------------------------------------------------
+5. RELATED
+--------------------------------------------------------------------------------
+depends-on        data-pipeline.txt
+                  result.json, written by `cropwatcher process`
+depends-on        interpret.txt
+                  the findings uploaded and notified
+depends-on        enhance.txt
+                  the enhanced copies uploaded beside the originals
+depends-on        ../backend/offline-sync.txt
+                  the outbox and the order of a sync pass
+depends-on        ../supabase/data-model.txt
+                  pipeline_results, pipeline_findings, notifications
+consumed-by       ../frontend/operator-dashboard.txt
+                  Processed data, the session and flight pages, the bell,
+                  /app/notifications
+depends-on        session.txt
+                  the session's own result, uploaded beside its flights'
+shares-data-with  ../../design/components.txt
+                  the readings table, the error table, the mark legend

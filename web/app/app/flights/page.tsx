@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { FLIGHTS, PLAN } from "@/lib/routes";
 import { flightDuration, flightStatusLabel, flightTone } from "@/lib/flight-format";
 import { LocalTime } from "@/components/ui/local-time";
+import { Owner } from "@/components/ui/owner";
 
 export const metadata = { title: "Flights" };
 
@@ -48,6 +49,7 @@ export default async function FlightsPage() {
               <th scope="col" className="px-4 py-3 font-medium">Started</th>
               <th scope="col" className="px-4 py-3 font-medium">Status</th>
               <th scope="col" className="px-4 py-3 font-medium">Duration</th>
+              <th scope="col" className="px-4 py-3 font-medium">Flown by</th>
               <th scope="col" className="px-4 py-3 font-medium">Ambient</th>
               <th scope="col" className="px-4 py-3 font-medium">Ground</th>
               <th scope="col" className="px-4 py-3 font-medium">
@@ -71,6 +73,9 @@ export default async function FlightsPage() {
                 </td>
                 <td className="tabular px-4 py-3">
                   {flightDuration(flight.started_at, flight.ended_at)}
+                </td>
+                <td className="px-4 py-3">
+                  <Owner who={flight} />
                 </td>
                 <td className="tabular px-4 py-3">
                   {flight.ambient_start != null

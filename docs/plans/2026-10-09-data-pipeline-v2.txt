@@ -1,0 +1,579 @@
+THE DATA PIPELINE, BUILT WHOLE — clean, enhance, classify, interpret, results
+on the web, notifications, and who ran what
+============================================================================
+
+STATUS (2026-10-09): BUILT, all branches in `lab`, merged into
+experiment/samuel; nothing pushed to origin. Gates on the integration: agent
+ruff · mypy (89 files) · pytest 1369; web typecheck · lint · build; desktop
+build; cargo test 14. Proved on the local Supabase stack (owner 10/10,
+results 11/11, notifications 16/16, rls 15/15) and in a browser (390 and
+1440 px, both themes, no sideways overflow). What shipped is in
+features/pipeline/ (an index and one doc per stage) and the docs it names.
+
+  CHANGED FROM THE PLAN, and why:
+  - Contract v2 grew three fields after it was first merged: Reading.text
+    (the cleaner and classifier need thermal_state), Event.peak (a warm patch
+    comes out of PELT as a staircase, merged into ONE event with a peak).
+  - The event threshold: planned as Z × the residual's spread; measured to
+    hide big events in short flights (5 °C found 65 %). Now 4 × the noise AND
+    a physical minimum above any normal flight's wander (0.8 °C, 0.2 hPa).
+  - The cleaner keeps the median Hampel (planned: a local-line Hampel) — the
+    diagnosis showed the false flags were the correction engine's state
+    steps, fixed by judging corrected_temp by its offset; ramp flags went to 0
+    without a line fit.
+  - notify was started from web/session-processing, not
+    data/pipeline-results: both edit the same types and queries; it is
+    published after the pages anyway.
+  - ADDED on the owner's ask mid-session: dpp/resume-processing (a closed
+    app's unfinished flights are processed when it starts again).
+  - Not done: step 91's backfill command (superseded by the resume).
+  - Done after the report, on the owner's go: the hosted migrations
+    (0015–0017, 2026-10-09); the owner's uncommitted router line committed
+    (docs/autonomous-flight-overview) and the pipeline's router lines merged
+    (docs/router-pipeline); the desktop app rebuilt.
+
+  OWED BY THE OWNER: see the section at the end, unchanged.
+
+  BUILT IN   the private repo (samsmoak/drone-capstone-lab, remote `lab`).
+             One branch per feature, each started from public main; each
+             merged into experiment/samuel (the holistic branch) with a merge
+             commit; published to public later as the SAME branch, by PR.
+  NOT HERE   the autonomous-flight fixes (base-station shadows, one app
+             location) — next, after this.
+
+
+THE WORDS, USED THE SAME WAY EVERYWHERE
+
+  Reading        one 10 Hz telemetry row of a flight (the flight CSV).
+  Sample         one 1 Hz row of a session (samples.csv, session_samples).
+  Flag           the cleaner's mark on one value (or a whole row): it is not
+                 used downstream. A flag never edits the value.
+  Clean series   the raw series with the flagged values left out.
+  Expected       what the signal would read with nothing unusual around the
+                 drone: the cooling curve for temperature, the height-corrected
+                 trend for pressure.
+  Residual       reading − expected.
+  Block          a stretch of readings whose residual holds one level
+                 (a PELT segment).
+  Event          a block the classifier says departs from expected (a
+                 statistical claim, in noise units).
+  Finding        an event the interpreter has judged, with a severity, a
+                 sentence, where and when, and the frames taken then.
+  Notification   one finding (warning or critical) for one operator, kept in
+                 the database until that operator reads it.
+
+
+WHAT EXISTS TODAY (read from origin/main a68af86 and the lab laptop)
+
+  pipeline/contracts.py   v1 types; the unit of work is ONE INSPECTION POINT;
+                          transit readings are counted, never analysed.
+  pipeline/runner.py      per point: clean → enhance → classify → interpret.
+  pipeline/sources.py     LocalFlightSource; ground_z_m is always None.
+  stages/clean/hampel.py  Kevin's hampel@1: temperature and pressure only.
+  stages/enhance, classify  stubs. interpret/labels.py: labels → verdicts.
+  processing.py           the DPP switch's child process, one flight at a time.
+  sync/                   outbox kinds drone, session, flight, audit, frames,
+                          samples. Nothing uploads a result.
+  web sessions/[id]       1 Hz vitals, all frames, flights list, a greenhouse
+                          "Zone health" section (predictions table).
+  web flights/[id]        10 Hz telemetry, frames, "Zone health".
+  profiles RLS            "read own profile" only — so the web cannot show who
+                          ran someone else's session or flight. The agent DOES
+                          record the owner (sessions.operator_id,
+                          flights.created_by).
+  camera                  REAL frames exist: 8 417 PNGs, 324×244 8-bit
+                          grayscale, dark and low-contrast (camera.txt still
+                          says no whole frame ever arrived — wrong).
+  Tools                   numpy 2.4, scipy 1.17 (via cflib), PyInstaller 6.22
+                          in the venv; NO Pillow, NO OpenCV. Supabase CLI and
+                          Docker installed (Docker not running).
+
+
+WHAT THE LAPTOP'S OWN FLIGHTS SHOWED (measured 2026-10-09, before planning)
+
+  1. hampel@1 on 66 real flights (≥ 287 rows), faults planted by
+     ml/sensor-faults/plant_faults.py, seed 0:
+       caught 3 541 / 3 564 (99.4 %) · false flags 332 / 223 623 (0.148 %)
+       — 292 of them corrected_temp "spikes" · 139 flags INSIDE the planted
+       hand-warmer ramps (the rule is 0).
+     → the bar the new cleaner must clear, on the same corpus.
+  2. In a normal mission flight raw_temp COOLS steadily in the propeller
+     airflow (48b1eb79: 34.7 → 29.6 °C in 48 s), and corrected_temp is
+     raw_temp minus a constant offset (12.67), so it falls 6 °C too.
+     ambient_est stays at the operator's typed 22.00 °C.
+     → a "compare to the flight median" detector would flag every normal
+       flight. Temperature is judged against a fitted COOLING CURVE, on
+       raw_temp (the sensor itself), not corrected_temp (which also steps
+       when thermal_state switches).
+  3. Pressure vs height on four missions: −0.16 to −0.36 hPa/m, steeper than
+     hydrostatic −0.12 (the drone's own downwash near the floor). Residual
+     noise after a height fit: 0.024–0.033 hPa (MAD, scaled).
+     → pressure is height-corrected with PHYSICS (ρ·g·h, ρ from the row's
+       air_density_kg_m3), never a per-flight fit (a fit would absorb a real
+       event that happened at one height). Pressure findings carry a higher
+       minimum and say "pressure" plainly; the downwash residue is a known
+       limit, written down.
+  4. z_m in the flight CSV is height above the takeoff floor (telemetry/
+     row.py) — the height the correction needs, already per row.
+
+
+DECISIONS (calls that could have gone the other way)
+
+  D1  THE UNIT OF WORK BECOMES THE FLIGHT. The cleaner, enhancer and
+      classifier run ONCE over the whole flight; inspection points become a
+      view (readings and frames carry point_id). Blocks span points and
+      transit ("came to a new place"), which a per-point stage cannot see.
+      The v1 decision "the same stage code serves batch and live per point"
+      is replaced: live (story 4.9) will run the same stages over the flight
+      so far. Contract v2, PIPELINE_VERSION "2".
+  D2  THE CLEANER IS REPLACED, NOT EXTENDED (owner, 2026-10-09). robust@1
+      replaces hampel@1 outright — one implementation. It must beat hampel@1
+      on the corpus in (1) or it does not ship.
+  D3  CLASSIFICATION = BLOCKS AGAINST EXPECTED. Expected: a robust
+      first-order cooling fit for temperature; a robust linear trend of
+      height-corrected pressure. Blocks: PELT (Killick et al. 2012) on the
+      residual, written in numpy (no new runtime dependency), checked against
+      `ruptures` in tests (dev dependency only). No ML model for sensors: no
+      labelled runs exist.
+  D4  NO IMAGE MODEL. No labelled photos exist (story 4.1). Every frame's
+      label is "unknown — no image model yet", unless its quality makes it
+      unusable ("too dark", "blurred"). A finding's image support is
+      "cannot tell" — said, never guessed. Telemetry is the source of truth.
+  D5  ENHANCEMENT = CLAHE (OpenCV, opencv-python-headless) + a frame-quality
+      measure (variance of the Laplacian, mean brightness, clipped share).
+      Contrast is the frames' problem, not resolution, and CLAHE invents no
+      detail. Kevin's evaluation (origin/feat/dpp-enhance) can still swap in
+      an upscaler later behind the same contract.
+  D6  THRESHOLDS ARE NOISE-RELATIVE + A PROVISIONAL PHYSICAL MINIMUM. An
+      event needs a block mean ≥ Z_EVENT × the flight's own noise (σ from
+      the residual's first differences). A finding is a warning only when
+      it also clears a physical minimum (°C, hPa) — PROVISIONAL, calibrated
+      on the corpus (no normal flight may raise a warning) and on planted
+      hand-warmer ramps (every one must), until the lab's hand-warmer runs
+      measure them. Every number cites ml/anomaly-eval/MEASUREMENTS.txt.
+  D7  WORDS FROM TEMPLATES, NUMBERS EXACT. Interpret fills fixed sentences
+      from the event's numbers. No LLM.
+  D8  RESULTS LIVE ON THE LAPTOP FIRST (result.json), then upload through the
+      outbox (CLAUDE.md invariant 6). Two tables: pipeline_results (one row
+      per flight, the whole result as jsonb) and pipeline_findings (one row
+      per finding, for queries and notifications). Finding ids are
+      deterministic (uuid5 of flight, signal, start, end), so re-processing
+      upserts instead of duplicating, and stale findings are deleted.
+  D9  OWNERS ARE DENORMALISED BY A DATABASE TRIGGER, not by opening profiles.
+      sessions and flights get operator_email and operator_name, filled
+      server-side from profiles (never from what a client sends) and
+      backfilled for existing rows. Profiles stay "read own" — no operator
+      can list every account's email. Owners are shown, not used to hide
+      anything: every signed-in user still sees every flight.
+  D10 NOTIFICATIONS ARE ROWS. A trigger on pipeline_findings inserts one
+      notifications row per operator for each warning or critical finding
+      (unique per user and finding, so a re-upload never re-notifies).
+      Read-own, mark-own-read (column grant on read_at only), no client
+      insert. Realtime makes them arrive instantly; the table makes them
+      persist. Desktop: an OS notification when a processed flight has a
+      warning or worse (tauri-plugin-notification).
+  D11 SESSION = SUPERSET OF ITS FLIGHTS. The session page shows the 1 Hz
+      vitals for the whole session AND every flight's 10 Hz telemetry on one
+      session clock, all frames (original and enhanced), every finding, and
+      the raw rows of every flight. The flight page shows the same sections
+      for its own slice (shared components).
+  D12 THE GREENHOUSE "Zone health" SECTION IS REMOVED from both pages. The
+      predictions table stays (nothing is dropped from the database).
+
+
+THE BRANCHES (all in `lab`; base in brackets; publish order = this order)
+
+  plan/pipeline-v2          [origin/main]  this plan
+  dpp/contract-v2           [origin/main]  contract v2, the runner over the
+                                           flight, sources, sinks, stubs,
+                                           conformance, desktop types
+  dpp/clean                 [dpp/contract-v2]  robust@1 replaces hampel@1
+  dpp/enhance               [dpp/contract-v2]  CLAHE + frame quality
+  dpp/classify              [dpp/contract-v2]  cooling curve, height-corrected
+                                           pressure, PELT, events
+  dpp/interpret             [dpp/classify]  findings, severities, sentences,
+                                           per-point verdicts, desktop panel
+  web/owners                [origin/main]  owner identity: migration + web
+  data/pipeline-results     [dpp/interpret]  tables, outbox kind, upload of
+                                           results, findings, enhanced frames
+  web/session-processing    [data/pipeline-results + web/owners]  the pages
+  notify                    [data/pipeline-results]  notifications table,
+                                           trigger, bell, page, desktop OS
+                                           notification
+  docs/pipeline-v2          [all of the above]  feature docs, contract doc,
+                                           tickets rewritten, profile,
+                                           graph state
+
+  Each branch: its gates pass → commit (samsmoaky@gmail.com, no co-author
+  lines) → push to `lab` → merge into experiment/samuel with --no-ff.
+  Never pushed to origin in this plan.
+
+
+PHASE 0 — SET UP                                                      1–5
+
+   1  A worktree (../drone-capstone-build) so the main checkout's
+      uncommitted files (docs/README.md, how-autonomous-flight-works.txt —
+      not this work) are never touched.                               DONE
+   2  Baseline gates on origin/main in the worktree: ruff, mypy, pytest;
+      web typecheck, lint, build; desktop build. A failure that predates this
+      work is recorded here, not fixed silently.
+   3  Measure hampel@1 on the corpus (seeds 0–4) — the bar.     DONE (seed 0)
+   4  Start Docker and the local Supabase stack (backend/: supabase start),
+      so every migration and policy is proved locally before the live
+      database is touched.
+   5  This plan committed on plan/pipeline-v2.
+
+
+PHASE 1 — CONTRACT V2 (dpp/contract-v2)                              6–18
+
+   6  Reading and Frame gain point_id (default None).
+   7  FlightContext gains points: tuple[InspectionPoint, ...] (the plan
+      flown; () for a flight with no mission) and ground_z_m stays.
+   8  FlagKind gains "implausible" (a change no drone can make) and
+      "untrusted" (a position the drone did not measure: no base station).
+   9  EnhancedFrame gains quality: FrameQuality | None (sharpness, mean
+      brightness, dark and bright clipped shares, usable, reason).
+  10  ClassifyResult gains tracks (per signal: column, unit, model, noise,
+      the expected value per reading index), segments, events (Event:
+      signal, unit, start/end index and time, observed and expected means,
+      delta, z, slope, point_ids, mean position when measured).
+  11  Interpreter.interpret(data, clean, enhanced, classified, ctx) →
+      InterpretResult(points: PointResult per inspection point, findings).
+      Finding as in D7/D8. Alert stays for PointResult (back-compatible
+      shape on the desktop).
+  12  FlightResult gains findings, flags (compact), tracks, segments, frames
+      (seq, enhanced path, method, quality, label) and session_id.
+  13  sources.py: one whole-flight PointData with point_id on every reading
+      and frame; the plan's points into the context. LoadedFlight keeps
+      points for the per-point view.
+  14  runner.py: clean → enhance → classify → interpret ONCE per flight; the
+      same failure rules (clean fails → every point insufficient_data;
+      enhance fails → originals; classify fails → unknown; interpret fails →
+      insufficient_data), the same contract checks. Per-point summary
+      (readings, flags, frames) kept, plus "_transit".
+  15  Stubs adapted (identity enhancer, unknown classifier); LabelInterpreter
+      rewritten to the v2 signature (still label-driven) so main keeps
+      working on this branch alone.
+  16  sinks.py unchanged in behaviour (atomic replace); to_jsonable already
+      handles the new dataclasses.
+  17  Tests: loading (point_id carried; transit readings now IN the run),
+      running (whole flight, one failure per stage, contract breaks),
+      conformance over the whole-flight point + an empty one.
+  18  desktop/src/lib/agent.ts FlightResult type → v2 (findings optional,
+      so a v1 result.json on disk still renders); DataPipeline.tsx keeps
+      working. Gates: ruff · mypy · pytest; desktop build.
+
+
+PHASE 2 — THE CLEANER (dpp/clean)                                   19–34
+
+  19  Find WHY hampel@1 raises its 332 false flags and 139 ramp flags:
+      plot/print each against its window (thermal_state change? a ramp's
+      knee? a real step?). Written into MEASUREMENTS.txt before code.
+  20  Measure the corpus for the new columns (position noise and largest
+      honest step per 0.1 s with a base station received; battery noise
+      and largest step; how often lighthouse_received is 0 in flight).
+  21  robust@1 (stages/clean/robust.py), temperature and pressure: missing,
+      out_of_range (BMP388 limits), stuck (raw_temp and pressure; derived
+      corrected_temp inherits), gap (time or skipped index), spike — the
+      Hampel identifier on the residual of a robust LOCAL LINE (Theil–Sen
+      over the window), so a ramp and its knee are not spikes; and a
+      corrected_temp excursion that raw_temp does not share AT a
+      thermal_state change is the correction engine, not a sensor fault.
+  22  Position x, y, z: untrusted when no base station was received;
+      implausible when the step implies > 2.0 m/s (flight_guard's
+      MAX_PLAUSIBLE_SPEED_M_S — one number, imported from where it lives,
+      not copied); out_of_range beyond a physical bound; spike.
+  23  Battery: out_of_range (outside a 1S LiPo's possible voltage);
+      implausible step; never stuck (it repeats 28 readings normally).
+  24  Vectorised (numpy sliding windows) — the same flags, faster.
+  25  plant_faults.py extended: position (jump, untrusted), battery (step,
+      out of range), a pressure step and a temperature ramp as REAL events.
+  26  evaluate.py scores any cleaner (a --cleaner argument) and a whole
+      folder of flights, and prints the corpus totals.
+  27  ACCEPTANCE on the corpus, seeds 0–4, against hampel@1: catch ≥ 99.9 %
+      (and never below hampel), ramp flags 0, false-flag rate ≤ 0.05 %, the
+      fixture flight 0 flags, °F flight = °C flight, time ≤ hampel's.
+  28  Every rule ported from test_clean.py (they still describe the rules),
+      plus the new columns' tests.
+  29  MEASUREMENTS.txt rewritten for robust@1: every threshold, its corpus
+      measurement, the hampel@1 comparison table.
+  30  hampel.py and its tests removed; compose.py uses RobustCleaner;
+      conformance lists it.
+  31  dpp-clean ticket rewritten: built by Samuel; what remains for Kevin
+      (the lab-laptop timing, the hand-warmer flights' re-measure).
+  32–34  Gates · commit · push · merge into experiment/samuel.
+
+
+PHASE 3 — ENHANCE (dpp/enhance)                                     35–44
+
+  35  Runtime dependency: opencv-python-headless (pinned), added to
+      pyproject and to cli.SELFTEST_MODULES ("cv2"), so a frozen agent that
+      cannot import it fails its own build.
+  36  ClaheEnhancer (stages/enhance/clahe.py): grayscale in, grayscale out;
+      CLAHE clip limit and tile chosen on real frames (step 38); written to
+      ctx.workdir/enhanced/<seq 06d>.png; scale 1; method "clahe".
+  37  Frame quality on the ORIGINAL: sharpness (variance of the Laplacian),
+      mean brightness, shares clipped at 0 and 255; usable + reason.
+  38  ml/enhance-eval/: a script over N real frames from the laptop (images
+      never committed — the repo is public): before/after sheet, time per
+      frame, quality distribution → RESULTS.txt names the chosen CLAHE
+      settings and the quality thresholds, with the numbers.
+  39  A corrupt or unreadable frame: path None + note; the rest carry on.
+  40  Tests: conformance (one per frame, in order, files only in the
+      workdir, originals byte-identical, deterministic, empty), quality on
+      synthetic frames (black, white, flat, sharp).
+  41  20 frames under 2 s on this laptop (the ticket's target), measured.
+  42  dpp-enhance ticket rewritten: CLAHE built; Kevin's upscaler
+      evaluation stays his, and swaps in behind the contract if it wins.
+  43–44  Gates · commit · push · merge.
+
+
+PHASE 4 — CLASSIFY: BLOCKS (dpp/classify)                           45–60
+
+  45  The airborne window: thermal_state FLIGHT…, skipping the first
+      SETTLE_S after takeoff (the correction engine's step, row 27 of the
+      fixture) — SETTLE_S measured on the corpus.
+  46  Temperature: raw_temp in °C (the flight's unit converted here — an
+      absolute × 9/5 + 32, a difference × 9/5 only). Expected: T∞ + A·e^(−t/τ),
+      τ on a log grid, (T∞, A) by least squares per τ, iterated with Huber
+      weights (robust to a real event). Too few points → a robust line.
+  47  Pressure: station_pressure_hpa + ρ·g·z_m / 100 (ρ from the row, g =
+      9.80665); rows whose height is untrusted are left out. Expected: a
+      robust line (the room's drift).
+  48  Noise σ per signal: 1.4826 × MAD of the residual's first differences
+      / √2 — blind to blocks, which a plain MAD is not.
+  49  PELT in numpy (cumulative sums, L2 cost on the residual), penalty
+      PEN × σ² × ln n, minimum block MIN_BLOCK readings; run per stretch of
+      usable readings (never across a gap or a flag).
+  50  Cross-check against ruptures (dev dependency) on random series:
+      identical breakpoints.
+  51  Events: blocks with |mean residual| ≥ Z_EVENT × σ, with direction,
+      delta, z, slope, the point ids they overlap, mean position (only when
+      measured).
+  52  Tracks: expected per reading index (for the web's "expected" line).
+  53  Images: per frame, "unknown — no image model yet", or "unknown —
+      too dark / blurred" from the frame's quality. sensors: faulty if any
+      event, normal if both models fitted and no event, unknown with the
+      reason otherwise. Features named with units.
+  54  ml/anomaly-eval/: evaluate.py over the corpus — false events per
+      normal flight — and over planted events: a hand-warmer ramp (+5 °C in
+      10 s, held), a cooling draught (−3 °C), a pressure step (+0.5 hPa,
+      5 s): detection rate, start-time error, false events.
+  55  Choose SETTLE_S, PEN, MIN_BLOCK, Z_EVENT by those numbers; write them
+      in ml/anomaly-eval/MEASUREMENTS.txt with the table.
+  56  Tests: synthetic cooling curve (no event), cooling + ramp (one rise
+      event at the right place), pressure step at constant and changing
+      height (event only for the real step), flagged values never reach a
+      model (plant a flagged spike: identical output), °F = °C, empty and
+      too-short flights give unknown with a reason, deterministic.
+  57  Under 1 s for a 3-minute flight on this laptop, measured.
+  58  dpp-classify ticket rewritten: the sensor half built (no ML); the
+      image model (story 4.4) stays Reagan's, now with real frames to label.
+  59–60  Gates · commit · push · merge.
+
+
+PHASE 5 — INTERPRET (dpp/interpret)                                 61–72
+
+  61  FindingInterpreter (stages/interpret/findings.py): every event → a
+      finding: severity info / warning / critical by D6
+      (MIN_EFFECT_TEMP_C, MIN_EFFECT_PRESSURE_HPA, CRITICAL_FACTOR —
+      PROVISIONAL, from step 55's measurements).
+  62  Deltas reported in the flight's own unit (°F flights in °F), unit
+      recorded.
+  63  The sentence: "From 0:42 to 0:55, near P2, the temperature sensor
+      read 3.1 °C above the drone's normal cooling curve (9× its noise),
+      held for 13 s." Position "(1.02, 0.48) m, 0.41 m up" when measured,
+      "position not measured" otherwise. Pressure sentences say "after
+      correcting for height".
+  64  Evidence frames: the frames inside the block (± 1 s); image support
+      "cannot_tell" with the reason (no frames / frames too dark / no image
+      model yet — N frames to look at).
+  65  Per point: anomaly if a warning-or-worse finding overlaps its
+      readings; normal if it had usable readings, the models fitted and no
+      such finding (an info finding is mentioned); insufficient_data
+      otherwise, with why.
+  66  Deterministic finding ids (uuid5).
+  67  Tests: severities at the edges of each threshold, °F wording, a block
+      in transit (no point), a point never reached, sentences exact.
+  68  The DPP placeholder ("no classifier yet") retires by itself;
+      DataPipeline.tsx shows the findings (severity, sentence) under the
+      point verdicts.
+  69  The fixture and three real flights processed end to end; result.json
+      read by eye.
+  70  docs/handoffs/sprint-1/done/dpp-contract.txt rewritten to v2.
+  71–72  Gates (agent + desktop) · commit · push · merge.
+
+
+PHASE 6 — OWNERS (web/owners)                                       73–82
+
+  73  Migration 20261009000015_owner_identity.sql: sessions and flights gain
+      operator_email, operator_name; a SECURITY DEFINER trigger fills them
+      from profiles on insert and when operator_id / created_by changes;
+      flights without created_by take their session's operator.
+  74  Backfill every existing row in the same migration.
+  75  Grants unchanged (the columns ride on existing select); anon nothing.
+  76  Proved on the local stack: insert as operator A → A's email on the
+      row; B reads A's flight and sees A's name and email; B still cannot
+      read A's profile row.
+  77  types/database.ts: the new columns.
+  78  queries.ts: SessionSummary.operator from the columns (no profiles
+      read); flights carry operator_name / operator_email.
+  79  Sessions list and session page: "Run by" name + email; flights list
+      and flight page: "Flown by". A row with no owner says "Not recorded".
+  80  Every width 390–1440, both themes (design/layout.txt), by eye.
+  81–82  Gates (typecheck, lint, build) · commit · push · merge.
+
+
+PHASE 7 — RESULTS IN THE DATABASE (data/pipeline-results)           83–96
+
+  83  Migration 20261009000016_pipeline_results.sql: pipeline_results
+      (flight_id pk → flights, session_id, pipeline_version, stages,
+      created_at, points, findings_count, flags, tracks, segments, frames,
+      failures, summary, uploaded_by default auth.uid()) and
+      pipeline_findings (D8 columns, severity and image_support checked).
+  84  RLS: signed-in read (as flights); operators insert/update/delete.
+      Grants exactly those (a policy without a grant is a 403 —
+      rls-and-grants.txt). anon nothing.
+  85  Outbox Kind.RESULTS; `cropwatcher process --flight` (not --fixture)
+      queues it after result.json is written.
+  86  Syncer._send_results, after flights and frames: waits while the
+      flight's own row is still pending; uploads enhanced frames to
+      flight-frames/<session>/enhanced/<seq>.png (replace: a re-process may
+      change them); upserts the result; upserts findings; deletes this
+      flight's findings no longer in the result.
+  87  Cloud: upsert_result, upsert_findings, delete_stale_findings,
+      upload_enhanced_frame — errors in words, never raw driver text;
+      a missing table names its migration (as session_samples does).
+  88  A missing table never stalls the rest of the sync pass (results go
+      last, like samples).
+  89  Tests with the fake cloud: order, resume, idempotence, re-process
+      deletes stale findings, an offline pass leaves everything queued.
+  90  Proved on the local stack with the real client: a processed flight's
+      result and findings land; re-processing replaces them.
+  91  `cropwatcher process --all-unprocessed` (optional, owner's call at
+      step 91): backfill results for flights already on this laptop.
+  92  types/database.ts: the two tables.
+  93  offline-sync doc and data-model doc updated.
+  94–96  Gates · commit · push · merge.
+
+
+PHASE 8 — THE PAGES (web/session-processing)                        97–118
+
+  97  Merge web/owners into this branch (declared in the PR).
+  98  queries.ts: getFlightResult, getSessionResults, getSessionTelemetry
+      (every flight's rows, the columns the charts need, capped per
+      flight with the cap said on the page), getEnhancedFrames (signed URLs
+      under <session>/enhanced/).
+  99  A "not migrated" state for the new tables (as session_samples does):
+      said, never shown as an error or as "nothing".
+ 100  TimeSeries gains bands (shaded blocks, labelled — never colour alone)
+      and marker series (flagged values as points). Still one y-axis.
+ 101  components/processing/: SignalPanel (raw · clean · expected, blocks
+      shaded, a Raw/Clean switch), FindingCard (severity badge + words,
+      sentence, when, where, point, frames original | enhanced side by
+      side, image support), FramePair, ProcessingSummary (stages and
+      versions, readings, flags by kind, failures).
+ 102  Session page, in order: summary (+ Run by) · Findings · Data
+      processing per signal (session clock; each flight's window marked) ·
+      Flights (Flown by, processing verdicts) · Camera: every frame, with
+      Original / Enhanced / Side by side · Session vitals (1 Hz) · What
+      happened · Raw readings: the session's samples AND every flight's
+      telemetry rows.
+ 103  Flight page: the same sections for its own slice; Zone health removed
+      from both (D12).
+ 104  States on every section: loading, empty (not processed — how to
+      process it on the desktop), error with retry (error.tsx), content.
+ 105  Accessibility: contrast measured for every new colour use; badges
+      carry words; bands labelled; targets ≥ 44 px; focus visible;
+      reduced motion respected.
+ 106  Every width 390–1440, both themes.
+ 107  Anchors: /app/sessions/<id>#finding-<id> scrolls to a finding.
+ 108–118  Gates · commit · push · merge (with web/owners already in).
+
+
+PHASE 9 — NOTIFICATIONS (notify)                                   119–134
+
+ 119  Migration 20261009000017_notifications.sql: notifications (id,
+      user_id → profiles, finding_id → pipeline_findings on delete cascade,
+      flight_id, session_id, severity, title, body, created_at, read_at;
+      unique (user_id, finding_id)).
+ 120  Trigger AFTER INSERT on pipeline_findings, severity warning or
+      critical → one row per operator (SECURITY DEFINER, search_path set).
+      An upsert that updates an existing finding fires no insert trigger,
+      so a re-upload never re-notifies.
+ 121  RLS: select own; update own; grant select and update (read_at) only.
+      No insert or delete for any client role.
+ 122  Realtime: the table joins supabase_realtime; RLS filters what each
+      socket receives.
+ 123  Proved locally: A and B operators both get a row; A marks read → B's
+      stays unread; A cannot read B's; A cannot change title or user_id;
+      re-upserting the finding adds nothing.
+ 124  lib/realtime.ts: the authed-socket helper moved out of
+      use-live-telemetry.ts (one implementation, two callers).
+ 125  queries: getNotifications(limit, before), getUnreadCount.
+      mutations: markNotificationRead(id), markAllNotificationsRead().
+ 126  NotificationBell in the sidebar and the mobile bar: unread count
+      (words for screen readers), a panel of the latest, "Mark all read",
+      "View all"; live inserts via Realtime, with a polite live region.
+ 127  /app/notifications: every notification, newest first, paged, unread
+      first-class; each links to its finding.
+ 128  Opening a notification marks it read and goes to the finding.
+ 129  Desktop: tauri-plugin-notification (Cargo, capability, npm); when a
+      processing job finishes with a warning-or-worse finding, one OS
+      notification. Not in App.tsx (its keyboard handler is locked).
+ 130  Tests where the stack allows (desktop: the decision function).
+ 131  Every width, both themes.
+ 132–134  Gates (web; desktop build; cargo test) · commit · push · merge.
+
+
+PHASE 10 — DOCS, GRAPH, FINISH (docs/pipeline-v2)                  135–150
+
+ 135  features/pipeline/ becomes a folder: README.txt (index), clean.txt,
+      enhance.txt, classify.txt, interpret.txt, results.txt — each from the
+      template, STATUS first, typed RELATED both ways.
+ 136  features/desktop/camera.txt corrected: real frames exist (drift,
+      said as drift).
+ 137  features/frontend/operator-dashboard.txt: sessions, flights, findings,
+      notifications, owners.
+ 138  features/supabase/data-model.txt, rls-and-grants.txt: the three
+      migrations and their proofs.
+ 139  features/backend/offline-sync.txt: Kind.RESULTS.
+ 140  docs/README.md router lines (the main checkout's uncommitted router
+      line is NOT folded in — the owner decides it).
+ 141  PROJECT_PROFILE.txt: the branch workflow (feature branches from public
+      main, experiment/samuel holistic, publish the same branch by PR).
+ 142  graph_check; GRAPH_STATE.txt re-run and updated.
+ 143  Full gates once more on experiment/samuel with everything merged.
+ 144  The whole flow end to end on this laptop: process a real flight →
+      result.json → (with the owner's go) upload → web page → notification.
+ 145–150  Commit · push · merge; the report.
+
+
+OWED BY THE OWNER (cannot be done from here, or needs a yes)
+
+  - Apply the three migrations to the live database (`cd backend &&
+    supabase db push`). It is shared by public and private: proved locally
+    first, applied only on the owner's go.
+  - Lab: hand-warmer runs (heated box vs unheated) to replace the PROVISIONAL
+    minimums; a draught/door run for pressure.
+  - The main checkout's uncommitted docs/README.md line and
+    how-autonomous-flight-works.txt: commit, keep or drop — the owner's.
+  - Tell Kevin and Reagan their tickets were rewritten.
+
+
+RISKS, AND WHAT IS DONE ABOUT EACH
+
+  - A "better" cleaner that is only better on paper → the corpus scores,
+    both cleaners, same seeds, in MEASUREMENTS.txt; it ships only if better.
+  - The cooling fit absorbing a real event → Huber weights; a planted ramp
+    must still be found (acceptance).
+  - Pressure downwash near the floor → physics correction only; a higher
+    pressure minimum; the limit written in classify.txt.
+  - OpenCV in the frozen agent → cv2 in SELFTEST_MODULES; the freeze and
+    verify run once before dpp/enhance merges.
+  - A migration that works locally but not live (platform defaults) →
+    explicit grants in every migration (20260916000004's rule).
+  - Re-notification on re-processing → unique (user, finding) + insert-only
+    trigger + deterministic ids.
+  - Branch conflicts between stacked branches → one owner of each file per
+    branch; integration merges in the publish order above.

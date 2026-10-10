@@ -7,6 +7,7 @@ import {
   Legend,
   Line,
   LineChart,
+  ReferenceArea,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -48,6 +49,21 @@ export type Series = {
    * Vercel) — see `LocalTime`.
    */
   labelIsTime?: boolean;
+  /** Points only, no line — values marked rather than traced (e.g. the
+   *  readings the cleaner flagged). */
+  points?: boolean;
+};
+
+/** A shaded stretch of x, named in words under the chart as well — the shade
+ *  is never the only channel. Needs a numeric x (xFormat "seconds"). */
+export type Band = {
+  x1: number;
+  x2: number;
+  label: string;
+  /** A colour token (the data group's: lib/pipeline groupColor). */
+  color: string;
+  /** How deep the fill, 0–1 — the severity's shade (lib/pipeline SHADE). */
+  depth: number;
 };
 
 type Row = Record<string, number | string | null>;
@@ -207,6 +223,7 @@ export function TimeSeries({
   height = 280,
   digits = 2,
   xFormat = "raw",
+  bands = [],
 }: {
   rows: Row[];
   series: Series[];
@@ -216,6 +233,7 @@ export function TimeSeries({
   height?: number;
   digits?: number;
   xFormat?: XFormat;
+  bands?: Band[];
 }) {
   const client = useIsClient();
   const series = rawSeries.map((s) =>
@@ -227,6 +245,9 @@ export function TimeSeries({
   const directLabels = series.length > 1 && series.length <= 4;
   const tableId = useId();
   const yAxis = niceScale(rows, series);
+  // Wide enough for the longest tick ("1026.55") AND the rotated unit beside
+  // it — a fixed width put "hPa" on top of the numbers.
+  const yWidth = Math.max(52, Math.max(...yAxis.ticks.map((t) => String(t).length)) * 7 + 26);
 
   // Nothing to draw is a state, not an empty box with axes.
   if (rows.length === 0) {
@@ -271,7 +292,7 @@ export function TimeSeries({
               tick={AXIS_TICK}
               tickLine={false}
               axisLine={false}
-              width={52}
+              width={yWidth}
               label={
                 yLabel
                   ? { value: yLabel, angle: -90, position: "insideLeft", fill: "var(--muted)", fontSize: 11 }
@@ -313,17 +334,30 @@ export function TimeSeries({
                 )}
               />
             )}
+            {xFormat === "seconds" && bands.map((b, i) => (
+              <ReferenceArea
+                key={`band-${i}`}
+                x1={b.x1}
+                x2={b.x2}
+                fill={b.color}
+                fillOpacity={b.depth}
+                stroke={b.color}
+                strokeOpacity={0.7}
+                ifOverflow="extendDomain"
+              />
+            ))}
             {series.map((s) => (
               <Line
                 key={s.key}
                 type="monotone"
                 dataKey={s.key}
                 name={s.label}
-                stroke={`var(--series-${s.slot})`}
-                strokeWidth={2}
+                stroke={s.points ? "none" : `var(--series-${s.slot})`}
+                strokeWidth={s.points ? 0 : 2}
                 // Thousands of samples: a dot per point is a smear, and the
-                // hover layer already reports exact values.
-                dot={false}
+                // hover layer already reports exact values. A points-only
+                // series is the exception: its dots are the message.
+                dot={s.points ? { r: 3, fill: `var(--series-${s.slot})`, strokeWidth: 0 } : false}
                 activeDot={{ r: 4, strokeWidth: 0 }}
                 isAnimationActive={false}
                 connectNulls={false}
@@ -333,6 +367,18 @@ export function TimeSeries({
           </LineChart>
         </ResponsiveContainer>
       </div>
+
+      {bands.length > 0 && (
+        <ul className="mt-2 grid gap-1 text-xs" aria-label="Shaded stretches">
+          {bands.map((b, i) => (
+            <li key={i} className="flex items-baseline gap-2">
+              <span aria-hidden="true" className="inline-block h-2.5 w-4 shrink-0 rounded-sm"
+                    style={{ background: b.color, opacity: Math.max(b.depth, 0.3) }} />
+              <span>{formatX(b.x1, xFormat)}–{formatX(b.x2, xFormat)}: {b.label}</span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <figcaption className="mt-2 flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs text-[var(--muted)]">

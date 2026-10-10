@@ -2,7 +2,7 @@
 built controller is handed the armed manual flight system and the room's fence.
 
 The controller here is a stand-in with BUILT = True — the real body is
-Hannah's (docs/handoffs/sprint-1/undone/mission-controller.txt). What is under test is the
+Hannah's (docs/handoffs/sprint-1/done/mission-controller.txt). What is under test is the
 session's side of the contract.
 """
 

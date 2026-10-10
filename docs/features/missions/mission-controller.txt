@@ -1,7 +1,9 @@
 ================================================================================
 THE MISSION CONTROLLER — how a saved mission is flown
-Last verified: 2026-09-29 against claude/awesome-carson-eqkt8w — test_manual.py
-TestFlyTo (13), tests/mission/test_session_missions.py (22), test_stamping.py.
+Last verified: 2026-10-10 against integrate/public (experiment/samuel with
+#101, #102, #103 merged) — tests/mission/ and the whole agent suite: 1438
+passed; review.py's planned time and what_happened re-read against the code.
+No radio: the hardware gates were not run.
 SOURCE: backend/agent/cropwatcher/mission/controller/mission_controller.py
 ================================================================================
 
@@ -12,13 +14,15 @@ STATUS  (Last verified: 2026-09-28)
   session    BUILT — Session.run_mission(), POST /session/mission, the room's
              fence to the guard, the plan flown kept, events to the app
   stamping   BUILT — point_id on every telemetry row and frames.csv row
-  controller INTERFACE BUILT, BODY NOT BUILT — Hannah
-             (../../handoffs/sprint-1/undone/mission-controller.txt).
-             BUILT = False, and the session refuses to arm a mission until
-             it is True.
-  proof      NOT BUILT — Yordi: a simulated drone, the mission report, the
-             end-to-end scenarios, the lab rungs, the measured constants
-             (../../handoffs/sprint-1/undone/mission-verification.txt).
+  controller BUILT — Samuel's body, built to THE SPEC, BUILT = True; on
+             main since 2026-10-10 (integrate/public). Hannah's #102 is in
+             the history, not the code (section 6;
+             ../../handoffs/sprint-1/done/mission-controller.txt).
+  proof      BUILT IN SIMULATION — the simulated drone, the scenarios, the
+             mission report; on main since 2026-10-10. Yordi's #101 is in
+             the history, two of its fixes in review.py (section 6). The lab
+             rungs are NOT FLOWN and the constants are still guesses
+             (../../handoffs/sprint-1/done/mission-verification.txt).
   flown      NEVER — no mission has flown. 2026-10-05 lab: the 1 m square
              (0.40 m, Steady, 5 s holds, return) flies in simulation in 72.6 s;
              on the drone it is blocked on station reception with the drone
@@ -71,7 +75,7 @@ backend/supabase/migrations/20260928000012_telemetry_point_id.sql
   speed_m_s, and the controller passes the mission's (floor-plans.txt, ONE
   SPEED PER MISSION). Optional, so nothing written against the seam before
   breaks — but it IS a change to THE SPEC's seam, which is Hannah's to know
-  about (../../handoffs/sprint-1/undone/mission-controller.txt).
+  about (../../handoffs/sprint-1/done/mission-controller.txt).
 • THE HEARTBEAT STAYS WITH THE APP. The controller never calls heartbeat(): if
   the window goes quiet the drone lands, mission or not.
 • EVERY REFUSAL BEFORE ANYTHING ARMS: Auto, assisted, checks passed, the
@@ -107,11 +111,6 @@ backend/supabase/migrations/20260928000012_telemetry_point_id.sql
   drone is the fix offered), and in flight the guard ends a flight whose
   supervisor is LOCKED, or whose four motors read zero 1.5 s after arming,
   as "the motors did not start — nothing flew" (Reason.MOTORS_NOT_SPINNING).
-  WHAT LOCKS IT — FOUND, NOT FIXED (Samuel's call): flight 0fca5fb4 was
-  declared "landed" by flight/manual.py at z 0.055 m with motors ~60 %, then
-  cut; within six minutes supervisor.info read LOCKED. The landing is in the
-  locked manual.py, so it is recorded, not changed; whether that cut is what
-  trips the lock is NOT YET MEASURED.
 • THE ROOM'S FENCE FLIES WITH IT: the in-flight guard lands the drone outside
   the room's own polygon, not the ±2 m square Manual uses.
 • The flight is named "mission:<id>@r<revision>" and the exact plan flown —
@@ -152,3 +151,106 @@ consumed-by       ../desktop/auto-control.txt
 consumed-by       ../pipeline/data-pipeline.txt
                   point_id groups the readings; the plan flown names the points;
                   POINT_COMPLETE will feed the live runner
+consumed-by       ../pipeline/live.txt
+                  POINT_COMPLETE queues that point's live verdict
+
+--------------------------------------------------------------------------------
+6. SAMUEL'S BUILD OF BOTH TICKETS — on main since 2026-10-10
+--------------------------------------------------------------------------------
+Built on experiment/samuel (2026-09-30) and landed by integrate/public, which
+also merged the team's PRs for the same tickets — one implementation, never
+two (../../PROJECT_PROFILE.txt, SHIP "experiments"). Both tickets are
+rewritten and in done/.
+
+WHAT WAS KEPT FROM THE TEAM'S PRs (2026-10-10)
+  #102 Hannah   her controller is in the history; Samuel's was kept. Against
+                THE SPEC's 94 tests hers passed 49 — with return_to_start it
+                never lands, start() after abort() takes off, the mission's
+                speed is never passed on. The ticket lists each.
+  #101 Yordi    his simulator and report are in the history; Samuel's were
+                kept. Ported into review.py: planned_leg_s (the planner's
+                per-leg time) and what_happened (what stopped a flight).
+
+WHERE IT LIVES
+  backend/agent/cropwatcher/mission/controller/mission_controller.py  the body
+  backend/agent/cropwatcher/mission/review.py        the mission report
+  backend/agent/cropwatcher/cli.py                   `cropwatcher mission-report`
+  backend/agent/tests/sim_drone.py                   the simulated drone
+  backend/agent/tests/test_sim_drone.py
+  backend/agent/tests/mission/test_controller.py     one test or more per rule
+  backend/agent/tests/mission/test_mission_sim.py    the end-to-end scenarios
+  backend/agent/tests/mission/test_review.py
+  backend/agent/tests/mission/test_boundaries.py     the session now arms one
+
+DECISIONS
+• EVENTS ARE QUEUED, THEN DELIVERED IN ORDER. One lock guards the state
+  machine and every command given to the flight; events are queued under it
+  and delivered with no lock held, by one caller at a time. Delivering right
+  after unlocking let an abort()'s ABORTED reach the listener before a tick's
+  POINT_COMPLETE — the ordering E1 forbids. A test races the two.
+• WHERE THE SPEC IS SILENT, and what this does (THE SPEC itself is Hannah's
+  and Yordi's to settle, so none of this is written into their ticket):
+    hold_at() refused at start()   FAILED, and start() raises MissionError
+    no commanded point at T6       the exception path: land, FAILED, named
+    tick() before start()          nothing
+    start() after abort()          raises, commands nothing
+    LANDING                        no timeout: the manual landing always ends
+• THE SIMULATOR FLIES IN THREE DIMENSIONS, in the estimator's frame (the
+  floor is ground_z). THE SPEC's arrival (drift_m ≤ ARRIVE_M) is x-y only;
+  the height is the flight system's goal. The scenarios prove both put the
+  drone at the point while it is stamped, and the report shows the height
+  error beside the x-y drift (stateEstimate.z − posCtl.targetZ: no floor
+  needed). ARRIVE_M is suggested from x-y only, as the controller uses it.
+• THE REPORT READS ONLY WHAT AN APP FLIGHT WRITES. `cropwatcher mission`
+  (the terminal) writes no trace and no plan flown, and records under the
+  flight id "cli" — the report says so and exits non-zero. Fly the lab rungs
+  from the app.
+• THE EVENTS' WORDS ARE THE OPERATOR'S COMMENTARY (2026-10-01, Samuel's
+  ask): the session puts each event's detail in the Command log, so each
+  says what comes next — "P1 complete — flying to P2", "P3 reached — the
+  last point", "…; landing now" / "…; returning to the start", "Returning
+  over the start, then landing". Words only: THE SPEC's kinds and order are
+  unchanged, and it has no event where a landing after a return begins, so
+  RETURNING announces it. test_mission_sim.py pins the words.
+• THE MISSION'S SPEED (2026-10-01, with PR #93 merged into experiment/samuel):
+  each leg is flown with fly_to(…, speed_m_s=the mission's Steady/Normal/
+  Brisk), and T8's timeout is the leg at THAT speed + TRANSIT_MARGIN_S — a
+  Steady mission is not timed out as if Brisk. test_controller and
+  test_mission_sim pin both.
+• THE REPORT'S PLANNED TIME IS THE PLANNER'S (2026-10-10, from #101): a
+  leg is planned at max(horizontal at the mission's speed, height change at
+  CLIMB_RATE_M_S) — review.py planned_leg_s, pinned by a test to
+  Mission.estimated_duration_s. Until then every leg was planned at
+  MOVE_SPEED_M_S, so a Steady mission's legs all read as late.
+• ONE PLACE KNOWS WHERE A FLIGHT'S FILES ARE: the report finds the flight
+  CSV and session folder through pipeline/sources.py LocalFlightSource (its
+  _find_csv, _find_session), the trace beside the CSV, the plan flown in the
+  session's missions/ folder.
+
+FOUND, NOT FIXED — outside both tickets; Samuel's call
+• WHAT LOCKS THE DRONE AFTER A LANDING (2026-10-05, flight 0fca5fb4): the
+  manual system declared "landed" at z 0.055 m with thrust ~47 600 and motor
+  m1 ~59 900 — still 5.5 cm up, motors high — then cut them, and within six
+  minutes supervisor.info read LOCKED. The landing is flight/manual.py's
+  (LOCKED — CLAUDE.md "Manual flight control is locked"), so it is reported
+  here, not changed: the mission path now refuses and names the lock instead
+  of flying blind. Whether the cut-from-5 cm is what trips the lock is NOT
+  YET MEASURED.
+• `cropwatcher mission` DOES check BUILT (cli.py, since 0ca26ba, 2026-09-28)
+  — so with BUILT = True it flies the drone, as designed.
+  (This line said "no BUILT check" until 2026-10-01: wrong, corrected after
+  reading the code.) What is still true: it writes no trace and no plan
+  flown, so the report cannot read its flights — fly the rungs from the app.
+• T8's timeout treats a 3-D leg as flown at the mission's speed; the
+  height moves at CLIMB_RATE_M_S (0.15 m/s). A 0.7 m climb at Brisk
+  (0.20 m/s) takes ~4.7 s against 3.5 s + TRANSIT_MARGIN_S — the margin
+  absorbs it. The report now plans legs the planner's way (DECISIONS), so
+  the report and T8 differ here; #101 raised it. Samuel's call.
+  Mission.estimated_duration_s already takes the longer of the two.
+• Mission.estimated_duration_s(settle_s=1.0) is a copy of SETTLE_S.
+• In simulation (lag 0.5 s, a guess) the test room's 3-point mission flies
+  1.7 s longer than its estimate with return_to_start, 1.2 s without. The
+  estimate is the battery budget; the lab will say by how much for real.
+
+LAST VERIFIED: 2026-10-10, on integrate/public, no radio. ruff pass · mypy
+pass · pytest 1438 passed — the hardware gates were not run.

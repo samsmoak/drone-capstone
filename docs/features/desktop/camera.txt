@@ -1,5 +1,5 @@
-CAMERA — built end to end; the deck has not yet sent a whole frame
-===================================================================
+CAMERA — built end to end; the deck delivers whole frames
+=========================================================
 
 WHAT IT IS
 
@@ -8,10 +8,14 @@ agent, a route that serves frames, the window's content policy, and the tab that
 renders them. Three sources: none, a generated test pattern, and the AI deck's
 own Wi-Fi image streamer.
 
-WHAT IS STILL UNPROVEN IS THE DECK ITSELF. The GAP8 runs Bitcraze's streamer
-(flash_gap8.py), the deck raises its access point, and the laptop has read the
-stream's header from it. But the only real capture stalled a third of the way
-into the first frame, so no whole real frame has arrived yet.
+THE DECK DELIVERS WHOLE FRAMES. This page said until 2026-10-09 that no whole
+real frame had ever arrived (the first capture, 2026-09-23, stalled a third of
+the way in). That had DRIFTED: the lab laptop holds 8 748 recorded frames —
+324×244, 8-bit grayscale, real images of the lab — from 43 sessions between
+2026-09-24 and 2026-10-09 (836 on 09-24, 3 800 on 09-30, 3 167 on 10-05).
+They are dark (median brightness 61 of 255), which is why the data pipeline
+enhances them (../pipeline/enhance.txt). Verified by reading the frames
+themselves, not the logs.
 
 THIS IS NOT VIDEO. The tab pulls one still every 200 ms — about 5 fps at best.
 
@@ -270,7 +274,8 @@ LAST VERIFIED  2026-09-23.
   deck source    a real agent with CROPWATCHER_CAMERA=deck against a stand-in
                  deck on localhost: live, 324x244, frames change; stand-in
                  killed -> "Cannot reach the AI deck..." within seconds
-  real deck      header read over its Wi-Fi; NO whole frame yet (stalled)
+  real deck      whole frames, recorded since 2026-09-24 (8 748 on the lab
+                 laptop by 2026-10-09; the 2026-09-23 capture had stalled)
 
 
 RELATED
@@ -282,3 +287,5 @@ consumed-by       setup.txt
                   installs the patched ESP32 and the GAP8 streamer
 consumed-by       drone-wifi.txt
                   sets the address DeckStream streams from
+consumed-by       ../pipeline/scene.txt
+                  frames.csv: each frame's time and position, for scene@1

@@ -10,7 +10,7 @@ import pytest
 from cropwatcher.audit import Action, AuditLog, Result
 from cropwatcher.sync.cloud import CloudError
 from cropwatcher.sync.outbox import Kind, Outbox
-from cropwatcher.sync.syncer import Syncer, parse_csv_row, read_rows_after
+from cropwatcher.sync.syncer import Syncer, close_orphaned_flights, parse_csv_row, read_rows_after
 
 COLUMNS = ["index", "recorded_at", "flight_id", "temp_unit", "raw_temp", "z_m", "motor_m1", "event"]
 
@@ -188,6 +188,13 @@ class TestResuming:
         status = syncer.sync_once()
         assert status.pending_flights == 1
 
+    def test_a_flight_with_no_rows_is_sent_once_its_record_is_up(self, rig):
+        outbox, cloud, syncer, tmp_path = rig
+        add_flight(outbox, tmp_path, rows=0)
+        status = syncer.sync_once()
+        assert cloud.flights[0]["id"] == "flight-1"
+        assert status.pending_flights == 0
+
     def test_a_missing_csv_still_records_the_flight(self, rig):
         outbox, cloud, syncer, tmp_path = rig
         add_flight(outbox, tmp_path)
@@ -263,3 +270,36 @@ class TestOutbox:
         outbox.put(Kind.AUDIT, "good", {"id": "good"})
         (tmp_path / "outbox" / "audit" / "broken.json").write_text("{ half written")
         assert [r.id for r in outbox.pending(Kind.AUDIT)] == ["good"]
+
+
+class TestOrphanedFlights:
+    """A flight the app closed mid-way: its record is closed as the agent
+    starts, from its CSV, and then uploads like any other."""
+
+    def test_an_open_record_is_closed_from_its_csv_and_then_sent(self, rig):
+        outbox, cloud, syncer, tmp_path = rig
+        add_flight(outbox, tmp_path, rows=7, ended=False)
+        assert close_orphaned_flights(outbox) == ["flight-1"]
+        record = outbox.get(Kind.FLIGHT, "flight-1")
+        assert record["ended_at"] == "2026-09-16T20:06:00Z"       # the last row
+        assert record["rows_written"] == 7
+        assert record["status"] == "aborted" and record["outcome"] == "interrupted"
+        status = syncer.sync_once()
+        assert status.pending_flights == 0
+        assert cloud.uploads                                      # the CSV went up
+
+    def test_a_flight_that_ended_is_left_alone(self, rig):
+        outbox, cloud, syncer, tmp_path = rig
+        add_flight(outbox, tmp_path, rows=3)
+        before = outbox.get(Kind.FLIGHT, "flight-1")
+        assert close_orphaned_flights(outbox) == []
+        assert outbox.get(Kind.FLIGHT, "flight-1") == before
+
+    def test_no_csv_closes_it_when_it_began_with_no_rows(self, rig):
+        outbox, cloud, syncer, tmp_path = rig
+        add_flight(outbox, tmp_path, rows=3, ended=False)
+        outbox.update(Kind.FLIGHT, "flight-1", lambda p: p.update({"csv_path": "/nope.csv"}))
+        close_orphaned_flights(outbox)
+        record = outbox.get(Kind.FLIGHT, "flight-1")
+        assert record["ended_at"] == "2026-09-16T20:10:00Z" and record["rows_written"] == 0
+        assert syncer.sync_once().pending_flights == 0

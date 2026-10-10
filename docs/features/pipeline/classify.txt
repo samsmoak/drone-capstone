@@ -1,0 +1,89 @@
+================================================================================
+CLASSIFY — blocks@1: the stretches of a flight where temperature or pressure
+departs from what was expected
+Last verified: 2026-10-09 against docs/pipeline-v2 — tests/pipeline/
+test_classify.py, ml/anomaly-eval/evaluate.py on the lab's flights (cleaned by
+robust@1), PELT against ruptures on 500 series.
+SOURCE: backend/agent/cropwatcher/pipeline/stages/classify/blocks.py
+================================================================================
+
+--------------------------------------------------------------------------------
+STATUS  (Last verified: 2026-10-09)
+--------------------------------------------------------------------------------
+  agent     BUILT for the sensors — blocks@1 (Samuel), its block-finding now
+            run on a Tuning (the flight's constants by default); ground@1 for a
+            session on the ground (session.txt); scene@1 for the camera
+            (scene.txt)
+  NOT BUILT an image model (story 4.4, Reagan — frames are "unknown — no image
+            model yet"); minimums measured on a real heat source (the
+            hand-warmer flights) — ../../handoffs/sprint-1/done/dpp-classify.txt
+
+--------------------------------------------------------------------------------
+1. WHAT IT IS
+--------------------------------------------------------------------------------
+The owner's ask: not every change — a BLOCK of time that departs from what is
+normal. Each signal is compared with what it should have read; the departure
+is split into blocks of constant level; a block far enough from expected is an
+EVENT, with where, when, how much and how sure.
+
+--------------------------------------------------------------------------------
+2. WHERE IT LIVES
+--------------------------------------------------------------------------------
+backend/agent/cropwatcher/pipeline/stages/classify/blocks.py   BlocksClassifier,
+                                                               the two models
+backend/agent/cropwatcher/pipeline/stages/classify/pelt.py     PELT, numpy
+backend/agent/tests/pipeline/test_classify.py
+ml/anomaly-eval/evaluate.py, MEASUREMENTS.txt   the calibration and its table
+
+--------------------------------------------------------------------------------
+3. DECISIONS
+--------------------------------------------------------------------------------
+• EXPECTED IS NOT A CONSTANT. The barometer sits on the drone's board, which
+  cools in the propellers' air from takeoff (34.7 → 29.6 °C in 48 s on a
+  normal mission). Temperature: raw_temp against a fitted first-order cooling
+  curve (robust — Huber weights at the data's own noise, so an event cannot
+  bend the curve). corrected_temp is not used: it steps with the engine.
+• PRESSURE IS CORRECTED FOR HEIGHT BY PHYSICS (+ ρ·g·z/100), never by a fit
+  that would absorb an event at one height; expected is its slow drift. With
+  no measured height it is used uncorrected and the track says so.
+• BLOCKS BY PELT (Killick 2012), exact, written in numpy — identical to the
+  ruptures package on 500 of 500 series; ruptures is a test dependency only.
+• AN EVENT needs BOTH 4 × the reading-to-reading noise AND a physical minimum
+  — 0.8 °C, 0.2 hPa — just above the most any normal flight's blocks wander
+  (0.781 °C, 0.173 hPa). CHANGED 2026-10-09 from 4 × the residual's own MAD:
+  in a short flight a big event IS most of the residual and inflated the
+  threshold that judged it (5 °C patches found only 65 %).
+• ADJACENT DEPARTING BLOCKS GOING THE SAME WAY ARE ONE EVENT (a ramp is a
+  staircase of blocks), carrying its mean departure and its PEAK.
+• NO ML MODEL FOR THE SENSORS: no labelled runs exist; the measured blocks
+  are explainable and need none.
+
+--------------------------------------------------------------------------------
+4. INVARIANTS
+--------------------------------------------------------------------------------
+• On 115 normal flights: no event. Planted warm patches of 2 °C or more:
+  always found; 1 °C: 97 %. Pressure steps of 0.3 hPa: always found.
+• A stretch shorter than a minimum block (2 s) between gaps or flags is not
+  analysed; the first 3 s after takeoff are left out.
+• Flagged values never reach a model; °F gives the same events, deltas × 9/5.
+• An event that fills most of a short flight cannot be told from that
+  flight's baseline — calibration plants only in flights a minute or more in
+  the air.
+
+--------------------------------------------------------------------------------
+5. RELATED
+--------------------------------------------------------------------------------
+depends-on        data-pipeline.txt
+                  the contract (Track, Segment, Event) and the runner
+depends-on        clean.txt
+                  only usable values are fitted
+depends-on        enhance.txt
+                  a frame's quality decides its label
+consumed-by       interpret.txt
+                  events become findings; the minimums ride in `features`
+consumed-by       session.txt
+                  ground@1 reuses the fits, PELT and the merging, with its own Tuning
+consumed-by       scene.txt
+                  both classifiers measure the frames' view change
+consumed-by       calibrate.txt
+                  MIN_EVENT_C, measured against a real heat source

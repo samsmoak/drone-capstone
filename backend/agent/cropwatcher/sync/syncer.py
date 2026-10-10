@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, get_args, get_type_hints
 
 from cropwatcher.camera.recording import INDEX_NAME, frames_to_upload
-from cropwatcher.sync import samples
+from cropwatcher.sync import results, samples
 from cropwatcher.sync.cloud import Cloud, CloudError
 from cropwatcher.sync.outbox import Kind, Outbox
 from cropwatcher.telemetry.row import TelemetryRow
@@ -53,6 +53,43 @@ def _column_types() -> dict[str, type]:
 
 
 _TYPES = _column_types()
+
+
+def close_orphaned_flights(outbox: Outbox) -> list[str]:
+    """Close every flight record a previous run of the agent left open.
+
+    A flight's record is ended when it lands (Session._finish_flight). An app
+    closed — or killed — mid-flight never gets there, so the record stays
+    "still flying" for ever: the syncer keeps polling its telemetry, never
+    uploads its CSV, and its pipeline result waits behind it (eight such
+    flights from the 2026-09-22 bring-up, found 2026-10-09). Called once as
+    the agent starts, before any flight can begin, so every open record is
+    an orphan. Ended at the CSV's last row (else when it began), marked
+    aborted, with the rows the CSV holds. Returns the flights closed."""
+    closed = []
+    for record in outbox.pending(Kind.FLIGHT):
+        if record.payload.get("ended_at"):
+            continue
+        ended_at, rows = record.payload.get("started_at"), 0
+        csv_path = Path(record.payload.get("csv_path") or "")
+        if csv_path.is_file():
+            try:
+                with csv_path.open(newline="") as handle:
+                    for row in csv.DictReader(handle):
+                        rows += 1
+                        ended_at = row.get("recorded_at") or ended_at
+            except (OSError, csv.Error):
+                log.warning("flight %s: its CSV could not be read; closing it as begun",
+                            record.id)
+        outbox.update(Kind.FLIGHT, record.id, lambda p, e=ended_at, n=rows: p.update({
+            "ended_at": e, "status": "aborted", "outcome": "interrupted",
+            "error": "The app closed while this flight was recording.",
+            "rows_written": n,
+        }))
+        closed.append(record.id)
+    if closed:
+        log.info("closed %d flight record(s) the last run left open", len(closed))
+    return closed
 
 
 def parse_csv_row(raw: dict[str, str]) -> dict[str, Any]:
@@ -176,6 +213,10 @@ class Syncer:
                 # 20261006000013) this one fails, and everything above has
                 # already gone.
                 self._send_samples(cloud)
+                # After that, for the same reason: pipeline results need
+                # 20261009000016, a session's own result 20261009000018.
+                self._send_results(cloud)
+                self._send_session_results(cloud)
                 self.status.last_error = None
                 self.status.last_success_at = time.time()
             except CloudError as e:
@@ -280,7 +321,9 @@ class Syncer:
                 cloud.request_backfill(flight_id, object_path)
 
             expected = payload.get("rows_written")
-            complete = expected is None or (sent_to is not None and sent_to + 1 >= expected)
+            # A flight that wrote no rows is complete once its record is up —
+            # otherwise it is retried every pass, forever.
+            complete = not expected or (sent_to is not None and sent_to + 1 >= expected)
             if complete:
                 self._outbox.mark_sent(Kind.FLIGHT, flight_id)
             else:
@@ -336,6 +379,79 @@ class Syncer:
                                     lambda p, last=last: p.__setitem__("uploaded_through", last))
             if payload.get("ended"):
                 self._outbox.mark_sent(Kind.SAMPLES, session_id)
+
+    def _send_results(self, cloud: Cloud) -> None:
+        """A processed flight's result, findings and enhanced frames
+        (sync/results.py).
+
+        Waits while the flight's own record is still pending: the result's
+        foreign key needs the flight row. Enhanced frames go first, from a
+        cursor (replacing — a re-process may change them), then the result,
+        then the findings, then the findings this result no longer makes are
+        deleted. Re-processing re-queues the record, which resets the cursor."""
+        for record in self._outbox.pending(Kind.RESULTS):
+            payload = record.payload
+            flight_id = record.id
+            flight = self._outbox.get(Kind.FLIGHT, flight_id)
+            if flight is not None and not flight.get("_sent"):
+                continue            # the flight row first
+            folder = Path(payload.get("folder", ""))
+            try:
+                result = results.load(folder)
+            except results.ResultUnreadable as e:
+                log.warning("result of flight %s cannot be uploaded: %s", flight_id, e)
+                self._outbox.mark_sent(Kind.RESULTS, flight_id)
+                continue
+            self.status.uploading = f"result {flight_id[:8]}"
+            session_id = result.get("session_id")
+            if session_id:
+                done = int(payload.get("frames_uploaded", 0))
+                for n, (seq, path) in enumerate(results.enhanced_frames(folder, result)):
+                    if n < done:
+                        continue
+                    cloud.upload_frame(results.enhanced_object_path(session_id, seq), path,
+                                       "image/png", replace=True)
+                    self._outbox.update(Kind.RESULTS, flight_id,
+                                        lambda p, n=n: p.__setitem__("frames_uploaded", n + 1))
+            cloud.upsert_result(results.result_row(result))
+            rows = results.finding_rows(result)
+            cloud.upsert_findings(rows)
+            cloud.delete_findings_except(flight_id, [r["id"] for r in rows])
+            self._outbox.mark_sent(Kind.RESULTS, flight_id)
+
+    def _send_session_results(self, cloud: Cloud) -> None:
+        """A processed session's own result (sync/results.py session_result_row):
+        enhanced frames from a cursor, the result, its findings, and the
+        retraction of session findings a re-process no longer makes. Waits
+        while the session's own record is still pending: the row's foreign key
+        needs the session."""
+        for record in self._outbox.pending(Kind.SESSION_RESULTS):
+            payload = record.payload
+            session_id = record.id
+            session = self._outbox.get(Kind.SESSION, session_id)
+            if session is not None and not session.get("_sent"):
+                continue            # the session row first
+            folder = Path(payload.get("folder", ""))
+            try:
+                result = results.load(folder)
+            except results.ResultUnreadable as e:
+                log.warning("result of session %s cannot be uploaded: %s", session_id, e)
+                self._outbox.mark_sent(Kind.SESSION_RESULTS, session_id)
+                continue
+            self.status.uploading = f"session result {session_id[:8]}"
+            done = int(payload.get("frames_uploaded", 0))
+            for n, (seq, path) in enumerate(results.enhanced_frames(folder, result)):
+                if n < done:
+                    continue
+                cloud.upload_frame(results.enhanced_object_path(session_id, seq), path,
+                                   "image/png", replace=True)
+                self._outbox.update(Kind.SESSION_RESULTS, session_id,
+                                    lambda p, n=n: p.__setitem__("frames_uploaded", n + 1))
+            cloud.upsert_session_result(results.session_result_row(result))
+            rows = results.finding_rows(result)
+            cloud.upsert_findings(rows)
+            cloud.delete_session_findings_except(session_id, [r["id"] for r in rows])
+            self._outbox.mark_sent(Kind.SESSION_RESULTS, session_id)
 
     # ── helpers ──────────────────────────────────────────────────────────
 

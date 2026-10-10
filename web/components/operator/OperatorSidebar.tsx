@@ -7,6 +7,7 @@ import { OPERATOR_GROUPS, activeHref } from "./nav-items";
 import { ProfileMenu, type OperatorAccount } from "./ProfileMenu";
 import { ThemeToggle } from "@/components/site/ThemeToggle";
 import { Wordmark } from "@/components/site/Wordmark";
+import { NotificationBell } from "./notifications";
 
 /**
  * The operator view's left sidebar. Copied from ../doctor-portfolio's
@@ -21,11 +22,12 @@ export function OperatorSidebar({ account, isOperator }: { account: OperatorAcco
 
   return (
     <aside className="flex h-full flex-col">
-      <div className="px-5 py-6">
+      <div className="flex items-center justify-between gap-2 px-5 py-6">
         {/* Home of this view: the dashboard. */}
         <Link href={OPERATOR_HOME} aria-label="DroneDeck — dashboard home" className="flex min-h-11 items-center">
           <Wordmark />
         </Link>
+        <NotificationBell placement="right" />
       </div>
 
       <nav aria-label="Operator" className="flex-1 space-y-6 overflow-y-auto px-3 pb-4">

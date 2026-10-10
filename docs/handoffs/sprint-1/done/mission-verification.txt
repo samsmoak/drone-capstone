@@ -2,11 +2,26 @@ TICKET — Proving the mission controller: the simulated drone, the mission
 report, the scenarios, the lab flights
 ========================================================================
 
-STATUS: READY TO START. Everything this builds on is on main: the manual
-flight system (flight/manual.py), the controller's fixed interface
-(mission/controller/), the flight trace (telemetry/trace.py), FakeClock and
-FakeCommander (tests/fakes.py). Where this ticket and the code disagree, the
-code wins — tell Samuel so this is fixed.
+STATUS: BUILT IN SIMULATION (2026-10-10, integrate/public: Samuel's
+simulator and report; #101 merged into it). REWRITTEN on the owner's call —
+one implementation, never two. On main: tests/sim_drone.py,
+tests/mission/test_mission_sim.py, mission/review.py and `cropwatcher
+mission-report`. The code is the authority. OPEN: PART 3's lab rungs are
+NOT FLOWN, so the constants are still guesses — those are this ticket's
+follow-ups, and still Yordi's.
+
+Yordi's simulator and report (#101) are merged into the history under his
+name. They run against Samuel's controller (381 tests passed with them in
+place); Samuel's files were kept. Ported from #101 into review.py, with tests:
+  - planned_leg_s(): a leg's planned time is the planner's own (the
+    mission's speed and the climb rate, as Mission.estimated_duration_s
+    counts it), not leg / MOVE_SPEED_M_S — a Steady mission's legs no longer
+    read as late, and a test pins the legs to the planner's estimate
+  - what_happened(): a point never reached says what stopped the flight
+#101's own follow-up stands: T8's timeout is the 3-D leg at the mission's
+speed, the planner's leg is max(horizontal at that speed, height at the climb
+rate). The margin absorbs the difference today; Samuel's call
+(../../../features/missions/mission-controller.txt, FOUND, NOT FIXED).
 
 SPLIT 2026-09-29 from the mission controller ticket, which was Hannah's
 alone. It is now two, built side by side and joined at a fixed seam:
@@ -60,7 +75,7 @@ rules. Work in four steps, and do not skip one.
     the half-formed ideas too — the plan can only use what you give it.
 
       /feature I am Yordi, working on
-      docs/handoffs/sprint-1/undone/mission-verification.txt.
+      docs/handoffs/sprint-1/done/mission-verification.txt.
       My ideas: <how I would build it>. My doubts: <what is unclear>.
 
  2. THE AGENT PLANS WITH /feature. It reads the repository (CLAUDE.md, the
@@ -237,7 +252,9 @@ and never changes a file.
 
 FOR EACH INSPECTION POINT, IN FLYING ORDER
   leg          the straight 3-D distance flown to it, m
-  planned      leg / MOVE_SPEED_M_S — what the planner and T8 assume, s
+  planned      the planner's time for the leg: the horizontal distance at
+               the mission's speed or the height change at CLIMB_RATE_M_S,
+               whichever is longer (review.py planned_leg_s), s
   transit      from the commanded point leaving the last spot to reaching
                this one, s
   settle       from the commanded point reaching it to the drone within

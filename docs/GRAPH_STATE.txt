@@ -3,10 +3,12 @@ GRAPH STATE — WHAT IS OUT OF SYNC, AND WHAT THAT STOPS
 Read this BEFORE starting a feature. It is the one file that says whether the
 docs can be trusted for the area you are about to work in.
 Generated from `python3 graph_check.py` plus what passes noticed by hand.
-Last run: 2026-09-29 (after the Save gating, the height reference, the
-standing layout rule and the handoff updates) — 37 docs · 60 findings, 0 in
-a blocking class (DANGLING 0 · ONE-WAY 0 · STALE 0). design/layout.txt is new
-and typed both ways with the three docs that consume it.
+Last run: 2026-10-10 on integrate/public (experiment/samuel with the team's
+PRs #101, #102, #103 merged, for main) — 47 docs. Blocking classes:
+DANGLING 0 · ONE-WAY 0 · STALE 1 (design/layout.txt, as before — see WARN).
+UNMERGED BRANCH 62 is the lab's feature branches, all inside experiment/
+samuel: they reach main with it. mission-controller.txt and both mission
+tickets rewritten (done/); the ticket move re-pointed every reference.
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -36,8 +38,18 @@ BLOCK  (0)
 None recorded.
 
 --------------------------------------------------------------------------------
-WARN  (1)
+WARN  (3)
 --------------------------------------------------------------------------------
+2026-10-09  design/layout.txt is STALE: desktop/src/harness.tsx was committed
+            2026-10-06 (PR #98, the Auto flow) after the doc's 2026-09-30
+            verification. Not touched by the pipeline work; re-run the
+            desktop harness at the five widths before trusting it.
+2026-10-09  DRIFT FOUND AND FIXED: pipeline/data-pipeline.txt still said the
+            unit of work was one point and that results never left the
+            laptop; desktop/camera.txt still said no whole frame had ever
+            arrived (8 748 had). Both corrected and said as drift. The
+            UNIT-OF-WORK drift went unflagged because the STALE check had
+            nothing to compare until the code moved.
 2026-09-29  15 docs declare no typed edge (ORPHAN 15, was 30): architecture,
             architecture-at-a-glance, audit-trail, flight-status,
             flight-tuning, offline-sync, skills, gallery, operator-dashboard,
@@ -83,6 +95,11 @@ WATCH  (2)
             deleting the merged local branches clears the noise.
 2026-09-27  APPROACHING SIZE (3): backend/manual-control.txt 257,
             desktop/camera.txt 279, desktop/desktop-app.txt 251 lines.
+2026-10-10  APPROACHING SIZE: features/missions/mission-controller.txt 257
+            lines after the integration. Split section 6 out when next edited.
+2026-10-10  ml/upscaling-eval/ (#103) is outside every gate, like the other
+            ml/ folders: score.py has 6 ruff findings as Kevin wrote it.
+            espcn_steps.py and methods.py were touched and lint clean.
 
 --------------------------------------------------------------------------------
 OVERRIDES

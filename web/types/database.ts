@@ -126,6 +126,8 @@ export type Database = {
           ground_z_m: number | null
           id: string
           mode: string | null
+          operator_email: string | null
+          operator_name: string | null
           outcome: string | null
           program: string | null
           session_id: string | null
@@ -144,6 +146,8 @@ export type Database = {
           ground_z_m?: number | null
           id?: string
           mode?: string | null
+          operator_email?: string | null
+          operator_name?: string | null
           outcome?: string | null
           program?: string | null
           session_id?: string | null
@@ -162,6 +166,8 @@ export type Database = {
           ground_z_m?: number | null
           id?: string
           mode?: string | null
+          operator_email?: string | null
+          operator_name?: string | null
           outcome?: string | null
           program?: string | null
           session_id?: string | null
@@ -342,6 +348,408 @@ export type Database = {
           },
         ]
       }
+      notifications: {
+        Row: {
+          body: string
+          created_at: string
+          finding_id: string
+          flight_id: string | null
+          id: string
+          read_at: string | null
+          session_id: string | null
+          severity: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          finding_id: string
+          flight_id?: string | null
+          id?: string
+          read_at?: string | null
+          session_id?: string | null
+          severity: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          finding_id?: string
+          flight_id?: string | null
+          id?: string
+          read_at?: string | null
+          session_id?: string | null
+          severity?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_finding_id_fkey"
+            columns: ["finding_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_findings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_flight_id_fkey"
+            columns: ["flight_id"]
+            isOneToOne: false
+            referencedRelation: "flights"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pipeline_findings: {
+        Row: {
+          created_at: string
+          delta: number | null
+          end_index: number
+          evidence_frames: number[]
+          expected: number | null
+          flight_id: string | null
+          id: string
+          image_note: string
+          image_support: string
+          observed: number | null
+          pipeline_version: string
+          point_ids: string[]
+          scope: string
+          sentence: string
+          session_id: string | null
+          severity: string
+          signal: string
+          start_index: number
+          t_end_s: number
+          t_start_s: number
+          title: string
+          unit: string
+          x_m: number | null
+          y_m: number | null
+          z: number | null
+          z_m: number | null
+        }
+        Insert: {
+          created_at?: string
+          delta?: number | null
+          end_index: number
+          evidence_frames?: number[]
+          expected?: number | null
+          flight_id?: string | null
+          id: string
+          image_note?: string
+          image_support: string
+          observed?: number | null
+          pipeline_version: string
+          point_ids?: string[]
+          scope?: string
+          sentence: string
+          session_id?: string | null
+          severity: string
+          signal: string
+          start_index: number
+          t_end_s: number
+          t_start_s: number
+          title: string
+          unit: string
+          x_m?: number | null
+          y_m?: number | null
+          z?: number | null
+          z_m?: number | null
+        }
+        Update: {
+          created_at?: string
+          delta?: number | null
+          end_index?: number
+          evidence_frames?: number[]
+          expected?: number | null
+          flight_id?: string | null
+          id?: string
+          image_note?: string
+          image_support?: string
+          observed?: number | null
+          pipeline_version?: string
+          point_ids?: string[]
+          scope?: string
+          sentence?: string
+          session_id?: string | null
+          severity?: string
+          signal?: string
+          start_index?: number
+          t_end_s?: number
+          t_start_s?: number
+          title?: string
+          unit?: string
+          x_m?: number | null
+          y_m?: number | null
+          z?: number | null
+          z_m?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pipeline_findings_flight_id_fkey"
+            columns: ["flight_id"]
+            isOneToOne: false
+            referencedRelation: "flights"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pipeline_findings_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pipeline_results: {
+        Row: {
+          created_at: string
+          failures: Json
+          findings_count: number
+          flags: Json
+          flight_id: string
+          frames: Json
+          pipeline_version: string
+          points: Json
+          segments: Json
+          session_id: string | null
+          stages: Json
+          summary: Json
+          temp_unit: string
+          tracks: Json
+          uploaded_at: string
+          uploaded_by: string | null
+          worst_severity: string | null
+        }
+        Insert: {
+          created_at: string
+          failures?: Json
+          findings_count?: number
+          flags?: Json
+          flight_id: string
+          frames?: Json
+          pipeline_version: string
+          points?: Json
+          segments?: Json
+          session_id?: string | null
+          stages?: Json
+          summary?: Json
+          temp_unit?: string
+          tracks?: Json
+          uploaded_at?: string
+          uploaded_by?: string | null
+          worst_severity?: string | null
+        }
+        Update: {
+          created_at?: string
+          failures?: Json
+          findings_count?: number
+          flags?: Json
+          flight_id?: string
+          frames?: Json
+          pipeline_version?: string
+          points?: Json
+          segments?: Json
+          session_id?: string | null
+          stages?: Json
+          summary?: Json
+          temp_unit?: string
+          tracks?: Json
+          uploaded_at?: string
+          uploaded_by?: string | null
+          worst_severity?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pipeline_results_flight_id_fkey"
+            columns: ["flight_id"]
+            isOneToOne: true
+            referencedRelation: "flights"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pipeline_results_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pipeline_results_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pipeline_session_results: {
+        Row: {
+          created_at: string
+          failures: Json
+          findings_count: number
+          flags: Json
+          frames: Json
+          pipeline_version: string
+          points: Json
+          segments: Json
+          session_id: string
+          stages: Json
+          summary: Json
+          temp_unit: string
+          tracks: Json
+          uploaded_at: string
+          uploaded_by: string | null
+          worst_severity: string | null
+        }
+        Insert: {
+          created_at: string
+          failures?: Json
+          findings_count?: number
+          flags?: Json
+          frames?: Json
+          pipeline_version: string
+          points?: Json
+          segments?: Json
+          session_id: string
+          stages?: Json
+          summary?: Json
+          temp_unit?: string
+          tracks?: Json
+          uploaded_at?: string
+          uploaded_by?: string | null
+          worst_severity?: string | null
+        }
+        Update: {
+          created_at?: string
+          failures?: Json
+          findings_count?: number
+          flags?: Json
+          frames?: Json
+          pipeline_version?: string
+          points?: Json
+          segments?: Json
+          session_id?: string
+          stages?: Json
+          summary?: Json
+          temp_unit?: string
+          tracks?: Json
+          uploaded_at?: string
+          uploaded_by?: string | null
+          worst_severity?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pipeline_session_results_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: true
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pipeline_session_results_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      predictions: {
+        Row: {
+          created_at: string
+          disease_risk: number | null
+          flight_id: string
+          health_score: number | null
+          id: string
+          label: string | null
+          model: string
+          notes: string | null
+          sample_count: number | null
+          zone_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          disease_risk?: number | null
+          flight_id: string
+          health_score?: number | null
+          id?: string
+          label?: string | null
+          model?: string
+          notes?: string | null
+          sample_count?: number | null
+          zone_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          disease_risk?: number | null
+          flight_id?: string
+          health_score?: number | null
+          id?: string
+          label?: string | null
+          model?: string
+          notes?: string | null
+          sample_count?: number | null
+          zone_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "predictions_flight_id_fkey"
+            columns: ["flight_id"]
+            isOneToOne: false
+            referencedRelation: "flights"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "predictions_zone_id_fkey"
+            columns: ["zone_id"]
+            isOneToOne: false
+            referencedRelation: "zones"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string
+          full_name: string | null
+          id: string
+          role: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          full_name?: string | null
+          id: string
+          role?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          full_name?: string | null
+          id?: string
+          role?: string
+        }
+        Relationships: []
+      }
       project_members: {
         Row: {
           display_order: number
@@ -429,84 +837,6 @@ export type Database = {
         }
         Relationships: []
       }
-      predictions: {
-        Row: {
-          created_at: string
-          disease_risk: number | null
-          flight_id: string
-          health_score: number | null
-          id: string
-          label: string | null
-          model: string
-          notes: string | null
-          sample_count: number | null
-          zone_id: string | null
-        }
-        Insert: {
-          created_at?: string
-          disease_risk?: number | null
-          flight_id: string
-          health_score?: number | null
-          id?: string
-          label?: string | null
-          model?: string
-          notes?: string | null
-          sample_count?: number | null
-          zone_id?: string | null
-        }
-        Update: {
-          created_at?: string
-          disease_risk?: number | null
-          flight_id?: string
-          health_score?: number | null
-          id?: string
-          label?: string | null
-          model?: string
-          notes?: string | null
-          sample_count?: number | null
-          zone_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "predictions_flight_id_fkey"
-            columns: ["flight_id"]
-            isOneToOne: false
-            referencedRelation: "flights"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "predictions_zone_id_fkey"
-            columns: ["zone_id"]
-            isOneToOne: false
-            referencedRelation: "zones"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      profiles: {
-        Row: {
-          created_at: string
-          email: string
-          full_name: string | null
-          id: string
-          role: string
-        }
-        Insert: {
-          created_at?: string
-          email: string
-          full_name?: string | null
-          id: string
-          role?: string
-        }
-        Update: {
-          created_at?: string
-          email?: string
-          full_name?: string | null
-          id?: string
-          role?: string
-        }
-        Relationships: []
-      }
       session_samples: {
         Row: {
           battery_v: number | null
@@ -586,7 +916,9 @@ export type Database = {
           ended_at: string | null
           id: string
           mode_at_start: string | null
+          operator_email: string | null
           operator_id: string | null
+          operator_name: string | null
           started_at: string
         }
         Insert: {
@@ -596,7 +928,9 @@ export type Database = {
           ended_at?: string | null
           id: string
           mode_at_start?: string | null
+          operator_email?: string | null
           operator_id?: string | null
+          operator_name?: string | null
           started_at?: string
         }
         Update: {
@@ -606,7 +940,9 @@ export type Database = {
           ended_at?: string | null
           id?: string
           mode_at_start?: string | null
+          operator_email?: string | null
           operator_id?: string | null
+          operator_name?: string | null
           started_at?: string
         }
         Relationships: [
@@ -735,6 +1071,7 @@ export type Database = {
           motor_m3: number | null
           motor_m4: number | null
           pitch_deg: number | null
+          point_id: string | null
           pressure_altitude_m: number | null
           raw_temp: number | null
           recorded_at: string
@@ -778,6 +1115,7 @@ export type Database = {
           motor_m3?: number | null
           motor_m4?: number | null
           pitch_deg?: number | null
+          point_id?: string | null
           pressure_altitude_m?: number | null
           raw_temp?: number | null
           recorded_at: string
@@ -821,6 +1159,7 @@ export type Database = {
           motor_m3?: number | null
           motor_m4?: number | null
           pitch_deg?: number | null
+          point_id?: string | null
           pressure_altitude_m?: number | null
           raw_temp?: number | null
           recorded_at?: string

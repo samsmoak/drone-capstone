@@ -4,7 +4,9 @@
   saved with no drone.
 - The manual flight system satisfies MissionFlight, the only surface the
   mission controller may use.
-- Until Hannah's body lands, the mission controller refuses to start.
+- The mission controller is built, so the session arms a mission and hands the
+  real controller the armed manual flight system (experiment/samuel: this was
+  "the skeleton refuses to start" until the body was built).
 """
 
 from __future__ import annotations
@@ -12,12 +14,13 @@ from __future__ import annotations
 import subprocess
 import sys
 
-import pytest
-
-from cropwatcher.flight.manual import ManualController
-from cropwatcher.mission.controller import MissionController, MissionError, MissionFlight
+from cropwatcher.flight.manual import ControlState, ManualController
+from cropwatcher.mission.controller import MissionController, MissionFlight, MissionState
+from cropwatcher.session import State
 from tests.fakes import FakeClock, FakeCommander
 from tests.mission.plans import mission
+from tests.mission.test_session_missions import make_rig
+from tests.test_session import FakeManual, wait_for
 
 
 def _imported_by(module: str) -> set[str]:
@@ -42,11 +45,44 @@ def test_the_manual_flight_system_is_a_mission_flight():
         assert hasattr(flight, name), name
 
 
-def test_the_skeleton_refuses_to_start_and_says_where_the_work_is():
-    flight = ManualController(FakeCommander(), ground_z=0.0, land=lambda z, d: None,
-                              clock=FakeClock())
-    controller = MissionController(mission(), flight, on_event=lambda e: None)
-    assert MissionController.BUILT is False
-    with pytest.raises(MissionError, match="handoffs/sprint-1/undone/mission-controller.txt"):
-        controller.start()
-    assert controller.current_point_id is None
+class FlyableFakeManual(FakeManual):
+    """The session tests' fake manual system, with the MissionFlight surface
+    the real controller reads and the one command start() gives."""
+
+    state = ControlState.ARMED
+    assisted = True
+    goal_active = True
+    operator_override = False
+    drift_m = 0.0
+    target = None
+    target_height = 0.0
+
+    def hold_at(self, height_m: float) -> None:
+        self.events.append(f"hold_at {height_m:.2f}")
+
+    def fly_to(self, x: float, y: float, height_m: float,
+               speed_m_s: float | None = None) -> None:
+        self.events.append("fly_to")
+
+
+def test_the_session_arms_a_mission_and_the_real_controller_takes_off(tmp_path, monkeypatch):
+    assert MissionController.BUILT is True
+    rig = make_rig(tmp_path, monkeypatch, controller=MissionController)
+    rig.link.manual_controller = FlyableFakeManual()
+    rig.session.run_mission("m1")
+    manual = rig.link.manual_controller
+    assert wait_for(lambda: any(e.startswith("hold_at") for e in manual.events))
+    assert manual.events[:2] == ["arm", "start"]
+    assert manual.events[2] == f"hold_at {mission().cruise_height_m:.2f}"
+    flying = rig.session.mission
+    assert isinstance(flying, MissionController)
+    assert flying.state is MissionState.TAKING_OFF
+    assert wait_for(lambda: (rig.session.snapshot().mission or {}).get("last_event", {})
+                    .get("kind") == "started")
+    flying.abort("the test is over")
+    assert flying.state is MissionState.ABORTED
+    # Bring the flight down and let the session's own processing of it finish,
+    # so nothing is still logging from a worker thread after the test ends.
+    manual.state = ControlState.LANDED
+    assert wait_for(lambda: rig.session.snapshot().state is State.READY)
+    assert rig.session.processing.wait_idle()

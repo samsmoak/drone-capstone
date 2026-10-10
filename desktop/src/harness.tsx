@@ -343,6 +343,15 @@ createRoot(document.getElementById("root")!).render(
         state: "holding", current_point_id: "P2", completed_point_ids: ["P1"],
         last_event: { kind: "hold_started", at_s: 31.2, point_id: "P2", detail: "Holding at P2 for 5 s — 4 cm off the point" },
       },
+      processing: {
+        on: true, chosen: false, last_flight_id: null, jobs: [],
+        live: { flight_id: "f-air", points: {
+          P1: { state: "done", verdict: "anomaly", reasons: ["Warmer than expected near P1"],
+                findings: [{ id: "x1", title: "Warmer than expected near P1", severity: "warning",
+                             sentence: "From 0:11 to 0:15, near P1, the temperature sensor read 3.8 °C above the drone's normal cooling curve.", signal: "temperature" }] },
+          P2: { state: "running" },
+        } },
+      },
     }, { step: 5, missionId: "m-long" })}
     {control("Auto · ③ Fly, landed", {
       state: "ready", mode: "auto", activity: null, assisted: true, message: null,

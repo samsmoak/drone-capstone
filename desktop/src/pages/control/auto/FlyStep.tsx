@@ -29,8 +29,9 @@ import {
 } from "@/lib/agent";
 import { formatDuration } from "@/lib/format";
 import { Button, Message, Panel, Spinner, StatusDot, type Tone } from "@/components/ui";
+import type { LivePoint } from "@/lib/agent";
 import { Field } from "../ControlPage";
-import { FlightResults, ProcessingSwitch } from "../DataPipeline";
+import { FlightResults } from "../DataPipeline";
 import { checkComplete } from "./CheckStep";
 import { dronePosition } from "./plan/MissionStep";
 import { flownPoints, landsAt, returnsHome, type PathSource } from "./plan/path";
@@ -197,9 +198,6 @@ export function FlyStep({ session, run, telemetry, mission, ambient, setAmbient,
         )}
         {!flying && (!blockers || blockers.length === 0) && why && <div className="w-full"><Message tone="warning" text={why} /></div>}
         {!flying && askError && <div className="w-full"><Message tone="critical" text={askError} /></div>}
-        <div className="w-full border-t border-[var(--border)] pt-2">
-          <ProcessingSwitch session={session} run={run} />
-        </div>
         {flying && (
           <p className="w-full text-xs">
             Use <strong>Land</strong> at the top (or <kbd>L</kbd>) to bring it down now. Any movement key takes the drone back from the mission.
@@ -250,15 +248,28 @@ export function FlyStep({ session, run, telemetry, mission, ambient, setAmbient,
             {flownPoints(mission).map((p) => {
               const done = progress?.completed_point_ids.includes(p.id) ?? false;
               const current = progress?.current_point_id === p.id;
+              const live = session.processing?.live?.points?.[p.id];
               return (
-                <li key={p.id} className="mono flex items-baseline gap-2 text-xs">
-                  <span aria-hidden="true" className="w-4 text-center"
-                        style={{ color: done || current ? "var(--primary)" : "var(--muted)" }}>
-                    {done ? "✓" : current ? "●" : "○"}
+                <li key={p.id} className="grid gap-0.5">
+                  <span className="mono flex flex-wrap items-baseline gap-2 text-xs">
+                    <span aria-hidden="true" className="w-4 text-center"
+                          style={{ color: done || current ? "var(--primary)" : "var(--muted)" }}>
+                      {done ? "✓" : current ? "●" : "○"}
+                    </span>
+                    <span className="font-semibold">{p.id}</span>
+                    <span className="min-w-0 wrap-anywhere text-[var(--muted)]">{p.label ?? ""}</span>
+                    <span className="sr-only">{done ? " — done" : current ? " — holding here now" : " — ahead"}</span>
+                    {live && <LiveVerdict live={live} />}
                   </span>
-                  <span className="font-semibold">{p.id}</span>
-                  <span className="min-w-0 wrap-anywhere text-[var(--muted)]">{p.label ?? ""}</span>
-                  <span className="sr-only">{done ? " — done" : current ? " — holding here now" : " — ahead"}</span>
+                  {live?.findings && live.findings.length > 0 && (
+                    <ul className="ml-6 grid gap-0.5">
+                      {live.findings.map((f) => (
+                        <li key={f.id} className="text-xs" title={f.sentence}>
+                          <StatusDot tone={LIVE_SEVERITY[f.severity].tone}>{`${LIVE_SEVERITY[f.severity].text} · ${f.title}`}</StatusDot>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </li>
               );
             })}
@@ -276,5 +287,35 @@ export function FlyStep({ session, run, telemetry, mission, ambient, setAmbient,
         </Panel>
       )}
     </div>
+  );
+}
+
+
+/** Story 4.9: a point's verdict while the mission flies on — said in words,
+ *  never by colour alone. The verdict after landing replaces it. */
+const LIVE_VERDICT: Record<NonNullable<LivePoint["verdict"]>, { tone: Tone; text: string }> = {
+  normal: { tone: "good", text: "Normal" },
+  anomaly: { tone: "critical", text: "Anomaly" },
+  insufficient_data: { tone: "idle", text: "Not enough data" },
+};
+
+const LIVE_SEVERITY: Record<"info" | "warning" | "critical", { tone: Tone; text: string }> = {
+  critical: { tone: "critical", text: "Critical" },
+  warning: { tone: "warning", text: "Warning" },
+  info: { tone: "idle", text: "Slight" },
+};
+
+function LiveVerdict({ live }: { live: LivePoint }) {
+  if (live.state === "queued" || live.state === "running") {
+    return <span className="text-[var(--muted)]">judging…</span>;
+  }
+  if (live.state === "failed" || !live.verdict) {
+    return <span className="text-[var(--muted)]" title={live.error ?? undefined}>not judged in flight</span>;
+  }
+  const v = LIVE_VERDICT[live.verdict];
+  return (
+    <span title={(live.reasons ?? []).join(" ")}>
+      <StatusDot tone={v.tone}>{v.text}</StatusDot>
+    </span>
   );
 }

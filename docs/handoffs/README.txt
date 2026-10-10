@@ -45,19 +45,23 @@ THE TICKETS — SPRINT 1
 
   Ticket                          Owner    Stories (planning PDF)     State
   ──────────────────────────────────────────────────────────────────────────────
-  undone/mission-controller.txt   Hannah   3.4, 3.5 (flying half),    can start
-                                           autonomous flight — the    now
-                                           controller
-  undone/mission-verification.txt Yordi    autonomous flight — the    can start
-                                           proof: simulated drone,    now
-                                           mission report, lab
-                                           flights, constants
-  undone/dpp-clean.txt            Kevin    4.2                        can start
-                                                                      now
-  undone/dpp-enhance.txt          Kevin    4.3 (and the colorize      can start
-                                           stretch)                   now
-  undone/dpp-classify.txt         Reagan   4.4, 4.6 (the classifier   can start
-                                           half)                      now
+  done/mission-controller.txt     Samuel,  3.4, 3.5 (flying half),    built —
+                                  Hannah   autonomous flight — the    Samuel's
+                                           controller                 body; #102
+                                                                      in history
+  done/mission-verification.txt   Samuel,  autonomous flight — the    built in
+                                  Yordi    proof: simulated drone,    simulation;
+                                           mission report, lab        lab rungs
+                                           flights, constants         open
+  done/dpp-clean.txt              Kevin,   4.2 — robust@1 replaced    built —
+                                  Samuel   hampel@1 (2026-10-09)      follow-ups
+                                                                      open
+  done/dpp-enhance.txt            Samuel,  4.3 — clahe@1; Kevin's     built —
+                                  Kevin    upscaler eval may follow   follow-ups
+                                                                      open
+  done/dpp-classify.txt           Samuel,  4.6 sensors — blocks@1;    sensors
+                                  Reagan   4.4 image model is Reagan's built; 4.4
+                                                                      open
   done/mission-planner.txt        Samuel   mission planning; 3.4      built —
                                            (holds ≥ 5 s)              follow-ups
                                                                       open

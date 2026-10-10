@@ -2,33 +2,46 @@
  * The data pipeline on the Control page: the DPP switch, and the result of
  * the last flight.
  *
- * THE SWITCH IS PER SESSION (backend/agent/cropwatcher/processing.py): on by
- * default in Auto — a mission's point is its verdicts — and off by default in
- * Manual; either can be flipped. It is read as a flight BEGINS, so flipping it
- * mid-flight is for the next one, and the switch says so. The agent keeps the
- * choice; this page only shows it (Session.processing) and asks to change it.
+ * THE SWITCH sits at the top of the page, in Auto and in Manual alike (the
+ * owner, 2026-10-09), and is ON by default in both. It can be turned off
+ * before a session starts or during one; the choice lasts until the session
+ * ends (backend/agent/cropwatcher/processing.py). It is read as a flight
+ * BEGINS, so flipping it mid-flight is for the next one, and the switch says
+ * so. The agent keeps the choice; this page only shows it
+ * (Session.processing) and asks to change it.
  *
  * THE RESULT has the four states of every async surface here, plus the two
  * the pipeline adds: being processed (queued, running), failed with the
  * pipeline's own words and a way to run it again, not processed (DPP was off)
  * with a way to process it now, and the verdicts — one per inspection point,
- * or one for a Manual flight ("flight"). Until the team's stages land every
- * verdict is "insufficient data — no classifier yet", which is the honest
- * answer (features/pipeline/data-pipeline.txt), and the panel says so.
+ * or one for a Manual flight ("flight") — then the FINDINGS: each stretch of
+ * the flight whose temperature or pressure departed from what was expected,
+ * worst first, in the pipeline's own words (features/pipeline/
+ * data-pipeline.txt). A version 1 result (before 2026-10-09) has none, and
+ * one from before the classifier existed reads "no classifier yet" — the panel
+ * says so.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { announceFindings } from "@/lib/os-notify";
 import type { Run } from "@/App";
-import { api, AgentError, type FlightResult, type ProcessingJob, type Session } from "@/lib/agent";
+import { api, AgentError, type FlightResult, type PipelineFinding, type ProcessingJob, type Session } from "@/lib/agent";
 import { formatTime } from "@/lib/format";
 import { Button, Message, Panel, Spinner, StatusDot, type Tone } from "@/components/ui";
 
 export function ProcessingSwitch({ session, run }: { session: Session; run: Run }) {
-  const on = session.processing?.on ?? false;
+  const on = session.processing?.on ?? true;
   const chosen = session.processing?.chosen ?? false;
   const signedOut = session.state === "signed_out";
   const flying = session.activity === "mission" || session.activity === "manual" || session.activity === "program";
-  const mode = session.mode === "auto" ? "Auto" : "Manual";
+  const inSession = session.session_id !== null;
+  const note = signedOut
+    ? "Sign in to change it."
+    : flying
+      ? "Changes apply to the next flight."
+      : chosen
+        ? inSession ? "Your choice until this session ends." : "Your choice for the session you start next."
+        : "On by default.";
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
       <button
@@ -46,10 +59,7 @@ export function ProcessingSwitch({ session, run }: { session: Session; run: Run 
         </span>
         Process flights (DPP): {on ? "on" : "off"}
       </button>
-      <span className="text-xs text-[var(--muted)]">
-        {flying ? "Changes apply to the next flight. " : ""}
-        {chosen ? "Your choice for this session." : `${mode}'s default — ${session.mode === "auto" ? "on" : "off"}.`}
-      </span>
+      <span className="text-xs text-[var(--muted)]">{note}</span>
     </div>
   );
 }
@@ -57,11 +67,19 @@ export function ProcessingSwitch({ session, run }: { session: Session; run: Run 
 /** Which flight to show: the session's most recent flight to land, with its
  *  job if it has one; else the most recent job (a flight processed by hand). */
 function lastFlight(session: Session): { id: string; job: ProcessingJob | null } | null {
-  const jobs = session.processing?.jobs ?? [];
+  // Flight jobs only: a session's own job and a point judged in flight are not
+  // a flight's result.
+  const jobs = (session.processing?.jobs ?? []).filter((j) => (j.kind ?? "flight") === "flight");
   const landed = session.processing?.last_flight_id ?? null;
   if (landed) return { id: landed, job: jobs.find((j) => j.flight_id === landed) ?? null };
   return jobs[0] ? { id: jobs[0].flight_id, job: jobs[0] } : null;
 }
+
+const SEVERITY: Record<PipelineFinding["severity"], { tone: Tone; text: string; rank: number }> = {
+  critical: { tone: "critical", text: "Critical", rank: 2 },
+  warning: { tone: "warning", text: "Warning", rank: 1 },
+  info: { tone: "idle", text: "Slight", rank: 0 },
+};
 
 const VERDICT: Record<string, { tone: Tone; text: string }> = {
   normal: { tone: "good", text: "Normal" },
@@ -70,19 +88,35 @@ const VERDICT: Record<string, { tone: Tone; text: string }> = {
 };
 
 export function FlightResults({ session, run, flightId }: { session: Session; run: Run; flightId?: string }) {
-  const found = flightId ? { id: flightId, job: session.processing?.jobs?.find((j) => j.flight_id === flightId) ?? null } : lastFlight(session);
+  const found = flightId ? { id: flightId, job: session.processing?.jobs?.find((j) => j.flight_id === flightId && (j.kind ?? "flight") === "flight") ?? null } : lastFlight(session);
   const [result, setResult] = useState<FlightResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const id = found?.id ?? null;
   const state = found?.job?.state ?? null;
+  // A job seen queued or running, then done, finished while the app was open:
+  // its findings are announced to the OS once (lib/os-notify.ts).
+  const seenRunning = useRef<string | null>(null);
+  const announce = useRef<string | null>(null);
+  useEffect(() => {
+    if (id && (state === "queued" || state === "running")) seenRunning.current = id;
+    if (id && state === "done" && seenRunning.current === id) {
+      announce.current = id;
+      seenRunning.current = null;
+    }
+  }, [id, state]);
 
   const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
     setError(null);
     try {
-      setResult(await api.flightResult(id));
+      const loaded = await api.flightResult(id);
+      setResult(loaded);
+      if (announce.current === id) {
+        announce.current = null;
+        void announceFindings(id, loaded.result.findings ?? []);
+      }
     } catch (e) {
       setResult(null);
       setError(e instanceof AgentError ? e.message : "The result could not be read.");
@@ -160,6 +194,27 @@ export function FlightResults({ session, run, flightId }: { session: Session; ru
           );
         })}
       </ul>
+      {r.findings && (
+        <div className="grid gap-1.5 border-t border-[var(--border)] pt-2">
+          <p className="text-xs font-semibold">
+            {r.findings.length === 0 ? "No findings — nothing departed from what was expected." : `Findings (${r.findings.length})`}
+          </p>
+          {r.findings.length > 0 && (
+            <ul className="grid gap-1.5">
+              {[...r.findings].sort((a, b) => SEVERITY[b.severity].rank - SEVERITY[a.severity].rank || a.t_start_s - b.t_start_s).map((f) => (
+                <li key={f.id} className="grid gap-0.5 border-l-2 border-[var(--border)] pl-2 text-xs">
+                  <span className="flex flex-wrap items-baseline justify-between gap-2">
+                    <span className="font-semibold">{f.title}</span>
+                    <StatusDot tone={SEVERITY[f.severity].tone}>{SEVERITY[f.severity].text}</StatusDot>
+                  </span>
+                  <span>{f.sentence}</span>
+                  <span className="text-[var(--muted)]">{f.image_note}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       {r.failures.length > 0 && (
         <ul className="grid gap-1">
           {r.failures.map((f, i) => (
@@ -175,11 +230,8 @@ export function FlightResults({ session, run, flightId }: { session: Session; ru
 /** The switch and the last flight's result, as one panel. */
 export function DataPipelinePanel({ session, run }: { session: Session; run: Run }) {
   return (
-    <Panel title="Data processing" note="Turns a flight's readings and frames into a verdict per inspection point." bodyClassName="grid gap-3 px-4 py-3">
-      <ProcessingSwitch session={session} run={run} />
-      <div className="border-t border-[var(--border)] pt-3">
-        <FlightResults session={session} run={run} />
-      </div>
+    <Panel title="Data processing" note="Turns a flight's readings and frames into a verdict per inspection point. The switch is at the top of the page." bodyClassName="grid gap-3 px-4 py-3">
+      <FlightResults session={session} run={run} />
     </Panel>
   );
 }

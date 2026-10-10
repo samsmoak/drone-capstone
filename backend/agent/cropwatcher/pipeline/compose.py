@@ -10,10 +10,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from cropwatcher.pipeline.contracts import Classifier, Cleaner, Enhancer, Interpreter
-from cropwatcher.pipeline.stages.classify.stub import StubClassifier
-from cropwatcher.pipeline.stages.clean.hampel import HampelCleaner
-from cropwatcher.pipeline.stages.enhance.stub import StubEnhancer
-from cropwatcher.pipeline.stages.interpret.labels import LabelInterpreter
+from cropwatcher.pipeline.stages.classify.blocks import BlocksClassifier
+from cropwatcher.pipeline.stages.classify.ground import GroundClassifier
+from cropwatcher.pipeline.stages.clean.robust import RobustCleaner
+from cropwatcher.pipeline.stages.enhance.clahe import ClaheEnhancer
+from cropwatcher.pipeline.stages.interpret.findings import FindingInterpreter
 
 
 @dataclass(frozen=True)
@@ -34,8 +35,16 @@ class Stages:
 
 def default_stages() -> Stages:
     return Stages(
-        cleaner=HampelCleaner(),          # Kevin: docs/handoffs/sprint-1/undone/dpp-clean.txt
-        enhancer=StubEnhancer(),          # Kevin: docs/handoffs/sprint-1/undone/dpp-enhance.txt
-        classifier=StubClassifier(),      # Reagan: docs/handoffs/sprint-1/undone/dpp-classify.txt
-        interpreter=LabelInterpreter(),   # Samuel
+        cleaner=RobustCleaner(),          # replaced hampel@1 (Kevin) on 2026-10-09
+        enhancer=ClaheEnhancer(),         # contrast, not resolution: ml/enhance-eval/RESULTS.txt
+        classifier=BlocksClassifier(),    # blocks against expected: ml/anomaly-eval/
+        interpreter=FindingInterpreter(), # events → findings and verdicts
     )
+
+
+def session_stages() -> Stages:
+    """A session around its flights: the same cleaner, enhancer and interpreter;
+    the ground classifier in place of the flight's (stages/classify/ground.py)."""
+    stages = default_stages()
+    return Stages(cleaner=stages.cleaner, enhancer=stages.enhancer,
+                  classifier=GroundClassifier(), interpreter=stages.interpreter)

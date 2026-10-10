@@ -19,10 +19,20 @@ WHERE IT LIVES
   backend/supabase/migrations/…0007_portfolio.sql            projects, team
   backend/supabase/migrations/20260917000008_gallery.sql     albums, items
   backend/supabase/migrations/20260917000009_site_pages.sql  editable wording
-  web/types/database.ts                                      generated types
-                                                             (0007's added by hand)
+  backend/supabase/migrations/20261009000015_owner_identity.sql   who ran it
+  backend/supabase/checks/owner_check.py                     its proof (10 checks)
+  web/types/database.ts                                      generated types —
+                                                             regenerated 2026-10-09
+                                                             with `supabase gen types
+                                                             typescript --local`; it
+                                                             had drifted (no
+                                                             telemetry.point_id)
 
-Applied to the hosted project (fuwojlqpavvfgmqardfo) through 0009.
+Applied to the hosted project (fuwojlqpavvfgmqardfo) through 0017 — 0015–0017
+on 2026-10-09 (`supabase db push --db-url` from .env.team's SUPABASE_DB_URL;
+the live list showed 0001–0014 already there). Verified read-only as the
+operator: the three new tables answer, every session (188) and flight (187)
+carries its owner, anonymous gets 401.
 
 
 THE TABLES
@@ -33,7 +43,32 @@ THE TABLES
                 This is what ties sensor and flight data to the machine that
                 produced it when two people fly two drones.
   sessions      one operation: who, which drone, which mode, when it started
-                and ended.
+                and ended. operator_email and operator_name: who ran it,
+                STAMPED BY THE DATABASE from profiles on every insert and
+                update (trigger stamp_session_owner, migration 20261009000015),
+                so a client can neither set nor change them, and the web shows
+                every owner while profiles stay "read own".
+  pipeline_results  ONE ROW PER PROCESSED FLIGHT (migration 20261009000016):
+                the whole result.json — verdicts per point, the cleaner's
+                flags [index, column, kind, reason], the tracks (observed and
+                expected per reading), the blocks, every frame's enhanced
+                copy, quality and label — plus findings_count and
+                worst_severity. Replaced when the flight is processed again.
+  pipeline_findings  ONE ROW PER FINDING: signal, severity, title, sentence,
+                start/end, observed/expected/delta/z, point_ids, position,
+                evidence_frames, image_support. The id is made on the laptop
+                from the flight and the stretch, so a re-process upserts.
+                Both: signed-in read; operators write (findings also delete —
+                a re-process retracts what it no longer finds); anon nothing.
+                Proof: backend/supabase/checks/results_check.py (11 checks).
+  notifications ONE ROW PER OPERATOR PER WARNING-OR-WORSE FINDING (migration
+                20261009000017), made by the trigger notify_operators_of_finding
+                AFTER INSERT on pipeline_findings — an upsert of an existing
+                finding inserts nothing, and (user_id, finding_id) is unique,
+                so a re-processed flight never notifies twice. Read and mark
+                read your own only (update grant on read_at alone); no client
+                inserts or deletes; in the Realtime publication. Proof:
+                backend/supabase/checks/notifications_check.py (16 checks).
   session_samples  the session's own vitals, one a second, flying or not:
                 PRIMARY KEY (session_id, seq), telemetry's column names where
                 they mean the same, `positioned`, and every stream variable in
@@ -42,7 +77,9 @@ THE TABLES
                 select, insert to authenticated, as telemetry — are 0014). Read by
                 /app/sessions (../frontend/operator-dashboard.txt).
   flights       belongs to a session. Carries mode, program, outcome,
-                abort_reason, ground_z_m, ambient_start, temp_unit, csv_path.
+                abort_reason, ground_z_m, ambient_start, temp_unit, csv_path,
+                and operator_email / operator_name stamped like sessions' from
+                created_by — or, when that is empty, the session's operator.
   telemetry     one row per 10 Hz sample, UNIQUE (flight_id, index), with the
                 position, attitude, motion, power and environment columns the
                 stream publishes.
@@ -92,7 +129,25 @@ INVARIANTS
   missions. Local only — they are not on the hosted project, and a local
   `supabase db reset` clears them. Do not read a local row count as real data.
 - Flight data never goes in git.
+- pipeline_session_results and pipeline_findings.scope (migration
+  20261009000018): a session's own pipeline result, one row per session; a
+  finding belongs to a flight (scope 'flight', flight_id set — every finding
+  before) or to a session (scope 'session', no flight). A check holds every
+  finding to one of the two; a trigger deletes a session's own findings with
+  the session, since findings.session_id is "on delete set null". Proved
+  locally (session_results_check.py 12/12); NOT YET on the hosted project.
 
 - telemetry.point_id (migration 20260928000012_telemetry_point_id.sql, text,
   indexed with flight_id where set): the inspection point a reading was taken
-  at. NOT YET APPLIED to the hosted project — `cd backend && supabase db push`.
+  at. Applied to the hosted project (this doc said otherwise until
+  2026-10-09: the live migration list had it).
+
+RELATED
+
+consumed-by       ../pipeline/results.txt
+                  pipeline_results, pipeline_findings and notifications hold
+                  what the agent's pipeline found
+shares-data-with  rls-and-grants.txt
+                  every table here has its policies and grants there
+shares-data-with  ../pipeline/session.txt
+                  pipeline_session_results, session-scope findings (0018)

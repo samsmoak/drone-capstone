@@ -1,9 +1,23 @@
 DATA PIPELINE — the contract every stage builds against
 =======================================================
 
-STATUS: BUILT (2026-09-28, branch feat/missions-and-pipeline). The authority is
+STATUS: VERSION 2 (2026-10-09, branch dpp/contract-v2; version 1 was built
+2026-09-28 on feat/missions-and-pipeline). The authority is
 backend/agent/cropwatcher/pipeline/contracts.py; this page describes it. If the
 two ever disagree, the CODE wins — tell Samuel so this page is corrected.
+
+WHAT VERSION 2 CHANGED, AND WHY (read this if you built against version 1)
+  - THE UNIT OF WORK IS THE FLIGHT. Clean, enhance and classify run ONCE over
+    the whole flight; every Reading and Frame carries its point_id. Reason:
+    an anomaly is a BLOCK of readings that departs from what was expected, and
+    a block can span two points or the transit between them — invisible to a
+    stage that only ever sees one point (v1 never analysed transit at all).
+  - interpret(data, clean, enhanced, classified, ctx) -> InterpretResult: one
+    PointResult per inspection point (ctx.points) plus the flight's findings.
+  - New types: FrameQuality (on EnhancedFrame), Track, Segment, Event (on
+    ClassifyResult), Finding, InterpretResult, FrameRecord (on FlightResult).
+  - FlagKind gains "implausible" and "untrusted".
+  - PIPELINE_VERSION "2". A v1 result.json still reads on the desktop.
 
 Read this before your own ticket. It is the agreement that lets three people
 build three stages separately and have them work together the first time they
@@ -35,12 +49,14 @@ with a verdict for each inspection point." That command exists:
   cropwatcher process --flight <flight id>     a flight on this laptop
   cropwatcher process --fixture                the test fixture (source checkout)
 
-THE UNIT OF WORK IS ONE INSPECTION POINT, not one row or one frame. The same
-stage code serves a run after the flight (batch, built) and, later, a run as
-each point completes (live, story 4.9: the mission controller's
-POINT_COMPLETE). Cleaning needs a window of readings to see a spike;
-classifying needs a point's frames together — both have exactly that. A flight
-with no mission is ONE point with id "flight" (contracts.WHOLE_FLIGHT).
+THE UNIT OF WORK IS THE FLIGHT (version 2), not one row, one frame or one
+point. The runner hands every stage the whole flight as one PointData whose
+point is "flight" (contracts.WHOLE_FLIGHT), transit included; each reading and
+frame says which inspection point it was taken at (point_id, None in transit),
+and ctx.points lists the mission's points in order (() with no mission). The
+same stage code serves a run after the flight (batch, built) and, later, a run
+over the flight so far (live, story 4.9). A stage must still accept ANY
+PointData — a single point's readings, or none.
 
 
 WHERE IT RUNS, AND WHY IT IS BUILT THIS WAY
@@ -108,7 +124,7 @@ WHERE THE FILES ARE
     sources.py            LocalFlightSource: the CSV, the session's frames in
                           the flight's time window, the plan flown
     sinks.py              LocalResultSink: results/<flight>/result.json, work/
-    runner.py             run_point, run_flight
+    runner.py             run_stages (once over the flight), run_flight
     compose.py            which implementation each stage uses  ← you edit one line
     stages/
       clean/stub.py       flags nothing                          ← Kevin adds his
@@ -134,15 +150,19 @@ Shared input
   FlightContext        flight_id, session_id, temp_unit ("C" | "F" — the unit
                        of EVERY temperature), ground_z_m, started_at (UTC),
                        workdir (the ONLY place a stage may write), mode
-                       ("batch" | "live")
+                       ("batch" | "live"), points (the mission's inspection
+                       points in order; () with no mission)
   InspectionPoint      id, label, x_m, y_m (absolute Lighthouse metres),
                        z_m (above the floor captured at takeoff)
   Reading              index (unique within the flight), recorded_at (UTC),
                        t_s (seconds since the flight's first row), values:
-                       Mapping[str, float | None] — numeric columns by name
+                       Mapping[str, float | None] — numeric columns by name,
+                       point_id (None in transit), text: the row's words
+                       (mode, thermal_state, event)
   Frame                seq, recorded_at, t_s, path (READ ONLY), width (324),
-                       height (244), x_m, y_m, z_m
-  PointData            point, readings (by index), frames (by seq; may be empty)
+                       height (244), x_m, y_m, z_m, point_id
+  PointData            point, readings (by index), frames (by seq; may be
+                       empty). The whole flight is one, with point "flight".
 
 The names in Reading.values are TelemetryRow's field names
 (cropwatcher/telemetry/row.py — the authority). The ones that matter:
@@ -164,21 +184,35 @@ Stage 1 — clean (story 4.2)            class Cleaner(Protocol)
   ReadingFlag(index, column, kind, reason)
                                        column None = the whole row (a gap)
                                        kind: missing | out_of_range | spike |
-                                             stuck | gap
+                                             stuck | gap | implausible (a
+                                             change no drone can make) |
+                                             untrusted (a position the drone
+                                             did not measure)
 
 Stage 2 — enhance (story 4.3)          class Enhancer(Protocol)
   enhance(data, ctx) -> EnhanceResult
   EnhanceResult(frames)                ONE PER INPUT FRAME, SAME ORDER
-  EnhancedFrame(frame, path, method, scale, note=None)
+  EnhancedFrame(frame, path, method, scale, note=None, quality=None)
                                        path None = not enhanced, use the
                                        original; then `note` says why
+  FrameQuality(sharpness, brightness, dark_share, bright_share, usable,
+               reason=None)            measured on the ORIGINAL; an unusable
+                                       frame must say why
 
 Stage 3 — classify (stories 4.4, 4.6)  class Classifier(Protocol)
   classify(data, clean, enhanced, ctx) -> ClassifyResult
-  ClassifyResult(images, sensors, features={})
+  ClassifyResult(images, sensors, features={}, tracks=(), segments=(), events=())
                                        images: one ImageVerdict per frame, in order
                                        sensors: one Label for the readings
                                        features: names carry units ("temp_max_c")
+                                       tracks: per signal, observed and expected
+                                         per reading index, the noise, the model
+                                       segments: the blocks found
+                                       events: the stretches that depart from
+                                         expected — one block, or adjacent
+                                         blocks departing the same way (delta,
+                                         z, peak, slope, points, mean position
+                                         when measured)
   ImageVerdict(seq, source, label)     source: "original" | "enhanced"
   Label(value, p_faulty, model, reason=None)
                                        value: normal | faulty | unknown
@@ -187,33 +221,50 @@ Stage 3 — classify (stories 4.4, 4.6)  class Classifier(Protocol)
                                        model: "<name>@<version>"
 
 Stage 4 — interpret (Samuel)           class Interpreter(Protocol)
-  interpret(data, clean, classified, ctx) -> PointResult
+  interpret(data, clean, enhanced, classified, ctx) -> InterpretResult
+  InterpretResult(points, findings=())  points: ONE PointResult PER
+                                       INSPECTION POINT, in ctx.points order
+                                       (just "flight" with no mission)
   PointResult(point_id, verdict, reasons, alerts=())
                                        verdict: normal | anomaly | insufficient_data
   Alert(point_id, severity, reason, evidence_readings, evidence_frames)
+  Finding(id, signal, severity, title, sentence, start/end index and time,
+          unit, observed, expected, delta, z, point_ids, x/y/z_m,
+          evidence_frames, image_support, image_note)
+                                       severity: info | warning | critical
+                                       image_support: supports | contradicts |
+                                         cannot_tell — the telemetry is the
+                                         evidence, the frames only support it
 
 The flight's result                    FlightResult, saved as JSON
   flight_id, pipeline_version, stages ({"clean": "name@version", …}),
-  created_at, points (one PointResult each), failures (StageFailure: point,
+  created_at, points (one PointResult each), failures (StageFailure: "flight",
   stage, reason), summary (per point: readings, frames, flags; "_transit":
-  readings that belonged to no point)
+  readings that belonged to no point), session_id, temp_unit, findings,
+  flags (every ReadingFlag), tracks, segments, frames (FrameRecord per frame:
+  seq, t_s, point_id, enhanced path relative to the workdir, method,
+  quality, label)
 
 
 WHAT THE RUNNER DOES WHEN A STAGE GOES WRONG (runner.py)
 ────────────────────────────────────────────────────────
 
 A stage that fails never takes the flight with it. The failure is recorded and
-the point goes as far as it honestly can:
+the flight goes as far as it honestly can:
 
-  clean fails       the point stops: insufficient_data. Analysing readings
-                    nobody checked is what cleaning exists to prevent.
+  clean fails       nothing is analysed: every point insufficient_data.
+                    Analysing readings nobody checked is what cleaning exists
+                    to prevent.
   enhance fails     the original frames are used.
   classify fails    every label "unknown", with the failure as the reason.
-  interpret fails   insufficient_data, with the failure as the reason.
+  interpret fails   every point insufficient_data, with the failure as the
+                    reason.
 
 A stage that BREAKS THE CONTRACT — a cleaner that edits or drops a reading, an
 enhancer that returns the wrong number of frames or writes outside workdir, a
-classifier that skips a frame — is treated exactly like one that failed.
+classifier that skips a frame, an interpreter that does not give every
+inspection point one verdict in order — is treated exactly like one that
+failed.
 
 Raise StageError("words for the operator") when your stage cannot run at all
 (a missing model file). Any other exception is logged with its traceback.
@@ -232,16 +283,19 @@ RULES EVERY STAGE FOLLOWS
     what is flagged.                                                  [checked]
  4. FILES ONLY UNDER ctx.workdir; originals byte-identical after.     [checked]
  5. SAME INPUT, SAME OUTPUT. Fix every random seed.                   [checked]
- 6. AN EMPTY POINT IS A RESULT, NOT AN EXCEPTION.                     [checked]
+ 6. AN EMPTY POINT IS A RESULT, NOT AN EXCEPTION. Stages are checked on the
+    whole flight, on each point's own readings, and on an empty point. [checked]
  7. FAIL SMALL, SAY WHY: one bad frame gets "unknown" and a reason; a stage
     that cannot run raises StageError. Never swallow an exception silently.
  8. UNITS: metres, seconds, hPa. Temperatures arrive in ctx.temp_unit —
     convert them yourself, and name converted features with their unit.
  9. VERSION HONESTLY: bump `version` whenever your output could change.
 10. LOGGING: log = logging.getLogger(__name__). No print.
-11. RUNTIME DEPENDENCIES are numpy, Pillow, opencv-contrib-python-headless and
-    onnxruntime — they go into the desktop installer. Anything else, ask
-    Samuel. Training in ml/ may use anything.
+11. RUNTIME DEPENDENCIES are numpy, Pillow, opencv-python-headless (the
+    contrib build only if a super-resolution model needs dnn_superres) and
+    onnxruntime — they go into the desktop installer (OpenCV took the frozen
+    agent from 43 to 86 MB, 2026-10-09). Anything else, ask Samuel. Training
+    in ml/ may use anything.
 12. TIME: measure your stage per point on the lab laptop and put it in the PR.
     Targets: clean < 0.2 s; enhance and classify each < 2 s for 20 frames.
 
@@ -271,8 +325,8 @@ MODELS.json (a JSON list; empty today):
 HOW YOU PLUG IN
 ───────────────
 
-1. Put your class in your stage's folder: stages/clean/hampel.py →
-   class HampelCleaner (with `name` and `version`).
+1. Put your class in your stage's folder: stages/clean/robust.py →
+   class RobustCleaner (with `name` and `version`).
 2. Add it to the list in tests/pipeline/conformance.py. Every check in
    test_conformance.py now runs against it.
 3. Change the one line in compose.py from the stub to your class.

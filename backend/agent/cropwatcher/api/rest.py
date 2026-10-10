@@ -73,7 +73,7 @@ from cropwatcher.processing import FLIGHT_ID
 from cropwatcher.session import Mode, Session, SessionError, State
 from cropwatcher.sync.cloud import SupabaseCloud
 from cropwatcher.sync.outbox import Outbox
-from cropwatcher.sync.syncer import Syncer
+from cropwatcher.sync.syncer import Syncer, close_orphaned_flights
 
 log = logging.getLogger(__name__)
 
@@ -354,6 +354,12 @@ def _restore_sign_in() -> None:
 @asynccontextmanager
 async def lifespan(api: FastAPI):
     agent.hub.bind(asyncio.get_running_loop())
+    # What the last run left unfinished is finished — flights it was recording
+    # when the app closed are closed (sync/syncer.py), and below, flights it was
+    # processing are processed again. Off in tests (CROPWATCHER_RESUME=0).
+    resume = os.environ.get("CROPWATCHER_RESUME", "1").strip() != "0"
+    if resume:
+        close_orphaned_flights(agent.outbox)
     agent.syncer.start()
     # Signing back in is a network call; the API must answer /health while it
     # happens, so it runs beside startup rather than in front of it.
@@ -364,6 +370,13 @@ async def lifespan(api: FastAPI):
     if os.environ.get("CROPWATCHER_STANDBY", "1").strip() != "0":
         agent.session.start_standby()
         threading.Thread(target=agent.watchdog, name="camera-watchdog", daemon=True).start()
+    # Flights the last run left half-processed (the app closed first) are
+    # processed again, in the background. NOT in Agent(): that is built when
+    # this module is imported, and a test importing it must never start
+    # processing the laptop's real flights. CROPWATCHER_RESUME=0 turns it off.
+    if resume:
+        threading.Thread(target=agent.session.resume_processing, daemon=True,
+                         name="resume-processing").start()
     log.info("agent API on %s:%d", DEFAULT_HOST, DEFAULT_PORT)
     yield
     # A SIGTERM or Ctrl+C ends the session the same way closing the app does,
