@@ -1,10 +1,13 @@
 UPSCALING EVAL — which enhancer the pipeline's stage 2 runs
 =========================================================
 
-The evaluation behind docs/handoffs/sprint-1/undone/dpp-enhance.txt, steps 1–3:
+The evaluation behind docs/handoffs/sprint-1/done/dpp-enhance.txt, steps 1–3:
 score each candidate enhancer on real images, look for invented detail, and
-pick one by the numbers. Nothing here runs on the agent; the winner is copied
-into backend/agent/cropwatcher/pipeline/stages/enhance/ as measured.
+pick one by the numbers. RESULTS.txt has the table, the winner and why.
+
+Nothing here runs on the agent. The other way round: methods.py imports the
+winner's steps from backend/agent/cropwatcher/pipeline/stages/enhance/espcn.py,
+so the method scored here is the code the pipeline runs.
 
 
 SET UP (once)
@@ -19,9 +22,12 @@ RUN (per set of images)
 
   .venv/bin/python prepare.py --src data/originals --name camera-frames --protocol self --mask crosshair
   .venv/bin/python score.py   --set camera-frames
-  .venv/bin/python sheet.py   --set camera-frames --before-after espcn-x2
-  .venv/bin/python sheet.py   --set camera-frames --blind espcn-x2,fsrcnn-x2,realesrgan-x4,clahe-unsharp
-  .venv/bin/python sheet.py   --set camera-frames --compare espcn-x2,espcn-x2+clahe-1.0-0.0
+  .venv/bin/python sheet.py   --set camera-frames --before-after espcn-x2+clahe-1.5+edge-0.6
+  .venv/bin/python sheet.py   --set camera-frames --blind espcn-x2,espcn-x2+clahe-1.5+edge-0.6,realesrgan-x4
+  .venv/bin/python sheet.py   --set camera-frames --compare espcn-x2,espcn-x2+clahe-1.5+edge-0.6
+
+  score.py merges: a run of some methods replaces their rows and keeps the
+  rest, so the table always covers every method scored so far.
 
   When the story 4.1 photos arrive, put them in data/photos/ and run the same
   three with --src data/photos --name photos --protocol reference (no --mask).
@@ -31,7 +37,7 @@ RUN (per set of images)
 WHAT IS COMMITTED, AND WHAT IS NOT
 
   committed   the scripts; manifests/<set>.csv (each image's name, sha256 and
-              crop); before-after-<set>.jpg; RESULTS.txt once there is a winner
+              crop); before-after-<set>.jpg; RESULTS.txt
   gitignored  data/ — the images, the prepared sets, the models, every run's
               output, and the blind sheet's key. Datasets are never committed
               (dpp-contract.txt, MODEL FILES), and the repository is public.
@@ -69,13 +75,6 @@ THE METRICS — score.py's docstring defines each column
   nearly noise-free, so even plain interpolation scores 1.2 there.
 
 
-KNOWN LIMITS (2026-10-07)
+KNOWN LIMITS
 
-  - The camera-frames truth has been through the viewer's enlargement and our
-    shrink, so it is softer than a raw frame; every method is judged against
-    a smooth truth, which favours methods that add nothing.
-  - SR networks were trained on bicubic-shrunk photos; prepare.py shrinks by
-    area averaging, closer to a sensor. The mismatch costs them a little.
-  - Times are this machine's (i9-11900H, 16 threads). The ticket wants the lab
-    laptop's: re-run score.py there before RESULTS.txt is final.
-  - 15 images, not the ticket's 30.
+  RESULTS.txt, KNOWN LIMITS — of the method and of this evaluation.
