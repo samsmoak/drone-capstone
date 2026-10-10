@@ -61,7 +61,7 @@ class TestRunning:
         result, where = run(tmp_path)
         assert [p.point_id for p in result.points] == ["P1", "P2", "P3"]
         assert all(p.verdict == "insufficient_data" for p in result.points)
-        assert result.stages == {"clean": "stub@0", "enhance": "stub@0",
+        assert result.stages == {"clean": "hampel@1", "enhance": "stub@0",
                                  "classify": "stub@0", "interpret": "labels@1"}
         saved = json.loads(Path(where).read_text())
         assert saved["flight_id"] == FLIGHT
