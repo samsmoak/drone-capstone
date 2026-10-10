@@ -6,6 +6,7 @@ agrees with what the simulator did (mission-verification.txt, PART 2)."""
 from __future__ import annotations
 
 import csv
+import inspect
 import json
 import logging
 import math
@@ -24,13 +25,14 @@ from cropwatcher.mission.controller.mission_controller import (
     SETTLE_TIMEOUT_S,
     TRANSIT_MARGIN_S,
 )
-from cropwatcher.mission.plan.mission import InspectionPoint, Mission
+from cropwatcher.mission.plan.mission import SPEED_PRESETS_M_S, InspectionPoint, Mission
 from cropwatcher.mission.review import (
     StampRow,
     TraceRow,
     as_json,
     as_text,
     load,
+    planned_leg_s,
     review,
     suggest,
 )
@@ -234,6 +236,59 @@ def test_a_flight_that_ended_early_reports_the_points_it_never_flew():
     three = plan(points=(*plan().points, InspectionPoint("P3", 0.0, 1.0, H, 5.0)))
     r3 = review(three, rows, stamps, flight_id="f")
     assert any("ended before it" in n for n in r3.points[2].notes)
+
+
+def test_a_flight_that_ended_early_says_what_stopped_it():
+    r = review(plan(), hand_trace(last=180), hand_stamps(last=180), flight_id="f")
+    assert any("What stopped it: the trace ends at 18.0 s with the loop flying" in n
+               for n in r.points[1].notes)
+
+
+def test_the_operator_taking_over_is_named_with_the_keys_and_the_time():
+    rows = hand_trace(last=180)
+    last = rows[-1].target
+    assert last is not None
+    rows += [TraceRow(t_s=i / 10, state="flying", keys="forward",
+                      target=(last[0] - 0.01 * (i - 180), last[1], H), estimate=None)
+             for i in range(181, 200)]
+    r = review(plan(), rows, hand_stamps(last=199), flight_id="f")
+    assert r.points[1].reached is False
+    assert any("the operator took over (forward held at 18.1 s)" in n
+               for n in r.points[1].notes)
+
+
+# ── planned time is the planner's (from #101) ─────────────────────────────
+
+
+@pytest.mark.parametrize("speed", SPEED_PRESETS_M_S)
+@pytest.mark.parametrize("returns", [True, False])
+def test_planned_legs_add_up_to_the_planners_estimate(speed, returns):
+    """So the report and the battery check cannot quietly disagree."""
+    m = mission(speed_m_s=speed, return_to_start=returns)
+    settle = inspect.signature(Mission.estimated_duration_s).parameters["settle_s"].default
+    cruise = m.cruise_height_m
+    stops = [(*m.home, cruise), *((p.x_m, p.y_m, p.z_m) for p in m.points)]
+    if returns:
+        stops.append((*m.home, cruise))
+    total = cruise / CLIMB_RATE_M_S
+    total += sum(planned_leg_s(a, b, m) + settle for a, b in zip(stops, stops[1:], strict=False))
+    total += sum(p.hold_s for p in m.points)
+    total += stops[-1][2] / CLIMB_RATE_M_S + 1.0
+    assert total == pytest.approx(
+        m.estimated_duration_s(move_speed_m_s=MOVE_SPEED_M_S, climb_rate_m_s=CLIMB_RATE_M_S),
+        abs=1e-9)
+
+
+def test_a_steady_mission_plans_its_legs_at_its_own_speed():
+    steady = plan().edited(speed_m_s=min(SPEED_PRESETS_M_S))
+    r = review(steady, hand_trace(), hand_stamps(), flight_id="f")
+    assert r.points[0].planned_s == pytest.approx(
+        1.0 / min(MOVE_SPEED_M_S, steady.speed_m_s))
+
+
+def test_a_climb_can_outlast_the_distance():
+    assert planned_leg_s((0, 0, 0.2), (0.01, 0, 0.8), plan()) == pytest.approx(
+        0.6 / CLIMB_RATE_M_S)
 
 
 def test_no_trace_is_said_in_words_and_the_hold_still_comes_from_the_csv():

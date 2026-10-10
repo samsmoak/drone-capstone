@@ -166,6 +166,39 @@ class Suggestion:
 # ── the calculation, over rows ────────────────────────────────────────────
 
 
+def planned_leg_s(a: Spot, b: Spot, plan: Mission) -> float:
+    """The planner's time for one leg, exactly as Mission.estimated_duration_s
+    counts it: the horizontal distance at the mission's speed (never faster
+    than the flight system moves) or the height change at the climb rate,
+    whichever is longer. Not leg / MOVE_SPEED_M_S: a Steady mission travels
+    slower than that, and a leg that changes height can take longer than its
+    distance says. Settling and holding are not part of the leg. (From #101.)"""
+    speed = min(MOVE_SPEED_M_S, plan.speed_m_s)
+    horizontal = math.hypot(b[0] - a[0], b[1] - a[1]) / speed
+    vertical = abs(b[2] - a[2]) / CLIMB_RATE_M_S
+    return max(horizontal, vertical)
+
+
+def what_happened(rows: Sequence[TraceRow], after_s: float) -> str:
+    """The first thing, from `after_s` on, that stopped the flight going on:
+    the operator's keys, a landing, a stop — or the trace simply ending.
+    (From #101.)"""
+    later = [r for r in rows if r.t_s >= after_s]
+    for row in later:
+        if row.keys:
+            return f"the operator took over ({row.keys} held at {row.t_s:.1f} s)"
+        if row.state in ("landing", "landed"):
+            return (f"the flight system began landing at {row.t_s:.1f} s (a guard, the "
+                    f"dead-man, a timeout or Land)")
+        if row.state == "stopped":
+            return f"an emergency stop at {row.t_s:.1f} s"
+        if row.state == "idle":
+            return f"the drone disarmed at {row.t_s:.1f} s"
+    if not later:
+        return "the trace ends here"
+    return f"the trace ends at {later[-1].t_s:.1f} s with the loop {later[-1].state or 'in no state'}"
+
+
 def review(plan: Mission, trace: Sequence[TraceRow] | None, stamps: Sequence[StampRow], *,
            flight_id: str) -> FlightReview:
     """What happened at each point of `plan` (the mission AS FLOWN), from the
@@ -188,7 +221,7 @@ def review(plan: Mission, trace: Sequence[TraceRow] | None, stamps: Sequence[Sta
     for point in plan.points:
         spot: Spot = (point.x_m, point.y_m, point.z_m)
         leg = LegReview(to=point.id, label=point.label, leg_m=math.dist(previous, spot),
-                        planned_s=math.dist(previous, spot) / MOVE_SPEED_M_S,
+                        planned_s=planned_leg_s(previous, spot, plan),
                         hold_required_s=point.hold_s)
         result.legs.append(leg)
         if ended_early:
@@ -203,6 +236,8 @@ def review(plan: Mission, trace: Sequence[TraceRow] | None, stamps: Sequence[Sta
             ended_early = True
             if not rows:
                 leg.notes.append("Never held, and there is no trace to say how close it got.")
+            else:
+                leg.notes.append(f"What stopped it: {what_happened(rows, search_from)}.")
             continue
         previous = spot
         search_from = held[-1] if held else (reach if reach is not None else search_from)
@@ -210,7 +245,7 @@ def review(plan: Mission, trace: Sequence[TraceRow] | None, stamps: Sequence[Sta
     if plan.return_to_start and not ended_early:
         leg = LegReview(to="start", label="back over the start",
                         leg_m=math.dist(previous, start),
-                        planned_s=math.dist(previous, start) / MOVE_SPEED_M_S)
+                        planned_s=planned_leg_s(previous, start, plan))
         result.legs.append(leg)
         if rows:
             leg.reached = _transit(leg, rows, previous, start, search_from) is not None
