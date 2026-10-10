@@ -84,7 +84,13 @@ def zoom(img: np.ndarray, x: int, y: int) -> np.ndarray:
 
 def labelled(img: np.ndarray, text: str) -> np.ndarray:
     bar = np.full((LABEL_H, img.shape[1]), WHITE, np.uint8)
-    cv2.putText(bar, text, (4, LABEL_H - 7), cv2.FONT_HERSHEY_SIMPLEX, 0.45, BLACK, 1, cv2.LINE_AA)
+    # shrunk to fit, so a long method name is never cut off at the panel's edge
+    scale = 0.45
+    while scale > 0.2 and cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, scale, 1)[0][0] > (
+        img.shape[1] - 8
+    ):
+        scale -= 0.01
+    cv2.putText(bar, text, (4, LABEL_H - 7), cv2.FONT_HERSHEY_SIMPLEX, scale, BLACK, 1, cv2.LINE_AA)
     return np.vstack([bar, img])
 
 
