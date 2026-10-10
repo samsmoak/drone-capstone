@@ -1,1 +1,14 @@
-[]
+[
+  {
+    "name": "espcn-x2",
+    "version": "2026-10-07",
+    "file": "ESPCN_x2.pb",
+    "sha256": "59f77351e1d7c0057bf6fe088b4a8a07e42c468c8c8aebb674a6b4ea1823221d",
+    "source": "https://github.com/fannymonori/TF-ESPCN/raw/master/export/ESPCN_x2.pb, linked from OpenCV's dnn_superres documentation; pinned 2026-10-07 and scored in ml/upscaling-eval/ (RESULTS.txt)",
+    "license": "Apache-2.0 (github.com/fannymonori/TF-ESPCN)",
+    "runtime": "OpenCV dnn_superres (opencv-contrib-python-headless), not ONNX Runtime: run as it was measured; see docs/features/pipeline/image-enhancement.txt",
+    "input": "8-bit grayscale repeated to BGR; OpenCV runs the network on the Y channel",
+    "output": "the frame at 2x width and height",
+    "used_by": "cropwatcher/pipeline/stages/enhance/espcn.py"
+  }
+]

@@ -15,6 +15,11 @@ dependencies = [
     # installed through cflib (numpy~=2.2); declared so the stage does not
     # depend on another package's choice.
     "numpy>=2.2",
+    # The data pipeline's enhancer (pipeline/stages/enhance/espcn.py): ESPCN
+    # through dnn_superres, which only the CONTRIB build has, and CLAHE. The
+    # headless build, since the agent opens no windows. Major version pinned:
+    # the enhancer was measured on 5.0 (ml/upscaling-eval/RESULTS.txt).
+    "opencv-contrib-python-headless>=5.0,<6",
     # Setting a base station's channel over its micro-USB port (flight/
     # basestation.py) — what Bitcraze's client does in "Set BS channel".
     "pyserial>=3.5",
