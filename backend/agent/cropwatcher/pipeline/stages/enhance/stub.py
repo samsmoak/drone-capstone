@@ -1,7 +1,8 @@
 """The placeholder enhancer: every frame passes through as it was taken.
 
 path=None means "not enhanced — use the original", which is exactly true.
-Replaced by Kevin's enhancer (docs/handoffs/sprint-1/undone/dpp-enhance.txt).
+The pipeline runs EspcnEnhancer (espcn.py) instead; this stays as the
+contract's simplest conforming enhancer, which the classifier tests use.
 """
 
 from __future__ import annotations

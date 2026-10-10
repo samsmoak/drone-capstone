@@ -18,11 +18,12 @@ from __future__ import annotations
 from cropwatcher.pipeline.stages.classify.stub import StubClassifier
 from cropwatcher.pipeline.stages.clean.hampel import HampelCleaner
 from cropwatcher.pipeline.stages.clean.stub import StubCleaner
+from cropwatcher.pipeline.stages.enhance.espcn import EspcnEnhancer
 from cropwatcher.pipeline.stages.enhance.stub import StubEnhancer
 
 #: Add your cleaner here (Kevin).
 CLEANERS = [StubCleaner, HampelCleaner]
 #: Add your enhancer here (Kevin).
-ENHANCERS = [StubEnhancer]
+ENHANCERS = [StubEnhancer, EspcnEnhancer]
 #: Add your classifier here (Reagan).
 CLASSIFIERS = [StubClassifier]
