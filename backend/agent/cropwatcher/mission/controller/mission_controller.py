@@ -28,8 +28,8 @@ WHAT IT DOES
 
 THIS BODY IS SAMUEL'S (2026-09-30, landed on main 2026-10-10), built to THE
 SPEC in docs/handoffs/sprint-1/done/mission-controller.txt — every rule is
-cited by its number below (S1, T8, E5 ...). Hannah's body for the same ticket
-(#102) is in the history; this one was kept (that ticket's STATUS says why).
+cited by its number below (S1, T8, E5 ...). Hannah's #102 for the same ticket
+was merged alongside it; the team kept one controller.
 
 HOW IT KEEPS THE SPEC'S PROMISES ACROSS THREADS
     One lock guards the state machine, and every command to the flight

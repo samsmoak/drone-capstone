@@ -1,13 +1,15 @@
 ================================================================================
 ENHANCE — clahe@1: a clearer copy of every frame, and how usable each one is
-Last verified: 2026-10-09 against docs/pipeline-v2 — tests/pipeline/
-test_enhance.py, ml/enhance-eval/evaluate.py on 600 real frames, the frozen
-agent's self-test (cv2), frames compared side by side in the web app.
+Last verified: 2026-10-10 against main (#104) — clahe.py unchanged but for
+its pointer to ml/upscaling-eval/. Before that, 2026-10-09 against
+docs/pipeline-v2 — tests/pipeline/test_enhance.py, ml/enhance-eval/evaluate.py
+on 600 real frames, the frozen agent's self-test (cv2), frames compared side
+by side in the web app.
 SOURCE: backend/agent/cropwatcher/pipeline/stages/enhance/clahe.py
 ================================================================================
 
 --------------------------------------------------------------------------------
-STATUS  (Last verified: 2026-10-09)
+STATUS  (Last verified: 2026-10-10)
 --------------------------------------------------------------------------------
   agent     BUILT — clahe@1 (Samuel)
   web       BUILT — Original / Enhanced / Side by side (results.txt)
