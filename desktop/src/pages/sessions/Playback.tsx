@@ -84,11 +84,15 @@ function seconds(t: number): string {
   return `${t.toFixed(1)} s`;
 }
 
-export function FlightPlaybackView({ flightId, title, onBack, startAt = 0, startFullScreen = false }: {
+export function FlightPlaybackView({
+  flightId, title, onBack, backLabel = "← Back to the session", startAt = 0, startFullScreen = false,
+}: {
   flightId: string;
   /** What the flight is called on the page it was opened from. */
   title: string;
   onBack: () => void;
+  /** Where Back goes, in words. */
+  backLabel?: string;
   /** The layout harness opens it mid-flight and full screen; the app does not. */
   startAt?: number;
   startFullScreen?: boolean;
@@ -108,7 +112,7 @@ export function FlightPlaybackView({ flightId, title, onBack, startAt = 0, start
     <div className="grid gap-4">
       <div>
         <button type="button" onClick={onBack} className="min-h-11 text-sm font-medium text-[var(--muted)] hover:text-[var(--foreground)]">
-          ← Back to the session
+          {backLabel}
         </button>
       </div>
       {state.kind === "loading" && <Spinner label="Loading the flight's recording…" />}
@@ -206,7 +210,9 @@ function Player({ data, title, startAt, startFullScreen }: {
     <>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <p className="eyebrow">Playback · recorded, not simulated</p>
+          <p className="eyebrow">
+            Playback · recorded, not simulated · {data.source === "supabase" ? "from Supabase" : "from this computer"}
+          </p>
           <h2 className="wrap-anywhere text-lg font-bold text-[var(--heading)]">{label}</h2>
           <p className="text-xs">
             {data.mission ? `The plan as flown, ${data.mission.points.length} point${data.mission.points.length === 1 ? "" : "s"}` : "No plan kept"}

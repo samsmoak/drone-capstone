@@ -1,6 +1,7 @@
 ================================================================================
 THE MISSION CONTROLLER — how a saved mission is flown
-Last verified: 2026-10-10 against integrate/public (experiment/samuel with
+Last verified: 2026-10-11 — re-read after .github/workflows/agent-tests.yml changed for mission playback; it runs this doc's tests in CI, as section 6 says. Before that:
+2026-10-10 against integrate/public (experiment/samuel with
 #101, #102, #103 merged) — tests/mission/ and the whole agent suite: 1438
 passed; review.py's planned time and what_happened re-read against the code.
 No radio: the hardware gates were not run.

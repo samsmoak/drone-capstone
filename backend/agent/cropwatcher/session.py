@@ -84,7 +84,7 @@ from cropwatcher.safety.flight_guard import Action as GuardAction
 from cropwatcher.safety.flight_guard import Reason as GuardReason
 from cropwatcher.safety.flight_guard import Verdict as GuardVerdict
 from cropwatcher.safety.flight_guard import assess_positioning, position_trusted, station_ids
-from cropwatcher.sync import auth_store
+from cropwatcher.sync import auth_store, flight_playback
 from cropwatcher.sync.cloud import AuthError, Cloud, CloudTimeout, Operator
 from cropwatcher.sync.outbox import Kind, Outbox, new_id
 from cropwatcher.sync.syncer import Syncer
@@ -1175,6 +1175,12 @@ class Session:
         self._set(state=State.READY, activity=None, retry_required=not completed,
                   message=result.message if completed else
                   f"{result.message} Press Retry to check the drone again before flying.")
+
+    @property
+    def outbox(self) -> Outbox:
+        """The records this session writes for upload — read by the API's
+        flight list to say how far a flight's upload has got."""
+        return self._outbox
 
     # ── auto: missions ───────────────────────────────────────────────────
 
@@ -2282,6 +2288,11 @@ class Session:
             "outcome": outcome, "error": error, "abort_reason": abort_reason,
             "rows_written": rows,
         }))
+        # Its plan as flown and control trace, so it plays back on any computer
+        # (sync/flight_playback.py). The trace is already closed: the manual and
+        # mission paths call _stop_trace just before this; a program flight
+        # (the hover test) never starts one.
+        flight_playback.queue(self._outbox, flight_id)
         if self._syncer is not None:
             self._syncer.trigger()
         self._last_flight_id = flight_id

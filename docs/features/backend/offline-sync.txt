@@ -18,6 +18,8 @@ WHERE IT LIVES
   backend/agent/cropwatcher/sync/syncer.py   when and in what order
   backend/agent/cropwatcher/sync/samples.py  a session's samples.csv as rows
   backend/agent/cropwatcher/sync/results.py  a flight's result.json as rows
+  backend/agent/cropwatcher/sync/flight_playback.py  a flight's plan as flown and
+                                             control trace, for playback
   backend/agent/tests/test_results_upload.py
   backend/agent/cropwatcher/paths.py         where the data dir is
   backend/agent/cropwatcher/telemetry/sinks.py  CSV first, then cloud
@@ -28,7 +30,9 @@ THE ORDER (records reference each other)
 
   audit events -> drones -> sessions -> flights -> telemetry rows -> CSV file
   -> camera frames -> session vitals (sync/samples.py, Kind.SAMPLES)
-  -> pipeline results (LAST: sync/results.py, Kind.RESULTS)
+  -> pipeline results (sync/results.py, Kind.RESULTS)
+  -> playback: plan as flown and control trace (LAST: sync/flight_playback.py,
+     Kind.PLAYBACK — migration 20261011000019)
 
 Session vitals go last because their table (migration 20261006000013) may not
 exist yet: until it does that step fails with "apply migration
@@ -46,6 +50,17 @@ pipeline_findings on their ids, and deletes the flight's findings the new
 result no longer makes. Processing a flight again re-queues it, which resets
 the cursor and replaces what was uploaded. Proved against the local stack
 with the real client, 2026-10-09.
+
+Playback goes last of all (migration 20261011000019), for the same reason:
+one record per flight (Kind.PLAYBACK), queued when the flight ends and — for
+flights flown before it existed — when the agent starts (queue_past_flights).
+It holds only the flight id, a plan_sent flag and a cursor: the files are
+found when it is sent (playback.files_of — one rule for where a flight's files
+are). It waits for the flight's own row, sends the plan once, then the trace
+from the cursor in 500-row batches, and is given up — not retried every pass —
+when Supabase refuses it by policy (a flight another account flew) or the
+files are gone. Proved against the local stack with the real client and a real
+lab flight (fdd57690), 2026-10-11.
 
 Audit events deliberately have NO foreign keys, so they can go first and never
 wait for a flight row that may not exist yet.
@@ -126,7 +141,11 @@ RELATED
 
 consumed-by       ../pipeline/results.txt
                   Kind.RESULTS: a processed flight's result, findings and
-                  enhanced frames, uploaded last in a pass
+                  enhanced frames, uploaded near the end of a pass
+consumed-by       ../desktop/mission-playback.txt
+                  Kind.PLAYBACK: a flight's plan as flown and control trace,
+                  last in a pass; queued at flight end and, for flights flown
+                  before it existed, when the agent starts
 consumed-by       ../pipeline/session.txt
                   Kind.SESSION_RESULTS: a session's own result, after the
                   session's row, last in a pass

@@ -71,8 +71,9 @@ from cropwatcher.mission.plan.validate import (
 from cropwatcher.paths import data_dir, results_dir
 from cropwatcher.processing import FLIGHT_ID
 from cropwatcher.session import Mode, Session, SessionError, State
-from cropwatcher.sync.cloud import SupabaseCloud
-from cropwatcher.sync.outbox import Outbox
+from cropwatcher.sync import flight_playback as playback_upload
+from cropwatcher.sync.cloud import CloudError, SupabaseCloud
+from cropwatcher.sync.outbox import Kind, Outbox
 from cropwatcher.sync.syncer import Syncer, close_orphaned_flights
 
 log = logging.getLogger(__name__)
@@ -360,6 +361,10 @@ async def lifespan(api: FastAPI):
     resume = os.environ.get("CROPWATCHER_RESUME", "1").strip() != "0"
     if resume:
         close_orphaned_flights(agent.outbox)
+        # Flights flown before playback's upload existed get theirs queued
+        # once (sync/flight_playback.py): a teammate's past flights reach
+        # Supabase the first time their updated app starts.
+        playback_upload.queue_past_flights(agent.outbox)
     agent.syncer.start()
     # Signing back in is a network call; the API must answer /health while it
     # happens, so it runs beside startup rather than in front of it.
@@ -744,21 +749,68 @@ def read_samples(
         raise HTTPException(status_code=404, detail="No such session on this computer.") from None
 
 
+def _signed_in_cloud() -> SupabaseCloud | None:
+    """The cloud client when someone is signed in — what the syncer uses."""
+    return agent.cloud if getattr(agent.cloud, "operator", None) is not None else None
+
+
+def _upload_state(flight_id: str) -> str | None:
+    """How far this laptop's upload of a flight has got, for the flight list:
+    its readings (Kind.FLIGHT) and its plan and trace (Kind.PLAYBACK)."""
+    outbox = agent.session.outbox
+    flight = outbox.get(Kind.FLIGHT, flight_id)
+    if flight is None:
+        return None
+    extra = outbox.get(Kind.PLAYBACK, flight_id)
+    done = bool(flight.get("_sent")) and (extra is None or bool(extra.get("_sent")))
+    return "uploaded" if done else "uploading"
+
+
+@app.get("/history/flights", dependencies=[Command])
+def list_flights(
+    limit: int = Query(playback.LIST_LIMIT, ge=1, le=playback.LIST_LIMIT),
+    mode: Mode | None = None,
+) -> dict:
+    """Every flight that can be played back: this laptop's and everyone's in
+    Supabase, each once (playback.list_flights). Offline or signed out, this
+    laptop's still come back, with `cloud` saying why the rest did not."""
+    sessions = history.list_sessions(10_000)
+    cloud = _signed_in_cloud()
+    rows: list[dict] | None = None
+    status, error = "signed_out", None
+    if cloud is not None:
+        try:
+            rows = cloud.list_flights(limit, mode=str(mode) if mode else None)
+            status = "ok"
+        except CloudError as e:
+            status, error = "error", str(e)
+    flights = playback.list_flights(data_dir(), sessions, rows, _upload_state,
+                                    mode=str(mode) if mode else None, limit=limit)
+    return {"flights": flights, "cloud": status, "cloud_error": error}
+
+
 @app.get("/history/flights/{flight_id}/playback", dependencies=[Command])
 def flight_playback(flight_id: str) -> dict:
     """One recorded flight to watch again (playback.py): its samples and
     control trace on one clock, the gaps, the events in words, and — for a
     mission — the plan as flown and its room as the map draws them, with the
-    mission report. 404 in words when this computer has no such flight."""
+    mission report. From this laptop's files when it has them, else from
+    Supabase (anyone's flight). 404 in words when neither has it; 503 when
+    Supabase could not be reached."""
     if not FLIGHT_ID.match(flight_id):
         raise HTTPException(status_code=404, detail="That is not a flight id.")
     try:
-        found = playback.load(data_dir(), flight_id)
+        found = playback.load_any(data_dir(), flight_id, _signed_in_cloud)
     except playback.PlaybackError as e:
         raise HTTPException(status_code=404, detail=str(e)) from None
+    except CloudError as e:
+        raise HTTPException(status_code=503, detail=(
+            f"This flight is not on this computer, and Supabase could not be reached: {e}"
+        )) from None
     room = found.room
     return {
         "flight_id": found.flight_id,
+        "source": found.source,
         "started_at": found.started_at,
         "duration_s": found.duration_s,
         "temp_unit": found.temp_unit,

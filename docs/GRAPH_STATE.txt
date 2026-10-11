@@ -3,13 +3,11 @@ GRAPH STATE — WHAT IS OUT OF SYNC, AND WHAT THAT STOPS
 Read this BEFORE starting a feature. It is the one file that says whether the
 docs can be trusted for the area you are about to work in.
 Generated from `python3 graph_check.py` plus what passes noticed by hand.
-Last run: 2026-10-11 on desktop/mission-playback (mission playback, plus
-agent-tests.yml on main) — 48 docs. Blocking classes: DANGLING 0 · ONE-WAY 0 ·
-STALE 0. design/layout.txt re-verified: the whole harness at the five widths,
-both themes, PASS (the WARN below moved to RESOLVED). Drift found and fixed,
-said here: backend/session-history.txt named desktop/src/HistoryPages.tsx (now
-desktop/src/pages/sessions/); the router said sprint-1/undone/ held the mission
-controller and three pipeline stages (it is empty — all in done/).
+Last run: 2026-10-11 on data/flight-playback-cloud (playback from Supabase:
+migration 0019, the upload, the merged flight list, All flights) — 48 docs.
+Blocking classes: DANGLING 0 · ONE-WAY 0 · STALE 0. Four docs went STALE when
+rest.py, agent.ts and agent-tests.yml moved (#107, #108, this branch); each
+re-read against the diff — none of their code changed — and re-dated saying so.
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -82,7 +80,7 @@ DEBT  (4)
             desktop/src/components/.
 
 --------------------------------------------------------------------------------
-WATCH  (2)
+WATCH  (5)
 --------------------------------------------------------------------------------
 2026-09-27  UNMERGED BRANCH is fooled by squash merges. docs/main-owner-only,
             feat/linux-install, fix/any-machine-desktop, fix/readable-agent-
@@ -92,6 +90,12 @@ WATCH  (2)
             deleting the merged local branches clears the noise.
 2026-09-27  APPROACHING SIZE (3): backend/manual-control.txt 257,
             desktop/camera.txt 279, desktop/desktop-app.txt 251 lines.
+2026-10-11  FLAG — components/Tabs.tsx moves between tabs on ArrowLeft/Right
+            with preventDefault but NOT stopPropagation, so the window's flight
+            handler (App.tsx, LOCKED) also gets the arrow: a focused console tab
+            + an arrow key in Manual flight moves the drone as well as the tab.
+            Found while building playback (which uses no Tabs for this reason).
+            Not changed: Tabs serves the Control console; Samuel's call.
 2026-10-10  APPROACHING SIZE: features/missions/mission-controller.txt 257
             lines after the integration. Split section 6 out when next edited.
 2026-10-10  ml/upscaling-eval/ (#103) is outside every gate, like the other
@@ -107,6 +111,9 @@ and why it did not apply)
 --------------------------------------------------------------------------------
 RESOLVED
 --------------------------------------------------------------------------------
+2026-10-11  Migration 20261011000019 pushed to the hosted project (0001–0018
+            were live; 0019 alone applied) and verified read-only: RLS, four
+            policies, grants select + insert to authenticated, none to anon.
 2026-10-11  design/layout.txt STALE (harness moved 2026-10-06/09): the whole
             harness re-measured at 720 · 900 · 1024 · 1280 · 1600, light and
             dark — 10 PASS, self-test FAIL as it must.

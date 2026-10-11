@@ -616,6 +616,8 @@ export const api = {
     command<FlightResult>(`/flights/${encodeURIComponent(flightId)}/result`, undefined, "GET"),
   playback: (flightId: string) =>
     command<FlightPlayback>(`/history/flights/${encodeURIComponent(flightId)}/playback`, undefined, "GET"),
+  flights: (mode?: Mode) =>
+    command<FlightList>(`/history/flights${mode ? `?mode=${mode}` : ""}`, undefined, "GET"),
   processFlight: (flightId: string) =>
     command<ProcessingJob>(`/flights/${encodeURIComponent(flightId)}/process`),
   runMission: (missionId: string, ambient: string) =>
@@ -731,8 +733,42 @@ export type FlightReportLeg = {
   notes: string[];
 };
 
+/** Where a flight is played from: this laptop's files, or Supabase. */
+export type FlightSource = "this_computer" | "supabase";
+
+/** One flight that can be played back (GET /history/flights): this laptop's
+ *  and everyone's in Supabase, each once (agent playback.list_flights). */
+export type FlightListItem = {
+  id: string;
+  session_id: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  mode: string | null;
+  program: string | null;
+  outcome: string | null;
+  abort_reason: string | null;
+  operator_email: string | null;
+  operator_name: string | null;
+  /** Its plan as flown is here or in Supabase: the map can draw the mission. */
+  has_plan: boolean;
+  on_this_computer: boolean;
+  in_supabase: boolean;
+  source: FlightSource;
+  /** This laptop's upload of it: null for a flight flown elsewhere. */
+  upload: "uploading" | "uploaded" | null;
+};
+
+export type FlightList = {
+  flights: FlightListItem[];
+  /** Whether Supabase was asked: signed out or unreachable, only this
+   *  laptop's flights are listed, and this says why. */
+  cloud: "ok" | "signed_out" | "error";
+  cloud_error: string | null;
+};
+
 export type FlightPlayback = {
   flight_id: string;
+  source: FlightSource;
   started_at: string | null;
   duration_s: number;
   temp_unit: string | null;

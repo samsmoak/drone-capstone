@@ -51,6 +51,12 @@ class CloudError(RuntimeError):
     """Talking to Supabase failed. Always recoverable: the record stays local."""
 
 
+class CloudRefused(CloudError):
+    """Supabase refused this record by policy — it will refuse it every time.
+    The syncer gives up on the record rather than stalling every pass behind
+    it (e.g. a plan for a flight another account flew)."""
+
+
 class AuthError(RuntimeError):
     """Sign-in failed. Never carries the password or the raw provider error."""
 
@@ -125,6 +131,20 @@ class Cloud(Protocol):
     def delete_findings_except(self, flight_id: str, keep: list[str]) -> None: ...
     def upsert_session_result(self, row: dict[str, Any]) -> None: ...
     def delete_session_findings_except(self, session_id: str, keep: list[str]) -> None: ...
+    def insert_flight_plan(self, row: dict[str, Any]) -> None: ...
+    def insert_flight_traces(self, rows: list[dict[str, Any]]) -> None: ...
+
+
+#: PostgREST answers at most this many rows per request (supabase/config.toml
+#: max_rows; the hosted default too) — reads page through it.
+PAGE = 1000
+
+#: The columns of public.flights the flight list shows. operator_* are stamped
+#: by the server from profiles (20261009000015): no profile is read.
+FLIGHT_COLUMNS = ("id, session_id, started_at, ended_at, status, mode, program, outcome, "
+                  "abort_reason, operator_email, operator_name")
+
+_PLAYBACK_HINT = " — apply migration 20261011000019_flight_playback.sql"
 
 
 class SupabaseCloud:
@@ -544,6 +564,98 @@ class SupabaseCloud:
         except Exception as e:
             log.info("backfill request failed (%s); the laptop will finish the upload",
                      type(e).__name__)
+
+    # ── playback: plans, traces, and reading flights back ────────────────
+
+    def _playback_error(self, what: str, e: Exception) -> CloudError:
+        text = str(e)
+        if "row-level security" in text or "42501" in text:
+            return CloudRefused(f"Supabase refused {what}: not this account's flight")
+        hint = _PLAYBACK_HINT if "flight_plans" in text or "flight_traces" in text else ""
+        return CloudError(f"could not upload {what}: {type(e).__name__}{hint}")
+
+    def insert_flight_plan(self, row: dict[str, Any]) -> None:
+        """A flight's plan as flown (sync/flight_playback.py). Append-only:
+        a re-send is ignored, never an update."""
+        try:
+            self._table("flight_plans").upsert(
+                row, on_conflict="flight_id", ignore_duplicates=True).execute()
+        except Exception as e:
+            raise self._playback_error("the plan as flown", e) from e
+
+    def insert_flight_traces(self, rows: list[dict[str, Any]]) -> None:
+        """A flight's control trace, a batch at a time; a re-sent batch changes nothing."""
+        if not rows:
+            return
+        try:
+            self._table("flight_traces").upsert(
+                rows, on_conflict="flight_id,seq", ignore_duplicates=True).execute()
+        except Exception as e:
+            raise self._playback_error("the control trace", e) from e
+
+    def _read_pages(self, table: str, flight_id: str, order: str, limit: int,
+                    what: str) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        try:
+            while len(rows) < limit:
+                start = len(rows)
+                end = min(start + PAGE, limit) - 1          # inclusive, as range() takes it
+                response = (self._table(table).select("*").eq("flight_id", flight_id)
+                            .order(order).range(start, end).execute())
+                page = list(getattr(response, "data", None) or [])
+                rows += page
+                if len(page) < end - start + 1:
+                    break                                   # a short page is the last
+        except Exception as e:
+            hint = _PLAYBACK_HINT if table in ("flight_plans", "flight_traces") else ""
+            raise CloudError(f"could not read {what}: {type(e).__name__}{hint}") from e
+        return rows
+
+    def read_telemetry(self, flight_id: str, limit: int) -> list[dict[str, Any]]:
+        """A flight's telemetry rows in order, at most `limit`."""
+        return self._read_pages("telemetry", flight_id, "index", limit, "the flight's readings")
+
+    def read_flight_traces(self, flight_id: str, limit: int) -> list[dict[str, Any]]:
+        """A flight's control trace in order, flattened back to the trace CSV's
+        columns (the extra ones were kept in `values`). [] before it is uploaded."""
+        rows = self._read_pages("flight_traces", flight_id, "seq", limit, "the control trace")
+        return [{**(row.get("values") or {}), **{k: v for k, v in row.items() if k != "values"}}
+                for row in rows]
+
+    def read_flight_plan(self, flight_id: str) -> dict[str, Any] | None:
+        """The plan as flown, shaped like the file it came from; None if not uploaded."""
+        try:
+            response = (self._table("flight_plans").select("mission, room, moves")
+                        .eq("flight_id", flight_id).limit(1).execute())
+        except Exception as e:
+            raise CloudError(f"could not read the plan as flown: {type(e).__name__}"
+                             f"{_PLAYBACK_HINT}") from e
+        rows = getattr(response, "data", None) or []
+        return dict(rows[0]) if rows else None
+
+    def list_flights(self, limit: int, mode: str | None = None) -> list[dict[str, Any]]:
+        """Every signed-in person's flights, newest first (RLS: any signed-in
+        user reads every flight), each with whether its plan is uploaded."""
+        try:
+            query = self._table("flights").select(f"{FLIGHT_COLUMNS}, flight_plans(flight_id)")
+            if mode:
+                query = query.eq("mode", mode)
+            response = query.order("started_at", desc=True).limit(min(limit, PAGE)).execute()
+        except Exception as e:
+            # Before migration 20261011000019 the embed fails: list without it.
+            try:
+                query = self._table("flights").select(FLIGHT_COLUMNS)
+                if mode:
+                    query = query.eq("mode", mode)
+                response = query.order("started_at", desc=True).limit(min(limit, PAGE)).execute()
+            except Exception:
+                raise CloudError(f"could not list the flights: {type(e).__name__}") from e
+        out: list[dict[str, Any]] = []
+        for row in getattr(response, "data", None) or []:
+            plans = row.pop("flight_plans", None)
+            row["has_plan"] = bool(plans)
+            out.append(row)
+        return out
 
     # ── missions queued on the web ───────────────────────────────────────
 

@@ -23,6 +23,12 @@ WHERE IT LIVES
                                                            write, everyone
                                                            signed in reads, a
                                                            viewer writes nothing
+  backend/supabase/checks/playback_check.py                flight_plans and
+                                                           flight_traces: read by
+                                                           everyone signed in,
+                                                           written only for your
+                                                           own flight, never
+                                                           edited — 20/20 locally
   backend/supabase/checks/notifications_check.py           notifications: one
                                                            per operator per
                                                            finding, never twice,
