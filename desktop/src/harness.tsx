@@ -19,10 +19,12 @@ import type { Run } from "@/App";
 import { SensorWindow, WINDOWS } from "@/pages/windows/SensorWindow";
 import { WindowLog } from "@/pages/sessions/WindowLog";
 import { SessionsPage } from "@/pages/sessions/SessionsPage";
+import { FlightPlaybackView } from "@/pages/sessions/Playback";
+import { AllFlights } from "@/pages/sessions/AllFlights";
 import { StartupPage } from "@/pages/startup/StartupPage";
 import {
   EMPTY_INTENT, connectToShell,
-  type MissionView, type PlanLimits, type RoomView, type Session, type Telemetry,
+  type FlightList, type FlightPlayback, type MissionView, type PlanLimits, type RoomView, type Session, type Telemetry,
 } from "@/lib/agent";
 import type { LogLine } from "@/lib/commandLog";
 import { FlightStrip } from "@/components/FlightStrip";
@@ -173,6 +175,102 @@ const sampleMission: MissionView = {
   ],
   valid: false, path_length_m: 8.4, estimated_duration_s: 96,
 };
+/**
+ * A recorded flight for Playback, worst case: the long mission above flown to
+ * its end point at 10 Hz, with a stretch flown on the drone's own estimate (no
+ * base station), 1.6 s of samples lost on the link, the operator's keys, a
+ * short hold — every kind of event, and more of them than fit a column.
+ */
+function samplePlaybackOf(mission: MissionView): FlightPlayback {
+  const stops: [number, number, number, number][] = [
+    [mission.home[0], mission.home[1], mission.cruise_height_m, 0],
+    ...mission.points.slice(0, 3).map((p) => [p.x_m, p.y_m, p.z_m, p.hold_s] as [number, number, number, number]),
+  ];
+  const samples: FlightPlayback["samples"] = [];
+  const control: FlightPlayback["control"] = [];
+  const holds: [string, number, number][] = [];
+  let t = 0;
+  const at = (x: number, y: number, z: number, point: string | null, keys = "") => {
+    const lost = t > 16 && t < 19.4;
+    const gone = t > 30 && t < 31.6;
+    if (!gone) {
+      samples.push({ t_s: +t.toFixed(1), x_m: x + Math.sin(t) * 0.01, y_m: y, z_m: z, positioned: !lost,
+        yaw_deg: -5 + Math.sin(t / 3) * 2, roll_deg: 1.2, pitch_deg: -0.6, speed_m_s: 0.18, vz_m_s: 0.01,
+        battery_v: 4.05 - t / 200, temp: 22.4 + t / 100, pressure_hpa: 1013.2, thrust: 54000, point_id: point });
+    }
+    control.push({ t_s: +t.toFixed(1), state: t < 0.6 ? "armed" : "flying", keys, target: [x, y, z],
+      drift_m: 0.03, height_error_m: 0.012 });
+    t += 0.1;
+  };
+  for (let i = 0; i < 8; i++) at(stops[0][0], stops[0][1], i / 8 * stops[0][2], null);
+  stops.slice(1).forEach(([x, y, z, hold], n) => {
+    const [px, py, pz] = stops[n];
+    const steps = Math.ceil(Math.hypot(x - px, y - py) / 0.02);
+    for (let i = 1; i <= steps; i++) at(px + (x - px) * i / steps, py + (y - py) * i / steps, pz + (z - pz) * i / steps, null);
+    const id = mission.points[n].id;
+    const began = t;
+    const held = n === 1 ? hold * 0.6 : hold;
+    for (let i = 0; i < held * 10; i++) at(x, y, z, id, n === 2 && i > 30 && i < 40 ? "ArrowUp" : "");
+    holds.push([id, began, t]);
+  });
+  const end = +t.toFixed(1);
+  for (let i = 0; i < 20; i++) control.push({ ...control[control.length - 1], t_s: +(end + i / 10).toFixed(1), state: i < 15 ? "landing" : "landed" });
+  const events: FlightPlayback["events"] = ([
+    { t_s: 0, kind: "state", text: "Armed", point_id: null },
+    { t_s: 0.6, kind: "state", text: "Took off", point_id: null },
+    { t_s: 16.1, kind: "position", text: "Base stations lost for 3.4 s — the position was not measured, the drone flew on its own estimate", point_id: null },
+    ...holds.flatMap(([id, a, b]) => [
+      { t_s: +a.toFixed(1), kind: "hold" as const, text: `Holding at ${id}`, point_id: id },
+      { t_s: +b.toFixed(1), kind: "hold" as const, text: `${id} hold ended`, point_id: id },
+    ]),
+    { t_s: 30.0, kind: "gap", text: "No samples for 1.6 s — data lost on the link", point_id: null },
+    { t_s: end, kind: "state", text: "Landing", point_id: null },
+    { t_s: end + 1.5, kind: "state", text: "Landed", point_id: null },
+  ] as FlightPlayback["events"]).sort((a, b) => a.t_s - b.t_s);
+  const keyAt = holds[2][1] + 3.1;
+  events.push({ t_s: +keyAt.toFixed(1), kind: "keys", text: "Operator held ArrowUp", point_id: null },
+              { t_s: +(keyAt + 0.9).toFixed(1), kind: "keys", text: "Keys released", point_id: null });
+  events.sort((a, b) => a.t_s - b.t_s);
+  return {
+    flight_id: "f1c2d3e4-playback", source: "supabase", started_at: "2026-10-09T18:31:24+00:00", duration_s: +(end + 1.9).toFixed(1),
+    temp_unit: "C", truncated: false,
+    notes: ["The plan this flight flew could not be read: an example of a note long enough to wrap across the column at the narrowest width the window allows."],
+    outer: sampleLimits.outer, room: sampleRoom, mission, moves: [],
+    report: {
+      estimate_s: 96, flown_s: end + 1.9, longer_than_estimate: false, notes: ["The trace has a 1.6 s gap at 30.0 s: samples were dropped."],
+      legs: mission.points.slice(0, 3).map((p, n) => ({
+        to: p.id, label: p.label, leg_m: 1.6, planned_s: 8.0, transit_s: 8.3, reached: true, settle_s: 0.4,
+        hold_s: n === 1 ? p.hold_s * 0.6 : p.hold_s, hold_required_s: p.hold_s, hold_long_enough: n !== 1,
+        hold_drift_median_m: 0.021, hold_drift_worst_m: 0.064,
+        notes: n === 1 ? [`Held ${(p.hold_s * 0.6).toFixed(1)} s of the ${p.hold_s.toFixed(1)} s asked.`] : [],
+      })),
+    },
+    samples, control,
+    gaps: [{ from_s: 29.9, to_s: 31.6 }], events,
+  };
+}
+const samplePlayback = samplePlaybackOf(sampleMission);
+/** The flight list, worst case: a long name and program, every place a flight
+ *  can be (here and uploading, here and uploaded, only in Supabase), both
+ *  modes, an abort, and Supabase's error words beside it. */
+const sampleFlights: FlightList = {
+  cloud: query.get("cloud") === "error" ? "error" : query.get("cloud") === "out" ? "signed_out" : "ok",
+  cloud_error: "could not list the flights: ConnectError — the network is unreachable from this laptop right now",
+  flights: [
+    { id: "f1", session_id: "s1", started_at: "2026-10-11T14:31:24+00:00", ended_at: "2026-10-11T14:32:06+00:00",
+      mode: "auto", program: "mission:m-long@r12 — Weekly thermal sweep of pumps, valves and the compressor manifold",
+      outcome: "done", abort_reason: null, operator_email: "zebachsmoak@gmail.com", operator_name: null,
+      has_plan: true, on_this_computer: true, in_supabase: false, source: "this_computer", upload: "uploading" },
+    { id: "f2", session_id: "s2", started_at: "2026-10-10T10:02:00+00:00", ended_at: "2026-10-10T10:02:40+00:00",
+      mode: "auto", program: "mission:m1@r3", outcome: "aborted", abort_reason: "lighthouse_lost_in_flight",
+      operator_email: "hannah.alexander.long.address@university.example.edu", operator_name: "Hannah Dorothea Alexander-Whitfield",
+      has_plan: true, on_this_computer: false, in_supabase: true, source: "supabase", upload: null },
+    { id: "f3", session_id: "s3", started_at: "2026-10-09T09:00:00+00:00", ended_at: null,
+      mode: "manual", program: null, outcome: null, abort_reason: null,
+      operator_email: "kevin@example.com", operator_name: "Kevin",
+      has_plan: false, on_this_computer: true, in_supabase: true, source: "this_computer", upload: "uploaded" },
+  ],
+};
 const sessionShown = session;
 const sampleMissions: MissionView[] = [
   sampleMission,
@@ -223,6 +321,8 @@ if (!agentToken) {
         },
       });
     }
+    if (path.startsWith("/history/flights/") && path.endsWith("/playback")) return json(samplePlayback);
+    if (path === "/history/flights") return json(sampleFlights);
     if (path.startsWith("/missions/")) return json(missions.find((m) => path.endsWith(m.id)) ?? sampleMission);
     return realFetch(input, init);
   };
@@ -393,6 +493,19 @@ createRoot(document.getElementById("root")!).render(
         <SensorWindow windowKey={w.key} telemetry={telemetry} history={history} session={session} onOpenLog={() => {}} />
       </Shell>
     ))}
+    {!agentToken && (
+      <>
+        <Shell label="All flights · everyone's">
+          <AllFlights refreshKey="h" mode={(query.get("mode") as "auto" | "manual") ?? "auto"} onPlay={() => {}} />
+        </Shell>
+        <Shell label="Playback · mid-flight">
+          <FlightPlaybackView flightId="f1c2d3e4-playback" title={sampleMission.name} onBack={() => {}} startAt={33} />
+        </Shell>
+        <Shell label="Playback · full screen">
+          <FlightPlaybackView flightId="f1c2d3e4-playback" title={sampleMission.name} onBack={() => {}} startAt={18} startFullScreen />
+        </Shell>
+      </>
+    )}
     {agentToken && (
       <>
         <Shell label="Window log · Flight">

@@ -1,10 +1,12 @@
 /** Every session this computer recorded, and one session in full. */
 
 import { useCallback, useEffect, useState } from "react";
-import { AgentError, api, type Mode, type SessionRecord } from "@/lib/agent";
+import { AgentError, api, type FlightListItem, type FlightRecord, type Mode, type SessionRecord } from "@/lib/agent";
 import { endReasonLabel, formatDateTime, formatDuration, formatNumber, formatTime } from "@/lib/format";
 import { Button, Message, PageHeader, Panel, Spinner, Stat, StatusDot } from "@/components/ui";
 import { WINDOWS, WINDOW_VARIABLES } from "@/pages/windows/SensorWindow";
+import { AllFlights, flightTitle } from "./AllFlights";
+import { FlightPlaybackView } from "./Playback";
 import {
   DashboardLink, Disclosure, HiddenByMode, Load, LoadState, MODE_LABEL, ReadingsTable, SessionRow,
   useSessions,
@@ -19,24 +21,45 @@ export function SessionsPage({ refreshKey, mode, selectedId, onSelect }: {
   const [allModes, setAllModes] = useState(false);
   const filter = allModes ? null : mode;
   const { state, hidden, reload } = useSessions(200, refreshKey, filter);
+  // Two views of the history: this computer's sessions, or every flight —
+  // this laptop's and everyone's in Supabase. Plain buttons, not Tabs: Tabs
+  // move on the arrow keys, which also fly the drone in Manual (App.tsx).
+  const [view, setView] = useState<"sessions" | "flights">("sessions");
+  const [playing, setPlaying] = useState<FlightListItem | null>(null);
 
   if (selectedId) {
     return <SessionDetail id={selectedId} mode={filter} onBack={() => onSelect(null)} />;
+  }
+  if (playing) {
+    return <FlightPlaybackView flightId={playing.id} title={flightTitle(playing)}
+                               backLabel="← All flights" onBack={() => setPlaying(null)} />;
   }
 
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-        <PageHeader eyebrow="Operate" title={allModes ? "Sessions" : `${MODE_LABEL[mode]} sessions`}>
-          Every session run on this computer: who ran it, when it started and ended, and what the
-          drone reported. Open one for its flights and readings.
+        <PageHeader eyebrow="Operate" title={view === "flights" ? "Flights" : allModes ? "Sessions" : `${MODE_LABEL[mode]} sessions`}>
+          {view === "flights"
+            ? "Every flight you can play back: this computer's, and everyone's in Supabase. Play one back to watch it again on the room map."
+            : "Every session run on this computer: who ran it, when it started and ended, and what the drone reported. Open one for its flights and readings."}
         </PageHeader>
         <DashboardLink>View all in the dashboard</DashboardLink>
       </div>
 
-      <HiddenByMode mode={mode} hidden={hidden} onShowAll={() => setAllModes(true)} />
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Which history">
+        <Button variant={view === "sessions" ? "primary" : "secondary"} onClick={() => setView("sessions")}>
+          Sessions on this computer
+        </Button>
+        <Button variant={view === "flights" ? "primary" : "secondary"} onClick={() => setView("flights")}>
+          All flights — everyone's
+        </Button>
+      </div>
 
-      <Panel title="All sessions" action={<Button onClick={reload}>Refresh</Button>}>
+      {view === "flights" && <AllFlights refreshKey={refreshKey} mode={mode} onPlay={setPlaying} />}
+
+      {view === "sessions" && <HiddenByMode mode={mode} hidden={hidden} onShowAll={() => setAllModes(true)} />}
+
+      {view === "sessions" && <Panel title="All sessions" action={<Button onClick={reload}>Refresh</Button>}>
         <LoadState
           state={state}
           reload={reload}
@@ -49,13 +72,20 @@ export function SessionsPage({ refreshKey, mode, selectedId, onSelect }: {
             </ul>
           )}
         </LoadState>
-      </Panel>
+      </Panel>}
     </div>
   );
 }
 
+/** What a flight is called on this page — its program, or its mode. */
+function flightName(f: FlightRecord): string {
+  return flightTitle(f);
+}
+
 function SessionDetail({ id, mode, onBack }: { id: string; mode: Mode | null; onBack: () => void }) {
   const [state, setState] = useState<Load<SessionRecord>>({ kind: "loading" });
+  // A flight being played back replaces the session's page; Back returns to it.
+  const [playing, setPlaying] = useState<FlightRecord | null>(null);
   const load = useCallback(async () => {
     setState({ kind: "loading" });
     try {
@@ -65,6 +95,10 @@ function SessionDetail({ id, mode, onBack }: { id: string; mode: Mode | null; on
     }
   }, [id]);
   useEffect(() => { void load(); }, [load]);
+
+  if (playing) {
+    return <FlightPlaybackView flightId={playing.id} title={flightName(playing)} onBack={() => setPlaying(null)} />;
+  }
 
   return (
     <div className="grid gap-4">
@@ -80,12 +114,16 @@ function SessionDetail({ id, mode, onBack }: { id: string; mode: Mode | null; on
           <div><Button onClick={() => void load()}>Try again</Button></div>
         </div>
       )}
-      {state.kind === "ready" && <SessionDetailBody record={state.data} mode={mode} />}
+      {state.kind === "ready" && <SessionDetailBody record={state.data} mode={mode} onPlay={setPlaying} />}
     </div>
   );
 }
 
-function SessionDetailBody({ record, mode }: { record: SessionRecord; mode: Mode | null }) {
+function SessionDetailBody({ record, mode, onPlay }: {
+  record: SessionRecord;
+  mode: Mode | null;
+  onPlay: (flight: FlightRecord) => void;
+}) {
   const s = record.summary;
   return (
     <>
@@ -122,14 +160,17 @@ function SessionDetailBody({ record, mode }: { record: SessionRecord; mode: Mode
             {record.flights.filter((f) => !mode || f.mode === mode).map((f) => (
               <li key={f.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
                 <span>
-                  <span className="font-medium">{f.program ?? (f.mode === "manual" ? "Manual flight" : "Program")}</span>
+                  <span className="font-medium">{flightName(f)}</span>
                   <span className="block text-[var(--muted)]">
                     {formatTime(f.started_at)} – {formatTime(f.ended_at)}
                   </span>
                 </span>
-                {f.abort_reason
-                  ? <StatusDot tone="warning">Aborted: {f.abort_reason.replace(/_/g, " ")}</StatusDot>
-                  : <StatusDot tone="good">{(f.outcome ?? "completed").replace(/_/g, " ")}</StatusDot>}
+                <span className="flex flex-wrap items-center gap-3">
+                  {f.abort_reason
+                    ? <StatusDot tone="warning">Aborted: {f.abort_reason.replace(/_/g, " ")}</StatusDot>
+                    : <StatusDot tone="good">{(f.outcome ?? "completed").replace(/_/g, " ")}</StatusDot>}
+                  <Button onClick={() => onPlay(f)} title="Watch this flight again on the room map">Play back</Button>
+                </span>
               </li>
             ))}
           </ul>

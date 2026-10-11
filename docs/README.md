@@ -36,6 +36,7 @@ Feature docs are plain `.txt`, grouped by the surface they describe.
 | [features/desktop/drone-wifi.txt](features/desktop/drone-wifi.txt) | The drone's camera joins the operator's Wi-Fi, set over the radio: the firmware addition, the flasher, the dialog |
 | [features/desktop/pages-and-windows.txt](features/desktop/pages-and-windows.txt) | The sidebar shell, Control's two columns and its console, the five live sensor windows, and how the layout is measured |
 | [features/desktop/auto-control.txt](features/desktop/auto-control.txt) | Control in Auto: ① Mission (plan, edit, pick) → ② Check → ③ Fly, the monitor on the right |
+| [features/desktop/mission-playback.txt](features/desktop/mission-playback.txt) | Sessions › All flights / a flight › Play back: anyone's recorded flight watched again on the room map (2-D/3-D, full screen) with its readings, events and report — this laptop's files first, Supabase for the rest; recorded, never simulated |
 
 ## Missions — autonomous flight (`backend/agent/cropwatcher/mission/`)
 
@@ -124,7 +125,7 @@ are the only thing that survives a session.
 
 ## Handoffs — work orders given to teammates
 
-[handoffs/](handoffs/README.txt) — one ticket per piece of work, filed by sprint: `sprint-1/done/` (built — the mission planner, mission start, the DPP switch, the Control layout, the pipeline contract; only follow-ups left) and `sprint-1/undone/` (the mission controller, split between Hannah (the controller) and Yordi (its proof), and the data pipeline's clean and enhance (Kevin) and classify (Reagan) stages). We are in sprint 1. Not feature docs: a ticket moves to `done/` when its work is on main, and is deleted once its follow-ups are closed and what shipped is written into `features/`.
+[handoffs/](handoffs/README.txt) — one ticket per piece of work, filed by sprint: `sprint-1/done/` holds every sprint-1 ticket — the mission planner, mission start, the mission controller and its proof (the lab rungs still open), the DPP switch and contract, the pipeline's clean, enhance and classify stages (4.4's image model still Reagan's), the Control layout; only follow-ups left. `sprint-1/undone/` is empty. We are in sprint 1. Not feature docs: a ticket moves to `done/` when its work is on main, and is deleted once its follow-ups are closed and what shipped is written into `features/`.
 
 ## Platform — not written yet
 

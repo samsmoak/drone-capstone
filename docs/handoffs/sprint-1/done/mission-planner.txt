@@ -17,7 +17,7 @@ wins.
                   backend/agent/cropwatcher/mission/plan/     rooms, missions,
                                                               the checks, saving
                   backend/agent/tests/mission/
-  Not in scope    the mission controller body (../undone/mission-controller.txt,
+  Not in scope    the mission controller body (../done/mission-controller.txt,
                   Hannah); ② Check and ③ Fly; the data pipeline
 
 

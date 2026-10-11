@@ -25,9 +25,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, get_args, get_type_hints
 
+from cropwatcher import playback
 from cropwatcher.camera.recording import INDEX_NAME, frames_to_upload
-from cropwatcher.sync import results, samples
-from cropwatcher.sync.cloud import Cloud, CloudError
+from cropwatcher.paths import data_dir
+from cropwatcher.sync import flight_playback, results, samples
+from cropwatcher.sync.cloud import Cloud, CloudError, CloudRefused
 from cropwatcher.sync.outbox import Kind, Outbox
 from cropwatcher.telemetry.row import TelemetryRow
 
@@ -154,9 +156,12 @@ class Syncer:
         on_status: Callable[[SyncStatus], None] | None = None,
         interval_s: float = SYNC_INTERVAL_S,
         sleep: Callable[[float], None] = time.sleep,
+        data_root: Path | None = None,
     ) -> None:
-        """`cloud_for` returns the signed-in client, or None when signed out."""
+        """`cloud_for` returns the signed-in client, or None when signed out.
+        `data_root` is where a flight's files are found (paths.data_dir())."""
         self._outbox = outbox
+        self._data_root = data_root
         self._cloud_for = cloud_for
         self._on_status = on_status
         self._interval = interval_s
@@ -217,6 +222,9 @@ class Syncer:
                 # 20261009000016, a session's own result 20261009000018.
                 self._send_results(cloud)
                 self._send_session_results(cloud)
+                # Last of all: playback's plan and trace need migration
+                # 20261011000019, and nothing waits on them.
+                self._send_playback(cloud)
                 self.status.last_error = None
                 self.status.last_success_at = time.time()
             except CloudError as e:
@@ -418,6 +426,59 @@ class Syncer:
             cloud.upsert_findings(rows)
             cloud.delete_findings_except(flight_id, [r["id"] for r in rows])
             self._outbox.mark_sent(Kind.RESULTS, flight_id)
+
+    def _send_playback(self, cloud: Cloud) -> None:
+        """A flight's plan as flown and its control trace (sync/flight_playback.py),
+        so it plays back on any computer.
+
+        Waits while the flight's own record is pending: both tables' foreign
+        key and policy need the flight row. The plan goes once; the trace from
+        its cursor, a batch at a time. A record Supabase refuses by policy (a
+        flight another account flew) is given up — it would be refused every
+        pass and hold the queue behind it — and so is one whose files are
+        gone: there is nothing left to send."""
+        root = self._data_root or data_dir()
+        for record in self._outbox.pending(Kind.PLAYBACK):
+            flight_id = record.id
+            flight = self._outbox.get(Kind.FLIGHT, flight_id)
+            if flight is None:
+                log.warning("flight %s has no flight record here; its plan and trace "
+                            "cannot be uploaded", flight_id)
+                self._outbox.mark_sent(Kind.PLAYBACK, flight_id)
+                continue
+            if not flight.get("_sent"):
+                continue            # the flight row first
+            try:
+                files = playback.files_of(root, flight_id)
+            except playback.PlaybackError:
+                log.warning("flight %s has no files on this computer; nothing to upload "
+                            "for playback", flight_id)
+                self._outbox.mark_sent(Kind.PLAYBACK, flight_id)
+                continue
+            self.status.uploading = f"playback {flight_id[:8]}"
+            try:
+                if files.plan is not None and not record.payload.get("plan_sent"):
+                    try:
+                        kept = flight_playback.read_plan(files.plan)
+                        row = flight_playback.plan_row(flight_id, kept)
+                    except (OSError, ValueError, KeyError) as e:
+                        log.warning("the plan of flight %s cannot be read (%s); sending "
+                                    "the trace only", flight_id, e)
+                    else:
+                        cloud.insert_flight_plan(row)
+                    self._outbox.update(Kind.PLAYBACK, flight_id,
+                                        lambda p: p.__setitem__("plan_sent", True))
+                if files.trace is not None:
+                    cursor = int(record.payload.get("uploaded_through", 0))
+                    for batch in flight_playback.trace_batches(files.trace, flight_id, cursor):
+                        cloud.insert_flight_traces(batch)
+                        last = batch[-1]["seq"]
+                        self._outbox.update(Kind.PLAYBACK, flight_id,
+                                            lambda p, last=last: p.__setitem__(
+                                                "uploaded_through", last))
+            except CloudRefused as e:
+                log.warning("flight %s: %s; not retrying", flight_id, e)
+            self._outbox.mark_sent(Kind.PLAYBACK, flight_id)
 
     def _send_session_results(self, cloud: Cloud) -> None:
         """A processed session's own result (sync/results.py session_result_row):

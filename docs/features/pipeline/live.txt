@@ -1,6 +1,7 @@
 ================================================================================
 LIVE VERDICTS — each inspection point judged while the mission flies on
-Last verified: 2026-10-09 against dpp/live and desktop/live-verdicts — the
+Last verified: 2026-10-11 — re-read after agent.ts changed for mission playback; its live-verdict types are unchanged. Before that:
+2026-10-09 against dpp/live and desktop/live-verdicts — the
 fixture flight (a point's verdict from the flight so far, a half-written last
 row skipped), the queue's priority, the session hook, the desktop harness.
 NOT YET FLOWN: no real mission has been flown with it.

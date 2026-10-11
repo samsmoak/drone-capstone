@@ -135,14 +135,16 @@ export function DashboardLink({ path = "/app/flights", children }: { path?: stri
   );
 }
 
-export function LoadState<T>({ state, reload, empty, emptyText, children }: {
+export function LoadState<T>({ state, reload, empty, emptyText, children, loadingLabel = "Loading sessions…" }: {
   state: Load<T>;
   reload: () => void;
   empty: boolean;
   emptyText: ReactNode;
   children: (data: T) => ReactNode;
+  /** What is loading, in words. */
+  loadingLabel?: string;
 }) {
-  if (state.kind === "loading") return <Spinner label="Loading sessions…" />;
+  if (state.kind === "loading") return <Spinner label={loadingLabel} />;
   if (state.kind === "error") {
     return (
       <div className="grid gap-3">

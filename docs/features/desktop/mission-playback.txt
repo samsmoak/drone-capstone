@@ -1,0 +1,161 @@
+================================================================================
+MISSION PLAYBACK — watch any recorded flight again, on the room map, at any moment
+Last verified: 2026-10-11 against data/flight-playback-cloud — tests/test_playback.py
+(20) and test_playback_cloud.py (17); the local Supabase stack with the agent's
+real client (backend/supabase/checks/playback_check.py 20/20); a real lab
+flight (fdd57690) uploaded by the real syncer and played back from Supabase
+identically to the files; the layout harness at 720 · 900 · 1024 · 1280 ·
+1600 px in both themes, with screenshots.
+SOURCE: desktop/src/pages/sessions/Playback.tsx
+================================================================================
+
+--------------------------------------------------------------------------------
+STATUS  (Last verified: 2026-10-11)
+--------------------------------------------------------------------------------
+  agent      BUILT — GET /history/flights (the list: this laptop's flights and
+             everyone's in Supabase, each once) and GET /history/flights/{id}/
+             playback (this laptop's files first, else Supabase), playback.py;
+             the upload of each flight's plan as flown and control trace
+             (sync/flight_playback.py, Kind.PLAYBACK)
+  supabase   BUILT — flight_plans and flight_traces (migration 20261011000019):
+             proven on the local stack (playback_check.py 20/20), applied to
+             the hosted project 2026-10-11 and its RLS, policies and grants
+             verified there read-only.
+  desktop    BUILT — Sessions › All flights (everyone's, by person and mode,
+             where each one lives) and Sessions › a session › a flight; Play
+             back on each: the room map (2-D or 3-D) with the plan as flown,
+             the path flown and the drone; Play / Pause / Start / ±1 s / speed
+             / a time slider marked with what happened; the readings at that
+             moment; the events, each a jump; the report. Full screen keeps
+             all of it. Says "from this computer" or "from Supabase".
+  NOT BUILT  On the web (/app): the web has no RoomMap. The data is all in
+             Supabase now; the map is what is missing.
+
+--------------------------------------------------------------------------------
+1. WHAT IT IS
+--------------------------------------------------------------------------------
+Pick any flight — yours or a teammate's — and watch it again: the room, the
+plan it flew (after auto-correct: the plan AS FLOWN), the path the drone really
+took drawn behind it, and the drone where it was at the moment on the slider,
+with its height, speed, drift, battery, temperature, pressure, heading, the
+loop's state, the keys the operator held, and the point it was holding. The
+events say what happened in words — took off, holding at P1, base stations
+lost for 4.7 s, operator held ArrowUp, no samples for 1.5 s, landing — and
+each jumps the slider to its moment. A Manual flight plays back too, over the
+default area with no path.
+
+IT IS A RECORDING, NOT A SIMULATION. The failures worth replaying come from
+the room (reception, drift, a guard, an operator), and only the recording has
+them. The simulator's job is CI (../development/releases.txt, agent-tests.yml).
+
+--------------------------------------------------------------------------------
+2. WHERE IT LIVES
+--------------------------------------------------------------------------------
+agent    backend/agent/cropwatcher/playback.py   files_of, load (files),
+                                                 load_cloud (Supabase), load_any,
+                                                 list_flights — one builder
+         backend/agent/cropwatcher/api/rest.py   GET /history/flights,
+                                                 GET /history/flights/{id}/playback
+         backend/agent/cropwatcher/sync/flight_playback.py  plan + trace upload
+         backend/agent/cropwatcher/sync/syncer.py           _send_playback (last)
+         backend/agent/cropwatcher/sync/cloud.py            insert_flight_plan,
+                                                 insert_flight_traces, read_*,
+                                                 list_flights (paged by 1 000)
+         backend/agent/tests/test_playback.py, test_playback_cloud.py
+supabase backend/supabase/migrations/20261011000019_flight_playback.sql
+         backend/supabase/checks/playback_check.py
+desktop  desktop/src/pages/sessions/Playback.tsx       the player
+         desktop/src/pages/sessions/AllFlights.tsx     the list (FlightRow is
+                                                       copied from parts.tsx
+                                                       SessionRow — PARITY marker)
+         desktop/src/pages/sessions/SessionsPage.tsx   the switch, Play back
+         desktop/src/pages/control/auto/plan/trail.ts  the path flown, as runs
+         desktop/src/pages/control/auto/plan/RoomMap.tsx, PlanCanvas.tsx,
+         Room3D.tsx                                    `trail` in both views
+         desktop/src/lib/agent.ts                      api.playback, api.flights
+         desktop/src/harness.tsx      "All flights ·", "Playback ·" sections
+
+On disk (read, never written): flights/<day>/flight_<id8>_*.csv (10 Hz
+samples), flights/<day>/trace_<id8>.csv (control trace, app flights),
+sessions/<session>/missions/<id>.json (the plan as flown, mission flights).
+In Supabase: telemetry, flight_traces, flight_plans, flights (who, when).
+
+--------------------------------------------------------------------------------
+3. DECISIONS
+--------------------------------------------------------------------------------
+• PER FLIGHT, THIS LAPTOP FIRST, SUPABASE FOR THE REST (2026-10-11, Samuel).
+  A flight with files here plays from them — instant, complete, offline, and
+  the moment it lands; any other plays from Supabase: a teammate's, and yours
+  from another computer or after the files here were deleted. Never "wait
+  until it is uploaded". The list shows each flight once, with where it is:
+  "On this computer · uploading / uploaded" or "In Supabase".
+• ONE BUILDER FOR BOTH SOURCES (playback._build). A flight looks the same
+  from either copy; test_playback_cloud.py and the real-flight check prove it
+  field for field — samples, control, gaps, events, report, plan, room.
+• UPLOAD, NOT A NEW PIPELINE: the plan and trace ride the existing outbox, as
+  session vitals do (copied from sync/samples.py): written first, sent after,
+  a cursor, last in the pass. Past flights are queued once when the updated
+  agent starts, so a teammate's old flights appear without a command.
+• IN SESSIONS, NOT A NEW PAGE; a two-button switch, not Tabs (INVARIANTS).
+• THE MISSION REPORT'S CLOCK. Every time is seconds from the earlier of the
+  flight's first sample and first trace row — review.load's origin — so the
+  slider and the report agree. The report is computed from the same rows.
+• THE PATH FLOWN IS RUNS (trail.ts): a gap ends a run; a change between
+  measured and unmeasured position starts one in the other style. In a gap the
+  drone is not drawn — nothing was received.
+• ONE EVENT PER STRETCH WITHOUT BASE STATIONS, with its length: reception
+  flickers on the lab's flights; d985c7a6 held P1 for 4.7 s with none.
+• Capped at an hour (playback.MAX_ROWS); the list at the newest 300.
+
+--------------------------------------------------------------------------------
+4. INVARIANTS
+--------------------------------------------------------------------------------
+• NO KEYBOARD SHORTCUTS, AND NO TABS, HERE. App.tsx's flight keys listen on the
+  whole window on every page: Space swallowed, L LANDS, the arrows and W A S D
+  fly it in Manual. Playback is buttons, <select>s, a checkbox and the native
+  slider, whose keys never reach the flight handler (it ignores inputs and
+  selects). components/Tabs.tsx moves on the arrows WITHOUT stopping them — a
+  focused tab's arrow also flies the drone; see GRAPH_STATE.txt WATCH.
+• HEIGHT ERROR IS COMPUTED FROM THE TWO READINGS, from either source. A float8
+  column comes back from PostgREST with 15 significant digits; on fdd57690 the
+  report's hold-height figures differed in the 15th digit until it was read
+  from the trace row's jsonb `values`, which keeps every digit.
+• PostgREST answers at most 1 000 rows a request: every read pages
+  (cloud.PAGE). Proven on 2 500-row telemetry and trace.
+• Append-only in Supabase: a plan or trace row is never edited; a re-send is
+  ignored. A plan for a flight another account flew is refused BY THE POLICY
+  and the upload gives the record up rather than retrying it every pass.
+• The flight CSV's x_m, y_m are the room's frame; z_m is height above the
+  takeoff floor. Never draw stateEstimate.z (CLAUDE.md invariant 4).
+• The unmeasured stretch is amber on a --foreground casing: amber alone is
+  1.7:1 on the light floor, under WCAG 1.4.11's 3:1; green is 3.1:1.
+• Lay the list out by its own width (@container): four columns squeezed an
+  email to "gmail.c / om" at 720 px. Stacked full screen: no min-h-0 on the
+  columns — the readings slid over the map; only a screenshot showed it.
+• A flight id comes from a URL: anything but [A-Za-z0-9_-]{1,64} is a 404
+  before it touches the disk (processing.FLIGHT_ID). Every route is
+  token-gated: they name people.
+
+--------------------------------------------------------------------------------
+5. RELATED
+--------------------------------------------------------------------------------
+depends-on        ../backend/session-history.txt
+                  the session's flights and who ran them; the plan as flown is
+                  kept in the session's folder
+copied-from       ../backend/session-history.txt
+                  AllFlights' FlightRow is SessionRow's layout (parts.tsx)
+depends-on        ../backend/offline-sync.txt
+                  Kind.PLAYBACK uploads the plan and trace, last in a pass
+depends-on        ../supabase/data-model.txt
+                  flight_plans, flight_traces, telemetry and flights are read
+                  back to play anyone's flight
+depends-on        auto-control.txt
+                  RoomMap (2-D | 3-D), PlanCanvas and Room3D draw the playback;
+                  `trail` is their one addition
+depends-on        ../missions/mission-controller.txt
+                  the mission report (review.py) and its clock
+shares-data-with  ../pipeline/data-pipeline.txt
+                  the same flight files, found the same way (pipeline/sources.py
+                  LocalFlightSource)
+depends-on        ../../design/layout.txt
+                  measured in the harness at the five widths, both themes

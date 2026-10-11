@@ -7,8 +7,8 @@ stretches contrast tile by tile, with a limit so flat areas are not blown into
 grain. It moves pixel values; it never draws a pixel that was not there, which
 a super-resolution network can (an invented crack is a false alarm on an
 inspection drone). An upscaler can still be swapped in behind the same
-contract if Kevin's evaluation (origin/feat/dpp-enhance, ml/upscaling-eval)
-shows it adds real detail.
+contract if Kevin's evaluation (ml/upscaling-eval/) shows it adds real
+detail.
 
 NO COLOUR. The frames hold none; colourising would guess it.
 

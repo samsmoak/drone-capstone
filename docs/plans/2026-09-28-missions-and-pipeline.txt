@@ -246,7 +246,7 @@ PHASE 5 — THE MISSION CONTROLLER'S INTERFACE (Hannah builds the body) 47–52
      full interface; BUILT = False; start() refuses.
  50  A typing test: ManualController satisfies MissionFlight.
  51  A test that the skeleton refuses to start.
- 52  handoffs/sprint-1/undone/mission-controller.txt rewritten against the real interface.
+ 52  handoffs/sprint-1/done/mission-controller.txt rewritten against the real interface.
 
 PHASE 6 — MISSIONS IN THE SESSION                                    53–62
  53  Session.run_mission(mission_id, ambient): Auto, assisted, ready.

@@ -16,8 +16,12 @@ WHERE IT LIVES
 
   backend/agent/cropwatcher/history.py      SessionLog, list/read/samples
   backend/agent/cropwatcher/session.py      opens, samples, closes the log
-  backend/agent/cropwatcher/api/rest.py     GET /history/sessions[/{id}[/samples]]
-  desktop/src/HistoryPages.tsx              RecentSessions, SessionsPage, WindowLog
+  backend/agent/cropwatcher/api/rest.py     GET /history/sessions[/{id}[/samples]],
+                                            GET /history/flights (this laptop's
+                                            and Supabase's, merged),
+                                            GET /history/flights/{id}/playback
+  desktop/src/pages/sessions/               RecentSessions, SessionsPage (Play back
+                                            on every flight), WindowLog, Playback
 
   On disk:  <app data>/sessions/<session id>/meta.json
             <app data>/sessions/<session id>/samples.csv
@@ -83,3 +87,8 @@ shares-data-with  ../pipeline/data-pipeline.txt
 shares-data-with  ../pipeline/session.txt
                   samples.csv is the session's own pipeline input; meta.json
                   carries the session's processing state
+consumed-by       ../desktop/mission-playback.txt
+                  each flight's Play back; the plan as flown is read from the
+                  session's missions/ folder
+copied-to         ../desktop/mission-playback.txt
+                  parts.tsx SessionRow's layout is AllFlights' FlightRow

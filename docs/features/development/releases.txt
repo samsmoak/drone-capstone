@@ -30,7 +30,10 @@ WHERE IT LIVES
   scripts/setup.mjs                       the toolchain checks and dependencies
   desktop/scripts/sidecar.mjs             `pnpm sidecar` → build_sidecar.py
   backend/agent/packaging/build_sidecar.py  freezes and verifies the agent
-  .github/workflows/desktop-install.yml   runs install.mjs on the three machines
+  .github/workflows/desktop-install.yml   runs install.mjs on the four machines
+  .github/workflows/agent-tests.yml       the agent's gates: ruff, mypy, pytest —
+                                          the mission simulator's scenarios
+                                          included (2026-10-11)
   web/lib/site-content.ts                 the setup guide's terminal steps
 
 
@@ -40,8 +43,11 @@ WHEN CI RUNS
     scripts/** or the workflow itself
   "Run workflow" by hand
 
+  agent-tests.yml: push to main or a pull request touching backend/agent/**
+    or the workflow itself; "Run workflow" by hand
+
 The path filter is deliberate: a docs or web change cannot affect the install,
-and three runners are not free. Add to the list when something new can affect
+and four runners are not free. Add to the list when something new can affect
 the app; do not remove the filter.
 
 

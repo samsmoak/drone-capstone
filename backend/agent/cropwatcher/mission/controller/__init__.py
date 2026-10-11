@@ -5,9 +5,6 @@ system (flight/manual.py): hold_at() for the takeoff height, fly_to() for each
 inspection point. It never commands the drone itself, so autonomous flight
 inherits everything tuned into manual flight — the easing, the leash, the
 guards, the heartbeat dead-man — and nothing else.
-
-Owned by Hannah: docs/handoffs/sprint-1/undone/mission-controller.txt. The interface here is
-fixed; the body of MissionController is hers to build.
 """
 
 from cropwatcher.mission.controller.events import (

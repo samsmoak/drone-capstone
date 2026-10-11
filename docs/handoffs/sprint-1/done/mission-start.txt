@@ -21,7 +21,7 @@ ticket and the code disagree, the code wins.
                   desktop/src/pages/control/auto/FlyStep.tsx
                   desktop/src/pages/control/auto/AutoControl.tsx (full screen)
                   backend/agent/tests/mission/test_session_missions.py
-  Not in scope    the mission controller body (../undone/mission-controller.txt,
+  Not in scope    the mission controller body (../done/mission-controller.txt,
                   Hannah); the planner (mission-planner.txt)
 
 
@@ -86,7 +86,7 @@ FOLLOW-UPS — OPEN
 ─────────────────
 
   [ ] Fly a real mission in the lab once the controller lands
-      (../undone/mission-controller.txt): from a spot off the planned start, with an
+      (../done/mission-controller.txt): from a spot off the planned start, with an
       end point. Log it in ../../../flight-log.txt.
   [ ] Check the base stations have not moved since the room was drawn — a
       geometry fingerprint per room (floor-plans.txt, NOT BUILT; needs a

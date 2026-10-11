@@ -614,6 +614,10 @@ export const api = {
   clearOperator: () => command<Session>("/controls/operator", { clear: true }),
   flightResult: (flightId: string) =>
     command<FlightResult>(`/flights/${encodeURIComponent(flightId)}/result`, undefined, "GET"),
+  playback: (flightId: string) =>
+    command<FlightPlayback>(`/history/flights/${encodeURIComponent(flightId)}/playback`, undefined, "GET"),
+  flights: (mode?: Mode) =>
+    command<FlightList>(`/history/flights${mode ? `?mode=${mode}` : ""}`, undefined, "GET"),
   processFlight: (flightId: string) =>
     command<ProcessingJob>(`/flights/${encodeURIComponent(flightId)}/process`),
   runMission: (missionId: string, ambient: string) =>
@@ -666,6 +670,123 @@ export type SessionRecord = {
 };
 
 export type SampleRow = { recorded_at: string } & Record<string, number | string | null>;
+
+/** One recorded flight to watch again (GET /history/flights/{id}/playback,
+ *  agent playback.py). Every time is seconds from the start of the recording —
+ *  the mission report's clock. Nothing in it is simulated. */
+export type PlaybackSample = {
+  t_s: number;
+  /** The room's frame — the frame the plan is drawn in. */
+  x_m: number | null;
+  y_m: number | null;
+  /** Height above the floor where it took off. */
+  z_m: number | null;
+  /** A base station was received: the position was measured. False is the
+   *  drone flying on its own estimate; null in a file older than the column. */
+  positioned: boolean | null;
+  yaw_deg: number | null;
+  roll_deg: number | null;
+  pitch_deg: number | null;
+  /** Horizontal speed. */
+  speed_m_s: number | null;
+  vz_m_s: number | null;
+  battery_v: number | null;
+  /** Corrected temperature, in the flight's temp_unit. */
+  temp: number | null;
+  pressure_hpa: number | null;
+  thrust: number | null;
+  point_id: string | null;
+};
+
+export type PlaybackControl = {
+  t_s: number;
+  /** The manual flight system's state: armed, flying, landing, landed, stopped, idle. */
+  state: string;
+  /** Keys the operator held, as recorded; "" when none. */
+  keys: string;
+  /** Where the loop was sending the drone: x, y and height above the floor. */
+  target: [number, number, number] | null;
+  drift_m: number | null;
+  height_error_m: number | null;
+};
+
+export type PlaybackEvent = {
+  t_s: number;
+  kind: "state" | "keys" | "hold" | "position" | "gap";
+  text: string;
+  point_id: string | null;
+};
+
+export type FlightReportLeg = {
+  to: string;
+  label: string | null;
+  leg_m: number;
+  planned_s: number;
+  transit_s: number | null;
+  reached: boolean;
+  settle_s: number | null;
+  hold_s: number | null;
+  hold_required_s: number | null;
+  hold_long_enough: boolean | null;
+  hold_drift_median_m: number | null;
+  hold_drift_worst_m: number | null;
+  notes: string[];
+};
+
+/** Where a flight is played from: this laptop's files, or Supabase. */
+export type FlightSource = "this_computer" | "supabase";
+
+/** One flight that can be played back (GET /history/flights): this laptop's
+ *  and everyone's in Supabase, each once (agent playback.list_flights). */
+export type FlightListItem = {
+  id: string;
+  session_id: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  mode: string | null;
+  program: string | null;
+  outcome: string | null;
+  abort_reason: string | null;
+  operator_email: string | null;
+  operator_name: string | null;
+  /** Its plan as flown is here or in Supabase: the map can draw the mission. */
+  has_plan: boolean;
+  on_this_computer: boolean;
+  in_supabase: boolean;
+  source: FlightSource;
+  /** This laptop's upload of it: null for a flight flown elsewhere. */
+  upload: "uploading" | "uploaded" | null;
+};
+
+export type FlightList = {
+  flights: FlightListItem[];
+  /** Whether Supabase was asked: signed out or unreachable, only this
+   *  laptop's flights are listed, and this says why. */
+  cloud: "ok" | "signed_out" | "error";
+  cloud_error: string | null;
+};
+
+export type FlightPlayback = {
+  flight_id: string;
+  source: FlightSource;
+  started_at: string | null;
+  duration_s: number;
+  temp_unit: string | null;
+  truncated: boolean;
+  /** Each a sentence for the operator: what is missing, and why. */
+  notes: string[];
+  /** The room's map, or the default area for a flight that kept no room. */
+  outer: OuterBound;
+  room: RoomView | null;
+  /** The plan AS FLOWN — a mission flight from the app only. */
+  mission: MissionView | null;
+  moves: { point_id: string; distance_m: number }[];
+  report: { legs: FlightReportLeg[]; estimate_s: number; flown_s: number | null; notes: string[]; longer_than_estimate: boolean } | null;
+  samples: PlaybackSample[];
+  control: PlaybackControl[];
+  gaps: { from_s: number; to_s: number }[];
+  events: PlaybackEvent[];
+};
 
 /** Set up: installing the camera software on a drone (drone_setup.py). */
 export type SetupPart = "main" | "lighthouse" | "camera" | "wifi";

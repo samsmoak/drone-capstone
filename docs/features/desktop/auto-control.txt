@@ -1,6 +1,9 @@
 ================================================================================
 CONTROL IN AUTO — plan a mission, check the drone, fly it
-Last verified: 2026-10-09 for the RESULTS panel only (the findings, below; agent.ts's
+Last verified: 2026-10-11 for the room map's `trail` only (playback's path
+flown, drawn in PlanCanvas and Room3D; nothing else in the map changed), against
+desktop/mission-playback — pnpm build and the harness at the five widths.
+2026-10-09 for the RESULTS panel only (the findings, below; agent.ts's
 FlightResult type), against docs/pipeline-v2 — pnpm build. The rest: 2026-09-29 (fourth pass: the list is home — Close, ← All
 missions, Edit on every row, Save back to the list; no page jump when a point
 is added) against claude/awesome-carson-eqkt8w —
@@ -71,6 +74,8 @@ desktop/src/pages/control/auto/plan/MissionStep.tsx     ① list and view
 desktop/src/pages/control/auto/plan/MissionEditor.tsx   ① room and path,
                                                         the point menu
 desktop/src/pages/control/auto/plan/RoomMap.tsx    the 2D | 3D switch
+desktop/src/pages/control/auto/plan/trail.ts       the path a recorded flight
+                                                   flew (playback's `trail`)
 desktop/src/pages/control/auto/plan/PlanCanvas.tsx 2-D: the plan, in metres
 desktop/src/pages/control/auto/plan/Room3D.tsx     3-D: three.js, lazy-loaded
 desktop/src/pages/control/auto/plan/webgl.ts       can this machine draw 3-D
@@ -312,3 +317,6 @@ depends-on        ../../design/layout.txt
                   the standing rule every change here is measured against
 depends-on        ../pipeline/live.txt
                   each inspection point's verdict in Progress while the mission flies
+consumed-by       mission-playback.txt
+                  RoomMap, PlanCanvas and Room3D draw a recorded flight; their
+                  `trail` prop (trail.ts) is playback's — the path flown
