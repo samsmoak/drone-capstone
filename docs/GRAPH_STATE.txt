@@ -80,7 +80,7 @@ DEBT  (4)
             desktop/src/components/.
 
 --------------------------------------------------------------------------------
-WATCH  (6)
+WATCH  (5)
 --------------------------------------------------------------------------------
 2026-09-27  UNMERGED BRANCH is fooled by squash merges. docs/main-owner-only,
             feat/linux-install, fix/any-machine-desktop, fix/readable-agent-
@@ -90,13 +90,6 @@ WATCH  (6)
             deleting the merged local branches clears the noise.
 2026-09-27  APPROACHING SIZE (3): backend/manual-control.txt 257,
             desktop/camera.txt 279, desktop/desktop-app.txt 251 lines.
-2026-10-11  MIGRATION 20261011000019 IS NOT ON THE HOSTED PROJECT. Proven
-            locally (playback_check.py 20/20). Until the owner pushes it, each
-            sync pass ends with "apply migration 20261011000019" on Home and
-            no flight's plan or trace reaches Supabase (everything before it
-            does). `supabase migration list --db-url` (2026-10-11, read
-            only): hosted has 0001–0018, so a push applies 0019 alone.
-            data-model.txt said hosted stopped at 0017 — drift, corrected.
 2026-10-11  FLAG — components/Tabs.tsx moves between tabs on ArrowLeft/Right
             with preventDefault but NOT stopPropagation, so the window's flight
             handler (App.tsx, LOCKED) also gets the arrow: a focused console tab
@@ -118,6 +111,9 @@ and why it did not apply)
 --------------------------------------------------------------------------------
 RESOLVED
 --------------------------------------------------------------------------------
+2026-10-11  Migration 20261011000019 pushed to the hosted project (0001–0018
+            were live; 0019 alone applied) and verified read-only: RLS, four
+            policies, grants select + insert to authenticated, none to anon.
 2026-10-11  design/layout.txt STALE (harness moved 2026-10-06/09): the whole
             harness re-measured at 720 · 900 · 1024 · 1280 · 1600, light and
             dark — 10 PASS, self-test FAIL as it must.

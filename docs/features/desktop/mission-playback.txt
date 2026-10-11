@@ -17,10 +17,10 @@ STATUS  (Last verified: 2026-10-11)
              playback (this laptop's files first, else Supabase), playback.py;
              the upload of each flight's plan as flown and control trace
              (sync/flight_playback.py, Kind.PLAYBACK)
-  supabase   BUILT, NOT ON HOSTED — flight_plans and flight_traces (migration
-             20261011000019), proven on the local stack. The owner pushes it;
-             until then the upload's step fails last in each pass, with the
-             migration named, and nothing before it waits.
+  supabase   BUILT — flight_plans and flight_traces (migration 20261011000019):
+             proven on the local stack (playback_check.py 20/20), applied to
+             the hosted project 2026-10-11 and its RLS, policies and grants
+             verified there read-only.
   desktop    BUILT — Sessions › All flights (everyone's, by person and mode,
              where each one lives) and Sessions › a session › a flight; Play
              back on each: the room map (2-D or 3-D) with the plan as flown,
