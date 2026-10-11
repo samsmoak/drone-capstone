@@ -48,6 +48,7 @@ import { HomePage } from "@/pages/home/HomePage";
 import { FlightStrip } from "@/components/FlightStrip";
 import { Sidebar } from "@/components/Sidebar";
 import { SessionsPage } from "@/pages/sessions/SessionsPage";
+import { PlaybackPage } from "@/pages/playback/PlaybackPage";
 import { WindowLog } from "@/pages/sessions/WindowLog";
 import { StartupPage } from "@/pages/startup/StartupPage";
 import { SensorWindow, type WindowKey } from "@/pages/windows/SensorWindow";
@@ -65,7 +66,7 @@ const HISTORY_LIMIT = HISTORY_S * 10;      // 10 Hz
 
 export type History = { t: number; values: Record<string, number>; height_m: number | null }[];
 
-export type Page = "home" | "setup" | "control" | "sessions" | "wifi" | WindowKey;
+export type Page = "home" | "setup" | "control" | "sessions" | "playback" | "wifi" | WindowKey;
 
 /** A command, and what to call it in the log. */
 export type Run = (action: () => Promise<unknown>, label?: string) => Promise<void>;
@@ -431,6 +432,8 @@ export default function App() {
               <WifiPage wifi={cameraWifi} session={session} onSaved={setCameraWifi} />
             ) : page === "sessions" ? (
               <SessionsPage refreshKey={historyKey} mode={viewMode} selectedId={sessionId} onSelect={setSessionId} />
+            ) : page === "playback" ? (
+              <PlaybackPage refreshKey={historyKey} mode={viewMode} />
             ) : logWindow === page ? (
               <WindowLog windowKey={page} refreshKey={historyKey} mode={viewMode} onBack={() => setLogWindow(null)} />
             ) : (

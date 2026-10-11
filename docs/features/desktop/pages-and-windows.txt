@@ -15,6 +15,8 @@ stop.
                action rail and the step's own controls). IN AUTO the page is
                the mission flow instead — auto-control.txt.
   Sessions     every session (who, when, how it ended) and one session's detail
+  Playback     every flight — this computer's and everyone's in Supabase — and
+               any one played back on the room map (mission-playback.txt)
   (standby)    signed in with no session, Home shows the drone on standby
                with Connect / Disconnect, and every sensor page shows live
                vitals — never recorded (sessions-and-modes.txt). The window
@@ -529,6 +531,8 @@ shares-data-with  drone-wifi.txt
 depends-on        ../backend/sessions-and-modes.txt
                   Home's standby row, vitals with no session; the mode a session
                   keeps — the sidebar switch and the lock page
+consumed-by       mission-playback.txt
+                  the Playback page is a sidebar page like the others
 consumed-by       auto-control.txt
                   Auto reuses FlightDeck, Checklist, RetryPanel, HealthTestPanel,
                   Field, Tabs and the ConsolePane (`views`). SceneView's `plan`

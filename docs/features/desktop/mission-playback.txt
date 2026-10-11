@@ -21,8 +21,9 @@ STATUS  (Last verified: 2026-10-11)
              proven on the local stack (playback_check.py 20/20), applied to
              the hosted project 2026-10-11 and its RLS, policies and grants
              verified there read-only.
-  desktop    BUILT — Sessions › All flights (everyone's, by person and mode,
-             where each one lives) and Sessions › a session › a flight; Play
+  desktop    BUILT — Playback, its own page in the sidebar: every flight
+             (everyone's, by person and mode, where each one lives); and
+             Sessions › a session › a flight opens the same player. Play
              back on each: the room map (2-D or 3-D) with the plan as flown,
              the path flown and the drone; Play / Pause / Start / ±1 s / speed
              / a time slider marked with what happened; the readings at that
@@ -65,15 +66,20 @@ agent    backend/agent/cropwatcher/playback.py   files_of, load (files),
 supabase backend/supabase/migrations/20261011000019_flight_playback.sql
          backend/supabase/checks/playback_check.py
 desktop  desktop/src/pages/sessions/Playback.tsx       the player
+         desktop/src/pages/playback/PlaybackPage.tsx   the page: the list, then
+                                                       the player
+         desktop/src/components/nav-items.ts           its sidebar entry
          desktop/src/pages/sessions/AllFlights.tsx     the list (FlightRow is
                                                        copied from parts.tsx
                                                        SessionRow — PARITY marker)
-         desktop/src/pages/sessions/SessionsPage.tsx   the switch, Play back
+         desktop/src/pages/sessions/SessionsPage.tsx   Play back on a session's
+                                                       flights
          desktop/src/pages/control/auto/plan/trail.ts  the path flown, as runs
          desktop/src/pages/control/auto/plan/RoomMap.tsx, PlanCanvas.tsx,
          Room3D.tsx                                    `trail` in both views
          desktop/src/lib/agent.ts                      api.playback, api.flights
-         desktop/src/harness.tsx      "All flights ·", "Playback ·" sections
+         desktop/src/harness.tsx      "Playback ·" sections (the page, mid-flight,
+                                      full screen)
 
 On disk (read, never written): flights/<day>/flight_<id8>_*.csv (10 Hz
 samples), flights/<day>/trace_<id8>.csv (control trace, app flights),
@@ -96,7 +102,11 @@ In Supabase: telemetry, flight_traces, flight_plans, flights (who, when).
   session vitals do (copied from sync/samples.py): written first, sent after,
   a cursor, last in the pass. Past flights are queued once when the updated
   agent starts, so a teammate's old flights appear without a command.
-• IN SESSIONS, NOT A NEW PAGE; a two-button switch, not Tabs (INVARIANTS).
+• ITS OWN PAGE, IN THE SIDEBAR (2026-10-11, Samuel). Playback first shipped
+  inside Sessions (#108, #109: a Play back button, then an "All flights"
+  switch) on my recommendation; Samuel had asked for a page of its own with
+  a sidebar link, and it is that now. The list lives on the Playback page
+  only; a session's flights keep a Play back button into the same player.
 • THE MISSION REPORT'S CLOCK. Every time is seconds from the earlier of the
   flight's first sample and first trace row — review.load's origin — so the
   slider and the report agree. The report is computed from the same rows.
@@ -110,7 +120,7 @@ In Supabase: telemetry, flight_traces, flight_plans, flights (who, when).
 --------------------------------------------------------------------------------
 4. INVARIANTS
 --------------------------------------------------------------------------------
-• NO KEYBOARD SHORTCUTS, AND NO TABS, HERE. App.tsx's flight keys listen on the
+• NO KEYBOARD SHORTCUTS, AND NO TABS, ON PLAYBACK. App.tsx's flight keys listen on the
   whole window on every page: Space swallowed, L LANDS, the arrows and W A S D
   fly it in Manual. Playback is buttons, <select>s, a checkbox and the native
   slider, whose keys never reach the flight handler (it ignores inputs and
@@ -157,5 +167,7 @@ depends-on        ../missions/mission-controller.txt
 shares-data-with  ../pipeline/data-pipeline.txt
                   the same flight files, found the same way (pipeline/sources.py
                   LocalFlightSource)
+depends-on        pages-and-windows.txt
+                  the sidebar and the page frame Playback sits in
 depends-on        ../../design/layout.txt
                   measured in the harness at the five widths, both themes

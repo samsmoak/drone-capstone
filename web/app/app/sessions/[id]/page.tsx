@@ -240,7 +240,8 @@ export default async function SessionPage(props: PageProps<"/app/sessions/[id]">
                 </span>
               </h3>
               <FlightProcessing result={resultOf.get(f.id)!} telemetry={telemetry[f.id] ?? []}
-                                findings={findings.rows.filter((x) => x.flight_id === f.id)} />
+                                findings={findings.rows.filter((x) => x.flight_id === f.id)}
+                                frameLinks={frameLinks} />
             </section>
           ))}
         </section>

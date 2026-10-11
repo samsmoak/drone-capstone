@@ -193,7 +193,7 @@ export default async function ProcessedSessionPage(props: PageProps<"/app/proces
                     </Link>
                   </span>
                 </div>
-                <FlightProcessing result={r} telemetry={rows} findings={mine} />
+                <FlightProcessing result={r} telemetry={rows} findings={mine} frameLinks={frameLinks} />
                 <div className="space-y-3">
                   <h3 className="text-base font-semibold">What went wrong</h3>
                   <ErrorTable marks={flightMarks} rows={rows} table={`flight-${f.id}-readings`}
@@ -234,7 +234,7 @@ export default async function ProcessedSessionPage(props: PageProps<"/app/proces
             ) : (
               <>
                 <FlightProcessing result={own.row} telemetry={sampleRows} findings={ownFindings.rows}
-                                  over="session" />
+                                  over="session" frameLinks={frameLinks} />
                 <div className="space-y-3">
                   <h3 className="text-base font-semibold">What went wrong</h3>
                   <ErrorTable marks={sessionMarks} rows={samples.rows} indexKey="seq"

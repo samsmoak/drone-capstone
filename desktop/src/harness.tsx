@@ -20,7 +20,7 @@ import { SensorWindow, WINDOWS } from "@/pages/windows/SensorWindow";
 import { WindowLog } from "@/pages/sessions/WindowLog";
 import { SessionsPage } from "@/pages/sessions/SessionsPage";
 import { FlightPlaybackView } from "@/pages/sessions/Playback";
-import { AllFlights } from "@/pages/sessions/AllFlights";
+import { PlaybackPage } from "@/pages/playback/PlaybackPage";
 import { StartupPage } from "@/pages/startup/StartupPage";
 import {
   EMPTY_INTENT, connectToShell,
@@ -495,8 +495,8 @@ createRoot(document.getElementById("root")!).render(
     ))}
     {!agentToken && (
       <>
-        <Shell label="All flights · everyone's">
-          <AllFlights refreshKey="h" mode={(query.get("mode") as "auto" | "manual") ?? "auto"} onPlay={() => {}} />
+        <Shell label="Playback · the page, all flights">
+          <PlaybackPage refreshKey="h" mode={(query.get("mode") as "auto" | "manual") ?? "auto"} />
         </Shell>
         <Shell label="Playback · mid-flight">
           <FlightPlaybackView flightId="f1c2d3e4-playback" title={sampleMission.name} onBack={() => {}} startAt={33} />

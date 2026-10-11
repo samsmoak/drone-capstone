@@ -36,7 +36,7 @@ Feature docs are plain `.txt`, grouped by the surface they describe.
 | [features/desktop/drone-wifi.txt](features/desktop/drone-wifi.txt) | The drone's camera joins the operator's Wi-Fi, set over the radio: the firmware addition, the flasher, the dialog |
 | [features/desktop/pages-and-windows.txt](features/desktop/pages-and-windows.txt) | The sidebar shell, Control's two columns and its console, the five live sensor windows, and how the layout is measured |
 | [features/desktop/auto-control.txt](features/desktop/auto-control.txt) | Control in Auto: ① Mission (plan, edit, pick) → ② Check → ③ Fly, the monitor on the right |
-| [features/desktop/mission-playback.txt](features/desktop/mission-playback.txt) | Sessions › All flights / a flight › Play back: anyone's recorded flight watched again on the room map (2-D/3-D, full screen) with its readings, events and report — this laptop's files first, Supabase for the rest; recorded, never simulated |
+| [features/desktop/mission-playback.txt](features/desktop/mission-playback.txt) | Playback (its own sidebar page) — every flight, then Play back: anyone's recorded flight watched again on the room map (2-D/3-D, full screen) with its readings, events and report — this laptop's files first, Supabase for the rest; recorded, never simulated |
 
 ## Missions — autonomous flight (`backend/agent/cropwatcher/mission/`)
 

@@ -175,7 +175,8 @@ export default async function FlightPage(props: PageProps<"/app/flights/[id]">) 
           <h2 id="processing-heading" className="text-lg font-semibold text-[var(--heading)]">
             Data processing
           </h2>
-          <FlightProcessing result={result} telemetry={telemetry} findings={findings.rows} />
+          <FlightProcessing result={result} telemetry={telemetry} findings={findings.rows}
+                            frameLinks={frameLinks} />
         </section>
       )}
 
