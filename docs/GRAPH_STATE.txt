@@ -94,8 +94,9 @@ WATCH  (6)
             locally (playback_check.py 20/20). Until the owner pushes it, each
             sync pass ends with "apply migration 20261011000019" on Home and
             no flight's plan or trace reaches Supabase (everything before it
-            does). `supabase migration list --db-url` first: hosted was last
-            recorded at 0017 (data-model.txt) — a push applies 0018 too.
+            does). `supabase migration list --db-url` (2026-10-11, read
+            only): hosted has 0001–0018, so a push applies 0019 alone.
+            data-model.txt said hosted stopped at 0017 — drift, corrected.
 2026-10-11  FLAG — components/Tabs.tsx moves between tabs on ArrowLeft/Right
             with preventDefault but NOT stopPropagation, so the window's flight
             handler (App.tsx, LOCKED) also gets the arrow: a focused console tab

@@ -35,9 +35,11 @@ on the local stack only (2026-10-11, playback_check.py 20/20). Until the owner
 pushes it, the agent's last upload step fails with "apply migration
 20261011000019" and everything before it still goes (sync/syncer.py order).
 Check `supabase migration list --db-url` first: a push applies EVERY local
-migration the remote lacks (storage-and-backfill.txt).
+migration the remote lacks (storage-and-backfill.txt). On 2026-10-11 the live
+list showed 0001–0018 applied and only 0019 missing.
 
-Applied to the hosted project (fuwojlqpavvfgmqardfo) through 0017 — 0015–0017
+Applied to the hosted project (fuwojlqpavvfgmqardfo) through 0018 (this line
+said 0017 until 2026-10-11 — drift: 0018 was already live). 0015–0017
 on 2026-10-09 (`supabase db push --db-url` from .env.team's SUPABASE_DB_URL;
 the live list showed 0001–0014 already there). Verified read-only as the
 operator: the three new tables answer, every session (188) and flight (187)
