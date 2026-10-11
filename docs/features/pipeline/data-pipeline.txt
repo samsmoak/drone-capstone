@@ -173,6 +173,9 @@ depends-on        ../backend/sessions-and-modes.txt
                   the session decides per flight whether it is processed
 consumed-by       ../desktop/auto-control.txt
                   the DPP switch and the results on ② and ③
+shares-data-with  ../desktop/mission-playback.txt
+                  the same flight files, found the same way (sources.py
+                  LocalFlightSource): playback reads them back to watch
 depends-on        ../backend/agent-api.txt
                   POST /session/processing, GET /flights/{id}/result
 consumed-by       session.txt

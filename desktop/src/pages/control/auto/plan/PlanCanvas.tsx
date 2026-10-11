@@ -17,6 +17,8 @@
  *   ring + END       the end point: the flight lands there
  *   square S         the planned start
  *   green D          the drone, where it is now — the real start of a flight
+ *   solid green line the path a recorded flight flew (playback, trail.ts);
+ *                    dashed amber where it flew with no base station
  *
  * SELECTING ONE THING FADES THE REST, here and in the 3-D view alike: the
  * geofence (the room) or one obstacle, whether it was clicked on the plan or
@@ -35,6 +37,7 @@ import type { Geofence, InspectionPoint, Obstacle, OuterBound, Problem, XY } fro
 import { NUDGE_M, mapBox } from "./geometry";
 import { legsOf, landsAt, unflownIds, type PathSource } from "./path";
 import { SPACE_LABEL, insideOutline, type SpaceLayer } from "./space";
+import type { Trail } from "./trail";
 
 export type Handle =
   | { kind: "home" }
@@ -83,7 +86,10 @@ export type Editing = {
 export function PlanCanvas({
   outer, fence, obstacles, path, takeoffHeight = 0.4, problems = [], drone = null,
   editing, label, progress, selected: shownSelected = null, className, space = null, sliceZ = null,
+  trail = null,
 }: {
+  /** Playback: the path a recorded flight flew, up to the moment shown. */
+  trail?: Trail | null;
   /** The flyable space (space.ts), drawn under the plan; points outside it are ringed red. */
   space?: SpaceLayer | null;
   /** With a prediction: the height whose outline to draw. */
@@ -368,6 +374,29 @@ export function PlanCanvas({
           );
         })}
       </g>
+
+      {trail && trail.length > 0 && (
+        <g aria-hidden="true">
+          {trail.map((run, i) => {
+            const points = run.points.map(([x, y]) => `${x},${-y}`).join(" ");
+            const line = { fill: "none", strokeLinejoin: "round", strokeLinecap: "round" } as const;
+            // Amber alone is 1.7:1 on the light floor (WCAG 1.4.11 asks 3:1 of
+            // a line that carries meaning — measured 2026-10-11), so the
+            // unmeasured stretch rides on a --foreground casing; green is 3.1:1.
+            return (
+              <g key={i}>
+                {!run.measured && (
+                  <polyline points={points} {...thin}
+                            style={{ ...line, stroke: "var(--foreground)", strokeWidth: 4.5 }} />
+                )}
+                <polyline points={points} {...thin}
+                          style={{ ...line, stroke: run.measured ? "var(--status-good)" : "var(--status-warning)",
+                                   strokeWidth: 2.5, strokeDasharray: run.measured ? undefined : "5 4" }} />
+              </g>
+            );
+          })}
+        </g>
+      )}
 
       {drone && (
         <g role="img" aria-label={`The drone, ${(drone[0] - box.xMin).toFixed(2)} m from left and ${(drone[1] - box.yMin).toFixed(2)} m from front`}>

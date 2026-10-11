@@ -47,7 +47,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from cropwatcher import history
+from cropwatcher import history, playback
 from cropwatcher.api.events import EventHub
 from cropwatcher.api.tokens import HEADER, load_or_create_token
 from cropwatcher.camera import DeckStream, FrameSource, NoCamera, TestPattern
@@ -742,6 +742,40 @@ def read_samples(
             session_id, names, mode=str(mode) if mode else None, limit=limit)
     except ValueError:
         raise HTTPException(status_code=404, detail="No such session on this computer.") from None
+
+
+@app.get("/history/flights/{flight_id}/playback", dependencies=[Command])
+def flight_playback(flight_id: str) -> dict:
+    """One recorded flight to watch again (playback.py): its samples and
+    control trace on one clock, the gaps, the events in words, and — for a
+    mission — the plan as flown and its room as the map draws them, with the
+    mission report. 404 in words when this computer has no such flight."""
+    if not FLIGHT_ID.match(flight_id):
+        raise HTTPException(status_code=404, detail="That is not a flight id.")
+    try:
+        found = playback.load(data_dir(), flight_id)
+    except playback.PlaybackError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from None
+    room = found.room
+    return {
+        "flight_id": found.flight_id,
+        "started_at": found.started_at,
+        "duration_s": found.duration_s,
+        "temp_unit": found.temp_unit,
+        "truncated": found.truncated,
+        "notes": found.notes,
+        # The default area stands in for a flight that kept no room, so a
+        # Manual flight still plays back to scale.
+        "outer": _outer(room),
+        "room": _room_view(room) if room is not None else None,
+        "mission": _mission_view(found.mission, room) if found.mission is not None else None,
+        "moves": found.moves,
+        "report": found.report,
+        "samples": found.samples,
+        "control": found.control,
+        "gaps": found.gaps,
+        "events": found.events,
+    }
 
 
 # ── the data pipeline's results ──────────────────────────────────────────

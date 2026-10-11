@@ -1,0 +1,135 @@
+================================================================================
+MISSION PLAYBACK — watch a recorded flight again, on the room map, at any moment
+Last verified: 2026-10-11 against desktop/mission-playback — the agent's
+playback on the lab's real flights (fdd57690, 076e7532, d985c7a6, and a Manual
+one), tests/test_playback.py (20), and the layout harness at 720 · 900 · 1024
+· 1280 · 1600 px in both themes, inline and full screen, with screenshots.
+SOURCE: desktop/src/pages/sessions/Playback.tsx
+================================================================================
+
+--------------------------------------------------------------------------------
+STATUS  (Last verified: 2026-10-11)
+--------------------------------------------------------------------------------
+  agent      BUILT — GET /history/flights/{id}/playback (playback.py): one
+             flight's samples and control trace on the mission report's clock,
+             its gaps, its events in words, the plan as flown, its room, and
+             the mission report
+  desktop    BUILT — Sessions › a session › a flight › Play back: the room map
+             (2-D or 3-D) with the plan as flown, the path flown and the
+             drone; Play / Pause / Start / ±1 s / speed / a time slider marked
+             with what happened; the readings at that moment; the events, each
+             a jump; the report. Full screen keeps all of it.
+  NOT BUILT  ANOTHER PERSON'S FLIGHT. Only flights on this computer: the plan
+             flown and the control trace never leave the laptop that flew
+             (session._keep_plan_flown, telemetry/trace.py). Their telemetry is
+             in Supabase (public.telemetry, x_m/y_m/z_m) — a web or desktop
+             playback of anyone's flight needs those two files uploaded too
+             (a migration, RLS, the outbox). Next step; not in this build.
+  NOT BUILT  On the web (/app). Same reason, plus the map: the web has no
+             RoomMap.
+
+--------------------------------------------------------------------------------
+1. WHAT IT IS
+--------------------------------------------------------------------------------
+Pick a flight in Sessions and watch it again: the room, the plan it flew (after
+auto-correct — the plan AS FLOWN), the path the drone really took drawn behind
+it, and the drone where it was at the moment on the slider, with its height,
+speed, drift, battery, temperature, pressure, heading, the loop's state, the
+keys the operator held, and the point it was holding. The events say what
+happened in words — took off, holding at P1, base stations lost for 4.7 s,
+operator held ArrowUp, no samples for 1.5 s, landing — and each one jumps the
+slider to its moment. A Manual flight plays back too, over the default area
+with no path.
+
+IT IS A RECORDING, NOT A SIMULATION. A simulator flying the same plan shows an
+ideal drone; the failures worth replaying come from the room (reception,
+drift, a guard, an operator), and only the recording has them. The simulator's
+job is CI (../development/releases.txt, agent-tests.yml).
+
+--------------------------------------------------------------------------------
+2. WHERE IT LIVES
+--------------------------------------------------------------------------------
+agent    backend/agent/cropwatcher/playback.py   reads the flight's files:
+                                                 samples, control, gaps, events
+         backend/agent/cropwatcher/api/rest.py   GET /history/flights/{id}/playback
+                                                 (token-gated; the plan and room
+                                                 as the map's views)
+         backend/agent/tests/test_playback.py
+desktop  desktop/src/pages/sessions/Playback.tsx       the player
+         desktop/src/pages/sessions/SessionsPage.tsx   Play back on every flight
+         desktop/src/pages/control/auto/plan/trail.ts  the path flown, as runs
+         desktop/src/pages/control/auto/plan/RoomMap.tsx, PlanCanvas.tsx,
+         Room3D.tsx                                    `trail` drawn in both views
+         desktop/src/lib/agent.ts                      api.playback, FlightPlayback
+         desktop/src/harness.tsx                       "Playback · mid-flight",
+                                                       "Playback · full screen"
+
+On disk (read, never written):
+  flights/<day>/flight_<id[:8]>_*.csv     10 Hz samples
+  flights/<day>/trace_<id[:8]>.csv        10 Hz control trace (app flights)
+  sessions/<session>/missions/<id>.json   the plan as flown (mission flights)
+
+--------------------------------------------------------------------------------
+3. DECISIONS
+--------------------------------------------------------------------------------
+• IN SESSIONS, NOT A NEW PAGE. Sessions already lists every flight; a Play back
+  button on each is where people already look, and the player replaces the
+  session's page with Back to return (2026-10-11, Samuel agreed).
+• THE MISSION REPORT'S CLOCK. Every time is seconds from the earlier of the two
+  files' first rows — mission/review.py load()'s origin — so a time on the
+  slider and a time in the report are the same time.
+• THE PATH FLOWN IS RUNS (trail.ts). A gap in the samples ends a run (no line
+  across time nobody saw); a change between measured and unmeasured position
+  starts a new one in the other style.
+• IN A GAP THE DRONE IS NOT DRAWN. Nothing was received, so nothing is shown —
+  the drone "disappears", which is what happened on the link.
+• ONE EVENT PER STRETCH WITHOUT BASE STATIONS, with its length. On the lab's
+  flights reception flickers (lost and back within 0.2 s, several times a
+  flight); a line per flicker buried the stretch that mattered — d985c7a6 held
+  P1 for 4.7 s with no base station.
+• ONE MAP AT A TIME. Full screen replaces the inline map: two WebGL views of one
+  room are two GPU contexts.
+• Capped at an hour per file (playback.MAX_ROWS, 36 000 rows), and it says so.
+  The lab's missions are 15–42 s, 60–165 KB.
+
+--------------------------------------------------------------------------------
+4. INVARIANTS
+--------------------------------------------------------------------------------
+• NO KEYBOARD SHORTCUTS IN PLAYBACK. App.tsx's flight keys listen on the whole
+  window on every page: Space is swallowed (it must never press a button that
+  stops the motors), L LANDS THE DRONE, the arrows and W A S D fly it in
+  Manual. Playback is buttons, a <select> and the native slider, whose own
+  arrow keys never reach the flight handler (it ignores keys typed into an
+  input or select). A "Space to play" here would be a key that lands a drone
+  on another page's terms. (App.tsx and keys.ts are LOCKED — CLAUDE.md.)
+• The flight CSV's x_m, y_m are the room's frame — the frame the plan is drawn
+  in; z_m is height above the floor at takeoff (telemetry/reader.py), what the
+  map's drone takes. Never draw stateEstimate.z: Lighthouse z = 0 is not the
+  floor (CLAUDE.md invariant 4).
+• positioned is lighthouse_received > 0. False means the drone flew on its own
+  estimate — drawn, but dashed amber and said.
+• The unmeasured stretch is amber on a --foreground casing: amber alone is
+  1.7:1 on the light floor, under WCAG 1.4.11's 3:1 (measured 2026-10-11);
+  green is 3.1:1 and needs none.
+• Full screen, stacked (below lg): no min-h-0 on the columns. With it the grid
+  rows shrank below their content and the readings slid over the map at
+  720 px — the DOM measurement passed it; only the screenshot showed it.
+• A flight id comes from a URL: anything but [A-Za-z0-9_-]{1,64} is a 404
+  before it touches the disk (processing.FLIGHT_ID).
+
+--------------------------------------------------------------------------------
+5. RELATED
+--------------------------------------------------------------------------------
+depends-on        ../backend/session-history.txt
+                  the session's flights list is where Play back starts; the
+                  plan as flown is kept in the session's folder
+depends-on        auto-control.txt
+                  RoomMap (2-D | 3-D), PlanCanvas and Room3D draw the playback;
+                  `trail` is their one addition
+depends-on        ../missions/mission-controller.txt
+                  the mission report (review.py) and its clock
+shares-data-with  ../pipeline/data-pipeline.txt
+                  the same flight files, found the same way (pipeline/sources.py
+                  LocalFlightSource)
+depends-on        ../../design/layout.txt
+                  measured in the harness at the five widths, both themes
