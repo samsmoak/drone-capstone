@@ -1,10 +1,11 @@
 /** Every session this computer recorded, and one session in full. */
 
 import { useCallback, useEffect, useState } from "react";
-import { AgentError, api, type Mode, type SessionRecord } from "@/lib/agent";
+import { AgentError, api, type FlightRecord, type Mode, type SessionRecord } from "@/lib/agent";
 import { endReasonLabel, formatDateTime, formatDuration, formatNumber, formatTime } from "@/lib/format";
 import { Button, Message, PageHeader, Panel, Spinner, Stat, StatusDot } from "@/components/ui";
 import { WINDOWS, WINDOW_VARIABLES } from "@/pages/windows/SensorWindow";
+import { FlightPlaybackView } from "./Playback";
 import {
   DashboardLink, Disclosure, HiddenByMode, Load, LoadState, MODE_LABEL, ReadingsTable, SessionRow,
   useSessions,
@@ -54,8 +55,15 @@ export function SessionsPage({ refreshKey, mode, selectedId, onSelect }: {
   );
 }
 
+/** What a flight is called on this page — its program, or its mode. */
+function flightName(f: FlightRecord): string {
+  return f.program ?? (f.mode === "manual" ? "Manual flight" : "Program");
+}
+
 function SessionDetail({ id, mode, onBack }: { id: string; mode: Mode | null; onBack: () => void }) {
   const [state, setState] = useState<Load<SessionRecord>>({ kind: "loading" });
+  // A flight being played back replaces the session's page; Back returns to it.
+  const [playing, setPlaying] = useState<FlightRecord | null>(null);
   const load = useCallback(async () => {
     setState({ kind: "loading" });
     try {
@@ -65,6 +73,10 @@ function SessionDetail({ id, mode, onBack }: { id: string; mode: Mode | null; on
     }
   }, [id]);
   useEffect(() => { void load(); }, [load]);
+
+  if (playing) {
+    return <FlightPlaybackView flightId={playing.id} title={flightName(playing)} onBack={() => setPlaying(null)} />;
+  }
 
   return (
     <div className="grid gap-4">
@@ -80,12 +92,16 @@ function SessionDetail({ id, mode, onBack }: { id: string; mode: Mode | null; on
           <div><Button onClick={() => void load()}>Try again</Button></div>
         </div>
       )}
-      {state.kind === "ready" && <SessionDetailBody record={state.data} mode={mode} />}
+      {state.kind === "ready" && <SessionDetailBody record={state.data} mode={mode} onPlay={setPlaying} />}
     </div>
   );
 }
 
-function SessionDetailBody({ record, mode }: { record: SessionRecord; mode: Mode | null }) {
+function SessionDetailBody({ record, mode, onPlay }: {
+  record: SessionRecord;
+  mode: Mode | null;
+  onPlay: (flight: FlightRecord) => void;
+}) {
   const s = record.summary;
   return (
     <>
@@ -122,14 +138,17 @@ function SessionDetailBody({ record, mode }: { record: SessionRecord; mode: Mode
             {record.flights.filter((f) => !mode || f.mode === mode).map((f) => (
               <li key={f.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
                 <span>
-                  <span className="font-medium">{f.program ?? (f.mode === "manual" ? "Manual flight" : "Program")}</span>
+                  <span className="font-medium">{flightName(f)}</span>
                   <span className="block text-[var(--muted)]">
                     {formatTime(f.started_at)} – {formatTime(f.ended_at)}
                   </span>
                 </span>
-                {f.abort_reason
-                  ? <StatusDot tone="warning">Aborted: {f.abort_reason.replace(/_/g, " ")}</StatusDot>
-                  : <StatusDot tone="good">{(f.outcome ?? "completed").replace(/_/g, " ")}</StatusDot>}
+                <span className="flex flex-wrap items-center gap-3">
+                  {f.abort_reason
+                    ? <StatusDot tone="warning">Aborted: {f.abort_reason.replace(/_/g, " ")}</StatusDot>
+                    : <StatusDot tone="good">{(f.outcome ?? "completed").replace(/_/g, " ")}</StatusDot>}
+                  <Button onClick={() => onPlay(f)} title="Watch this flight again on the room map">Play back</Button>
+                </span>
               </li>
             ))}
           </ul>

@@ -3,12 +3,13 @@ GRAPH STATE — WHAT IS OUT OF SYNC, AND WHAT THAT STOPS
 Read this BEFORE starting a feature. It is the one file that says whether the
 docs can be trusted for the area you are about to work in.
 Generated from `python3 graph_check.py` plus what passes noticed by hand.
-Last run: 2026-10-10 on integrate/public (experiment/samuel with the team's
-PRs #101, #102, #103 merged, for main) — 47 docs. Blocking classes:
-DANGLING 0 · ONE-WAY 0 · STALE 1 (design/layout.txt, as before — see WARN).
-UNMERGED BRANCH 62 is the lab's feature branches, all inside experiment/
-samuel: they reach main with it. mission-controller.txt and both mission
-tickets rewritten (done/); the ticket move re-pointed every reference.
+Last run: 2026-10-11 on desktop/mission-playback (mission playback, plus
+agent-tests.yml on main) — 48 docs. Blocking classes: DANGLING 0 · ONE-WAY 0 ·
+STALE 0. design/layout.txt re-verified: the whole harness at the five widths,
+both themes, PASS (the WARN below moved to RESOLVED). Drift found and fixed,
+said here: backend/session-history.txt named desktop/src/HistoryPages.tsx (now
+desktop/src/pages/sessions/); the router said sprint-1/undone/ held the mission
+controller and three pipeline stages (it is empty — all in done/).
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -38,12 +39,8 @@ BLOCK  (0)
 None recorded.
 
 --------------------------------------------------------------------------------
-WARN  (3)
+WARN  (2)
 --------------------------------------------------------------------------------
-2026-10-09  design/layout.txt is STALE: desktop/src/harness.tsx was committed
-            2026-10-06 (PR #98, the Auto flow) after the doc's 2026-09-30
-            verification. Not touched by the pipeline work; re-run the
-            desktop harness at the five widths before trusting it.
 2026-10-09  DRIFT FOUND AND FIXED: pipeline/data-pipeline.txt still said the
             unit of work was one point and that results never left the
             laptop; desktop/camera.txt still said no whole frame had ever
@@ -110,6 +107,9 @@ and why it did not apply)
 --------------------------------------------------------------------------------
 RESOLVED
 --------------------------------------------------------------------------------
+2026-10-11  design/layout.txt STALE (harness moved 2026-10-06/09): the whole
+            harness re-measured at 720 · 900 · 1024 · 1280 · 1600, light and
+            dark — 10 PASS, self-test FAIL as it must.
 2026-09-27  Docs tree, checker and this file created by the feature-kit.
 2026-09-29  Indented RELATED edges in ten docs rewritten at column 0 (#71), so
             the checker reads them; ORPHAN 30 -> 20, then 15 with #72.

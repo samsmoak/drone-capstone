@@ -1,9 +1,12 @@
 ================================================================================
 LAYOUT — the rule every screen obeys, in both apps
-Last verified: 2026-09-30 against feat/shift-reverses-arrows — the whole desktop harness
-(desktop/src/measure.ts) at the five desktop widths, both themes: 10 runs PASS,
-the self-test FAIL as it must. (2026-09-29: the Auto sections, 2-D and 3-D, 20
-runs PASS.)
+Last verified: 2026-10-11 against desktop/mission-playback — the whole desktop harness
+(desktop/src/measure.ts), with the new Playback sections, at the five desktop
+widths, both themes: 10 runs PASS, the self-test FAIL as it must; the Playback
+sections alone, inline and full screen: 20 runs PASS, plus screenshots — which
+caught a stacked full-screen overlap the DOM measurement passed (see
+features/desktop/mission-playback.txt). (2026-09-30: the whole harness, 10 runs
+PASS; 2026-09-29: the Auto sections, 2-D and 3-D, 20 runs PASS.)
 SOURCE: desktop/src/measure.ts
 ================================================================================
 
@@ -81,3 +84,6 @@ consumed-by       ../features/desktop/auto-control.txt
                   the flow's breakpoints, full screen, the room map
 consumed-by       ../features/frontend/site-pages-and-views.txt
                   the visitor nav and operator bar drawers, folding side menus
+consumed-by       ../features/desktop/mission-playback.txt
+                  measured at the five widths, both themes, inline and full
+                  screen ("Playback ·" sections of the harness)

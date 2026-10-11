@@ -152,6 +152,9 @@ consumed-by       ../pipeline/data-pipeline.txt
                   POINT_COMPLETE will feed the live runner
 consumed-by       ../pipeline/live.txt
                   POINT_COMPLETE queues that point's live verdict
+consumed-by       ../desktop/mission-playback.txt
+                  the mission report (review.py) and its clock, shown beside a
+                  recorded flight played back
 
 --------------------------------------------------------------------------------
 6. SAMUEL'S BUILD OF BOTH TICKETS — on main since 2026-10-10

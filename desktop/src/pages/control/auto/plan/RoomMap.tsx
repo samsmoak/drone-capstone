@@ -24,6 +24,7 @@ import type { CameraPreset, Edit3D } from "./Room3D";
 import { webglAvailable } from "./webgl";
 import type { PathSource } from "./path";
 import { SPACE_LABEL, type SpaceLayer } from "./space";
+import type { Trail } from "./trail";
 
 const Room3D = lazy(() => import("./Room3D"));
 
@@ -40,7 +41,10 @@ export type MapEditing = Editing & Omit<Edit3D, keyof Editing | "onSelect" | "se
 export function RoomMap({
   outer, fence, obstacles, path, takeoffHeight = 0.4, problems = [], drone = null, droneHeight, droneYaw,
   progress, editing, label, below, heightClass = "h-[clamp(18rem,52vh,34rem)]", space = null,
+  trail = null,
 }: {
+  /** Playback: the path a recorded flight flew, up to the moment shown. */
+  trail?: Trail | null;
   /** The flyable space (space.ts): shaded in 2-D, a see-through volume in 3-D. */
   space?: SpaceLayer | null;
   outer: OuterBound;
@@ -119,6 +123,7 @@ export function RoomMap({
             outer={outer} fence={fence} obstacles={obstacles} path={path} takeoffHeight={takeoffHeight}
             problems={problems} drone={drone} progress={progress} label={label}
             editing={editing} selected={editing ? undefined : looking} space={space} sliceZ={shownZ}
+            trail={trail}
             className="block h-full w-full touch-none select-none bg-[var(--surface-2)]"
           />
         ) : (
@@ -126,7 +131,7 @@ export function RoomMap({
             <Room3D
               outer={outer} fence={fence} obstacles={obstacles} path={path} takeoffHeight={takeoffHeight}
               problems={problems} drone={drone} droneHeight={droneHeight} droneYaw={droneYaw}
-              progress={progress} camera={camera} label={label} space={space}
+              progress={progress} camera={camera} label={label} space={space} trail={trail}
               editing={editing ? {
                 selected: editing.selected, onSelect: editing.onSelect, onFence: editing.onFence,
                 onObstacle: editing.onObstacle, onPoint: editing.onPoint, onHome: editing.onHome,

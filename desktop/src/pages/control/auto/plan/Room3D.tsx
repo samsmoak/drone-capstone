@@ -43,6 +43,7 @@ import {
 } from "./geometry";
 import { landsAt, legsOf, unflownIds, type PathSource } from "./path";
 import { insideOutline, type SpaceLayer } from "./space";
+import type { Trail } from "./trail";
 import { isRoomObject, sameHandle, type Handle, type PointState } from "./PlanCanvas";
 
 /** What of drei's OrbitControls this file uses — the orbit's centre, and
@@ -86,6 +87,8 @@ export type Room3DProps = {
   camera: { preset: CameraPreset; n: number };
   /** The flyable space (space.ts): a see-through volume the plan sits inside. */
   space?: SpaceLayer | null;
+  /** Playback: the path a recorded flight flew, at its heights (trail.ts). */
+  trail?: Trail | null;
   label: string;
 };
 
@@ -169,6 +172,7 @@ export default function Room3D(props: Room3DProps) {
 function Scene({
   outer, fence, obstacles, path, takeoffHeight, problems, drone, droneHeight, droneYaw,
   progress, editing, selected: shownSelected, onSelect, camera, palette, box, moved, space = null,
+  trail = null,
 }: Room3DProps & { palette: Palette; box: Box; moved: (e: { clientX: number; clientY: number }) => boolean }) {
   const current = editing?.selected ?? shownSelected ?? null;
   const select = editing?.onSelect ?? onSelect;
@@ -248,6 +252,17 @@ function Scene({
                    faded={!!focus} progress={progress} editing={editing} box={box}
                    current={current} select={select} moved={moved} />
       )}
+
+      {trail?.map((run, i) => (
+        // Solid green where the position was measured; dashed amber, on a
+        // --foreground casing for contrast (PlanCanvas.tsx), where the drone
+        // flew on its own estimate with no base station.
+        <group key={`trail-${i}`}>
+          {!run.measured && <Line points={run.points} color={palette.foreground} lineWidth={4.5} />}
+          <Line points={run.points} color={run.measured ? palette.good : palette.warning}
+                lineWidth={2.5} dashed={!run.measured} dashSize={0.06} gapSize={0.04} />
+        </group>
+      ))}
 
       {drone && <Drone at={drone} height={droneHeight ?? 0} yaw={droneYaw ?? 0} palette={palette} box={box} />}
 
