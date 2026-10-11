@@ -21,12 +21,21 @@ WHERE IT LIVES
   backend/supabase/migrations/20260917000009_site_pages.sql  editable wording
   backend/supabase/migrations/20261009000015_owner_identity.sql   who ran it
   backend/supabase/checks/owner_check.py                     its proof (10 checks)
+  backend/supabase/migrations/20261011000019_flight_playback.sql  plans, traces
+  backend/supabase/checks/playback_check.py                  its proof (20 checks)
   web/types/database.ts                                      generated types —
                                                              regenerated 2026-10-09
                                                              with `supabase gen types
                                                              typescript --local`; it
                                                              had drifted (no
                                                              telemetry.point_id)
+
+0019 (flight_plans, flight_traces) is NOT on the hosted project yet: proven
+on the local stack only (2026-10-11, playback_check.py 20/20). Until the owner
+pushes it, the agent's last upload step fails with "apply migration
+20261011000019" and everything before it still goes (sync/syncer.py order).
+Check `supabase migration list --db-url` first: a push applies EVERY local
+migration the remote lacks (storage-and-backfill.txt).
 
 Applied to the hosted project (fuwojlqpavvfgmqardfo) through 0017 — 0015–0017
 on 2026-10-09 (`supabase db push --db-url` from .env.team's SUPABASE_DB_URL;
@@ -76,6 +85,17 @@ THE TABLES
                 session only; append-only (migration 20261006000013; its grants —
                 select, insert to authenticated, as telemetry — are 0014). Read by
                 /app/sessions (../frontend/operator-dashboard.txt).
+  flight_plans  a flight's plan AS FLOWN — the mission after auto-correct, from
+                the drone's real start — its room and the points moved
+                (mission, room, moves jsonb). PRIMARY KEY flight_id. One per
+                mission flight, uploaded by the agent (sync/flight_playback.py)
+                for playback on any computer (../desktop/mission-playback.txt).
+  flight_traces the 10 Hz control trace: the loop's state, the keys held, the
+                commanded point, drift, height error; every other trace column
+                in `values`. PRIMARY KEY (flight_id, seq). Both: signed-in read;
+                insert by an operator for a flight they flew (flights.created_by
+                = auth.uid()); append-only, re-sends ignored; cascade with the
+                flight (migration 20261011000019, grants in the same file).
   flights       belongs to a session. Carries mode, program, outcome,
                 abort_reason, ground_z_m, ambient_start, temp_unit, csv_path,
                 and operator_email / operator_name stamped like sessions' from
@@ -151,3 +171,6 @@ shares-data-with  rls-and-grants.txt
                   every table here has its policies and grants there
 shares-data-with  ../pipeline/session.txt
                   pipeline_session_results, session-scope findings (0018)
+consumed-by       ../desktop/mission-playback.txt
+                  flights, telemetry, flight_plans and flight_traces, read back
+                  to play anyone's flight

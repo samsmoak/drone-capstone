@@ -526,6 +526,17 @@ class TestEnd:
         assert session_record["ended_at"] and session_record["end_reason"] == "operator"
         assert next(rig.outbox.pending(Kind.FLIGHT)).payload["ended_at"]
 
+    def test_an_ended_flight_is_queued_for_playback_on_other_computers(self, rig):
+        # Its plan as flown and control trace (sync/flight_playback.py), once.
+        start_and_confirm(rig)
+        rig.session.set_mode(Mode.MANUAL)
+        rig.session.arm_manual()
+        rig.session.end()
+        flight_id = next(rig.outbox.pending(Kind.FLIGHT)).id
+        queued = rig.outbox.get(Kind.PLAYBACK, flight_id)
+        assert queued is not None and queued["uploaded_through"] == 0
+        assert queued["plan_sent"] is False
+
     def test_end_without_a_session_is_harmless(self, rig):
         sign_in(rig)
         rig.session.end()

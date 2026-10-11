@@ -1,7 +1,8 @@
 ================================================================================
 THE DATA PIPELINE — a recorded flight in; findings, and a verdict per inspection
 point, out — on the laptop, then on the web
-Last verified: 2026-10-09 against docs/pipeline-v2 (= experiment/samuel without
+Last verified: 2026-10-11 — re-read after rest.py changed for mission playback; its result and processing routes are unchanged. Before that:
+2026-10-09 against docs/pipeline-v2 (= experiment/samuel without
 the mission-controller work) — agent pytest 1369, `cropwatcher process` on the
 fixture and on real lab flights, the local Supabase stack (owner 10/10,
 results 11/11, notifications 16/16, rls 15/15), the web pages in a browser.

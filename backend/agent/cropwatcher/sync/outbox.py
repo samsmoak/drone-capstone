@@ -50,6 +50,9 @@ class Kind(StrEnum):
     #: One per processed session: its own result — the samples around its
     #: flights — and enhanced frames (sync/results.py session_result_row).
     SESSION_RESULTS = "session_results"
+    #: One per flight: its plan as flown and its control trace, for playback
+    #: on any computer (sync/flight_playback.py) — the trace from a cursor.
+    PLAYBACK = "playback"
 
 
 def new_id() -> str:
@@ -119,6 +122,15 @@ class Outbox:
             str(r.payload.get("occurred_at") or r.payload.get("started_at") or ""), r.id
         ))
         yield from records
+
+    def records(self, kind: Kind) -> Iterator[tuple[str, dict[str, Any]]]:
+        """Every record of a kind, sent or not, as (id, payload). Order is not
+        meaningful — use pending() for anything that must replay in order."""
+        for path in self._dir(kind).glob("*.json"):
+            with self._lock:
+                payload = self._read(path)
+            if payload is not None:
+                yield path.stem, payload
 
     def count_pending(self, kind: Kind) -> int:
         return sum(1 for _ in self.pending(kind))

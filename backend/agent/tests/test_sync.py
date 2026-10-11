@@ -85,6 +85,54 @@ class FakeCloud:
     def request_backfill(self, flight_id, object_path):
         self.backfills.append((flight_id, object_path))
 
+    # ── playback (sync/flight_playback.py, playback.load_cloud) ──────────
+    # `refuse` holds flight ids Supabase refuses by policy (not this
+    # account's flight); a re-sent row is ignored, as with ignore-duplicates.
+
+    def insert_flight_plan(self, row):
+        self._maybe_fail()
+        self._refuse_if(row["flight_id"])
+        if not hasattr(self, "plans"):
+            self.plans = {}
+        self.plans.setdefault(row["flight_id"], row)
+
+    def insert_flight_traces(self, rows):
+        self._maybe_fail()
+        if not hasattr(self, "traces"):
+            self.traces = {}
+        for row in rows:
+            self._refuse_if(row["flight_id"])
+            self.traces.setdefault(row["flight_id"], {}).setdefault(row["seq"], row)
+
+    def _refuse_if(self, flight_id):
+        from cropwatcher.sync.cloud import CloudRefused
+        if flight_id in getattr(self, "refuse", set()):
+            raise CloudRefused("Supabase refused it: not this account's flight")
+
+    def read_telemetry(self, flight_id, limit):
+        self._maybe_fail()
+        rows = self.telemetry.get(flight_id, {})
+        return [rows[i] for i in sorted(rows)][:limit]
+
+    def read_flight_traces(self, flight_id, limit):
+        self._maybe_fail()
+        rows = getattr(self, "traces", {}).get(flight_id, {})
+        return [{**(rows[s].get("values") or {}), **{k: v for k, v in rows[s].items()
+                                                     if k != "values"}}
+                for s in sorted(rows)][:limit]
+
+    def read_flight_plan(self, flight_id):
+        self._maybe_fail()
+        row = getattr(self, "plans", {}).get(flight_id)
+        return None if row is None else {k: row[k] for k in ("mission", "room", "moves")}
+
+    def list_flights(self, limit, mode=None):
+        self._maybe_fail()
+        plans = getattr(self, "plans", {})
+        rows = [{**f, "has_plan": f["id"] in plans} for f in self.flights
+                if not mode or f.get("mode") == mode]
+        return sorted(rows, key=lambda f: f.get("started_at") or "", reverse=True)[:limit]
+
 
 @pytest.fixture
 def rig(tmp_path):

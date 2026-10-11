@@ -20,10 +20,11 @@ import { SensorWindow, WINDOWS } from "@/pages/windows/SensorWindow";
 import { WindowLog } from "@/pages/sessions/WindowLog";
 import { SessionsPage } from "@/pages/sessions/SessionsPage";
 import { FlightPlaybackView } from "@/pages/sessions/Playback";
+import { AllFlights } from "@/pages/sessions/AllFlights";
 import { StartupPage } from "@/pages/startup/StartupPage";
 import {
   EMPTY_INTENT, connectToShell,
-  type FlightPlayback, type MissionView, type PlanLimits, type RoomView, type Session, type Telemetry,
+  type FlightList, type FlightPlayback, type MissionView, type PlanLimits, type RoomView, type Session, type Telemetry,
 } from "@/lib/agent";
 import type { LogLine } from "@/lib/commandLog";
 import { FlightStrip } from "@/components/FlightStrip";
@@ -231,7 +232,7 @@ function samplePlaybackOf(mission: MissionView): FlightPlayback {
               { t_s: +(keyAt + 0.9).toFixed(1), kind: "keys", text: "Keys released", point_id: null });
   events.sort((a, b) => a.t_s - b.t_s);
   return {
-    flight_id: "f1c2d3e4-playback", started_at: "2026-10-09T18:31:24+00:00", duration_s: +(end + 1.9).toFixed(1),
+    flight_id: "f1c2d3e4-playback", source: "supabase", started_at: "2026-10-09T18:31:24+00:00", duration_s: +(end + 1.9).toFixed(1),
     temp_unit: "C", truncated: false,
     notes: ["The plan this flight flew could not be read: an example of a note long enough to wrap across the column at the narrowest width the window allows."],
     outer: sampleLimits.outer, room: sampleRoom, mission, moves: [],
@@ -249,6 +250,27 @@ function samplePlaybackOf(mission: MissionView): FlightPlayback {
   };
 }
 const samplePlayback = samplePlaybackOf(sampleMission);
+/** The flight list, worst case: a long name and program, every place a flight
+ *  can be (here and uploading, here and uploaded, only in Supabase), both
+ *  modes, an abort, and Supabase's error words beside it. */
+const sampleFlights: FlightList = {
+  cloud: query.get("cloud") === "error" ? "error" : query.get("cloud") === "out" ? "signed_out" : "ok",
+  cloud_error: "could not list the flights: ConnectError — the network is unreachable from this laptop right now",
+  flights: [
+    { id: "f1", session_id: "s1", started_at: "2026-10-11T14:31:24+00:00", ended_at: "2026-10-11T14:32:06+00:00",
+      mode: "auto", program: "mission:m-long@r12 — Weekly thermal sweep of pumps, valves and the compressor manifold",
+      outcome: "done", abort_reason: null, operator_email: "zebachsmoak@gmail.com", operator_name: null,
+      has_plan: true, on_this_computer: true, in_supabase: false, source: "this_computer", upload: "uploading" },
+    { id: "f2", session_id: "s2", started_at: "2026-10-10T10:02:00+00:00", ended_at: "2026-10-10T10:02:40+00:00",
+      mode: "auto", program: "mission:m1@r3", outcome: "aborted", abort_reason: "lighthouse_lost_in_flight",
+      operator_email: "hannah.alexander.long.address@university.example.edu", operator_name: "Hannah Dorothea Alexander-Whitfield",
+      has_plan: true, on_this_computer: false, in_supabase: true, source: "supabase", upload: null },
+    { id: "f3", session_id: "s3", started_at: "2026-10-09T09:00:00+00:00", ended_at: null,
+      mode: "manual", program: null, outcome: null, abort_reason: null,
+      operator_email: "kevin@example.com", operator_name: "Kevin",
+      has_plan: false, on_this_computer: true, in_supabase: true, source: "this_computer", upload: "uploaded" },
+  ],
+};
 const sessionShown = session;
 const sampleMissions: MissionView[] = [
   sampleMission,
@@ -300,6 +322,7 @@ if (!agentToken) {
       });
     }
     if (path.startsWith("/history/flights/") && path.endsWith("/playback")) return json(samplePlayback);
+    if (path === "/history/flights") return json(sampleFlights);
     if (path.startsWith("/missions/")) return json(missions.find((m) => path.endsWith(m.id)) ?? sampleMission);
     return realFetch(input, init);
   };
@@ -472,6 +495,9 @@ createRoot(document.getElementById("root")!).render(
     ))}
     {!agentToken && (
       <>
+        <Shell label="All flights · everyone's">
+          <AllFlights refreshKey="h" mode={(query.get("mode") as "auto" | "manual") ?? "auto"} onPlay={() => {}} />
+        </Shell>
         <Shell label="Playback · mid-flight">
           <FlightPlaybackView flightId="f1c2d3e4-playback" title={sampleMission.name} onBack={() => {}} startAt={33} />
         </Shell>
