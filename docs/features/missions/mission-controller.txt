@@ -177,6 +177,11 @@ WHERE IT LIVES
   backend/agent/tests/mission/test_mission_sim.py    the end-to-end scenarios
   backend/agent/tests/mission/test_review.py
   backend/agent/tests/mission/test_boundaries.py     the session now arms one
+  .github/workflows/agent-tests.yml                  all of the above on every
+                                                     PR touching backend/agent/
+                                                     (2026-10-11): a change that
+                                                     breaks a mission is red
+                                                     before it reaches a drone
 
 DECISIONS
 • EVENTS ARE QUEUED, THEN DELIVERED IN ORDER. One lock guards the state
