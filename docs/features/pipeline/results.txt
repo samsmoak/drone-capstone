@@ -1,7 +1,8 @@
 ================================================================================
 RESULTS ON THE WEB — every processed flight's result, findings and enhanced
 frames uploaded, shown on the session and flight pages, and notified
-Last verified: 2026-10-09 against web/processed-data — the real agent client
+Last verified: 2026-10-11 — re-read after sync/cloud.py changed for playback (#109); it only gained the playback upload and reads; the results upload is unchanged. Before that:
+2026-10-09 against web/processed-data — the real agent client
 uploading a planted warm patch to the local Supabase stack; /app/processed and
 /app/processed/<session> in a browser at 390 and 1440 px in both themes (43 of
 43 readings of the stretch tinted, the tooltip on hover of a row and on focus

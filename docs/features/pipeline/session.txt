@@ -1,6 +1,7 @@
 ================================================================================
 THE SESSION, PROCESSED — whatever a session records, not only its flights
-Last verified: 2026-10-09 against dpp/session … data/session-results — 179
+Last verified: 2026-10-11 — re-read after session.py changed for playback (#109); it only gained the playback queue at flight end and an outbox property; the session's own processing is unchanged. Before that:
+2026-10-09 against dpp/session … data/session-results — 179
 real sessions through `cropwatcher process --session` (14 s, slowest 2 s), the
 ground classifier measured on them (ml/session-eval/MEASUREMENTS.txt), the
 upload through the real client to the local stack, session_results_check
