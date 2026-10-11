@@ -1,0 +1,65 @@
+# The flight agent's gates, on every pull request that can change it: ruff,
+# mypy and the whole pytest suite — CLAUDE.md's "ruff check . && mypy
+# cropwatcher && pytest", the same three a person runs before pushing.
+#
+# The suite includes the mission simulator (tests/sim_drone.py): the real
+# mission controller and the real manual flight system fly a simulated drone
+# through whole missions and through what goes wrong — wind, a gust, a stalled
+# drone, an operator taking over, the guard landing it, an emergency stop, the
+# dead-man (tests/mission/test_mission_sim.py). A change that breaks
+# autonomous flight shows red here, before it can reach a drone. Until this
+# workflow (2026-10-11) it only ran when someone remembered to run pytest.
+#
+# No drone, no radio, no secrets: hardware tests are deselected by
+# pyproject.toml (-m 'not hardware'). About a minute.
+#
+# The path filter keeps a docs-only or web-only change from spending a runner
+# on a suite it cannot affect. Add to it, never remove it.
+
+name: agent-tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/agent/**"
+      - ".github/workflows/agent-tests.yml"
+  pull_request:
+    paths:
+      - "backend/agent/**"
+      - ".github/workflows/agent-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch or PR makes the older run moot.
+concurrency:
+  group: agent-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    name: ruff · mypy · pytest (simulator included)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend/agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/agent/pyproject.toml
+      - name: Install the agent and its test tools
+        run: python -m pip install -e ".[dev]"
+      - name: ruff
+        run: ruff check .
+      - name: mypy
+        run: mypy cropwatcher
+      - name: pytest — the mission simulator's scenarios first, then everything
+        run: |
+          python -m pytest -p no:cacheprovider tests/mission/test_mission_sim.py tests/test_sim_drone.py -v
+          python -m pytest -p no:cacheprovider -q

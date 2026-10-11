@@ -85,8 +85,9 @@ SHIP
   standing     after every build that passes its gates: commit, push, merge —
                without being asked again (owner, 2026-09-16).
   CI wait      a PR touching desktop/, backend/agent/ or scripts/ runs the
-               desktop-install workflow on three machines: wait for it before
-               merging.
+               desktop-install workflow on four machines; one touching
+               backend/agent/ also runs agent-tests (ruff, mypy, pytest with
+               the mission simulator). Wait for both before merging.
   experiments  PRIVATE, in a second repo (owner, 2026-10-05): this repo is
                public and GitHub cannot hide a branch from readers, so
                experiment/* lives in samsmoak/drone-capstone-lab (private,
