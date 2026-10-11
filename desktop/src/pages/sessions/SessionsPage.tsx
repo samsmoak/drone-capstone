@@ -1,11 +1,11 @@
 /** Every session this computer recorded, and one session in full. */
 
 import { useCallback, useEffect, useState } from "react";
-import { AgentError, api, type FlightListItem, type FlightRecord, type Mode, type SessionRecord } from "@/lib/agent";
+import { AgentError, api, type FlightRecord, type Mode, type SessionRecord } from "@/lib/agent";
 import { endReasonLabel, formatDateTime, formatDuration, formatNumber, formatTime } from "@/lib/format";
 import { Button, Message, PageHeader, Panel, Spinner, Stat, StatusDot } from "@/components/ui";
 import { WINDOWS, WINDOW_VARIABLES } from "@/pages/windows/SensorWindow";
-import { AllFlights, flightTitle } from "./AllFlights";
+import { flightTitle } from "./AllFlights";
 import { FlightPlaybackView } from "./Playback";
 import {
   DashboardLink, Disclosure, HiddenByMode, Load, LoadState, MODE_LABEL, ReadingsTable, SessionRow,
@@ -21,45 +21,25 @@ export function SessionsPage({ refreshKey, mode, selectedId, onSelect }: {
   const [allModes, setAllModes] = useState(false);
   const filter = allModes ? null : mode;
   const { state, hidden, reload } = useSessions(200, refreshKey, filter);
-  // Two views of the history: this computer's sessions, or every flight —
-  // this laptop's and everyone's in Supabase. Plain buttons, not Tabs: Tabs
-  // move on the arrow keys, which also fly the drone in Manual (App.tsx).
-  const [view, setView] = useState<"sessions" | "flights">("sessions");
-  const [playing, setPlaying] = useState<FlightListItem | null>(null);
 
   if (selectedId) {
     return <SessionDetail id={selectedId} mode={filter} onBack={() => onSelect(null)} />;
-  }
-  if (playing) {
-    return <FlightPlaybackView flightId={playing.id} title={flightTitle(playing)}
-                               backLabel="← All flights" onBack={() => setPlaying(null)} />;
   }
 
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-        <PageHeader eyebrow="Operate" title={view === "flights" ? "Flights" : allModes ? "Sessions" : `${MODE_LABEL[mode]} sessions`}>
-          {view === "flights"
-            ? "Every flight you can play back: this computer's, and everyone's in Supabase. Play one back to watch it again on the room map."
-            : "Every session run on this computer: who ran it, when it started and ended, and what the drone reported. Open one for its flights and readings."}
+        <PageHeader eyebrow="Operate" title={allModes ? "Sessions" : `${MODE_LABEL[mode]} sessions`}>
+          Every session run on this computer: who ran it, when it started and ended, and what the
+          drone reported. Open one for its flights and readings. Everyone's flights, to watch
+          again, are under Playback in the sidebar.
         </PageHeader>
         <DashboardLink>View all in the dashboard</DashboardLink>
       </div>
 
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Which history">
-        <Button variant={view === "sessions" ? "primary" : "secondary"} onClick={() => setView("sessions")}>
-          Sessions on this computer
-        </Button>
-        <Button variant={view === "flights" ? "primary" : "secondary"} onClick={() => setView("flights")}>
-          All flights — everyone's
-        </Button>
-      </div>
+      <HiddenByMode mode={mode} hidden={hidden} onShowAll={() => setAllModes(true)} />
 
-      {view === "flights" && <AllFlights refreshKey={refreshKey} mode={mode} onPlay={setPlaying} />}
-
-      {view === "sessions" && <HiddenByMode mode={mode} hidden={hidden} onShowAll={() => setAllModes(true)} />}
-
-      {view === "sessions" && <Panel title="All sessions" action={<Button onClick={reload}>Refresh</Button>}>
+      <Panel title="All sessions" action={<Button onClick={reload}>Refresh</Button>}>
         <LoadState
           state={state}
           reload={reload}
@@ -72,7 +52,7 @@ export function SessionsPage({ refreshKey, mode, selectedId, onSelect }: {
             </ul>
           )}
         </LoadState>
-      </Panel>}
+      </Panel>
     </div>
   );
 }
