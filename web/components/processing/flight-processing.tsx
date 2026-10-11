@@ -10,7 +10,8 @@ type Reading = { index: number; recorded_at: string; raw_temp: number | null;
 import type { Band } from "@/components/ui/time-series";
 import { StatusBadge } from "@/components/ui/states";
 import { LocalTime } from "@/components/ui/local-time";
-import { SignalPanel } from "@/components/processing/signal-panel";
+import { SignalPanel, type PanelFrame } from "@/components/processing/signal-panel";
+import type { FrameLinks } from "@/components/processing/findings";
 import { elapsedSeconds } from "@/lib/flight-format";
 import {
   SEVERITY,
@@ -48,12 +49,15 @@ export function FlightProcessing({
   telemetry,
   findings,
   over = "flight",
+  frameLinks = {},
 }: {
   /** "session" for a session's own result: its charts count session time. */
   over?: string;
   result: Processed;
   telemetry: Reading[];
   findings: FindingRow[];
+  /** The session's frame links: a click on a chart shows the frame then. */
+  frameLinks?: FrameLinks;
 }) {
   const tracks = readTracks(result.tracks);
   const flags = readFlags(result.flags);
@@ -87,6 +91,16 @@ export function FlightProcessing({
   const jumps = rowsOf("implausible");
   const unusable = frames.filter((f) => f.quality && !f.quality.usable);
   const enhanced = frames.filter((f) => f.enhanced);
+  // The result's frames are on the charts' clock (seconds since the first
+  // reading); only those with a link can be shown.
+  const panelFrames: PanelFrame[] = frames
+    .filter((f) => frameLinks[f.seq]?.original || frameLinks[f.seq]?.enhanced)
+    .sort((a, b) => a.t_s - b.t_s)
+    .map((f) => ({
+      seq: f.seq, t_s: f.t_s, ...frameLinks[f.seq],
+      note: f.quality && !f.quality.usable ? `Hard to read: ${f.quality.reason ?? "outside the quality limits"}.`
+        : f.view_note,
+    }));
 
   return (
     <div className="space-y-6">
@@ -162,10 +176,11 @@ export function FlightProcessing({
 
       <div className="grid gap-10 xl:grid-cols-2">
         <SignalPanel title="Temperature" track={tracks.find((x) => x.signal === "temperature") ?? null}
-                     raw={raw("raw_temp")} flags={flagsOn("raw_temp")} bands={bandsFor("temperature")} over={over} />
+                     raw={raw("raw_temp")} flags={flagsOn("raw_temp")} bands={bandsFor("temperature")} over={over}
+                     frames={panelFrames} />
         <SignalPanel title="Pressure" track={tracks.find((x) => x.signal === "pressure") ?? null}
                      raw={raw("station_pressure_hpa")} flags={flagsOn("station_pressure_hpa")}
-                     bands={bandsFor("pressure")} over={over} />
+                     bands={bandsFor("pressure")} over={over} frames={panelFrames} />
       </div>
     </div>
   );

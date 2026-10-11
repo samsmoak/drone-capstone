@@ -104,6 +104,16 @@ web/app/app/sessions/[id]/page.tsx, web/app/app/flights/[id]/page.tsx
   it, and the meaning is a tooltip on hover, keyboard focus or a tap (hint.tsx,
   WCAG 1.4.13). The same key everywhere: the readings, the error table, the
   charts' bands, the frames (components/ui/mark-legend.tsx).
+• A CLICK ON A CHART SHOWS THE CAMERA THEN (2026-10-11, the owner: a spike,
+  then what the drone was looking at). On the temperature and pressure charts
+  (components/processing/signal-panel.tsx) a click picks the frame nearest
+  that moment — the result's frames, already on the charts' clock — and shows
+  it under the chart, original beside enhanced, with a dashed line where it
+  sits, previous / next, and its note (unreadable, or the scene's). More than
+  1 s from the click, it says how far. Pages pass their frame links
+  (FlightProcessing frameLinks); without them a chart is not clickable.
+  Verified by the web gates only (typecheck, lint, build) — not yet clicked on
+  a real processed flight in a browser.
 • THE READINGS TABLE (components/ui/raw-readings.tsx): the columns the pipeline
   processes by default, grouped (Reading · Position · Power · Temperature ·
   Pressure) — "Show all columns" adds the ones it only stores. 25 rows a page,
