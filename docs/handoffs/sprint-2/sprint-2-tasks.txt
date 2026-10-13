@@ -1,0 +1,99 @@
+DRONEDECK — SPRINT 2 TASKS  (Oct 12 – Oct 25)
+Sprint lead: Yordi
+
+Note for the lead: when entering the write-up tasks in Jira, copy each task's
+description below in full — the write-up rules are already included in it.
+
+
+SAMUEL
+------------------------------------------------------------------------------
+1. Mission playback
+   Replay any past flight — its path, readings and controls — from the laptop
+   or the cloud. (Built but not in Sprint 1, so logged here.)
+
+2. Face the equipment at each inspection point
+   At every autonomous inspection point the drone turns to face the
+   equipment, takes its pictures before moving on, and tags them with that
+   point's ID. Each point in the planner gets a "facing" direction.
+
+3. Fix or remove browser manual control
+   The web page connects to a socket the agent does not serve.
+
+4. Software polish
+   Fix what the lab runs turn up; apply the pending session-results database
+   change to the hosted database.
+
+
+HANNAH
+------------------------------------------------------------------------------
+5. Lab-test the inspection-point photos (with Samuel)
+   Fly a mission and check that every point gets its photos, facing the
+   equipment, tagged with the right point ID.
+
+6. Write-up: Autonomous flight
+   How a mission is planned, checked and flown in the desktop app.
+   - Create it as a new project on the website: /admin/projects -> New project.
+   - Title: "Autonomous flight (Sprint N)" — N = the sprint it was built in.
+   - Ask Claude Code: /feature how does autonomous flight work, and which
+     sprint was it built in? Rewrite the answer in plain words and paste it in.
+
+
+KEVIN
+------------------------------------------------------------------------------
+7. Colorize images (SCRUM-24)
+   Convert the grayscale frames to accurate color, as a display option.
+
+8. Wire in the upscaler (SCRUM-25)
+   Turn the ESPCN evaluation into a pipeline step. Carry over if colorizing
+   fills the sprint.
+
+9. Write-up: Camera and drone Wi-Fi
+   How the camera tab gets its frames and how the drone's Wi-Fi is set up.
+   - Create it as a new project on the website: /admin/projects -> New project.
+   - Title: "Camera and drone Wi-Fi (Sprint N)" — N = the sprint it was built in.
+   - Ask Claude Code: /feature how do the camera and drone Wi-Fi work, and
+     which sprint were they built in? Rewrite the answer in plain words and
+     paste it in.
+
+
+REAGAN
+------------------------------------------------------------------------------
+10. Image classifier (story 4.4)
+    Train a faulty vs. normal model on the labeled photos, report held-out
+    accuracy, and plug it into the classify step.
+
+11. ML sensor classifier (story 4.6)
+    Train a model on the sensor data and compare it against the current
+    threshold rules.
+
+12. Write-up: Data pipeline (DPP)
+    Clean, enhance, classify, interpret — and where the results show up.
+    - Create it as a new project on the website: /admin/projects -> New project.
+    - Title: "Data pipeline (Sprint N)" — N = the sprint it was built in.
+    - Ask Claude Code: /feature how does the data pipeline work, and which
+      sprint was it built in? Rewrite the answer in plain words and paste it in.
+
+
+YORDI  (sprint lead)
+------------------------------------------------------------------------------
+13. Write-up: Manual flight
+    How the drone is flown from the keyboard in the desktop app. Then check
+    the team's four write-ups for consistent titles and style.
+    - Create it as a new project on the website: /admin/projects -> New project.
+    - Title: "Manual flight (Sprint N)" — N = the sprint it was built in.
+    - Ask Claude Code: /feature how does manual flight work, and which sprint
+      was it built in? Rewrite the answer in plain words and paste it in.
+
+14. Hand-warmer anomaly test
+    Fly over a heated box and an unheated one: the heated box is flagged,
+    the unheated one is not.
+
+15. Decisions and status summary (SCRUM-54)
+
+
+JIRA CLEAN-UP
+------------------------------------------------------------------------------
+Close as done:  SCRUM-3, 13, 17, 20, 21, 50, 51, 52, 53, 57, 58, 59, 63, 96
+Merge:          SCRUM-55 / 60 / 61 -> covered by the write-ups
+                SCRUM-56 / 62      -> task 14
+Next sprint's write-ups: install & setup, sign-in, live page, playback, alerts.
