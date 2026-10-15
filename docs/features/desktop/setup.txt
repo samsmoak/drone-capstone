@@ -6,12 +6,16 @@ WHAT IT IS
 The Set up page (sidebar). One list, one step open at a time:
 
   1. Connect the drone          Crazyradio in, drone on (ticks itself)
-  2. Install drone software     check → install what is missing → unplug → verified
+  2. Install drone software     check → install what is missing (and anything
+                                ticked "Reinstall") → unplug → verified
   3. Base stations: one channel each   each station on USB → channel 1 / 2
   4. Connect the camera to Wi-Fi   → the Drone Wi-Fi page (drone-wifi.txt)
   5. Fly                        → Control › Auto (auto-control.txt)
 
-Step 2 puts on a new drone exactly what the first drone was given by hand.
+Step 2 puts on a new drone exactly what the first drone was given by hand —
+and on a new AI deck too: a replaced deck is told apart by its factory serial
+and gets its camera and Wi-Fi software without being asked. Any installed
+part can be ticked and written again ("Check or reinstall" reopens the step).
 Step 3 puts every base station on its own channel, so the drone can decode
 their sweeps. Telling the drone where the station stands is part of flying,
 not set-up: Control › Auto › ② Position (auto-control.txt) — it was step 4
@@ -26,8 +30,10 @@ WHERE IT LIVES
   backend/agent/cropwatcher/flash_firmware.py        STM32 flasher (progress added)
   backend/agent/cropwatcher/camera/flash_gap8.py     AI-deck flasher, gap8 | esp
   backend/agent/packaging/cropwatcher-agent.spec     bundles firmware_bundle/
-  firmware/drone-wifi/src/drone_wifi.c               the cwsetup.fw / .deck params
-  GET /setup · POST /setup/check · POST /setup/install · event "setup"
+  firmware/drone-wifi/src/drone_wifi.c               the cwsetup.fw / .deck / .deckid params
+  desktop/src/harness.tsx                            "Set up · new AI deck", "… reinstall"
+  GET /setup · POST /setup/check · POST /setup/install {reinstall: [part]}
+  · event "setup" (facts.deck_unrecorded: the deck fitted is not the one on record)
 
   step 3:
   backend/agent/cropwatcher/flight/basestation.py    find, set_channel (pyserial)
@@ -41,7 +47,7 @@ WHERE IT LIVES
 
 THE BUNDLE (manifest.json, sha256 each — a mismatch refuses to flash)
 
-  main        cf2.bin          crazyflie-firmware 2025.12.1 + drone_wifi v2
+  main        cf2.bin          crazyflie-firmware 2025.12.1 + drone_wifi v3
   lighthouse  lighthouse.bin   Bitcraze crazyflie-release 2025.12.1's deck image
                                (lighthouse-fpga V6, 104 093 bytes, crc32
                                288081812 — what 2025.12.1 asks the deck for)
@@ -61,7 +67,33 @@ DECISIONS
   carries — the deck's own chips cannot report their firmware over the radio.
   Only what is missing or older is flashed; a set-up drone is told so.
 - The deck's two parts install together: they were tested together, and the
-  marker records them as one bundle.
+  marker records them as one bundle. A tick on either reinstalls both.
+- A REPLACED AI DECK IS TOLD APART BY ITS FACTORY SERIAL (2026-10-15). The
+  marker lives on the drone, so before this a new deck on a set-up drone read
+  "installed" and got nothing. Every deck carries a 1-wire memory with a
+  unique serial, which cflib reads before the link opens (OWElement.addr; the
+  AI deck is vid 0xBC pid 0x12, crazyflie-firmware aideck.c). Its CRC-32
+  (never 0) is saved as cwsetup.deckid beside cwsetup.deck after a verified
+  install; a different serial lists camera and Wi-Fi as to install, and the
+  page says why. The serial saved is the one read AFTER the unplug — the deck
+  that actually started the camera. Kept on the drone, not the laptop, so a
+  second laptop reads the same record.
+  Rejected: keeping it on the laptop (no firmware change, but a second laptop
+  would not know). Uncaught by design: the same deck reflashed elsewhere keeps
+  its serial — that is what Reinstall is for.
+- A SERIAL THAT CANNOT BE READ leaves cwsetup.deck alone to decide, and is
+  saved as 0. Reinstalling on every check instead would loop: nothing could
+  ever record that it was done.
+- "REINSTALL" IS A TICK PER INSTALLED PART, not one button for everything:
+  rewriting the drone firmware or the positioning deck to fix a camera adds
+  minutes and risk. Ticks are offered while the step is settled (ready or
+  done) and clear when it moves on. Reinstalling still refuses a low battery,
+  keeps the order, and a deck that is not fitted stays "No deck fitted".
+  A ticked positioning deck is not overruled by the after-main re-ask.
+- A CHECK THAT FINDS EVERYTHING INSTALLED KEEPS STEP 2 OPEN, with Reinstall
+  and Close. Until 2026-10-15 the step closed the moment it read "done", so
+  reopening a set-up drone's step showed nothing; it now closes by itself only
+  when an install finishes.
 - The agent does the flashing: it is the radio's only owner (standby paused,
   resumed after). Refused during a session.
 - Words on the page are instructions; the why is here.
@@ -127,7 +159,14 @@ depends-on        ../backend/flight-safety.txt
                   rule that decides when it is done
 
 
-LAST VERIFIED  2026-10-05 (steps 3-4): tests/test_basestation.py,
+LAST VERIFIED  2026-10-15 (step 2, new AI deck + Reinstall): drone_wifi v3
+built from 2025.12.1 (build.sh, wire test passed; cwsetup.deckid in the ELF),
+bundle sha256 regenerated; tests/test_drone_setup.py (swapped deck, v2 drone,
+unread serial, every reinstall path) and test_api.py TestSetupInstall; full
+agent suite 1496 passed; ruff, mypy; desktop build; harness Set up sections
+measured PASS at 720 and 1280, light and dark. NOT YET on a drone: the first
+lab run flashes main (v2 → v3) and sets the deck up once more, by design.
+2026-10-05 (steps 3-4): tests/test_basestation.py,
 test_station_measure.py, test_geometry.py; desktop build; the full agent suite
 1237 passed. Channels not yet set on the lab's stations; steps 3-4 on
 the lab drone: see ../../flight-log.txt 2026-10-05.

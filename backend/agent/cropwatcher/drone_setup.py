@@ -18,10 +18,20 @@ fw_upgrade_required), so that is read rather than assumed, and read again
 after main is flashed, because main decides which image the deck needs.
 
 WHAT IS ALREADY INSTALLED is read from the drone, never assumed:
-    cwsetup.fw    drone_wifi's version — present only when "main" is ours
-    cwsetup.deck  the bundle last VERIFIED on the deck, stored permanently on
-                  the drone (the deck's chips cannot report their firmware)
-Only what is missing or older is flashed.
+    cwsetup.fw      drone_wifi's version — present only when "main" is ours
+    cwsetup.deck    the bundle last VERIFIED on the deck, stored permanently on
+                    the drone (the deck's chips cannot report their firmware)
+    cwsetup.deckid  WHICH AI deck it was verified on (drone_wifi v3)
+Only what is missing or older is flashed — plus whatever the operator asks to
+reinstall anyway.
+
+A REPLACED AI DECK (added 2026-10-15). The marker lives on the drone, so a new
+deck on a set-up drone used to read "installed" and get nothing. Every deck
+carries a 1-wire memory with a factory-unique serial, which cflib reads before
+the link opens (OWElement.addr; the AI deck is vid 0xBC, pid 0x12 — aideck.c).
+Its digest is stored beside the bundle after a verified install; a different
+serial means a different deck, and both of its parts are installed again.
+Drones on drone_wifi v2 recorded no serial, so their deck is set up once more.
 
 ORDER AND THE UNPLUG, both learned the hard way (2026-09-24):
   - main first: it reboots the drone, which resets the deck cleanly
@@ -45,7 +55,8 @@ import json
 import logging
 import threading
 import time
-from collections.abc import Callable
+import zlib
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -60,6 +71,11 @@ UNPLUG_WAIT_S = 300.0
 PART_ORDER = ("main", "lighthouse", "camera", "wifi")
 PART_LABEL = {"main": "Drone firmware", "lighthouse": "Positioning deck",
               "camera": "Camera", "wifi": "Camera Wi-Fi"}
+#: The AI deck's two chips: tested together, recorded as one bundle, so they
+#: are only ever installed together.
+DECK_PARTS = ("camera", "wifi")
+#: The AI deck's 1-wire identity (crazyflie-firmware aideck.c).
+AI_DECK_VID, AI_DECK_PID = 0xBC, 0x12
 
 
 class SetupError(RuntimeError):
@@ -78,6 +94,11 @@ class Facts:
     lighthouse_deck: bool | None = None
     #: The drone's own word that the deck needs its firmware (deck memory).
     lighthouse_needs_fw: bool = False
+    #: deck_id() of the fitted AI deck's factory serial. None = not read.
+    ai_deck_id: int | None = None
+    #: cwsetup.deckid: the deck the bundle was verified on. None = firmware
+    #: before drone_wifi v3, which never recorded one; 0 = none recorded.
+    deck_id_marker: int | None = None
 
 
 @dataclass
@@ -113,17 +134,55 @@ def verified_file(bundle: Path, part: str, manifest: dict[str, Any]) -> Path:
     return path
 
 
+def deck_id(serial: str) -> int:
+    """What cwsetup.deckid holds for a deck: a 32-bit digest of its 1-wire
+    factory serial (64 bits, too wide for a parameter). Never 0, which means
+    no deck recorded."""
+    return zlib.crc32(serial.upper().encode()) or 1
+
+
+def same_deck(facts: Facts) -> bool:
+    """The deck bundle on record was verified on the deck fitted now.
+
+    A serial that could not be read leaves the bundle marker alone to decide
+    — what Set up did before decks were told apart — rather than reinstalling
+    on every check with no way to record that it was done."""
+    if facts.ai_deck_id is None:
+        return True
+    return facts.deck_id_marker == facts.ai_deck_id
+
+
+def deck_unrecorded(facts: Facts, manifest: dict[str, Any]) -> bool:
+    """The bundle is on record, but not for the deck fitted now: a replaced
+    deck, or a drone from before decks were recorded (drone_wifi v2)."""
+    bundle_ok = facts.deck_bundle is not None and facts.deck_bundle >= manifest["bundle"]
+    return bundle_ok and not same_deck(facts)
+
+
 def needed_parts(facts: Facts, manifest: dict[str, Any]) -> dict[str, str]:
     """Which parts to install. The deck's two parts go together: they were
-    tested together, and the marker records them as one bundle."""
+    tested together, and the marker records them as one bundle — on one deck."""
     main_ok = facts.fw_version is not None and facts.fw_version >= manifest["drone_wifi"]
-    deck_ok = facts.deck_bundle is not None and facts.deck_bundle >= manifest["bundle"]
+    deck_ok = (facts.deck_bundle is not None and facts.deck_bundle >= manifest["bundle"]
+               and same_deck(facts))
     return {
         "main": "installed" if main_ok else "needed",
         "lighthouse": lighthouse_part(facts),
         "camera": "installed" if deck_ok else "needed",
         "wifi": "installed" if deck_ok else "needed",
     }
+
+
+def reinstall_set(parts: Iterable[str]) -> frozenset[str]:
+    """The parts asked for again, refused by name if unknown. One deck part
+    brings the other: they are recorded as one bundle."""
+    chosen = set(parts)
+    unknown = chosen - set(PART_ORDER)
+    if unknown:
+        raise SetupError(f"There is no part called {', '.join(sorted(unknown))} to reinstall.")
+    if chosen & set(DECK_PARTS):
+        chosen |= set(DECK_PARTS)
+    return frozenset(chosen)
 
 
 def lighthouse_part(facts: Facts) -> str:
@@ -180,6 +239,7 @@ def _read_facts(cf: Any) -> Facts:
     time.sleep(0.6)
     conf.stop()
     fw, deck, ai = param("cwsetup.fw"), param("cwsetup.deck"), param("deck.bcAI")
+    marker = param("cwsetup.deckid")
     lighthouse = param("deck.bcLighthouse4")
     return Facts(
         battery_v=round(got["pm.vbat"], 2) if "pm.vbat" in got else None,
@@ -188,7 +248,21 @@ def _read_facts(cf: Any) -> Facts:
         deck_bundle=None if deck is None else int(deck),
         lighthouse_deck=None if lighthouse is None else lighthouse == "1",
         lighthouse_needs_fw=lighthouse == "1" and _deck_needs_fw(cf, "bcLighthouse4"),
+        ai_deck_id=_ai_deck_id(cf) if ai == "1" else None,
+        deck_id_marker=None if marker is None else int(marker),
     )
+
+
+def _ai_deck_id(cf: Any) -> int | None:
+    """The fitted AI deck's identity, from its own 1-wire memory — read by
+    cflib while the link opened, so this costs no radio traffic."""
+    from cflib.crazyflie.mem import MemoryElement
+
+    for ow in cf.mem.get_mems(MemoryElement.TYPE_1W):
+        if ow.vid == AI_DECK_VID and ow.pid == AI_DECK_PID and ow.addr:
+            return deck_id(str(ow.addr))
+    log.warning("the AI deck is fitted but its 1-wire serial was not read")
+    return None
 
 
 def _deck_needs_fw(cf: Any, name: str) -> bool:
@@ -224,22 +298,29 @@ def camera_started() -> bool | None:
     return None if started is None else bool(started)
 
 
-def _store_marker(bundle: int) -> Callable[[Any], bool]:
+def _store_marker(bundle: int, deck: int) -> Callable[[Any], bool]:
+    """Both halves of the record — which bundle, on which deck — kept across
+    power-offs. The deck's serial first: a bundle saved without it would read
+    as set up on whatever deck was recorded before."""
     def store(cf: Any) -> bool:
-        stored = threading.Event()
-        cf.param.set_value("cwsetup.deck", bundle)
-        time.sleep(0.3)
-        def done(_name: str, ok: bool) -> None:
-            if ok:
-                stored.set()
+        for name, value in (("cwsetup.deckid", deck), ("cwsetup.deck", bundle)):
+            stored = threading.Event()
+            cf.param.set_value(name, value)
+            time.sleep(0.3)
 
-        cf.param.persistent_store("cwsetup.deck", done)
-        return stored.wait(5.0)
+            def done(_name: str, ok: bool, stored: threading.Event = stored) -> None:
+                if ok:
+                    stored.set()
+
+            cf.param.persistent_store(name, done)
+            if not stored.wait(5.0):
+                return False
+        return True
     return store
 
 
-def store_marker(bundle: int) -> bool:
-    return bool(_with_drone(_store_marker(bundle)))
+def store_marker(bundle: int, deck: int) -> bool:
+    return bool(_with_drone(_store_marker(bundle, deck)))
 
 
 def flash_part(part: str, path: Path, on_progress: Callable[[float], None]) -> bool:
@@ -271,7 +352,7 @@ class DroneSetup:
         probe: Callable[[], Facts | None] = probe_drone,
         flash: Callable[[str, Path, Callable[[float], None]], bool] = flash_part,
         started: Callable[[], bool | None] = camera_started,
-        mark: Callable[[int], bool] = store_marker,
+        mark: Callable[[int, int], bool] = store_marker,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -293,8 +374,11 @@ class DroneSetup:
     def check(self) -> None:
         self._start(self._do_check)
 
-    def install(self) -> None:
-        self._start(self._do_install)
+    def install(self, reinstall: Iterable[str] = ()) -> None:
+        """Install what is missing, plus the parts in `reinstall` even though
+        the drone reports them installed."""
+        again = reinstall_set(reinstall)
+        self._start(lambda: self._do_install(again))
 
     def wait(self, timeout: float = 30.0) -> None:
         if self._worker is not None:
@@ -334,12 +418,18 @@ class DroneSetup:
         else:
             self._set(phase="ready", parts=parts, message=None)
 
-    def _do_install(self) -> None:
+    def _do_install(self, again: frozenset[str] = frozenset()) -> None:
         self._do_check()
         with self._lock:
-            if self._state.phase == "done":
-                return
             parts = dict(self._state.parts)
+        # Asked for again: an installed part is written anyway. A deck that is
+        # not fitted stays absent — there is nothing to write it to.
+        for part in again:
+            if parts.get(part) == "installed":
+                parts[part] = "needed"
+        if not any(v == "needed" for v in parts.values()):
+            return                     # the check already said it is all installed
+        self._set(phase="ready", parts=dict(parts), message=None)
         facts = self._facts()
         if facts.battery_v is not None and facts.battery_v < MIN_BATTERY_V:
             raise SetupError(f"The battery is at {facts.battery_v:.2f} V. Charge it above "
@@ -348,7 +438,7 @@ class DroneSetup:
         manifest = load_manifest(self._bundle)
         deck_flashed = False
         for part in PART_ORDER:
-            if part == "lighthouse" and parts["main"] == "done":
+            if part == "lighthouse" and parts["main"] == "done" and part not in again:
                 # Main decides which image the deck needs: ask again now.
                 parts[part] = lighthouse_part(self._facts())
             if parts[part] != "needed":
@@ -380,12 +470,16 @@ class DroneSetup:
                                  "seconds again, then press Install to re-check.")
             # The unplug is also the test that the deck's image SURVIVES a power
             # cycle — on 2026-10-01 a first write did not.
-            if self._facts().lighthouse_needs_fw:
+            after = self._facts()
+            if after.lighthouse_needs_fw:
                 raise SetupError("The positioning deck lost its firmware when the battery "
                                  "was unplugged. Press Install to write it again.")
-            if not self._mark(manifest["bundle"]):
+            # The deck recorded is the one that just started the camera, read
+            # after the unplug — not one remembered from before it.
+            if not self._mark(manifest["bundle"], after.ai_deck_id or 0):
                 raise SetupError("Installed, but the drone did not save the set-up marker. "
                                  "Press Install again to finish.")
+            self._set(facts={**(self.state()["facts"] or {}), "deck_unrecorded": False})
         self._set(phase="done", current=None,
                   parts={p: "absent" if parts.get(p) == "absent" else "installed"
                          for p in PART_ORDER},
@@ -412,7 +506,8 @@ class DroneSetup:
         if facts is None:
             raise SetupError("No drone found. Plug in the Crazyradio and switch the drone "
                              "on, then try again.")
-        self._set(facts={"battery_v": facts.battery_v, "ai_deck": facts.ai_deck})
+        self._set(facts={"battery_v": facts.battery_v, "ai_deck": facts.ai_deck,
+                         "deck_unrecorded": deck_unrecorded(facts, load_manifest(self._bundle))})
         if facts.ai_deck is False:
             raise SetupError("This drone has no AI deck, so there is no camera to set up.")
         return facts

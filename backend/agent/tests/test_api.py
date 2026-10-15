@@ -418,3 +418,25 @@ class TestArrowKeyControls:
                                headers=auth(client))
         assert response.status_code == 409
         assert "not reporting a position" in response.json()["detail"]
+
+
+class TestSetupInstall:
+    @pytest.fixture(autouse=True)
+    def signed_in(self, client):
+        # Set up runs only from IDLE: signed in, no drone session.
+        client.post("/auth/sign-in", json={"email": "a@b.c", "password": "x"},
+                    headers=auth(client))
+
+    def test_install_takes_no_body_or_the_parts_to_reinstall(self, client, monkeypatch):
+        asked: list[tuple] = []
+        monkeypatch.setattr(rest.agent.setup, "install",
+                            lambda again=(): asked.append(tuple(again)))
+        assert client.post("/setup/install", headers=auth(client)).status_code == 200
+        assert client.post("/setup/install", json={"reinstall": ["camera"]},
+                           headers=auth(client)).status_code == 200
+        assert asked == [(), ("camera",)]
+
+    def test_an_unknown_part_is_a_readable_refusal(self, client):
+        response = client.post("/setup/install", json={"reinstall": ["gap8"]},
+                               headers=auth(client))
+        assert response.status_code == 409 and "gap8" in response.json()["detail"]
