@@ -1,0 +1,5 @@
+# ml/image-classifier tooling — NOT the agent's runtime (that is pyproject.toml).
+# Training later adds torch + torchvision; preprocessing needs only these.
+numpy
+opencv-python-headless
+Pillow

@@ -14,9 +14,14 @@ STATUS  (Last verified: 2026-10-09)
             run on a Tuning (the flight's constants by default); ground@1 for a
             session on the ground (session.txt); scene@1 for the camera
             (scene.txt)
-  NOT BUILT an image model (story 4.4, Reagan — frames are "unknown — no image
-            model yet"); minimums measured on a real heat source (the
-            hand-warmer flights) — ../../handoffs/sprint-1/done/dpp-classify.txt
+  agent     BUILT, DORMANT — the image model's STAGE (story 4.4, Reagan:
+            stages/classify/image.py), plugged into blocks@1 and ground@1
+            through compose.py; it runs once MODELS.json lists a model
+  NOT BUILT the image model ITSELF — no labelled dataset to train it on yet
+            (ml/image-classifier/: 15 photos, 1 faulty); until one is listed
+            every frame is "unknown — no image model yet". Minimums measured
+            on a real heat source (the hand-warmer flights) —
+            ../../handoffs/sprint-1/done/dpp-classify.txt
 
 --------------------------------------------------------------------------------
 1. WHAT IT IS
@@ -32,6 +37,10 @@ EVENT, with where, when, how much and how sure.
 backend/agent/cropwatcher/pipeline/stages/classify/blocks.py   BlocksClassifier,
                                                                the two models
 backend/agent/cropwatcher/pipeline/stages/classify/pelt.py     PELT, numpy
+backend/agent/cropwatcher/pipeline/stages/classify/image.py    ImageModel, the ONNX
+                                                               image classifier
+ml/image-classifier/                                           the dataset manifest,
+                                                               preprocess.py
 backend/agent/tests/pipeline/test_classify.py
 ml/anomaly-eval/evaluate.py, MEASUREMENTS.txt   the calibration and its table
 
@@ -57,6 +66,29 @@ ml/anomaly-eval/evaluate.py, MEASUREMENTS.txt   the calibration and its table
   staircase of blocks), carrying its mean departure and its PEAK.
 • NO ML MODEL FOR THE SENSORS: no labelled runs exist; the measured blocks
   are explainable and need none.
+• WHAT "FAULTY" MEANS FOR AN IMAGE (story 4.4; set 2026-10-10, PROVISIONAL —
+  subject to change): EITHER of two things, both visible in a 324 × 244
+  grayscale frame:
+    - a gauge's needle in the HIGH zone (the dark band at the top of the dial;
+      the pressure gauge reads 0–600 kPa). The needle in the middle of the
+      dial is safe, however close it gets to a band's edge — the low band is
+      not a fault.
+    - VISIBLE DAMAGE to the test equipment.
+  Not heat — the camera cannot see it, and the thermal "faulty" is
+  blocks@1's (scene.txt). Story 6.1 (Hannah and Yordanos) owes the team's own
+  written definition per test box; when it lands, it replaces this, and the
+  dataset (story 4.1) is labelled to match. If the definition changes,
+  relabel — a model trained on the old meaning is wrong, not merely stale.
+  defect_type in ml/image-classifier/manifests/images.csv names which kind.
+• THE IMAGE MODEL IS AN ONNX FILE, LISTED IN pipeline/models/MODELS.json WITH
+  "stage": "classify.image" ("frames": "enhanced" if trained on clahe@1's
+  copy; "threshold" for p_faulty). Input: the camera's 324 × 244 gray frame,
+  squashed to 224 × 224, normalised, repeated to 3 channels — held identical
+  to ml/image-classifier/preprocess.py by a test. Output: 1 × 2 logits.
+  No entry, no model: frames stay "unknown". A model that will not load (file
+  missing, sha256 changed, wrong shape) costs the frames their labels, with
+  the reason, and never the sensors' analysis. The classifier's version then
+  reads "1+<model>@<version>", so a result says which model judged it.
 
 --------------------------------------------------------------------------------
 4. INVARIANTS
