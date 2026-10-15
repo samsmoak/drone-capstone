@@ -22,9 +22,11 @@ import { SessionsPage } from "@/pages/sessions/SessionsPage";
 import { FlightPlaybackView } from "@/pages/sessions/Playback";
 import { PlaybackPage } from "@/pages/playback/PlaybackPage";
 import { StartupPage } from "@/pages/startup/StartupPage";
+import { Install, SetupPage } from "@/pages/setup/SetupPage";
 import {
   EMPTY_INTENT, connectToShell,
-  type FlightList, type FlightPlayback, type MissionView, type PlanLimits, type RoomView, type Session, type Telemetry,
+  type FlightList, type FlightPlayback, type MissionView, type PlanLimits, type RoomView, type Session, type SetupState,
+  type Telemetry,
 } from "@/lib/agent";
 import type { LogLine } from "@/lib/commandLog";
 import { FlightStrip } from "@/components/FlightStrip";
@@ -416,11 +418,35 @@ const control = (label: string, override: Partial<Session>, autoStart?: FlowStar
   </Shell>
 );
 
+/** Set up step 2: the drone as it reads after its AI deck was swapped, and a
+ *  fully installed drone opened to reinstall a part. */
+const setupBase: Omit<SetupState, "phase" | "parts" | "facts" | "message"> = {
+  current: null, progress: 0, order: ["main", "lighthouse", "camera", "wifi"],
+  labels: { main: "Drone firmware", lighthouse: "Positioning deck", camera: "Camera", wifi: "Camera Wi-Fi" },
+};
+const setupSwapped: SetupState = {
+  ...setupBase, phase: "ready", message: null,
+  facts: { battery_v: 4.12, ai_deck: true, deck_unrecorded: true },
+  parts: { main: "installed", lighthouse: "installed", camera: "needed", wifi: "needed" },
+};
+const setupDone: SetupState = {
+  ...setupBase, phase: "done", message: "This drone's software is already installed.",
+  facts: { battery_v: 4.12, ai_deck: true, deck_unrecorded: false },
+  parts: { main: "installed", lighthouse: "installed", camera: "installed", wifi: "installed" },
+};
+const setupSession: Session = { ...session, session_id: null, radio: { state: "searching", message: "Looking for the drone…", hardware_id: null } };
+
 createRoot(document.getElementById("root")!).render(
   <div className="bg-[var(--background)] text-[var(--foreground)]">
     <Shell label="Startup"><StartupPage connected={false} /></Shell>
     <Shell label="Control · Auto page while a Manual session is open">
       <ModeLock session={{ ...session, mode: "manual", state: "ready" }} looking="auto" onBack={() => {}} />
+    </Shell>
+    <Shell label="Set up · new AI deck">
+      <SetupPage session={setupSession} setup={setupSwapped} wifi={null} run={runHere} onGo={() => {}} />
+    </Shell>
+    <Shell label="Set up · installed, reinstall">
+      <Install setup={setupDone} run={runHere} busy={false} onClose={() => {}} />
     </Shell>
     <Shell label="Home">
       <HomePage session={session} telemetry={telemetry} sync={null} connected run={noop} onGo={() => {}} />

@@ -1,13 +1,13 @@
 {
   "bundle": 1,
-  "drone_wifi": 2,
+  "drone_wifi": 3,
   "platform": "Crazyflie 2.1 + AI deck",
   "parts": {
     "main": {
       "file": "cf2.bin",
       "chip": "stm32",
-      "sha256": "ad821d15839165fe0ff12ed17932f11fef8bd56fcf563fce3ca9a65ebf436bc0",
-      "source": "crazyflie-firmware 2025.12.1 + firmware/drone-wifi (drone_wifi v2)"
+      "sha256": "58a61894286ec058d6f1071516179fa381f1c410be851bc8a23328164cfb2b4a",
+      "source": "crazyflie-firmware 2025.12.1 + firmware/drone-wifi (drone_wifi v3)"
     },
     "lighthouse": {
       "file": "lighthouse.bin",

@@ -158,6 +158,12 @@ class DeckWifiRequest(BaseModel):
     password: str = Field("", max_length=128)
 
 
+class SetupInstallRequest(BaseModel):
+    #: Parts to write again although the drone reports them installed —
+    #: drone_setup.PART_ORDER names; "camera" and "wifi" always go together.
+    reinstall: list[str] = Field(default_factory=list, max_length=4)
+
+
 class MissionRunRequest(BaseModel):
     mission_id: str = Field(..., min_length=1, max_length=64)
     ambient: str = Field("22C", description="room temperature, e.g. 74F or 22C")
@@ -1294,11 +1300,12 @@ def setup_check() -> dict:
 
 
 @app.post("/setup/install", dependencies=[Command])
-def setup_install() -> dict:
-    """Install whatever is missing, in order, then guide the battery unplug."""
+def setup_install(body: SetupInstallRequest | None = None) -> dict:
+    """Install whatever is missing — and whatever is asked for again — in
+    order, then guide the battery unplug."""
     _setup_allowed()
     try:
-        agent.setup.install()
+        agent.setup.install(body.reinstall if body else ())
     except SetupError as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
     return agent.setup.state()
