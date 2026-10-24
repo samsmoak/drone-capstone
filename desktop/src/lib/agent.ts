@@ -272,6 +272,19 @@ export type StationStatus =
       stations?: StationRow[];
     };
 
+/** A measured base station on the room map: its place in room metres and
+ *  its own axes in room terms — x forward out of its face, y to its left, z
+ *  up (agent mission/plan/coverage.py StationPose.axes). */
+export type StationMarker = {
+  id: number | null;
+  /** The channel it is set to: the firmware's station number + 1. */
+  channel: number | null;
+  origin: [number, number, number];
+  forward: [number, number, number];
+  left: [number, number, number];
+  up: [number, number, number];
+};
+
 export type StationRow = {
   id: number;
   channel: number;
@@ -643,6 +656,8 @@ export const api = {
   setBaseStationChannel: (port: string, channel: number) =>
     command<{ port: string; channel: number }>("/basestations/channel", { port, channel }),
   stationStatus: () => command<StationStatus>("/station", undefined, "GET"),
+  /** Each measured station's place and facing, for the tripods on the map. */
+  stationPoses: () => command<{ stations: StationMarker[] }>("/station/poses", undefined, "GET"),
   /** Measure every station the drone receives, from where it sits. `cleared`:
    *  stations stored before and not seen this time — their place is gone. */
   measureStation: () => command<{ message: string; stations?: number[]; cleared?: number[] }>("/station/measure"),

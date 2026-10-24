@@ -66,6 +66,16 @@ class StationPose:
     origin: tuple[float, float, float]
     #: Rows of the 3x3 matrix turning the station's frame into the room's.
     rotation: tuple[tuple[float, float, float], ...]
+    #: The firmware's station number (channel − 1), when it is known.
+    station: int | None = None
+
+    def axes(self) -> dict[str, tuple[float, float, float]]:
+        """The station's own axes in room terms: the matrix's columns —
+        x forward out of its face, y to its left, z up (the frame above)."""
+        r = self.rotation
+        return {"forward": (r[0][0], r[1][0], r[2][0]),
+                "left": (r[0][1], r[1][1], r[2][1]),
+                "up": (r[0][2], r[1][2], r[2][2])}
 
     def sees(self, p: tuple[float, float, float]) -> bool:
         d = (p[0] - self.origin[0], p[1] - self.origin[1], p[2] - self.origin[2])

@@ -16,6 +16,7 @@
  */
 
 import { lazy, Suspense, useState, type ReactNode } from "react";
+import { useStationMarkers } from "./stations";
 import type { Geofence, InspectionPoint, Obstacle, OuterBound, Problem, XY } from "@/lib/agent";
 import { Spinner } from "@/components/ui";
 import { SmallButton } from "./fields";
@@ -41,8 +42,11 @@ export type MapEditing = Editing & Omit<Edit3D, keyof Editing | "onSelect" | "se
 export function RoomMap({
   outer, fence, obstacles, path, takeoffHeight = 0.4, problems = [], drone = null, droneHeight, droneYaw,
   progress, editing, label, below, heightClass = "h-[clamp(18rem,52vh,34rem)]", space = null,
-  trail = null,
+  trail = null, liveStations = true,
 }: {
+  /** Draw the base stations where the drone has them stored now. Off for a
+   *  recorded flight: today's places would mislead about that day's. */
+  liveStations?: boolean;
   /** Playback: the path a recorded flight flew, up to the moment shown. */
   trail?: Trail | null;
   /** The flyable space (space.ts): shaded in 2-D, a see-through volume in 3-D. */
@@ -67,6 +71,7 @@ export function RoomMap({
   heightClass?: string;
 }) {
   const canDraw3d = webglAvailable();
+  const stations = useStationMarkers(liveStations);
   const [view, setView] = useState<MapView>(() => (canDraw3d ? rememberedView() : "2d"));
   const [camera, setCamera] = useState<{ preset: CameraPreset; n: number }>({ preset: "three-quarter", n: 0 });
   // Not editing, a click still picks a thing to look at.
@@ -123,7 +128,7 @@ export function RoomMap({
             outer={outer} fence={fence} obstacles={obstacles} path={path} takeoffHeight={takeoffHeight}
             problems={problems} drone={drone} progress={progress} label={label}
             editing={editing} selected={editing ? undefined : looking} space={space} sliceZ={shownZ}
-            trail={trail}
+            trail={trail} stations={stations}
             className="block h-full w-full touch-none select-none bg-[var(--surface-2)]"
           />
         ) : (
@@ -131,7 +136,7 @@ export function RoomMap({
             <Room3D
               outer={outer} fence={fence} obstacles={obstacles} path={path} takeoffHeight={takeoffHeight}
               problems={problems} drone={drone} droneHeight={droneHeight} droneYaw={droneYaw}
-              progress={progress} camera={camera} label={label} space={space} trail={trail}
+              progress={progress} camera={camera} label={label} space={space} trail={trail} stations={stations}
               editing={editing ? {
                 selected: editing.selected, onSelect: editing.onSelect, onFence: editing.onFence,
                 onObstacle: editing.onObstacle, onPoint: editing.onPoint, onHome: editing.onHome,
@@ -163,6 +168,13 @@ export function RoomMap({
             </label>
           )}
         </div>
+      )}
+      {stations.length > 0 && (
+        <p className="border border-t-0 border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs">
+          {stations.length === 1 ? "The base station stands" : `The ${stations.length} base stations stand`} where
+          the drone last measured {stations.length === 1 ? "it" : "them"} (② Position), named by channel; L and R
+          as seen standing behind each. The red ring is 0, 0 — where the drone sat to measure — and its arrow is forward.
+        </p>
       )}
       {below && <div className="border border-t-0 border-[var(--border)] bg-[var(--surface)]">{below}</div>}
 

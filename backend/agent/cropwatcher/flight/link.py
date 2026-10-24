@@ -289,8 +289,9 @@ class DroneLink:
         def vec(v: Any) -> tuple[float, float, float]:
             return (float(v[0]), float(v[1]), float(v[2]))
 
-        return [StationPose(vec(g.origin), tuple(vec(row) for row in g.rotation_matrix))
-                for _, g in sorted(geos.items()) if getattr(g, "valid", False)]
+        return [StationPose(vec(g.origin), tuple(vec(row) for row in g.rotation_matrix),
+                            station=int(bs))
+                for bs, g in sorted(geos.items()) if getattr(g, "valid", False)]
 
     def camera_cf(self) -> Any:
         """The Crazyflie, for the Wi-Fi hand-off (camera/wifi.py), or None."""

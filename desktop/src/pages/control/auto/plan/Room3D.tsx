@@ -33,10 +33,11 @@ import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "
 import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
 import { Edges, GizmoHelper, GizmoViewport, Line, OrbitControls } from "@react-three/drei";
 import {
-  BufferGeometry, CanvasTexture, Color, DoubleSide, Float32BufferAttribute, FrontSide, Plane, Quaternion, Shape,
-  SRGBColorSpace, Vector3, type PerspectiveCamera,
+  BufferGeometry, CanvasTexture, Color, DoubleSide, Float32BufferAttribute, FrontSide, Matrix4, Plane, Quaternion,
+  Shape, SRGBColorSpace, Vector3, type PerspectiveCamera,
 } from "three";
-import type { Geofence, InspectionPoint, Obstacle, OuterBound, Problem, XY } from "@/lib/agent";
+import type { Geofence, InspectionPoint, Obstacle, OuterBound, Problem, StationMarker, XY } from "@/lib/agent";
+import { fovEdges, stationLabel } from "./stations";
 import {
   circleFence, circleOf, clamp, cm, dimensionsOf, mapBox, MIN_SIZE_M, moveObstacle, obstacleFrom,
   rectangleFence, rectangleOf, resizeRectangle, type Box,
@@ -89,6 +90,8 @@ export type Room3DProps = {
   space?: SpaceLayer | null;
   /** Playback: the path a recorded flight flew, at its heights (trail.ts). */
   trail?: Trail | null;
+  /** The measured base stations, drawn as tripods (stations.ts). */
+  stations?: StationMarker[];
   label: string;
 };
 
@@ -172,7 +175,7 @@ export default function Room3D(props: Room3DProps) {
 function Scene({
   outer, fence, obstacles, path, takeoffHeight, problems, drone, droneHeight, droneYaw,
   progress, editing, selected: shownSelected, onSelect, camera, palette, box, moved, space = null,
-  trail = null,
+  trail = null, stations = [],
 }: Room3DProps & { palette: Palette; box: Box; moved: (e: { clientX: number; clientY: number }) => boolean }) {
   const current = editing?.selected ?? shownSelected ?? null;
   const select = editing?.onSelect ?? onSelect;
@@ -200,7 +203,15 @@ function Scene({
     <>
       <ambientLight intensity={0.75} />
       <directionalLight position={[box.xMin - 2, box.yMin - 3, 6]} intensity={1.1} />
-      <CameraRig box={box} ceiling={ceiling} camera={camera} />
+      {/* The camera frames the stations too: they stand at the room's edges,
+          and "Fit room" cutting a tripod off hides where it is. */}
+      <CameraRig box={stations.length ? {
+        ...box,
+        xMin: Math.min(box.xMin, ...stations.map((st) => st.origin[0] - 0.3)),
+        xMax: Math.max(box.xMax, ...stations.map((st) => st.origin[0] + 0.3)),
+        yMin: Math.min(box.yMin, ...stations.map((st) => st.origin[1] - 0.3)),
+        yMax: Math.max(box.yMax, ...stations.map((st) => st.origin[1] + 0.3)),
+      } : box} ceiling={Math.max(ceiling, ...stations.map((st) => st.origin[2] + 0.3))} camera={camera} />
       <OrbitControls makeDefault enableDamping={false} maxPolarAngle={Math.PI / 2 - 0.01}
                      minDistance={0.3} maxDistance={40} />
 
@@ -265,6 +276,9 @@ function Scene({
       ))}
 
       {drone && <Drone at={drone} height={droneHeight ?? 0} yaw={droneYaw ?? 0} palette={palette} box={box} />}
+
+      <RoomOrigin palette={palette} />
+      {stations.map((st) => <BaseStation key={st.id ?? stationLabel(st)} station={st} palette={palette} />)}
 
       <GizmoHelper alignment="bottom-right" margin={[56, 56]}>
         <GizmoViewport labels={["L", "W", "H"]} axisColors={[palette.critical, palette.good, palette.primary]}
@@ -947,6 +961,82 @@ function Drone({ at, height, yaw, palette }: { at: XY; height: number; yaw: numb
  * warns about unmounting them mid-render — and not <Text>, which downloads
  * a font the window's content policy would refuse.
  */
+// ── the base stations and the room's own frame (2026-10-24) ──────────────
+
+/** How far each station's facing and its left/right are drawn, in metres. */
+const FACING_M = 0.7;
+const SIDE_M = 0.32;
+
+/**
+ * One base station as it stands: a tripod from the floor to its head, the
+ * head turned the way the drone measured it, the edges of what it sweeps
+ * (its 150° × 110° field of view, FACING_M long), L and R as seen standing
+ * behind it, and its channel. Where it stands is the drone's stored geometry:
+ * as right as the last measurement, not tracked.
+ */
+function BaseStation({ station: st, palette }: { station: StationMarker; palette: Palette }) {
+  const [x, y, z] = st.origin;
+  const head: [number, number, number] = [x, y, Math.max(0.05, z)];
+  const quaternion = useMemo(() => new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(
+    new Vector3(...st.forward), new Vector3(...st.left), new Vector3(...st.up))), [st.forward, st.left, st.up]);
+  const at = (dir: [number, number, number], m: number): [number, number, number] =>
+    [head[0] + dir[0] * m, head[1] + dir[1] * m, head[2] + dir[2] * m];
+  const right: [number, number, number] = [-st.left[0], -st.left[1], -st.left[2]];
+  const feet = [0, 120, 240].map((deg) => {
+    const r = (deg * Math.PI) / 180;
+    return [x + Math.cos(r) * 0.22, y + Math.sin(r) * 0.22, 0] as [number, number, number];
+  });
+  const edges = fovEdges(st);
+  return (
+    <group>
+      {feet.map((foot, i) => (
+        <Line key={i} points={[foot, [x, y, head[2] - 0.06]]} color={palette.foreground} lineWidth={2} />
+      ))}
+      <mesh position={head} quaternion={quaternion}>
+        <boxGeometry args={[0.08, 0.1, 0.1]} />
+        <meshStandardMaterial color={palette.foreground} />
+      </mesh>
+      {/* Its face, so the box reads as having a front. */}
+      <mesh position={at(st.forward, 0.045)} quaternion={quaternion}>
+        <boxGeometry args={[0.006, 0.08, 0.08]} />
+        <meshBasicMaterial color={palette.primary} />
+      </mesh>
+      {edges.map((dir, i) => (
+        <Line key={i} points={[head, at(dir, FACING_M)]} color={palette.primary} lineWidth={1} transparent opacity={0.55} />
+      ))}
+      <Line points={[...edges.map((dir) => at(dir, FACING_M)), at(edges[0], FACING_M)]}
+            color={palette.primary} lineWidth={1} transparent opacity={0.55} />
+      <Line points={[head, at(st.forward, FACING_M)]} color={palette.primary} lineWidth={2.5} />
+      <Line points={[head, at(st.left, SIDE_M)]} color={palette.muted} lineWidth={2} />
+      <Line points={[head, at(right, SIDE_M)]} color={palette.muted} lineWidth={2} />
+      <TextLabel text="L" position={at(st.left, SIDE_M + 0.05)} palette={palette} quiet />
+      <TextLabel text="R" position={at(right, SIDE_M + 0.05)} palette={palette} quiet />
+      <TextLabel text={`${stationLabel(st)} · ${z.toFixed(2)} m up`} position={[head[0], head[1], head[2] + 0.18]}
+                 palette={palette} strong />
+    </group>
+  );
+}
+
+/** (0, 0, 0) — where the drone sat when the stations were measured — and the
+ *  room's forward, +x: the way the drone flies when told forward. */
+function RoomOrigin({ palette }: { palette: Palette }) {
+  return (
+    <group>
+      <mesh position={[0, 0, 0.004]}>
+        <ringGeometry args={[0.05, 0.075, 32]} />
+        <meshBasicMaterial color={palette.critical} />
+      </mesh>
+      <Line points={[[0, 0, 0.006], [0.55, 0, 0.006]]} color={palette.critical} lineWidth={2.5} />
+      <mesh position={[0.58, 0, 0.006]} rotation={[0, 0, -Math.PI / 2]}>
+        <coneGeometry args={[0.035, 0.08, 16]} />
+        <meshBasicMaterial color={palette.critical} />
+      </mesh>
+      <TextLabel text="Forward" position={[0.7, 0, 0.06]} palette={palette} />
+      <TextLabel text="Origin 0, 0" position={[0, -0.14, 0.06]} palette={palette} quiet />
+    </group>
+  );
+}
+
 function TextLabel({ text, position, palette, strong = false, quiet = false, ring, opacity = 1 }: {
   text: string;
   position: [number, number, number];
