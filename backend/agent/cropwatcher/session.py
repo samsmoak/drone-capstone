@@ -318,6 +318,7 @@ class Session:
         max_height_m: float = DEFAULT_MAX_HEIGHT_M,
         on_link_ready: Callable[[Any], object] | None = None,
         on_link_down: Callable[[], object] | None = None,
+        on_link_no_deck: Callable[[], object] | None = None,
         on_session_open: Callable[[str, Path], object] | None = None,
         on_session_close: Callable[[], object] | None = None,
         power_cycle: Callable[[str], None] = _power_cycle,
@@ -361,6 +362,10 @@ class Session:
         #: Called whenever the link closes, however — the Wi-Fi state stops
         #: claiming "joined" for a drone nobody can reach any more.
         self._on_link_down = on_link_down
+        #: Called when a link opens on a drone that reports NO AI deck: the
+        #: camera cannot be handed the network, and the Wi-Fi page must say
+        #: why instead of "waiting for the drone to connect" (2026-10-24).
+        self._on_link_no_deck = on_link_no_deck
         #: A session opened (its id and folder) / closed — how camera frames
         #: get recorded only inside a session (camera/recording.py).
         self._on_session_open = on_session_open
@@ -958,6 +963,14 @@ class Session:
     def _link_ready(self, link: DroneLink, ai_deck: bool | None) -> None:
         """Hand the link to the Wi-Fi hand-off, once per link."""
         hook = self._on_link_ready
+        if ai_deck is False and self._on_link_no_deck is not None \
+                and self._link_ready_for != id(link):
+            self._link_ready_for = id(link)
+            try:
+                self._on_link_no_deck()
+            except Exception:
+                log.exception("no-deck hook failed")
+            return
         if hook is None or not ai_deck or self._link_ready_for == id(link):
             return
         camera_cf = getattr(link, "camera_cf", None)

@@ -375,6 +375,10 @@ if (!agentToken) {
           left: [0.514, -0.857, 0], up: [-0.357, -0.214, 0.909] },
       ] });
     }
+    if (path === "/setup/command") {
+      return json({ command: "/Applications/DroneDeck.app/Contents/MacOS/cropwatcher-agent setup",
+                    check: "/Applications/DroneDeck.app/Contents/MacOS/cropwatcher-agent setup --check" });
+    }
     // Manual's room: where the two stations above reach (agent /station/space).
     if (path === "/station/space") {
       const reach: [number, number][] = [[-1.7, -1.4], [1.8, -1.5], [1.95, 1.2], [0.2, 1.75], [-1.9, 1.1]];

@@ -587,6 +587,19 @@ class TestDecksLost:
         assert self.report(rig, None).decks_lost is True
 
 
+class TestNoDeckHook:
+    def test_a_link_without_an_ai_deck_calls_the_no_deck_hook_once(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+        calls: list[str] = []
+        session = Session(cloud=FakeCloud(), outbox=Outbox(tmp_path / "outbox"),
+                          link_factory=FakeLink, on_link_ready=lambda cf: calls.append("ready"),
+                          on_link_no_deck=lambda: calls.append("no-deck"))
+        link = FakeLink()
+        session._link_ready(link, False)
+        session._link_ready(link, False)
+        assert calls == ["no-deck"]
+
+
 class TestUnassisted:
     """Flying with no position estimate.
 

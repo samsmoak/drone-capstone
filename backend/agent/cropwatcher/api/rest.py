@@ -166,12 +166,6 @@ class DeckWifiRequest(BaseModel):
     password: str = Field("", max_length=128)
 
 
-class SetupInstallRequest(BaseModel):
-    #: Parts to write again although the drone reports them installed —
-    #: drone_setup.PART_ORDER names; "camera" and "wifi" always go together.
-    reinstall: list[str] = Field(default_factory=list, max_length=4)
-
-
 class MissionRunRequest(BaseModel):
     mission_id: str = Field(..., min_length=1, max_length=64)
     ambient: str = Field("22C", description="room temperature, e.g. 74F or 22C")
@@ -257,7 +251,7 @@ class Agent:
         self.session = Session(
             cloud=self.cloud, outbox=self.outbox, syncer=self.syncer,
             publish=self.hub.publish, on_link_ready=self._link_ready,
-            on_link_down=self._link_down,
+            on_link_down=self._link_down, on_link_no_deck=self._link_no_deck,
             on_session_open=self.recorder.start, on_session_close=self.recorder.stop,
         )
         #: The Set up page: installs the camera software on a drone.
@@ -367,6 +361,13 @@ class Agent:
                     self.recover_camera("The last attempt to join did not work.")
             except Exception:
                 log.exception("camera watchdog failed; it keeps running")
+
+    def _link_no_deck(self) -> None:
+        """A link is up but the drone reports no AI deck: there is no camera to
+        hand the network to. Say so on the Wi-Fi state, with the fix — it read
+        "waiting for the drone to connect" beside a connected radio."""
+        if self.deck_wifi.state().ssid is not None:
+            self.deck_wifi.needs_power_cycle(NO_DECK_WORDS)
 
     def _link_down(self) -> None:
         self._cf = None
@@ -774,11 +775,17 @@ def rejoin_camera_wifi() -> dict:
     Refused, with the fix, when the drone does not detect its AI deck: there
     is nothing to ask, and before 2026-10-24 this press restarted the drone
     over the radio, which is what had unpowered the decks in the first place."""
-    if agent._cf is None:
-        raise HTTPException(status_code=409, detail="Connect the drone first: the camera "
-                                                    "is reached through it.")
-    if agent.session.snapshot().ai_deck is False:
+    snapshot = agent.session.snapshot()
+    # The deck first: with no AI deck the camera hand-off never runs, so `_cf`
+    # is None and this said "Connect the drone first" beside a connected radio
+    # (2026-10-24).
+    if snapshot.ai_deck is False:
         raise HTTPException(status_code=409, detail=NO_DECK_WORDS)
+    if agent._cf is None:
+        connected = snapshot.radio.get("state") == "connected"
+        raise HTTPException(status_code=409, detail=(
+            "The drone is still connecting — try again in a few seconds." if connected
+            else "Connect the drone first: the camera is reached through it."))
     threading.Thread(target=agent.recover_camera, args=("You asked to reconnect.",),
                      daemon=True, name="camera-recover").start()
     return agent.deck_wifi.state().to_dict()
@@ -1476,16 +1483,11 @@ def setup_check() -> dict:
     return agent.setup.state()
 
 
-@app.post("/setup/install", dependencies=[Command])
-def setup_install(body: SetupInstallRequest | None = None) -> dict:
-    """Install whatever is missing — and whatever is asked for again — in
-    order, then guide the battery unplug."""
-    _setup_allowed()
-    try:
-        agent.setup.install(body.reinstall if body else ())
-    except SetupError as e:
-        raise HTTPException(status_code=409, detail=str(e)) from e
-    return agent.setup.state()
+# NO INSTALL ROUTE (2026-10-24, Samuel: no button may write firmware — "they
+# should copy the command and run it in the terminal"). POST /setup/install
+# was removed so nothing in the app, or anything holding its token, can flash
+# the drone: installing is `cropwatcher setup`, run with DroneDeck quit
+# (setup_cli.py). /setup and /setup/check only read.
 
 
 @app.post("/sync/now", dependencies=[Command])

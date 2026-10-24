@@ -192,7 +192,10 @@ INVARIANTS
   The watchdog's "answers but sends nothing" case says the same, and stops
   trying while no AI deck is detected. Reconnect camera is refused with the
   fix when no AI deck is detected (409), and says so when it starts — a press
-  with no answer read as "nothing happens".
+  with no answer read as "nothing happens". A link that opens with no AI deck
+  calls the session's on_link_no_deck: the Wi-Fi state says to switch the
+  drone off and on, instead of "waiting for the drone to connect" beside a
+  connected radio.
 - ASK BEFORE REJOINING. When a link opens on a drone that already applied
   THIS network, the deck is asked first and only rejoined if it does not
   answer: a rejoin costs the camera seconds of picture. A DIFFERENT network is

@@ -448,23 +448,9 @@ class TestSetupCommand:
         assert client.get("/setup/command").status_code in (401, 403)
 
 
-class TestSetupInstall:
-    @pytest.fixture(autouse=True)
-    def signed_in(self, client):
-        # Set up runs only from IDLE: signed in, no drone session.
-        client.post("/auth/sign-in", json={"email": "a@b.c", "password": "x"},
-                    headers=auth(client))
-
-    def test_install_takes_no_body_or_the_parts_to_reinstall(self, client, monkeypatch):
-        asked: list[tuple] = []
-        monkeypatch.setattr(rest.agent.setup, "install",
-                            lambda again=(): asked.append(tuple(again)))
-        assert client.post("/setup/install", headers=auth(client)).status_code == 200
+class TestSetupWritesNothing:
+    def test_there_is_no_install_route(self, client):
+        """Installing is a terminal command only: no route may flash the drone."""
+        assert client.post("/setup/install", headers=auth(client)).status_code in (404, 405)
         assert client.post("/setup/install", json={"reinstall": ["camera"]},
-                           headers=auth(client)).status_code == 200
-        assert asked == [(), ("camera",)]
-
-    def test_an_unknown_part_is_a_readable_refusal(self, client):
-        response = client.post("/setup/install", json={"reinstall": ["gap8"]},
-                               headers=auth(client))
-        assert response.status_code == 409 and "gap8" in response.json()["detail"]
+                           headers=auth(client)).status_code in (404, 405)
