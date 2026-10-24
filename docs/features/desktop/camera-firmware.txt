@@ -12,13 +12,17 @@ SOURCE: firmware/aideck-gap8/build.sh
 --------------------------------------------------------------------------------
 STATUS  (Last verified: 2026-10-24)
 --------------------------------------------------------------------------------
-  esp32      SHIPPED — Bitcraze 2025.02 + close-client-once.patch (flashed
-             2026-09-24, bundled). BUILT, NOT FLASHED — + wifi-throughput.patch
-  gap8       SHIPPED — Bitcraze's own 2025.02 release, raw frames (bundled).
-             BUILT, NOT FLASHED — the JPEG streamer (jpeg-streamer.patch)
-  bundle     UNCHANGED (bundle 1). Raised only once the lab measures the new
-             pair faster — raising it marks every drone's camera "needed" in
-             Set up (drone_setup.needed_parts).
+  esp32      BUNDLE 2 (lab branch, 2026-10-24) — Bitcraze 2025.02 +
+             close-client-once.patch + wifi-throughput.patch (no modem sleep,
+             TCP_NODELAY) + wifi-recovery.patch (rejoin, report, reasons —
+             drone-wifi.txt). NOT yet flashed on a drone.
+  gap8       UNCHANGED in bundle 2 — Bitcraze's own release, raw frames, so a
+             change in the feed is the Wi-Fi's and nothing else's. BUILT, NOT
+             BUNDLED — the JPEG streamer (jpeg-streamer.patch), next.
+  main       BUNDLE 2 needs drone_wifi v4 (rejoin and report) on the STM32.
+  bundle     2, on the private lab branch only (experiment/samuel) — Set up
+             there offers the update to any drone on bundle 1. Not on public
+             main until it is proven on the drone.
   measure    BUILT — the window shows what arrives and what the GAP8 says each
              frame cost (camera.txt, "HOW FAST")
 
@@ -139,13 +143,14 @@ programmer — do not plan on it.
 --------------------------------------------------------------------------------
 7. IN THE LAB — to finish this
 --------------------------------------------------------------------------------
-  1. Note the Camera tab's rate line, raw firmware, drone still, 2 minutes.
-  2. Flash firmware/aideck-esp/build/aideck_esp.bin (chip esp), unplug 10 s.
-     Same spot, same 2 minutes. Compare fps, longest gap, "send" ms.
-  3. Flash firmware/aideck-gap8/build/aideck_gap8.bin (chip gap8). Again.
-     The deck line should read "jpeg" and its bytes well under 30 KB.
-  4. Keep what helped: bundle both, raise "bundle" to 2, record the numbers
-     here and in ../../flight-log.txt.
+  1. Note the Camera tab's rate line on bundle 1, drone still, 2 minutes.
+  2. Set up › install: it flashes drone_wifi v4 and the bundle 2 ESP32, asks
+     for the battery out ~10 s. Same spot, same 2 minutes: fps, longest gap,
+     "send" ms. Then the rejoin: turn the drone away until the deck drops, and
+     watch the Drone Wi-Fi page ask and rejoin with no restart — in a session.
+  3. Then JPEG: flash firmware/aideck-gap8/build/aideck_gap8.bin (chip gap8),
+     compare again; bundle it as 3 if it helped.
+  4. Record the numbers here and in ../../flight-log.txt.
 
 --------------------------------------------------------------------------------
 8. THE RADIO — moved here from camera.txt (2026-10-24)

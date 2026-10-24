@@ -28,10 +28,18 @@
  *   a stale byte of the previous SSID; "VT Open WiFi" joined as "VT Open
  *   WiFin". See wire.h, which also caps the password at 47 for its buffer.
  *
- *   ONE APPLY PER POWER-ON. The ESP32 creates its station interface every time
- *   it is told to connect; a second creation fails an assert and reboots the
- *   ESP32 (aideck-esp-firmware main/wifi.c, wifi_init_sta). So a second apply
- *   is refused and the operator is told to power-cycle the drone.
+ *   ONE APPLY PER POWER-ON — ON AN OLD DECK. Stock ESP32 firmware creates its
+ *   station interface every time it is told to connect; a second creation
+ *   fails an assert and reboots the ESP32 (aideck-esp-firmware main/wifi.c,
+ *   wifi_init_sta). A deck carrying bundle REAPPLY_MIN_BUNDLE or later runs
+ *   firmware/aideck-esp/wifi-recovery.patch, which creates it once and REJOINS
+ *   on a second connect — so there a re-apply is allowed (v4, 2026-10-24) and
+ *   the deck can be put back on the network without restarting the drone.
+ *
+ *   ASKING FOR THE ADDRESS (CMD_REPORT, v4). The deck says its IP when it
+ *   joins; a ground that missed that line had to restart the drone to hear it
+ *   again. The patched ESP32 says it again on WIFI_REPORT_CMD; an old deck
+ *   would ignore it, so the ground is told UNSUPPORTED instead.
  *
  *   NOT BEFORE BOOT_GRACE_MS. The GAP8 streamer raises its own access point
  *   2 s after boot. An apply that lands before it is overridden by it.
@@ -62,17 +70,23 @@
 #define CMD_KEY    0x02
 #define CMD_APPLY  0x03
 #define CMD_STATUS 0x04
+#define CMD_REPORT 0x05
 
 #define CODE_OK              0
 #define CODE_BAD_REQUEST     1
 #define CODE_ALREADY_APPLIED 2
 #define CODE_TOO_EARLY       3
+#define CODE_UNSUPPORTED     4
 
 // The ESP32's own buffers (aideck-esp-firmware main/wifi.c).
 #define WIFI_SET_SSID_CMD   0x10
 #define WIFI_SET_KEY_CMD    0x11
 #define WIFI_CONNECT_CMD    0x20
 #define WIFI_CONNECT_AS_STA 0x00
+#define WIFI_REPORT_CMD     0x2E  // firmware/aideck-esp/wifi-recovery.patch
+
+/* The first deck bundle whose ESP32 can rejoin and report (bundle 2). */
+#define REAPPLY_MIN_BUNDLE 2
 
 #define SSID_MAX WIRE_SSID_MAX
 #define KEY_MAX  WIRE_VALUE_MAX  // NOT WPA2's 63: the ESP32's buffer — see wire.h
@@ -96,7 +110,7 @@ static CPXPacket_t cpxTx;
  *                 A replaced deck reads a different serial, so it is set up
  *                 even though .deck still names the current bundle (v3,
  *                 2026-10-15). 0 = no deck recorded. */
-#define DRONE_WIFI_VERSION 3
+#define DRONE_WIFI_VERSION 4
 static uint8_t fwVersion = DRONE_WIFI_VERSION;
 static uint8_t deckBundle = 0;
 static uint32_t deckId = 0;
@@ -132,8 +146,12 @@ static void sendWifiCtrl(uint8_t cmd, const char *value, size_t valueLen) {
   cpxSendPacketBlocking(&cpxTx);
 }
 
+static bool deckCanRejoin(void) {
+  return deckBundle >= REAPPLY_MIN_BUNDLE;
+}
+
 static uint8_t apply(uint8_t ssidLen, uint8_t keyLen) {
-  if (applied) {
+  if (applied && !deckCanRejoin()) {
     return CODE_ALREADY_APPLIED;
   }
   if (ssidLen == 0 || ssidLen > SSID_MAX || keyLen > KEY_MAX || (keyLen > 0 && keyLen < 8)) {
@@ -155,7 +173,7 @@ static uint8_t apply(uint8_t ssidLen, uint8_t keyLen) {
   cpxTx.dataLength = 2;
   cpxSendPacketBlocking(&cpxTx);
 
-  // The key is not needed again this power cycle; do not keep it in RAM.
+  // The key is not kept in RAM: a rejoin sends it again.
   memset(key, 0, sizeof(key));
   applied = true;
   return CODE_OK;
@@ -182,6 +200,17 @@ void appMain() {
         break;
       case CMD_STATUS:
         reply(CMD_STATUS, CODE_OK);
+        break;
+      case CMD_REPORT:
+        if (!deckCanRejoin()) {
+          reply(CMD_REPORT, CODE_UNSUPPORTED);
+          break;
+        }
+        cpxInitRoute(CPX_T_STM32, CPX_T_ESP32, CPX_F_WIFI_CTRL, &cpxTx.route);
+        cpxTx.data[0] = WIFI_REPORT_CMD;
+        cpxTx.dataLength = 1;
+        cpxSendPacketBlocking(&cpxTx);
+        reply(CMD_REPORT, CODE_OK);
         break;
       default:
         reply(pkt[0], CODE_BAD_REQUEST);
