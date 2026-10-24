@@ -101,6 +101,11 @@ class SessionMeta:
     #: "flight", or "capture" — a Capture-page session that never flew.
     #: Sessions recorded before 2026-10-24 have none: read as "flight".
     purpose: str = "flight"
+    #: Why the checks found no position (ReadyReport.unassisted_reason), as the
+    #: operator was told it — None when assisted. Kept so a session that flew
+    #: on the barometer says why afterwards (2026-10-24: one did, and nothing
+    #: on disk said whether the stations were off, unseen or not detected).
+    unassisted_reason: str | None = None
     flights: list[FlightSummary] = field(default_factory=list)
     summary: SessionSummary = field(default_factory=SessionSummary)
     #: The session's own processing (its samples around the flights): queued,
@@ -189,6 +194,13 @@ class SessionLog:
                     flight.ended_at = _now_iso()
                     flight.outcome = outcome
                     flight.abort_reason = abort_reason
+            self._save()
+
+    def set_positioning(self, assisted: bool, reason: str | None) -> None:
+        """The checks ran again in this session (retry): record what they found."""
+        with self._lock:
+            self.meta.assisted = assisted
+            self.meta.unassisted_reason = None if assisted else reason
             self._save()
 
     def set_mode(self, mode: str) -> None:

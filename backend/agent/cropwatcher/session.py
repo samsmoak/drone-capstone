@@ -109,6 +109,10 @@ CAPTURE_NO_FLIGHT = ("This is a capture session: it takes pictures and does not 
                      "on the Capture page, then start a session on Control to fly.")
 
 MANUAL_GUARD_PERIOD_S = 0.1
+#: The lowest height Manual's map counts the stations' reach at, metres above
+#: the origin (where the drone sat on the floor to measure them): a drone
+#: resting on its legs is ~3 cm up, and the props' first lift is not flying.
+MANUAL_SPACE_FLOOR_M = 0.1
 
 #: How often a signed-in agent with no drone looks for one. NOT faster: polling
 #: the radio every 2 s (from /status) wedged the agent with [Errno 19] No such
@@ -387,6 +391,9 @@ class Session:
         self._measuring = False
         #: The stations' stored poses for the link that read them (_station_poses).
         self._poses_cache: tuple[Any, list[Any]] | None = None
+        #: Manual's space, kept with the poses it was computed from (by
+        #: identity: _station_poses hands back the same list until they change).
+        self._space_cache: tuple[list[Any], Prediction] | None = None
         self._manual_guard_stop: threading.Event | None = None
         self._recorder: FlightRecorder | None = None
         self._flight_id: str | None = None
@@ -801,6 +808,7 @@ class Session:
                     id=session_id, operator_id=operator.id, operator_email=operator.email,
                     operator_name=operator.full_name, drone_hardware_id=report.hardware_id,
                     mode=str(self.snapshot().mode), assisted=report.assisted,
+                    unassisted_reason=None if report.assisted else report.unassisted_reason,
                     purpose=self._snapshot.purpose,
                     started_at=datetime.now(UTC).isoformat(),
                 ),
@@ -985,6 +993,8 @@ class Session:
                       message=f"{lead} {CAPTURE_OPEN}")
             return
         self._height_reference = report.ground_z_m if report.assisted else None
+        if self.history is not None:
+            self.history.set_positioning(report.assisted, report.unassisted_reason)
         self._set(
             state=State.AWAITING_CONFIRMATION, retry_required=False, activity=None,
             drone={"hardware_id": report.hardware_id, "battery_v": round(report.vbat, 2),
@@ -1312,6 +1322,23 @@ class Session:
         canvas = Geofence.square(self._fence, z_min=room.geofence.z_min,
                                  z_max=room.geofence.z_max)
         return predict(poses, canvas)
+
+    def manual_space(self) -> Prediction | None:
+        """Where the measured base stations reach, with NO room: Manual's map
+        (2026-10-24, Samuel: "detect the two base stations, then draw that room
+        on the spot"). The same prediction as Auto's green (predict), over the
+        agent's flying area, from just off the floor to the flight ceiling.
+        None with no drone connected or no station measured (② Position)."""
+        poses = self._station_poses()
+        if not poses:
+            return None
+        cached = self._space_cache
+        if cached is not None and cached[0] is poses:
+            return cached[1]
+        canvas = Geofence.square(self._fence, z_min=MANUAL_SPACE_FLOOR_M, z_max=self._max_height)
+        prediction = predict(poses, canvas)
+        self._space_cache = (poses, prediction)
+        return prediction
 
     def _station_poses(self) -> list[Any]:
         """The stations' stored poses, read once per link (a radio round trip

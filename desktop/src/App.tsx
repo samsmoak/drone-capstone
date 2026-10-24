@@ -40,7 +40,7 @@ import {
   type SyncStatus,
   type Telemetry,
 } from "@/lib/agent";
-import { useCommandLog, useSessionNarration } from "@/lib/commandLog";
+import { useCommandLog, useSessionNarration, useStationNarration } from "@/lib/commandLog";
 import { ControlPage } from "@/pages/control/ControlPage";
 import { ModeLock } from "@/pages/control/ModeLock";
 import { sessionOpen, shownMode } from "@/lib/sessionMode";
@@ -117,6 +117,8 @@ export default function App() {
   // lib/commandLog.ts. It is not the agent's audit trail.
   const { lines: logLines, push: pushLog, clear: clearLog } = useCommandLog();
   useSessionNarration(session, connected, pushLog);
+  // Stations heard or lost, as one line each (commandLog.ts).
+  useStationNarration(telemetry, pushLog);
 
   // ── connect to the agent ───────────────────────────────────────────
   useEffect(() => {

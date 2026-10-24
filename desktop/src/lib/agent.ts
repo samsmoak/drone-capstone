@@ -252,6 +252,14 @@ export type SurveyStatus =
   | { active: true; room_id: string; seen: number; kept: number; spots: number; outline: XY[] };
 
 /** The base station as the drone sees it (Auto › ② Position, Set up step 3). */
+/** GET /station/space — where the measured stations' light reaches, with no
+ *  room: Manual's map. `predicted` null: no drone, or no station measured. */
+export type StationSpace = {
+  predicted: RoomCoverage["predicted"];
+  /** The agent's flying area: a square this far each way from the origin. */
+  fence_half_extent_m: number;
+};
+
 export type StationStatus =
   | { connected: false; measuring: boolean }
   | {
@@ -673,6 +681,8 @@ export const api = {
   stationStatus: () => command<StationStatus>("/station", undefined, "GET"),
   /** Each measured station's place and facing, for the tripods on the map. */
   stationPoses: () => command<{ stations: StationMarker[] }>("/station/poses", undefined, "GET"),
+  /** Manual's room, from the base stations alone (session.manual_space). */
+  stationSpace: () => command<StationSpace>("/station/space", undefined, "GET"),
   /** Measure every station the drone receives, from where it sits. `cleared`:
    *  stations stored before and not seen this time — their place is gone. */
   measureStation: () => command<{ message: string; stations?: number[]; cleared?: number[] }>("/station/measure"),

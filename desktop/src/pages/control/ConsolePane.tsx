@@ -19,7 +19,7 @@
  * thumbnail.
  */
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { History } from "@/App";
 import type { LogLine } from "@/lib/commandLog";
 import type { Telemetry } from "@/lib/agent";
@@ -63,8 +63,14 @@ function initialTab(views: readonly ConsoleTab[]): ConsoleTab {
 const ALL_VIEWS: readonly ConsoleTab[] = ["vitals", "camera", "scene"];
 
 export function ConsolePane({
-  telemetry, history, logLines, onClearLog, fill = false, views = ALL_VIEWS,
+  telemetry, history, logLines, onClearLog, fill = false, views = ALL_VIEWS, map,
 }: {
+  /** Manual: the room map, between the attitude indicator and the command
+   *  log, in place of the vitals tail (ManualMap.tsx — 2026-10-24, Samuel:
+   *  "remove that vitals, and the bottom should just be the command log …
+   *  the 3D, 2D editor should sit right below the gyro display"). The vitals
+   *  are in the strip on the right (VitalsNow), so nothing is lost. */
+  map?: ReactNode;
   telemetry: Telemetry | null;
   history: History;
   logLines: LogLine[];
@@ -87,12 +93,13 @@ export function ConsolePane({
       <TabPanel id="console" tabKey="vitals" active={tab === "vitals"} className="flex min-h-0 flex-1 flex-col">
         <SplitPane
           orientation="horizontal"
-          storageKey="cropwatcher.split.console"
           // Enough for the attitude indicator AND its compass strip (N/E/S/W)
           // in a one-window console at 900 px; 0.34 cut the compass letters
           // once the console stopped growing (2026-09-24). A saved position
-          // still wins.
-          defaultFraction={0.42}
+          // still wins. With Manual's room below it, a smaller share: the
+          // room is what is flown from (its own key, so Auto's is kept).
+          storageKey={map ? "cropwatcher.split.console.manual" : "cropwatcher.split.console"}
+          defaultFraction={map ? 0.34 : 0.42}
           // Folds almost away: dragging this up to read the log is the point,
           // and the shared 20 % floor made it stop a fifth of the way down with
           // nothing to explain why. Never 0 — the divider would reach the frame
@@ -106,7 +113,31 @@ export function ConsolePane({
               <AttitudeIndicator telemetry={telemetry} />
             </div>
           }
-          second={
+          second={map ? (
+            // Manual: the room, then the log — the room first and larger, it
+            // is what the operator flies from.
+            <SplitPane
+              orientation="horizontal"
+              storageKey="cropwatcher.split.maplog"
+              defaultFraction={0.72}
+              min={0.15}
+              max={0.94}
+              label="Room map and command log"
+              className="min-h-0 flex-1"
+              first={
+                <div className="console-scroll flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+                  <PaneTitle>Room — from the base stations</PaneTitle>
+                  <div className="min-h-0 flex-1 p-2">{map}</div>
+                </div>
+              }
+              second={
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                  <PaneTitle>Command log</PaneTitle>
+                  <CommandLog lines={logLines} onClear={onClearLog} canExpand={!fullScreen} />
+                </div>
+              }
+            />
+          ) : (
             // The log and the vitals tail, with the same kind of divider as
             // the one above: drag it up and the vitals tail folds over the log,
             // down and the log takes the room (2026-09-24).
@@ -134,7 +165,7 @@ export function ConsolePane({
                 </div>
               }
             />
-          }
+          )}
         />
       </TabPanel>
 

@@ -184,6 +184,8 @@ shares-data-with  ../backend/sessions-and-modes.txt
                   pauses and resumes standby
 consumed-by       auto-control.txt
                   ② Position, after the channels step, with the same stages
+consumed-by       manual-room-map.txt
+                  the same stages and Measure, when Manual's room cannot be drawn
 depends-on        ../backend/flight-safety.txt
                   step 3 and ② Position: the one-station geometry solve, and the positioning
                   rule that decides when it is done

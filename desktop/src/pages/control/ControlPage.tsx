@@ -43,7 +43,12 @@ import { CaptureSwitch, DataPipelinePanel, ProcessingSwitch } from "./DataPipeli
 import { ArrowFrame } from "./ArrowFrame";
 import { arrowWords } from "@/lib/arrows";
 import type { FlowStart } from "./auto/MissionFlow";
-import { ConsolePane } from "./ConsolePane";
+import { ConsolePane, type ConsoleTab } from "./ConsolePane";
+import { ManualMap } from "./ManualMap";
+
+/** Manual's console: the room replaces the Scene tab — it is the same
+ *  question ("where is it?") answered with the stations and the keys. */
+const MANUAL_VIEWS: readonly ConsoleTab[] = ["vitals", "camera"];
 import { VitalsNow } from "./VitalsNow";
 
 type Props = {
@@ -158,6 +163,8 @@ export function ControlPage({
                 logLines={logLines}
                 onClearLog={onClearLog}
                 fill
+                views={MANUAL_VIEWS}
+                map={<ManualMap session={session} telemetry={telemetry} history={history} run={run} />}
               />
             </div>
           }
@@ -205,6 +212,8 @@ export function ControlPage({
             history={history}
             logLines={logLines}
             onClearLog={onClearLog}
+            views={MANUAL_VIEWS}
+            map={<ManualMap session={session} telemetry={telemetry} history={history} run={run} />}
           />
         </div>
       )}
@@ -566,22 +575,37 @@ export function Checklist({ session, run }: { session: Session; run: Run }) {
             </p>
           )}
           {unassisted && (
-            <p className="text-xs leading-relaxed">
-              <strong>It cannot catch itself.</strong> No base stations: height from the
-              barometer, drifting tens of centimetres. No position hold, no drift
-              landing. Manual only.
-            </p>
+            <>
+              {/* WHY, FIRST (2026-10-24): a manual flight went up on the
+                  barometer, bounced by over a metre, and nothing on screen had
+                  said the stations were not seen. The agent's own words. */}
+              {session.unassisted_reason && (
+                <p className="text-xs leading-relaxed"><strong>No base station position.</strong> {session.unassisted_reason}</p>
+              )}
+              <p className="text-xs leading-relaxed">
+                <strong>It cannot catch itself.</strong> No base stations: height from the
+                barometer, drifting tens of centimetres. No position hold, no drift
+                landing. Manual only.
+              </p>
+            </>
           )}
-          <div className="pt-1">
+          <div className="flex flex-wrap gap-2 pt-1">
+            {unassisted && (
+              // Looking again is the first choice: barometer flight is the
+              // deliberate one (Samuel, 2026-10-24).
+              <Button variant="primary" onClick={() => void run(api.retry, "Look for the base stations again")}>
+                Look again for the base stations
+              </Button>
+            )}
             <Button
-              variant="primary"
+              variant={unassisted ? "secondary" : "primary"}
               onClick={() => void run(
                 () => api.confirmArea(unassisted),
                 unassisted ? "Confirm the area — flying by eye" : "Confirm the area",
               )}
             >
               {unassisted
-                ? "Confirm — I am flying it by eye"
+                ? "Fly on the barometer — I am flying it by eye"
                 : "Confirm the area is clear"}
             </Button>
           </div>

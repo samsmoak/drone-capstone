@@ -45,6 +45,7 @@ import {
 import { landsAt, legsOf, unflownIds, type PathSource } from "./path";
 import { insideOutline, type SpaceLayer } from "./space";
 import type { Trail } from "./trail";
+import { KEY_DIRECTIONS, unit, type KeyArrows } from "./keyArrows";
 import { isRoomObject, sameHandle, type Handle, type PointState } from "./PlanCanvas";
 
 /** What of drei's OrbitControls this file uses — the orbit's centre, and
@@ -92,6 +93,10 @@ export type Room3DProps = {
   trail?: Trail | null;
   /** The measured base stations, drawn as tripods (stations.ts). */
   stations?: StationMarker[];
+  /** Manual: where each arrow key moves the drone now (keyArrows.ts). */
+  keyArrows?: KeyArrows | null;
+  /** Manual draws the drone larger, to be read while flying. */
+  droneScale?: number;
   label: string;
 };
 
@@ -129,7 +134,7 @@ function usePalette(el: HTMLElement | null): Palette {
 
 const FADED = 0.18;
 /** The drone is drawn 1.5× its 92 mm size so it can be found in a 4 m room. */
-const DRONE_SCALE = 1.5;
+const BASE_DRONE_SCALE = 1.5;
 
 export default function Room3D(props: Room3DProps) {
   const host = useRef<HTMLDivElement>(null);
@@ -175,7 +180,7 @@ export default function Room3D(props: Room3DProps) {
 function Scene({
   outer, fence, obstacles, path, takeoffHeight, problems, drone, droneHeight, droneYaw,
   progress, editing, selected: shownSelected, onSelect, camera, palette, box, moved, space = null,
-  trail = null, stations = [],
+  trail = null, stations = [], keyArrows = null, droneScale = 1,
 }: Room3DProps & { palette: Palette; box: Box; moved: (e: { clientX: number; clientY: number }) => boolean }) {
   const current = editing?.selected ?? shownSelected ?? null;
   const select = editing?.onSelect ?? onSelect;
@@ -275,7 +280,8 @@ function Scene({
         </group>
       ))}
 
-      {drone && <Drone at={drone} height={droneHeight ?? 0} yaw={droneYaw ?? 0} palette={palette} box={box} />}
+      {drone && <Drone at={drone} height={droneHeight ?? 0} yaw={droneYaw ?? 0} palette={palette} box={box}
+                       scale={droneScale} keyArrows={keyArrows} />}
 
       <RoomOrigin palette={palette} />
       {stations.map((st) => <BaseStation key={st.id ?? stationLabel(st)} station={st} palette={palette} />)}
@@ -909,7 +915,11 @@ function StartPad({ at, palette, opacity, bad, selected, editing, box, select, m
 
 /** The Crazyflie, roughly to scale (1.5×): a body, four arms, four rotors, a
  *  green ring on the floor under it, and a "D" that always faces the camera. */
-function Drone({ at, height, yaw, palette }: { at: XY; height: number; yaw: number; palette: Palette; box: Box }) {
+function Drone({ at, height, yaw, palette, scale: bigger = 1, keyArrows = null }: {
+  at: XY; height: number; yaw: number; palette: Palette; box: Box;
+  scale?: number; keyArrows?: KeyArrows | null;
+}) {
+  const DRONE_SCALE = BASE_DRONE_SCALE * bigger;
   const arm = 0.046 * DRONE_SCALE;
   const z = Math.max(0.02, height);
   return (
@@ -947,7 +957,40 @@ function Drone({ at, height, yaw, palette }: { at: XY; height: number; yaw: numb
           <meshBasicMaterial color={palette.critical} />
         </mesh>
       </group>
-      <TextLabel text="D" position={[at[0], at[1], z + 0.12]} palette={palette} ring={palette.good} />
+      <TextLabel text="D" position={[at[0], at[1], z + 0.12 * bigger]} palette={palette} ring={palette.good} />
+      {keyArrows && <KeyArrows3D at={at} z={z} arrows={keyArrows} scale={bigger} palette={palette} />}
+    </group>
+  );
+}
+
+/** The arrow keys round the drone, flat at its height: where ↑ ← ↓ → move it
+ *  now (keyArrows.ts). F in the primary colour and thicker; each letter faces
+ *  the camera. The nose is the red bead on the drone itself. */
+function KeyArrows3D({ at, z, arrows, scale, palette }: {
+  at: XY; z: number; arrows: KeyArrows; scale: number; palette: Palette;
+}) {
+  const from = 0.15 * scale;
+  const to = 0.42 * scale;
+  return (
+    <group>
+      {KEY_DIRECTIONS.map((d) => {
+        const deg = arrows.forwardDeg + d.offsetDeg;
+        const [ux, uy] = unit(deg);
+        const main = d.letter === "F";
+        const colour = main ? palette.primary : palette.foreground;
+        return (
+          <group key={d.letter}>
+            <Line points={[[at[0] + ux * from, at[1] + uy * from, z], [at[0] + ux * (to - 0.05 * scale), at[1] + uy * (to - 0.05 * scale), z]]}
+                  color={colour} lineWidth={main ? 4 : 2.5} />
+            <mesh position={[at[0] + ux * to, at[1] + uy * to, z]} rotation={[0, 0, ((deg - 90) * Math.PI) / 180]}>
+              <coneGeometry args={[0.035 * scale, 0.09 * scale, 16]} />
+              <meshBasicMaterial color={colour} />
+            </mesh>
+            <TextLabel text={d.letter} position={[at[0] + ux * (to + 0.11 * scale), at[1] + uy * (to + 0.11 * scale), z]}
+                       palette={palette} strong={main} />
+          </group>
+        );
+      })}
     </group>
   );
 }

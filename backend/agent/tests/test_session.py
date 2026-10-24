@@ -608,6 +608,24 @@ class TestUnassisted:
         with pytest.raises(SessionError, match="fly blind"):
             rig.session.run_program()
 
+    def test_the_reason_is_kept_with_the_session(self, rig):
+        """A session that flew on the barometer says why afterwards (2026-10-24:
+        one did, and nothing on disk said why)."""
+        self.unassisted(rig)
+        meta = rig.session.history.meta
+        assert meta.assisted is False
+        assert "No base station signal" in (meta.unassisted_reason or "")
+        saved = (rig.session.history.folder / "meta.json").read_text()
+        assert "No base station signal" in saved
+
+    def test_checking_again_with_the_stations_seen_clears_it(self, rig):
+        self.unassisted(rig)
+        rig.link.report = REPORT
+        rig.session.retry()
+        rig.session.wait_idle()
+        meta = rig.session.history.meta
+        assert (meta.assisted, meta.unassisted_reason) == (True, None)
+
     def test_manual_flight_is_allowed(self, rig):
         self.unassisted(rig)
         rig.session.confirm_area(accept_unassisted=True)

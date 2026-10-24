@@ -421,3 +421,6 @@ consumed-by       ../desktop/pages-and-windows.txt
                   arrows mean now (session `controls`)
 consumed-by       ../missions/mission-controller.txt
                   fly_to, hold_at, the leash and the dead-man fly every mission
+consumed-by       ../desktop/manual-room-map.txt
+                  the keys' frame (keyframe.py resolve) drawn round the drone as
+                  F/B/L/R; mirrored read-only in lib/keyDirections.ts

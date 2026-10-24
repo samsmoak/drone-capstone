@@ -351,6 +351,10 @@ depends-on        desktop-app.txt
 depends-on        setup.txt
                   ② Position shares the station stages (StationStages.tsx)
                   with Set up's channels step, which must come first
+copied-to         manual-room-map.txt
+                  RoomMap, the tripods and the green reused by Manual, with
+                  optional keyArrows / droneScale / toolbar that Auto never
+                  passes — Auto's maps are unchanged
 depends-on        ../backend/flight-safety.txt
                   the drone (D), "Put the start where the drone is" and the
                   from-the-drone check use a position only when telemetry's

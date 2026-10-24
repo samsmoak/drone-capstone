@@ -420,6 +420,24 @@ class TestArrowKeyControls:
         assert "not reporting a position" in response.json()["detail"]
 
 
+class TestStationSpace:
+    def test_no_drone_is_no_room(self, client):
+        body = client.get("/station/space", headers=auth(client)).json()
+        assert body["predicted"] is None
+        assert body["fence_half_extent_m"] > 0
+
+    def test_a_prediction_is_sent_whole(self, client, monkeypatch):
+        from cropwatcher.mission.plan.coverage import Prediction
+        monkeypatch.setattr(rest.agent.session, "manual_space",
+                            lambda: Prediction(0.1, 1.0, ((0.5, ((0, 0), (1, 0), (0, 1))),), None))
+        body = client.get("/station/space", headers=auth(client)).json()
+        assert body["predicted"]["z_min_m"] == 0.1
+        assert body["predicted"]["slices"][0]["outline"] == [[0, 0], [1, 0], [0, 1]]
+
+    def test_it_needs_the_agent_token(self, client):
+        assert client.get("/station/space").status_code in (401, 403)
+
+
 class TestSetupCommand:
     def test_the_page_gets_the_command_for_this_machine(self, client):
         body = client.get("/setup/command", headers=auth(client)).json()

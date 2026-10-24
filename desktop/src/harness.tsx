@@ -375,6 +375,18 @@ if (!agentToken) {
           left: [0.514, -0.857, 0], up: [-0.357, -0.214, 0.909] },
       ] });
     }
+    // Manual's room: where the two stations above reach (agent /station/space).
+    if (path === "/station/space") {
+      const reach: [number, number][] = [[-1.7, -1.4], [1.8, -1.5], [1.95, 1.2], [0.2, 1.75], [-1.9, 1.1]];
+      return json({
+        fence_half_extent_m: 2,
+        predicted: {
+          z_min_m: 0.1, z_max_m: 1.0,
+          slices: [0.1, 0.55, 1.0].map((z) => ({ z_m: z, outline: reach })),
+          everywhere: { shape: "polygon", vertices: reach, z_min: 0.1, z_max: 1.0 },
+        },
+      });
+    }
     if (path.startsWith("/history/flights/") && path.endsWith("/playback")) return json(samplePlayback);
     if (path === "/history/flights") return json(sampleFlights);
     if (path.startsWith("/missions/")) return json(missions.find((m) => path.endsWith(m.id)) ?? sampleMission);
@@ -453,13 +465,29 @@ function Shell({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-const control = (label: string, override: Partial<Session>, autoStart?: FlowStart) => (
+/** Manual in the lab: both stations measured and heard, the drone turned 35°,
+ *  and a minute of flying behind it — the room map's trail. */
+const twoStations: Record<string, number> = {
+  ...values, "stabilizer.yaw": 35, "stateEstimate.x": 0.6, "stateEstimate.y": 0.2,
+  "lighthouse.bsReceive": 0b0011, "lighthouse.bsGeoVal": 0b0011, "lighthouse.bsCalVal": 0b0011,
+  "lighthouse.width0": 210, "lighthouse.width1": 204, "lighthouse.width2": 198, "lighthouse.width3": 201,
+};
+const manualTelemetry: Telemetry = { values: twoStations, height_m: 0.55, positioned: true, at: 0 };
+const manualHistory: History = Array.from({ length: 160 }, (_, i) => {
+  const a = i / 40;
+  return { t: i / 10, height_m: 0.3 + i / 640,
+           values: { ...twoStations, "stateEstimate.x": 0.6 * Math.sin(a) + i / 400 - 0.4 + 0.4,
+                     "stateEstimate.y": -0.9 + i / 120 * 0.8 } };
+});
+
+const control = (label: string, override: Partial<Session>, autoStart?: FlowStart,
+                 live: { telemetry: Telemetry; history: History } = { telemetry, history }) => (
   <Shell label={label}>
     <ControlPage
       autoStart={autoStart}
       session={{ ...session, ...override }}
-      telemetry={telemetry}
-      history={history}
+      telemetry={live.telemetry}
+      history={live.history}
       intent={{ ...EMPTY_INTENT, up: true, yaw_left: true }}
       flying={false}
       run={runHere}
@@ -585,6 +613,19 @@ createRoot(document.getElementById("root")!).render(
       controls: { key_frame: "room", operator: null, operator_marked_at: null,
                   live: { chosen: "room", active: "takeoff", reason: "no_position", forward_deg: -116,
                           operator: null, operator_source: null } },
+    })}
+    {control("Control · Manual, the room from the stations, flying", {
+      state: "busy", mode: "manual", activity: "manual", assisted: true, message: null,
+      controls: { key_frame: "operator", operator: [0.4, -1.8], operator_marked_at: "2026-09-30T09:00:00+00:00",
+                  live: { chosen: "operator", active: "operator", reason: null, forward_deg: 72.5,
+                          operator: [0.4, -1.8], operator_source: "marked" } },
+    }, undefined, { telemetry: manualTelemetry, history: manualHistory })}
+    {control("Control · Manual, the room from the stations, on the ground", {
+      state: "ready", mode: "manual", activity: null, assisted: true, message: null,
+      controls: { key_frame: "room", operator: null, operator_marked_at: null, live: null },
+    }, undefined, { telemetry: { ...manualTelemetry, height_m: 0.0 }, history: [] })}
+    {control("Control · Manual, unassisted, look again", {
+      state: "awaiting_confirmation", mode: "manual", assisted: false,
     })}
     {control("Control · Manual, no position, on the ground", {
       state: "ready", mode: "manual", activity: null, assisted: false, message: null,
