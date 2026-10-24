@@ -77,6 +77,10 @@ export default async function SessionPage(props: PageProps<"/app/sessions/[id]">
   ]);
   if (!session) notFound();
   const flightIds = flights.map((f) => f.id);
+  // Pictures taken by hand on the desktop's Capture page (frames.csv source).
+  const manual = frames.filter((f) => f.source === "manual");
+  // The zip's name: the session's day and the start of its id.
+  const zipBase = `dronedeck-session-${session?.started_at?.slice(0, 10) ?? "unknown"}-${id.slice(0, 8)}`;
   const [results, findings, enhanced, telemetry, own, ownFindings] = await Promise.all([
     getPipelineResults(flightIds),
     getFindings(flightIds),
@@ -165,7 +169,8 @@ export default async function SessionPage(props: PageProps<"/app/sessions/[id]">
         <Stat label="Duration" value={flightDuration(session.started_at, session.ended_at)} />
         <Stat label="Flights" value={String(session.flight_count)} />
         <Stat label="Vitals" value={rows.length.toLocaleString()} hint="one sample a second" />
-        <Stat label="Camera frames" value={frames.length.toLocaleString()} />
+        <Stat label="Camera frames" value={frames.length.toLocaleString()}
+              hint={manual.length ? `${manual.length} captured manually` : undefined} />
         <OwnerStat label="Run by" who={session} />
         <Stat label="Drone" value={session.drone} />
         <Stat label="Mode at start" value={session.mode_at_start} />
@@ -351,9 +356,19 @@ export default async function SessionPage(props: PageProps<"/app/sessions/[id]">
         )}
       </section>
 
+      {manual.length > 0 && (
+        <section aria-labelledby="manual-heading" className="space-y-3">
+          <h2 id="manual-heading" className="text-lg font-semibold text-[var(--heading)]">Captured manually</h2>
+          <p className="max-w-3xl text-sm text-[var(--muted)]">
+            Pictures the operator took by hand during this session, on the desktop app&apos;s Capture page.
+          </p>
+          <FrameGallery frames={manual} enhanced={enhanced} marks={marks} downloadName={`${zipBase}-manual`} />
+        </section>
+      )}
+
       <section aria-labelledby="camera-heading" className="space-y-3">
         <h2 id="camera-heading" className="text-lg font-semibold text-[var(--heading)]">Camera</h2>
-        <FrameGallery frames={frames} enhanced={enhanced} marks={marks} />
+        <FrameGallery frames={frames} enhanced={enhanced} marks={marks} downloadName={zipBase} />
       </section>
 
 

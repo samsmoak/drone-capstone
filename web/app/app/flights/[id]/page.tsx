@@ -259,7 +259,8 @@ export default async function FlightPage(props: PageProps<"/app/flights/[id]">) 
         <h2 id="camera-heading" className="text-lg font-semibold text-[var(--heading)]">
           Camera
         </h2>
-        <FrameGallery frames={frames} enhanced={enhanced} marks={marks} />
+        <FrameGallery frames={frames} enhanced={enhanced} marks={marks}
+                      downloadName={`dronedeck-flight-${flight.started_at?.slice(0, 10) ?? "unknown"}-${id.slice(0, 8)}`} />
       </section>
 
 
