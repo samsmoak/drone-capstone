@@ -90,6 +90,7 @@ Feature docs are plain `.txt`, grouped by the surface they describe.
 |---|---|
 | [features/development/skills.txt](features/development/skills.txt) | The `/feature`, `/copy-adapt`, `/preflight` and `/adapt` commands and the feature-kit, committed in `.claude/` so a cloud session has them |
 | [features/development/releases.txt](features/development/releases.txt) | How a merge to main becomes a download on /apps, on both platforms |
+| [features/development/commands.txt](features/development/commands.txt) | Every shell command in the project — agent CLI, web, desktop, scripts, Supabase, gates, hardware — where to run it and what it does |
 
 ## The project's working memory — read before starting
 

@@ -116,6 +116,9 @@ RELATED
 
 consumed-by       ../desktop/desktop-app.txt
                   the same build path and install, run by CI
+shares-data-with  commands.txt
+                  the same gates — this doc requires them before a release;
+                  commands.txt indexes how to run them
 shares-data-with  ../frontend/site-pages-and-views.txt
                   the setup guide's terminal steps
 

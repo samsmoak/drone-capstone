@@ -82,6 +82,9 @@ RELATED
 
 shares-data-with  ../desktop/desktop-app.txt
                   the same venv, created by scripts/setup.mjs
+shares-data-with  ../development/commands.txt
+                  the flat command index points here for the from-source setup
+                  and driver troubleshooting this doc owns
 
 
 LAST VERIFIED  2026-09-25: `node scripts/setup.mjs --check` and `--dev` on an
