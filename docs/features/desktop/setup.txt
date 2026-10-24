@@ -51,14 +51,15 @@ WHERE IT LIVES
 
 THE BUNDLE (manifest.json, sha256 each — a mismatch refuses to flash)
 
-  main        cf2.bin          crazyflie-firmware 2025.12.1 + drone_wifi v3
+  main        cf2.bin          crazyflie-firmware 2025.12.1 + drone_wifi v4
   lighthouse  lighthouse.bin   Bitcraze crazyflie-release 2025.12.1's deck image
                                (lighthouse-fpga V6, 104 093 bytes, crc32
                                288081812 — what 2025.12.1 asks the deck for)
   camera      aideck_gap8.bin  Bitcraze aideck-gap8-examples 2025.02, official
                            wifi_img_streamer_with_ap
-  wifi        aideck_esp.bin   Bitcraze aideck-esp-firmware 2025.02 +
-                           firmware/aideck-esp/close-client-once.patch
+  wifi        aideck_esp.bin   Bitcraze aideck-esp-firmware 2025.02 + four
+                           firmware/aideck-esp/ patches (camera-firmware.txt;
+                           bundle 3 on lab: + wifi-link.patch)
 Updating one: rebuild it (firmware/*/build.sh), copy it in, regenerate the
 sha256, bump "bundle" (deck parts) or "drone_wifi" (main) so drones update.
 

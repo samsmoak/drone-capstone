@@ -1,5 +1,5 @@
 {
-  "bundle": 2,
+  "bundle": 3,
   "drone_wifi": 4,
   "platform": "Crazyflie 2.1 + AI deck",
   "parts": {
@@ -24,8 +24,8 @@
     "wifi": {
       "file": "aideck_esp.bin",
       "chip": "esp",
-      "sha256": "ae30218d8c43bdabad888e4639241404bb5563baccda55285e7ab67c00f48b95",
-      "source": "bitcraze/aideck-esp-firmware 2025.02 + firmware/aideck-esp close-client-once.patch, wifi-throughput.patch, wifi-recovery.patch"
+      "sha256": "6b63aecf0622624c656667fee801e2a6e84edb7e0f156baa8737a81f7eb2cc75",
+      "source": "bitcraze/aideck-esp-firmware 2025.02 + firmware/aideck-esp close-client-once.patch, wifi-throughput.patch, wifi-recovery.patch, wifi-link.patch"
     }
   }
 }

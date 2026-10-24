@@ -21,6 +21,12 @@
 # rejoin); WIFI_CTRL_REPORT (0x2E) re-announces the address on request; every
 # disconnect logs its reason. Written against the two patches above.
 #
+# wifi-link.patch (2026-10-24) holds the link at a weak signal: 20 MHz
+# channels (not 40), the transmit ceiling set to 20 dBm explicitly, and 15 s
+# without a beacon before the station drops (stock 6). It logs one line the
+# ground reads back — bandwidth, power, timeout, and whether a brownout has
+# cut the power. Written against the three patches above.
+#
 # Built with ESP-IDF v4.3.1 — the version Bitcraze builds with — installed
 # natively in the cache (no Docker: Docker Desktop is not part of this project
 # and was not working on the build Mac). First run installs it (~600 MB).
@@ -40,6 +46,7 @@ git -C "$SRC" clean -fdxq
 git -C "$SRC" apply "$HERE/close-client-once.patch"
 git -C "$SRC" apply "$HERE/wifi-throughput.patch"
 git -C "$SRC" apply "$HERE/wifi-recovery.patch"
+git -C "$SRC" apply "$HERE/wifi-link.patch"
 
 IDF="$CACHE/esp-idf"
 export IDF_TOOLS_PATH="$CACHE/espressif"

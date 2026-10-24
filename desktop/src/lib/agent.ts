@@ -950,6 +950,15 @@ export async function sessionFrame(sessionId: string, seq: number): Promise<Blob
 }
 
 /** Where the AI deck is in joining the operator's Wi-Fi. No password, ever. */
+/** What the deck's radio is set to. `brownout`: held at reduced power
+ *  until the battery is unplugged (camera/wifi.py DeckLink). */
+export type DeckLink = {
+  bandwidth_mhz: number;
+  power_dbm: number | null;
+  beacon_timeout_s: number;
+  brownout: boolean;
+};
+
 export type CameraWifi = {
   ssid: string | null;
   phase: "not-set" | "waiting" | "sending" | "joining" | "joined" | "reconnecting" | "failed";
@@ -967,6 +976,9 @@ export type CameraWifi = {
   /** Why the deck last dropped off the network, in words, as it said
    *  (wifi-recovery.patch); null when it has not said. */
   reason?: string | null;
+  /** The deck radio's settings, read back by its ESP32 (wifi-link.patch);
+   *  null from a deck without it. */
+  link?: DeckLink | null;
 };
 
 // ── the live socket ───────────────────────────────────────────────────
