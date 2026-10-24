@@ -21,8 +21,9 @@ STATUS  (Last verified: 2026-10-24)
              auto-capture switch beside the DPP's on Control; "Capture images
              →" on Control during a session; a session's manual captures in
              Sessions
-  web        NOT BUILT here — the session page's "Captured manually" section
-             and the download (../pipeline/results.txt)
+  web        BUILT — the session page's "Captured manually" section and
+             "Select to download" on every frame gallery
+             (../pipeline/results.txt); NOT yet seen against hosted data
   NOT BUILT  A keyboard key for Capture: the flight keys are locked
              (CLAUDE.md). Capturing on the web: only the laptop has the camera.
 

@@ -158,42 +158,79 @@ export type SessionFrame = {
   seq: number;
   /** A signed link — the bucket is private. Valid for FRAME_LINK_S. */
   url: string;
+  /** The file's own name — png or jpg, whatever the camera sent. */
+  name: string;
   /** Seconds since the session started, and where the drone thought it was. */
   t_s: number | null;
   x_m: number | null;
   y_m: number | null;
   z_m: number | null;
+  /** "manual": captured by hand on the desktop's Capture page; "auto"
+   *  otherwise, and for frames from before captures existed. */
+  source: "auto" | "manual";
+  /** The inspection point being held when it was taken, if any. */
+  point_id: string | null;
 };
 
 /** How long a signed frame link lives — long enough to page through a session. */
 const FRAME_LINK_S = 60 * 60;
 const FRAMES_BUCKET = "flight-frames";
+/** Storage lists and signs at most this many at a time; a longer session is
+ *  read in pages. At 2 a second, 1 000 frames is about eight minutes. */
+const STORAGE_PAGE = 1000;
+
+type Bucket = ReturnType<Awaited<ReturnType<typeof createClient>>["storage"]["from"]>;
+
+/** Every file name under a folder, however many there are. The list used to
+ *  stop at 2 000 — about seventeen minutes of frames — and a longer session
+ *  silently lost the rest of its camera on the web (found 2026-10-24). */
+async function listAll(bucket: Bucket, folder: string, what: string): Promise<string[]> {
+  const names: string[] = [];
+  for (let offset = 0; ; offset += STORAGE_PAGE) {
+    const { data, error } = await bucket.list(folder, {
+      limit: STORAGE_PAGE, offset, sortBy: { column: "name", order: "asc" },
+    });
+    if (error) failed({ message: error.message }, what);
+    names.push(...(data ?? []).map((f) => f.name));
+    if ((data ?? []).length < STORAGE_PAGE) return names;
+  }
+}
+
+/** Signed links for every path, in the same order, signed in pages. */
+async function signAll(bucket: Bucket, paths: string[], what: string): Promise<(string | null)[]> {
+  const out: (string | null)[] = [];
+  for (let i = 0; i < paths.length; i += STORAGE_PAGE) {
+    const { data, error } = await bucket.createSignedUrls(paths.slice(i, i + STORAGE_PAGE), FRAME_LINK_S);
+    if (error) failed({ message: error.message }, what);
+    out.push(...paths.slice(i, i + STORAGE_PAGE).map((_, j) => {
+      const item = data?.[j];
+      return item && !item.error && item.signedUrl ? item.signedUrl : null;
+    }));
+  }
+  return out;
+}
 
 /**
  * A session's recorded camera frames, from the private flight-frames bucket.
  *
- * The desktop agent writes every frame to disk and uploads two a second, with
- * a frames.csv index (backend/agent/cropwatcher/camera/recording.py). The index
- * gives each frame its time and position; a frame whose index row has not
- * arrived yet still shows, without them. Empty when the session recorded none.
+ * The desktop agent writes every frame to disk and uploads the CAPTURED ones —
+ * those that changed, at most two a second, and every frame captured by hand
+ * (backend/agent/cropwatcher/camera/capture.py) — with a frames.csv index
+ * (camera/recording.py). The index gives each frame its time, position and
+ * source; a frame whose index row has not arrived yet still shows, without
+ * them. Empty when the session recorded none.
  */
 export const getSessionFrames = cache(async (sessionId: string): Promise<SessionFrame[]> => {
   const supabase = await createClient();
   const bucket = supabase.storage.from(FRAMES_BUCKET);
-  const { data: files, error } = await bucket.list(`${sessionId}/frames`, {
-    limit: 2000,
-    sortBy: { column: "name", order: "asc" },
-  });
-  if (error) failed({ message: error.message }, "camera frames");
-  const names = (files ?? []).map((f) => f.name).filter((n) => /^\d+\.(png|jpg)$/.test(n));
+  const names = (await listAll(bucket, `${sessionId}/frames`, "camera frames"))
+    .filter((n) => /^\d+\.(png|jpg)$/.test(n));
   if (names.length === 0) return [];
-
-  const { data: signed, error: signError } = await bucket.createSignedUrls(
-    names.map((n) => `${sessionId}/frames/${n}`), FRAME_LINK_S);
-  if (signError) failed({ message: signError.message }, "camera frame links");
+  const signed = await signAll(bucket, names.map((n) => `${sessionId}/frames/${n}`), "camera frame links");
 
   // The index is optional: the frames are the record, the index annotates it.
-  const where = new Map<number, Pick<SessionFrame, "t_s" | "x_m" | "y_m" | "z_m">>();
+  type Where = Pick<SessionFrame, "t_s" | "x_m" | "y_m" | "z_m" | "source" | "point_id">;
+  const where = new Map<number, Where>();
   const { data: csv } = await bucket.download(`${sessionId}/frames.csv`);
   if (csv) {
     const [header, ...rows] = (await csv.text()).trim().split("\n");
@@ -204,15 +241,19 @@ export const getSessionFrames = cache(async (sessionId: string): Promise<Session
       const get = (name: string) => cells[col.indexOf(name)];
       where.set(Number(get("seq")), {
         t_s: num(get("t_s")), x_m: num(get("x_m")), y_m: num(get("y_m")), z_m: num(get("z_m")),
+        // A column missing from an older index reads as undefined: "auto".
+        source: get("source")?.trim() === "manual" ? "manual" : "auto",
+        point_id: get("point_id")?.trim() || null,
       });
     }
   }
 
+  const unknown: Where = { t_s: null, x_m: null, y_m: null, z_m: null, source: "auto", point_id: null };
   return names.flatMap((name, i) => {
-    const url = signed?.[i]?.signedUrl;
+    const url = signed[i];
     if (!url) return [];
     const seq = Number(name.split(".")[0]);
-    return [{ seq, url, ...(where.get(seq) ?? { t_s: null, x_m: null, y_m: null, z_m: null }) }];
+    return [{ seq, url, name, ...(where.get(seq) ?? unknown) }];
   });
 });
 
@@ -224,19 +265,13 @@ export const getSessionFrames = cache(async (sessionId: string): Promise<Session
 export const getEnhancedFrames = cache(async (sessionId: string): Promise<Record<number, string>> => {
   const supabase = await createClient();
   const bucket = supabase.storage.from(FRAMES_BUCKET);
-  const { data: files, error } = await bucket.list(`${sessionId}/enhanced`, {
-    limit: 2000,
-    sortBy: { column: "name", order: "asc" },
-  });
-  if (error) failed({ message: error.message }, "enhanced frames");
-  const names = (files ?? []).map((f) => f.name).filter((n) => /^\d+\.png$/.test(n));
+  const names = (await listAll(bucket, `${sessionId}/enhanced`, "enhanced frames"))
+    .filter((n) => /^\d+\.png$/.test(n));
   if (names.length === 0) return {};
-  const { data: signed, error: signError } = await bucket.createSignedUrls(
-    names.map((n) => `${sessionId}/enhanced/${n}`), FRAME_LINK_S);
-  if (signError) failed({ message: signError.message }, "enhanced frame links");
+  const signed = await signAll(bucket, names.map((n) => `${sessionId}/enhanced/${n}`), "enhanced frame links");
   const out: Record<number, string> = {};
   names.forEach((name, i) => {
-    const url = signed?.[i]?.signedUrl;
+    const url = signed[i];
     if (url) out[Number(name.split(".")[0])] = url;
   });
   return out;
@@ -931,12 +966,8 @@ export const getFrameLinks = cache(
     const supabase = await createClient();
     const bucket = supabase.storage.from(FRAMES_BUCKET);
     // The original's extension is whatever the camera wrote: ask, never guess.
-    const { data: files, error } = await bucket.list(`${sessionId}/frames`, {
-      limit: 2000, sortBy: { column: "name", order: "asc" },
-    });
-    if (error) failed({ message: error.message }, "camera frames");
     const wanted = new Set(seqs);
-    const originals = (files ?? []).map((f) => f.name)
+    const originals = (await listAll(bucket, `${sessionId}/frames`, "camera frames"))
       .filter((n) => /^\d+\.(png|jpg)$/.test(n) && wanted.has(Number(n.split(".")[0])));
     const enhancedPaths = [...wanted].map((seq) => `${sessionId}/enhanced/${seq}.png`);
     const [o, e] = await Promise.all([

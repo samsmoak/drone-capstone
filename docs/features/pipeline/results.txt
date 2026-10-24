@@ -1,7 +1,11 @@
 ================================================================================
 RESULTS ON THE WEB — every processed flight's result, findings and enhanced
 frames uploaded, shown on the session and flight pages, and notified
-Last verified: 2026-10-11 — re-read after sync/cloud.py changed for playback (#109); it only gained the playback upload and reads; the results upload is unchanged. Before that:
+Last verified: 2026-10-24 — the manual section, the download and the paged
+listing: web typecheck, lint and build; lib/frame-zip.ts run for real in Node
+against a local server (progress, a missing file reported, the manual name,
+cancel, index.csv, the zip's own CRC check). NOT yet seen in a browser against
+the hosted data. 2026-10-11 — re-read after sync/cloud.py changed for playback (#109); it only gained the playback upload and reads; the results upload is unchanged. Before that:
 2026-10-09 against web/processed-data — the real agent client
 uploading a planted warm patch to the local Supabase stack; /app/processed and
 /app/processed/<session> in a browser at 390 and 1440 px in both themes (43 of
@@ -62,7 +66,10 @@ web/app/app/processed/[id]/page.tsx             one session's processed data
 web/components/ui/hint.tsx                      the anomaly tooltip
 web/components/ui/raw-readings.tsx              rows tinted, jump-to list
 web/components/flight/FrameGallery.tsx          frames outlined, "Only anomaly
-                                                frames"
+                                                frames", "Captured manually"
+                                                chips, Select to download
+web/lib/frame-zip.ts                            the chosen frames as one zip,
+                                                in the browser
 web/lib/queries.ts                              getProcessedOverview,
                                                 getStretchReadings, getFrameLinks
 web/app/app/sessions/[id]/page.tsx, web/app/app/flights/[id]/page.tsx
@@ -86,6 +93,19 @@ web/app/app/sessions/[id]/page.tsx, web/app/app/flights/[id]/page.tsx
   named; the camera with Original / Enhanced / Side by side; on the session
   page every flight's raw telemetry beside its 1 Hz vitals. "Zone health"
   (greenhouse) is gone; the predictions table stays.
+• CAPTURED MANUALLY, AND DOWNLOAD (2026-10-24, Samuel). The session page shows
+  the pictures taken by hand on the desktop's Capture page in a section of
+  their own above the camera (frames.csv's source column; ../desktop/
+  capture.txt), and every frame gallery — session, flight, processed — has
+  "Select to download": tick frames or Select all, then one zip with an
+  index.csv of when, where and how each was taken. Built IN THE BROWSER from
+  the signed links the page already holds: nothing new is exposed and no
+  server route streams a session's images. Images are stored, not deflated
+  again. A link that has expired (they last an hour) is reported, not
+  silently dropped: the zip carries the rest and says how many are missing.
+• EVERY FRAME IS LISTED (2026-10-24). The bucket was listed with limit 2 000,
+  so a session past about seventeen minutes lost the rest of its camera on
+  the web without a word. Listing and signing are now paged (1 000 a time).
 • PROCESSED DATA IS A PAGE OF ITS OWN (/app/processed, in the sidebar): every
   anomaly, worst first, each card carrying its readings (at most 10 of the
   stretch: first, last, the peak, evenly between — measured, expected, the

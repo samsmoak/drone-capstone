@@ -253,7 +253,8 @@ export default async function ProcessedSessionPage(props: PageProps<"/app/proces
 
       <section aria-labelledby="camera-heading" className="space-y-3">
         <h2 id="camera-heading" className="text-lg font-semibold text-[var(--heading)]">Camera</h2>
-        <FrameGallery frames={frames} enhanced={enhanced} marks={marks} />
+        <FrameGallery frames={frames} enhanced={enhanced} marks={marks}
+                      downloadName={`dronedeck-session-${session.started_at?.slice(0, 10) ?? "unknown"}-${id.slice(0, 8)}`} />
       </section>
     </div>
   );
