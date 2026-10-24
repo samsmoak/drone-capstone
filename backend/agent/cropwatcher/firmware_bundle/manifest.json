@@ -1,19 +1,19 @@
 {
-  "bundle": 1,
-  "drone_wifi": 3,
+  "bundle": 2,
+  "drone_wifi": 4,
   "platform": "Crazyflie 2.1 + AI deck",
   "parts": {
     "main": {
       "file": "cf2.bin",
       "chip": "stm32",
-      "sha256": "58a61894286ec058d6f1071516179fa381f1c410be851bc8a23328164cfb2b4a",
-      "source": "crazyflie-firmware 2025.12.1 + firmware/drone-wifi (drone_wifi v3)"
+      "sha256": "d16bcf7966fecc55e4cdd25c2c5a9eaa526909de22da0e81de71f7bb6407bfec",
+      "source": "crazyflie-firmware 2025.12.1 + firmware/drone-wifi (drone_wifi v4: rejoin and report)"
     },
     "lighthouse": {
       "file": "lighthouse.bin",
       "chip": "lighthouse-deck",
       "sha256": "cb14698f9e53304fc234cd393a730f66bcbd5fb59fc329f64cb6eb0ebd3cea61",
-      "source": "bitcraze/crazyflie-release 2025.12.1 firmware-cf2-2025.12.1.zip (sha256 310d6985e035bebc6e55bd4cd4a2a2cc57af5b6bffdbb8311c52f7d04a96db2d) lighthouse.bin — lighthouse-fpga V6, 104093 bytes, crc32 288081812 (the image 2025.12.1 asks the deck for)"
+      "source": "bitcraze/crazyflie-release 2025.12.1 firmware-cf2-2025.12.1.zip (sha256 310d6985e035bebc6e55bd4cd4a2a2cc57af5b6bffdbb8311c52f7d04a96db2d) lighthouse.bin \u2014 lighthouse-fpga V6, 104093 bytes, crc32 288081812 (the image 2025.12.1 asks the deck for)"
     },
     "camera": {
       "file": "aideck_gap8.bin",
@@ -24,8 +24,8 @@
     "wifi": {
       "file": "aideck_esp.bin",
       "chip": "esp",
-      "sha256": "f75675f0873fc77320d573a9e7275748fbbc0bae52f54e3207a6e2028a9d79cc",
-      "source": "bitcraze/aideck-esp-firmware 2025.02 + firmware/aideck-esp/close-client-once.patch"
+      "sha256": "ae30218d8c43bdabad888e4639241404bb5563baccda55285e7ab67c00f48b95",
+      "source": "bitcraze/aideck-esp-firmware 2025.02 + firmware/aideck-esp close-client-once.patch, wifi-throughput.patch, wifi-recovery.patch"
     }
   }
 }

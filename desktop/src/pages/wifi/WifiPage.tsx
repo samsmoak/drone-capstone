@@ -62,7 +62,7 @@ export function WifiPage({ wifi, session, onSaved }: {
     try {
       await api.reconnectCamera();
     } catch (e) {
-      setNote(e instanceof Error ? e.message : "Could not restart the drone.");
+      setNote(e instanceof Error ? e.message : "Could not reconnect the camera.");
     } finally {
       setBusy(false);
     }
@@ -130,24 +130,25 @@ export function WifiPage({ wifi, session, onSaved }: {
           <StatusDot tone={PHASE_TONE[phase]}>{wifi?.message ?? PHASE_LABEL[phase]}</StatusDot>
           {radio?.state === "connected" && !camera?.live && (
             <div className="flex flex-wrap items-center gap-2">
-              <Button
-                onClick={() => void reconnect()}
-                disabled={busy || session?.state !== "idle"}
-                title={session?.state !== "idle" ? "Between sessions only" : undefined}
-              >
+              <Button onClick={() => void reconnect()} disabled={busy}>
                 Reconnect camera
               </Button>
               <span className="text-xs text-[var(--muted)]">
-                Restarts the drone so it rejoins · about 15 s
+                Asks the drone where its camera is, then rejoins it — in a session too; the
+                flight is not touched. Older camera software is restarted instead, between sessions.
               </span>
             </div>
+          )}
+          {wifi?.reason && phase !== "joined" && (
+            <p className="text-xs">Last dropped off because {wifi.reason}.</p>
           )}
           {note && <p className="text-xs text-[var(--muted)]">{note}</p>}
         </div>
       )}
       {editing && phase === "joined" && (
         <p className="mt-3 text-xs text-[var(--muted)]">
-          The drone keeps its current network until it restarts.
+          A drone with up-to-date camera software moves to the new network at once; older
+          camera software moves when the drone next restarts (Set up updates it).
         </p>
       )}
     </Panel>

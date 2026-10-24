@@ -925,6 +925,9 @@ export type CameraWifi = {
   remembered?: boolean;
   /** Only a restart of the drone gets it onto this network now. */
   needs_restart?: boolean;
+  /** Why the deck last dropped off the network, in words, as it said
+   *  (wifi-recovery.patch); null when it has not said. */
+  reason?: string | null;
 };
 
 // ── the live socket ───────────────────────────────────────────────────

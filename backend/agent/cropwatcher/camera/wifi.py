@@ -43,11 +43,15 @@ CMD_SSID = 0x01
 CMD_KEY = 0x02
 CMD_APPLY = 0x03
 CMD_STATUS = 0x04
+#: drone_wifi v4: ask the deck to say its address again (wifi-recovery.patch).
+CMD_REPORT = 0x05
 
 CODE_OK = 0
 CODE_BAD_REQUEST = 1
 CODE_ALREADY_APPLIED = 2
 CODE_TOO_EARLY = 3
+#: drone_wifi v4 on a deck whose ESP32 cannot report or rejoin (bundle < 2).
+CODE_UNSUPPORTED = 4
 
 #: CRTP app-channel payload limit (APPCHANNEL_MTU in the firmware).
 MTU = 30
@@ -69,12 +73,42 @@ JOIN_TIMEOUT_S = 30.0
 #: The ESP32 logs a disconnect on every failed attempt and retries forever. This
 #: many in a row with no address is a wrong password or an out-of-range network.
 MAX_DISCONNECTS = 4
+#: How long the deck gets to say its address when asked (CMD_REPORT). It answers
+#: at once when it is on the network; silence this long means it is not.
+REPORT_WAIT_S = 4.0
 
 _IP = re.compile(r"WiFi connected to ip: (\d{1,3}(?:\.\d{1,3}){3})")
 #: The ESP32's own line for the same event (aideck-esp-firmware main/wifi.c).
 _GOT_IP = re.compile(r"WIFI: got ip: (\d{1,3}(?:\.\d{1,3}){3})")
 _RSSI = re.compile(r"WIFI: rssi: (-?\d+)")
 _DISCONNECT = "Disconnected from access point"
+#: wifi-recovery.patch adds the reason: "…access point, reason 201".
+_REASON = re.compile(r"Disconnected from access point, reason (\d+)|"
+                     r"not connected, last reason (\d+)")
+
+#: Why the deck's ESP32 dropped off, in words (ESP-IDF 4.3.1 wifi_err_reason_t,
+#: components/esp_wifi/include/esp_wifi_types.h). The ones that tell the
+#: operator what to do; anything else is shown by its number.
+REASON_WORDS = {
+    2: "the network stopped answering it",
+    3: "the network turned it away",
+    4: "the network stopped answering it",
+    8: "it left the network",
+    15: "the password was not accepted",
+    200: "it lost the signal",
+    201: "it cannot find the network — out of range, or not 2.4 GHz",
+    202: "the network refused it — a wrong password, or a WPA3-only network",
+    203: "the network would not take it — it may limit how many devices join",
+    204: "the password was not accepted",
+    205: "the connection failed",
+}
+
+
+def reason_words(code: int | None) -> str | None:
+    """A disconnect reason in the operator's words, or None when none is known."""
+    if code is None or code == 0:
+        return None
+    return REASON_WORDS.get(code, f"it dropped off (reason {code})")
 
 #: Below this, a 2.4 GHz link from the deck's chip antenna drops out when the
 #: drone turns. Measured: joined at -84 dBm and fell off the network minutes
@@ -112,13 +146,17 @@ class WifiState:
     #: until the camera reaches it.
     remembered: bool = False
     #: Only a restart of the drone gets it onto this network now: it applied a
-    #: network already this power-on (the ESP32 cannot re-apply without one).
+    #: network already this power-on and its ESP32 cannot rejoin (a deck
+    #: without bundle 2's wifi-recovery.patch).
     needs_restart: bool = False
+    #: Why it last dropped off, as the deck said (REASON_WORDS); None if never.
+    reason: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {"ssid": self.ssid, "phase": str(self.phase), "ip": self.ip,
                 "message": self.message, "rssi": self.rssi, "drops": self.drops,
-                "remembered": self.remembered, "needs_restart": self.needs_restart}
+                "remembered": self.remembered, "needs_restart": self.needs_restart,
+                "reason": self.reason}
 
 
 def validate(ssid: str, password: str) -> tuple[bytes, bytes]:
@@ -154,17 +192,23 @@ class ConsoleWatch:
         self._buf = ""
         self.ip: str | None = None
         self.disconnects = 0
+        #: The last disconnect reason the deck gave, if it gave one.
+        self.reason: int | None = None
         self.changed = threading.Event()
 
     def feed(self, text: str) -> None:
         self._buf += text
         *lines, self._buf = self._buf.split("\n")
         for line in lines:
-            match = _IP.search(line)
+            match = _IP.search(line) or _GOT_IP.search(line)
             if match:
                 self.ip = match.group(1)
                 self.changed.set()
-            elif _DISCONNECT in line:
+                continue
+            why = _REASON.search(line)
+            if why:
+                self.reason = int(why.group(1) or why.group(2))
+            if _DISCONNECT in line:
                 self.disconnects += 1
                 self.changed.set()
 
@@ -233,6 +277,18 @@ class DeckWifi:
         self._on_ip = on_ip
         self._clock = clock
         self._sleep = sleep
+        #: Why the deck last dropped off (REASON_WORDS key), from its console.
+        self._reason: int | None = None
+        #: When the phase last changed — how long "joining" has been joining.
+        self._phase_since = clock()
+        #: One conversation with drone_wifi at a time: an apply from a new link
+        #: and a recovery from the watchdog must not interleave their packets.
+        self._busy = threading.Lock()
+
+    def phase_age(self) -> float:
+        """Seconds the current phase has lasted."""
+        with self._lock:
+            return self._clock() - self._phase_since
 
     def state(self) -> WifiState:
         with self._lock:
@@ -271,6 +327,10 @@ class DeckWifi:
         return follow_console(cf, self._console_line)
 
     def _console_line(self, line: str) -> None:
+        gave = _REASON.search(line)
+        if gave:
+            with self._lock:
+                self._reason = int(gave.group(1) or gave.group(2))
         signal = _RSSI.search(line)
         if signal:
             with self._lock:
@@ -302,8 +362,13 @@ class DeckWifi:
                 return                       # joining: apply() counts these itself
             drops = state.drops + 1
             rssi = self._rssi
+            with self._lock:
+                said = reason_words(self._reason)
             weak = rssi is not None and rssi < WEAK_RSSI_DBM
-            why = f" — weak signal ({rssi} dBm)" if weak else ""
+            if said:
+                why = f": {said}" + (f" ({rssi} dBm)" if weak else "")
+            else:
+                why = f" — weak signal ({rssi} dBm)" if weak else ""
             self._set(Phase.RECONNECTING, state.ssid, ip=None, drops=drops,
                       message=f"The drone dropped off {state.ssid}{why}. Rejoining…")
 
@@ -336,15 +401,100 @@ class DeckWifi:
         return self.state()
 
     def apply(self, cf: Any) -> WifiState:
-        """Send the network to the drone and wait for the deck's address.
+        """Put the deck on the network and wait for its address — the link
+        just opened. Never raises: every outcome ends in a state the window
+        can show.
 
-        Never raises: every outcome ends in a state the window can show.
+        ASK BEFORE JOINING. A drone that already applied a network this
+        power-on (the agent restarted, the radio dropped and came back) is
+        usually still on it: the deck is ASKED where it is first
+        (CMD_REPORT), and only if it does not answer is the network sent
+        again. Rejoining a deck that was fine would cost the camera seconds
+        of picture for nothing.
         """
         with self._lock:
             creds = self._creds
         if creds is None:
             return self.state()
+        if not self._busy.acquire(blocking=False):
+            return self.state()                  # another conversation is under way
+        try:
+            with self._talk(cf) as (exchange, watch):
+                self._set(Phase.SENDING, creds.ssid, message="Sending the network to the drone…")
+                status = exchange(bytes([CMD_STATUS]))
+                if status is None:
+                    return self._not_flashed(creds)
+                with self._lock:
+                    joined = self._joined
+                # Asked only when it is THIS network the deck is on: after the
+                # operator chose another one, asking would find the deck happy
+                # on the old network and never move it.
+                if status[1] and joined is not None and joined[0] == creds.ssid:
+                    found, _supported = self._ask(exchange, watch, creds)
+                    if found is not None:
+                        return found
+                outcome = self._send(exchange, creds)
+                if outcome is not None:
+                    return outcome
+                return self._await_join(creds, watch)
+        finally:
+            self._busy.release()
 
+    def recover(self, cf: Any, why: str) -> str:
+        """Get the camera back on the network WITHOUT restarting the drone —
+        so it works in a session too: nothing here touches the radio link or
+        the flight, only the deck's Wi-Fi.
+
+          1. ASK where it is (CMD_REPORT): it may be on the network at a new
+             address the agent missed.
+          2. Not answering: REJOIN — the network sent again; a deck with
+             wifi-recovery.patch rejoins in place.
+
+        Returns what happened: "answered", "rejoined", "failed" (tried, not
+        back yet), "unsupported" (firmware older than drone_wifi v4 or deck
+        bundle 2 — the caller falls back to restarting the drone),
+        "needs_restart", "unreachable" (no answer over the radio), "busy" or
+        "no-network".
+        """
+        with self._lock:
+            creds = self._creds
+        if creds is None:
+            return "no-network"
+        if not self._busy.acquire(blocking=False):
+            return "busy"
+        try:
+            with self._talk(cf) as (exchange, watch):
+                if exchange(bytes([CMD_STATUS])) is None:
+                    return "unreachable"
+                with self._lock:
+                    drops = self._state.drops
+                self._set(Phase.RECONNECTING, creds.ssid, drops=drops,
+                          message=f"{why} Asking the drone where its camera is…")
+                found, supported = self._ask(exchange, watch, creds)
+                if found is not None:
+                    log.info("deck recovery: it answered at %s", found.ip)
+                    return "answered"
+                if not supported:
+                    return "unsupported"
+                self._set(Phase.RECONNECTING, creds.ssid, drops=drops,
+                          message=f"The camera is not on {creds.ssid}. Rejoining it — the "
+                                  "drone keeps flying as it is.")
+                outcome = self._send(exchange, creds)
+                if outcome is not None:
+                    return "needs_restart" if (outcome.needs_restart or outcome.remembered) \
+                        else "failed"
+                joined = self._await_join(creds, watch)
+                log.info("deck recovery: rejoin %s", joined.phase)
+                return "rejoined" if joined.phase is Phase.JOINED else "failed"
+        finally:
+            self._busy.release()
+
+    # ── the exchange ─────────────────────────────────────────────────────
+
+    @contextlib.contextmanager
+    def _talk(self, cf: Any) -> Any:
+        """The app channel and the console, for one conversation. Yields
+        (exchange, watch): exchange(pkt) -> (code, applied) or None."""
         replies: list[bytes] = []
         got_reply = threading.Event()
         watch = ConsoleWatch()
@@ -353,23 +503,6 @@ class DeckWifi:
             replies.append(bytes(data))
             got_reply.set()
 
-        cf.appchannel.packet_received.add_callback(on_packet)
-        cf.console.receivedChar.add_callback(watch.feed)
-        try:
-            self._set(Phase.SENDING, creds.ssid, message="Sending the network to the drone…")
-            outcome = self._send(cf, creds, replies, got_reply)
-            if outcome is not None:
-                return outcome
-            return self._await_join(creds, watch)
-        finally:
-            cf.appchannel.packet_received.remove_callback(on_packet)
-            cf.console.receivedChar.remove_callback(watch.feed)
-
-    # ── the exchange ─────────────────────────────────────────────────────
-
-    def _send(self, cf: Any, creds: _Credentials, replies: list[bytes],
-              got_reply: threading.Event) -> WifiState | None:
-        """Every packet, each acknowledged. None means go on and wait to join."""
         def exchange(pkt: bytes) -> tuple[int, int] | None:
             replies.clear()
             got_reply.clear()
@@ -381,12 +514,48 @@ class DeckWifi:
                 return None
             return reply[1], (reply[2] if len(reply) > 2 else 0)
 
-        if exchange(bytes([CMD_STATUS])) is None:
-            return self._set(
-                Phase.FAILED, creds.ssid,
-                message="The drone's firmware cannot take a Wi-Fi network. Flash it with "
-                        "the drone_wifi firmware (docs/features/desktop/drone-wifi.txt).")
+        cf.appchannel.packet_received.add_callback(on_packet)
+        cf.console.receivedChar.add_callback(watch.feed)
+        try:
+            yield exchange, watch
+        finally:
+            cf.appchannel.packet_received.remove_callback(on_packet)
+            cf.console.receivedChar.remove_callback(watch.feed)
 
+    def _not_flashed(self, creds: _Credentials) -> WifiState:
+        return self._set(
+            Phase.FAILED, creds.ssid,
+            message="The drone's firmware cannot take a Wi-Fi network. Flash it with "
+                    "the drone_wifi firmware (docs/features/desktop/drone-wifi.txt).")
+
+    def _ask(self, exchange: Callable[[bytes], tuple[int, int] | None], watch: ConsoleWatch,
+             creds: _Credentials) -> tuple[WifiState | None, bool]:
+        """Ask the deck where it is. (JOINED state, True) when it says;
+        (None, True) when it was asked and is not on the network; (None, False)
+        when this drone or deck cannot be asked (older firmware)."""
+        answer = exchange(bytes([CMD_REPORT]))
+        if answer is None or answer[0] != CODE_OK:
+            return None, False
+        deadline = self._clock() + REPORT_WAIT_S
+        while self._clock() < deadline:
+            watch.changed.wait(0.25)
+            watch.changed.clear()
+            if watch.ip is not None:
+                self._remember((creds.ssid, watch.ip))
+                self._on_ip(watch.ip)
+                return self._set(Phase.JOINED, creds.ssid, ip=watch.ip,
+                                 message=self._joined_words(
+                                     WifiState(ssid=creds.ssid, ip=watch.ip,
+                                               rssi=self._rssi))), True
+        if watch.reason is not None:
+            with self._lock:
+                self._reason = watch.reason
+        return None, True
+
+    def _send(self, exchange: Callable[[bytes], tuple[int, int] | None],
+              creds: _Credentials) -> WifiState | None:
+        """The network, every packet acknowledged, then apply. None means go
+        on and wait to join."""
         *chunks, apply_pkt = packets(creds.name, creds.key)
         for pkt in chunks:
             answer = exchange(pkt)
@@ -415,13 +584,14 @@ class DeckWifi:
                     return self._set(Phase.JOINED, creds.ssid, ip=known, remembered=True,
                                      message=f"Joined {creds.ssid} earlier, at {known} — "
                                              "checking it is still there.")
-                # Nothing remembered for this network. Only a restart makes the
-                # deck join afresh and say where it is; on standby the agent
-                # does that itself (Agent.watchdog), so say what is next.
+                # An older deck (no wifi-recovery.patch) cannot rejoin, and
+                # nothing remembered says where it is: only a restart makes it
+                # join afresh and say so. On standby the agent does that itself.
                 return self._set(
                     Phase.FAILED, creds.ssid, needs_restart=True,
                     message="The drone joined a network earlier and its address is not "
-                            "known. It needs a restart to rejoin.")
+                            "known. It needs a restart to rejoin (its camera software "
+                            "predates rejoining — Set up updates it).")
             return self._set(Phase.FAILED, creds.ssid,
                              message="The drone refused the network's name or password.")
 
@@ -437,13 +607,20 @@ class DeckWifi:
                 return self._set(Phase.JOINED, creds.ssid, ip=watch.ip,
                                  message=self._joined_words(
                                      WifiState(ssid=creds.ssid, ip=watch.ip, rssi=self._rssi)))
+            if watch.reason is not None:
+                with self._lock:
+                    self._reason = watch.reason
+                said = reason_words(watch.reason)
+                self._set(Phase.JOINING, creds.ssid,
+                          message=f"The drone is joining {creds.ssid} — not yet: {said}.")
             if watch.disconnects >= MAX_DISCONNECTS:
                 break
-        return self._set(
-            Phase.FAILED, creds.ssid,
-            message=f"The drone could not join {creds.ssid}. Check the password, that the "
-                    "network is 2.4 GHz and in range, and that it has no sign-in page. "
-                    "Then restart the drone to try again.")
+        said = reason_words(watch.reason)
+        cause = (f"The drone could not join {creds.ssid}: {said}." if said else
+                 f"The drone could not join {creds.ssid}. Check the password, that the "
+                 "network is 2.4 GHz and in range, and that it has no sign-in page.")
+        return self._set(Phase.FAILED, creds.ssid,
+                         message=f"{cause} It keeps trying, and the app asks again shortly.")
 
     # ── the last join, kept across agent restarts ────────────────────────
 
@@ -475,9 +652,12 @@ class DeckWifi:
              message: str | None = None, drops: int = 0,
              remembered: bool = False, needs_restart: bool = False) -> WifiState:
         with self._lock:
+            if phase is not self._state.phase:
+                self._phase_since = self._clock()
             self._state = WifiState(ssid=ssid, phase=phase, ip=ip, message=message,
                                     rssi=self._rssi, drops=drops, remembered=remembered,
-                                    needs_restart=needs_restart)
+                                    needs_restart=needs_restart,
+                                    reason=reason_words(self._reason))
         self._changed()
         return self.state()
 
