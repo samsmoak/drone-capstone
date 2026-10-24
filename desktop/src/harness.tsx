@@ -375,6 +375,17 @@ if (!agentToken) {
           left: [0.514, -0.857, 0], up: [-0.357, -0.214, 0.909] },
       ] });
     }
+    // The station chain as the lab read it at 07:16 on 2026-10-24: both
+    // stations measured and calibrated, and no light on the deck at all.
+    if (path === "/station") {
+      return json({ connected: true, measuring: false, light_sensors: 0, calibrated: [0, 1], active: [],
+        received: [], measured: [0, 1], usable: [], uncertainty_cm: 501.7, ready: false,
+        stations: [{ id: 0, channel: 1, calibrated: true, received: false, measured: true, active: false },
+                   { id: 1, channel: 2, calibrated: true, received: false, measured: true, active: false }],
+        deck: { detected: true, needs_fw: false },
+        blocker: { stage: "light", text: "No light reaches the positioning deck (0 of 4 sensors).",
+                   fix: "Check both base stations' front LEDs are solid green and can see the top of the drone. Still 0 with the drone 1 m in front of a station: switch the drone off and on; then reseat the positioning deck." } });
+    }
     if (path === "/setup/command") {
       return json({ command: "/Applications/DroneDeck.app/Contents/MacOS/cropwatcher-agent setup",
                     check: "/Applications/DroneDeck.app/Contents/MacOS/cropwatcher-agent setup --check" });
@@ -628,6 +639,11 @@ createRoot(document.getElementById("root")!).render(
       state: "ready", mode: "manual", activity: null, assisted: true, message: null,
       controls: { key_frame: "room", operator: null, operator_marked_at: null, live: null },
     }, undefined, { telemetry: { ...manualTelemetry, height_m: 0.0 }, history: [] })}
+    {control("Control · Manual, not placed — no light", {
+      state: "awaiting_confirmation", mode: "manual", assisted: false,
+    }, undefined, { telemetry: { values: { ...twoStations, "lighthouse.bsReceive": 0, "lighthouse.width0": 0,
+      "lighthouse.width1": 0, "lighthouse.width2": 0, "lighthouse.width3": 0, "stabilizer.yaw": 20 },
+      height_m: null, positioned: false, at: 0 }, history: [] })}
     {control("Control · Manual, unassisted, look again", {
       state: "awaiting_confirmation", mode: "manual", assisted: false,
     })}

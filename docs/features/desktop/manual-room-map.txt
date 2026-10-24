@@ -12,7 +12,7 @@ STATUS  (Last verified: 2026-10-24)
 --------------------------------------------------------------------------------
   agent      BUILT — GET /station/space (session.manual_space); the session
              record keeps why the checks found no position (unassisted_reason)
-  desktop    BUILT — the map in Manual's console, Full screen, the compass with
+  desktop    BUILT — the map in Manual's console, Full screen, the in-map notice with
              no position, the Base stations vital, station lines in the log,
              "Look again" before barometer flight
   NOT BUILT  enforcing the green as a fence — shown only (Samuel was asked;
@@ -45,8 +45,9 @@ by hand:
               (green where measured, dashed amber where only estimated)
   the keys    F B L R round it — where ↑ ↓ ← → move it NOW; the nose is a
               separate red tick (bead in 3-D)
-  no position the stations not heard: the drone cannot be placed, so a compass
-              with ↑ at the top and the nose turning under it
+  no position the drone cannot be placed: a notice INSIDE the map names the
+              first failing stage and its fix, and a small dial shows ↑
+              against the nose
 
 The right strip shows "Base stations 2 of 2 · Ch 1 Ch 2" (amber with one, red
 with none); the command log writes one line each time that changes.
@@ -54,7 +55,7 @@ with none); the command log writes one line each time that changes.
 --------------------------------------------------------------------------------
 2. WHERE IT LIVES
 --------------------------------------------------------------------------------
-desktop   desktop/src/pages/control/ManualMap.tsx — the map, compass, Measure
+desktop   desktop/src/pages/control/ManualMap.tsx — the map, notice, dial, Measure again
           desktop/src/pages/control/ConsolePane.tsx — `map`: attitude / room / log
           desktop/src/pages/control/ControlPage.tsx — Manual's console; "Look again"
           desktop/src/pages/control/auto/plan/keyArrows.ts — the four directions
@@ -103,9 +104,21 @@ harness   "Control · Manual, the room from the stations, flying / on the
   variance 0.0002 → 0.16 in 6 s); the map had no trusted position and took
   the drone away. Now it stays where it was last placed, ringed dashed in the
   warning colour, the page says "Position lost" and which stations are heard,
-  and the compass shows the arrows in the takeoff frame. WHY the stations
+  and the small dial shows ↑ against the nose (takeoff frame). WHY the stations
   drop in the air is not known yet — carry the drone up by hand and watch the
   Base stations vital to tell line of sight from the motors.
+• NOT PLACED IS SAID INSIDE THE MAP, NEVER DRAWN AS A DRONE (2026-10-24,
+  Samuel: "it is so big and you have put it outside of the map"). The first
+  version drew a drone-sized compass under the room when there was no
+  position, and it read as the drone, outside the room. Now the map carries
+  one notice in its corner — the first failing stage and its fix (the agent's
+  /station `blocker`) — and a small dial for ↑ against the nose. "Measure
+  again" sits in the map's toolbar for stations that moved (the same request
+  as ② Position; disabled until a station is decoded, and in flight).
+• TWO STATIONS ARE MEASURED TOGETHER (verified 2026-10-24): estimate_quick
+  solves every station the record received, and storing writes both
+  (bsGeoVal 3). With no light on the deck there is nothing to place the drone
+  with — the geometry is not the fault then, the light is.
 • DECKS LOST IS NOT "NOT MEASURED". With the decks unpowered (0 deck
   memories), the page says to switch the drone off and on, not to Measure.
 

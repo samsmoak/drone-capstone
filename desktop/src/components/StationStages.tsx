@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { api, type StationRow, type StationStatus } from "@/lib/agent";
+import { api, type PositionBlocker, type StationRow, type StationStatus } from "@/lib/agent";
 import { StatusDot } from "@/components/ui";
 
 /** How often the base station's status is re-read. */
@@ -32,7 +32,16 @@ export function useStation(connected: boolean): StationStatus | null {
 }
 
 export function StationStages({ station }: { station: StationStatus & { connected: true } }) {
+  const deck = station.deck;
   const rows: [string, boolean, string][] = [
+    // The deck itself first (2026-10-24): a deck not detected, or not running
+    // its firmware, reads exactly like stations that are off — 0 of 4.
+    ...(deck ? [
+      ["Positioning deck detected", deck.detected !== false,
+       deck.detected === null ? "not known" : deck.detected ? "yes" : "no — switch the drone off and on"],
+      ["Deck firmware running", deck.needs_fw !== true,
+       deck.needs_fw === null ? "not asked yet" : deck.needs_fw ? "no — reinstall it (Set up, step 2)" : "yes"],
+    ] as [string, boolean, string][] : []),
     ["Light on the deck's sensors", station.light_sensors > 0, `${station.light_sensors} of 4`],
     ["Base station's data read", station.calibrated.length > 0,
       station.calibrated.length ? `station ${station.calibrated.join(", ")}` : "none"],
@@ -47,6 +56,7 @@ export function StationStages({ station }: { station: StationStatus & { connecte
   ];
   return (
     <div className="grid gap-2">
+      {station.blocker && <BlockerNote blocker={station.blocker} />}
       <ul className="grid border border-[var(--border)] text-xs" aria-label="From the base station's light to a position">
         {rows.map(([label, ok, detail]) => (
           <li key={label} className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-3 py-1.5 last:border-b-0">
@@ -56,6 +66,17 @@ export function StationStages({ station }: { station: StationStatus & { connecte
         ))}
       </ul>
       {station.stations && <PerStation rows={station.stations} />}
+    </div>
+  );
+}
+
+/** The first stage that is not done, and what fixes it — said once, above
+ *  the rows, so the operator does not have to find it in the list. */
+export function BlockerNote({ blocker }: { blocker: PositionBlocker }) {
+  return (
+    <div role="status" className="grid gap-1 border-l-2 border-[var(--status-warning)] bg-[var(--surface-2)] px-3 py-2 text-sm">
+      <p className="font-semibold">{blocker.text}</p>
+      <p className="text-xs">{blocker.fix}</p>
     </div>
   );
 }

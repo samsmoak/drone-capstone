@@ -284,7 +284,19 @@ export type StationStatus =
       /** The same chain per station, named by channel (station id + 1).
        *  Absent from older agents. */
       stations?: StationRow[];
+      /** The positioning deck itself: detected at power-on, and whether its
+       *  firmware needs writing. null = not known. Absent from older agents. */
+      deck?: { detected: boolean | null; needs_fw: boolean | null };
+      /** The FIRST stage from deck to position that is not done, with its fix
+       *  (agent flight/position_stages.py); null when the drone is placed. */
+      blocker?: PositionBlocker | null;
     };
+
+export type PositionBlocker = {
+  stage: "deck" | "firmware" | "light" | "decoded" | "stored" | "settled";
+  text: string;
+  fix: string;
+};
 
 /** A measured base station on the room map: its place in room metres and
  *  its own axes in room terms — x forward out of its face, y to its left, z

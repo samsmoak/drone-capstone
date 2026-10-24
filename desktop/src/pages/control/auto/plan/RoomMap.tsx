@@ -44,8 +44,11 @@ export function RoomMap({
   outer, fence, obstacles, path, takeoffHeight = 0.4, problems = [], drone = null, droneHeight, droneYaw,
   progress, editing, label, below, heightClass = "h-[clamp(18rem,52vh,34rem)]", space = null,
   trail = null, liveStations = true, keyArrows = null, droneScale = 1, toolbar, fill = false,
-  droneLost = false,
+  droneLost = false, overlay,
 }: {
+  /** Said INSIDE the map, over its top-left corner — Manual's "not placed"
+   *  notice. Read-only: it never takes the map's clicks. */
+  overlay?: ReactNode;
   /** The position is lost: the drone stays at its last place, in the warning colour. */
   droneLost?: boolean;
   /** Take the height the parent gives it (a flex column), instead of
@@ -139,6 +142,9 @@ export function RoomMap({
       </div>
 
       <div className={`relative min-h-0 min-w-0 overflow-hidden border border-[var(--border)] ${fill ? "min-h-[12rem] flex-1" : heightClass}`}>
+        {overlay && (
+          <div className="pointer-events-none absolute left-2 top-2 z-10 max-w-[calc(100%-1rem)]">{overlay}</div>
+        )}
         {shown === "2d" ? (
           <PlanCanvas
             outer={outer} fence={fence} obstacles={obstacles} path={path} takeoffHeight={takeoffHeight}
