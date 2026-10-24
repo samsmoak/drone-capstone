@@ -68,16 +68,10 @@ export function SetupPage({ session, setup, wifi, run, onGo }: {
   // only when a sweep yields angles); validAngles is not (2026-10-05).
   const decoding = station?.connected === true && station.received.length > 0
     && opened !== "channels";
-  // Step 2 holds the list only while it has something to do. Its state is the
-  // agent's and starts "idle" every launch — never checked this run is not the
-  // same as missing, and it once hid step 3 from an operator whose drone was
-  // fully installed (2026-10-05). "Check" opens it whenever it is wanted.
-  const phase = setup?.phase ?? "idle";
-  // Installing happens in a terminal (Install, below); the page only reads.
-  const installPending = phase === "checking" || phase === "failed"
-    || (phase === "ready" && setup !== null && Object.values(setup.parts).some((p) => p === "needed"));
-
-  const listed: Step = !connected ? "connect" : installPending ? "install"
+  // Step 2 is always open (its commands are always on the page), so it never
+  // takes the list's place: the list moves on from connecting to the
+  // channels, whatever the drone has installed.
+  const listed: Step = !connected ? "connect"
     : !decoding ? "channels" : !wifiDone ? "wifi" : "session";
   const current: Step = connected && opened !== null ? opened : listed;
   const done = (s: Step) => ({
@@ -93,9 +87,12 @@ export function SetupPage({ session, setup, wifi, run, onGo }: {
           <Connect session={session} />
         </Item>
 
-        <Item n={2} title="Install drone software" done={done("install")} open={current === "install"}
-              summary="Drone firmware, positioning deck, camera and camera Wi-Fi installed"
-              onReopen={() => setOpened("install")} reopenLabel="Install or reinstall">
+        {/* ALWAYS OPEN, NO BUTTON IN ITS HEADER (2026-10-24, Samuel): the
+            header's "Install or reinstall" only opened the step, but it read as
+            an install button, and the commands hid behind it. The commands are
+            on the page whatever step is current. */}
+        <Item n={2} title="Install drone software — from Terminal" done={done("install")} open
+              summary="Drone firmware, positioning deck, camera and camera Wi-Fi installed">
           <Install setup={setup} run={run} busy={inSession} />
         </Item>
 
@@ -126,14 +123,20 @@ export function SetupPage({ session, setup, wifi, run, onGo }: {
 function useSetupCommand(given?: SetupCommand) {
   const [cmd, setCmd] = useState<SetupCommand | null>(given ?? null);
   const [failed, setFailed] = useState(false);
-  const load = () => {
-    setFailed(false);
-    api.setupCommand().then(setCmd, () => setFailed(true));
-  };
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    if (!given) load();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  return { cmd, failed, retry: load };
+    if (given || cmd) return;
+    let live = true;
+    api.setupCommand().then(
+      (c) => { if (live) { setCmd(c); setFailed(false); } },
+      () => { if (live) setFailed(true); },
+    );
+    // The agent may still be starting when the page opens: keep asking, so
+    // the commands appear by themselves rather than behind a button.
+    const timer = window.setTimeout(() => setAttempt((n) => n + 1), 3000);
+    return () => { live = false; window.clearTimeout(timer); };
+  }, [given, cmd, attempt]);
+  return { cmd, failed, retry: () => setAttempt((n) => n + 1) };
 }
 
 /** One line to paste into a terminal, shown whole (it wraps, never cut) with a
@@ -221,7 +224,7 @@ export function Install({ setup, run, busy, command }: {
         <li><strong>1.</strong> Quit DroneDeck (⌘Q) — while it is open it holds the radio.</li>
         <li><strong>2.</strong> Open Terminal (on Windows, PowerShell), paste a line below and press Return.</li>
         <li><strong>3.</strong> Keep the drone on. When it says so, unplug the battery for 10 seconds.</li>
-        <li><strong>4.</strong> Open DroneDeck again and press Read what is installed.</li>
+        <li><strong>4.</strong> Open DroneDeck again and press Check what&apos;s on the drone.</li>
       </ol>
 
       {cmd === null ? (
@@ -250,10 +253,11 @@ export function Install({ setup, run, busy, command }: {
       <div className="grid gap-2 border-t border-[var(--border)] pt-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm font-semibold">On this drone</p>
-          <Button disabled={busy || checking} onClick={() => void run(api.setupCheck, "Read what is installed")}>
-            Read what is installed
+          <Button disabled={busy || checking} onClick={() => void run(api.setupCheck, "Check what is on the drone")}>
+            Check what&apos;s on the drone
           </Button>
         </div>
+        <p className="text-xs">Only reads — it never writes to the drone.</p>
         {busy && <Message tone="warning" text="End the session first — reading the drone needs the radio." />}
         {checking && <Spinner label={setup?.message ?? "Reading the drone…"} />}
         {phase === "ready" && setup?.facts?.deck_unrecorded && (

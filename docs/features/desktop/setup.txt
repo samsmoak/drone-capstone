@@ -39,7 +39,7 @@ WHERE IT LIVES
   firmware/drone-wifi/src/drone_wifi.c               the cwsetup.fw / .deck / .deckid params
   desktop/src/harness.tsx                            "Set up · new AI deck", "… reinstall"
   GET /setup · POST /setup/check · GET /setup/command (this machine's line)
-  · POST /setup/install {reinstall: [part]} (kept; the page no longer calls it)
+  — read-only; there is NO install route (removed 2026-10-24)
   · event "setup" (facts.deck_unrecorded: the deck fitted is not the one on record)
 
   step 3:
@@ -124,9 +124,18 @@ DECISIONS
   line for everything — rewriting the drone firmware to fix a camera adds
   minutes and risk. Reinstalling still refuses a low battery, keeps the
   order, and a deck that is not fitted is not written.
-- The agent's engine does the flashing, now run by the command in its own
-  process with the app quit (above). POST /setup/install still exists and is
-  refused during a session; the page no longer calls it.
+- The agent's engine does the flashing, run ONLY by the command in its own
+  process with the app quit (above). POST /setup/install was removed
+  (2026-10-24) so nothing in the app — or anything holding its token — can
+  flash the drone; test_api.py TestSetupWritesNothing pins it.
+- STEP 2 IS ALWAYS OPEN, WITH NOTHING IN ITS HEADER (2026-10-24, Samuel, again:
+  "remove that install button"). The header's "Install or reinstall" only
+  opened the step, but it read as an install button and the commands hid
+  behind it. The step is open on every visit, never takes the list's place
+  (the list goes connect → channels → Wi-Fi), and its one button is "Check
+  what's on the drone" — "only reads, it never writes". The commands are
+  fetched until they arrive (every 3 s): an agent still starting no longer
+  leaves them behind a Try again.
 - Words on the page are instructions; the why is here.
 - STEP 3 SETS CHANNELS THE WAY BITCRAZE'S CLIENT DOES (cfclient
   basestation_mode_dialog.py, "Set BS channel"): a Base Station 2.0 on USB is

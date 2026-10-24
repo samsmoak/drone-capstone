@@ -295,3 +295,31 @@ class TestTheRoute:
                                              headers={HEADER: rest.agent.token})
         assert response.status_code == 409
         assert "off and on" in response.json()["detail"]
+
+    def test_no_deck_is_said_even_though_the_camera_was_never_handed_over(
+            self, monkeypatch, tmp_path):
+        """With no AI deck the hand-off never runs, so `_cf` stays None — and the
+        button said "Connect the drone first" beside a connected radio."""
+        from fastapi.testclient import TestClient
+
+        from cropwatcher.api import rest
+        from cropwatcher.api.tokens import HEADER
+
+        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+        monkeypatch.setattr(rest.agent, "_cf", None)
+        monkeypatch.setattr(rest.agent.session._snapshot, "ai_deck", False)
+        response = TestClient(rest.app).post("/camera/wifi/rejoin",
+                                             headers={HEADER: rest.agent.token})
+        detail = response.json()["detail"]
+        assert response.status_code == 409 and "off and on" in detail
+        assert "Connect the drone first" not in detail
+
+    def test_a_link_with_no_deck_says_so_on_the_wifi_state(self, monkeypatch, tmp_path):
+        from cropwatcher.api import rest
+        from cropwatcher.camera.wifi import Phase
+
+        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+        rest.agent.deck_wifi.configure("Lab", "password1")
+        rest.agent._link_no_deck()
+        state = rest.agent.deck_wifi.state()
+        assert state.phase is Phase.FAILED and "off and on" in (state.message or "")
