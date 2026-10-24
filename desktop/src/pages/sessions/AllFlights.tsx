@@ -16,7 +16,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AgentError, api, type FlightList, type FlightListItem, type Mode } from "@/lib/agent";
 import { formatDateTime, formatTime } from "@/lib/format";
-import { useWindowState } from "@/lib/windowState";
 import { Button, Message, Panel, StatusDot } from "@/components/ui";
 import { LoadState, MODE_LABEL, type Load } from "./parts";
 
@@ -77,10 +76,8 @@ export function AllFlights({ refreshKey, mode, onPlay }: {
   mode: Mode;
   onPlay: (f: FlightListItem) => void;
 }) {
-  // Kept while the window is open, not per visit: leaving for Control and
-  // coming back must not reset them (lib/windowState.ts).
-  const [allModes, setAllModes] = useWindowState("playback.allModes", false);
-  const [person, setPerson] = useWindowState("playback.person", "");
+  const [allModes, setAllModes] = useState(false);
+  const [person, setPerson] = useState<string>("");
   const [state, setState] = useState<Load<FlightList>>({ kind: "loading" });
   const filter = allModes ? undefined : mode;
 
@@ -95,11 +92,9 @@ export function AllFlights({ refreshKey, mode, onPlay }: {
   useEffect(() => { void load(); }, [load, refreshKey]);
 
   const people = useMemo(() => {
-    // The remembered person stays choosable even when this list has none of
-    // their flights — a select whose value has no option shows a blank.
-    const names = state.kind === "ready" ? state.data.flights.map(who) : [];
-    return [...new Set(person ? [...names, person] : names)].sort((a, b) => a.localeCompare(b));
-  }, [state, person]);
+    if (state.kind !== "ready") return [];
+    return [...new Set(state.data.flights.map(who))].sort((a, b) => a.localeCompare(b));
+  }, [state]);
   const shown = state.kind === "ready" ? state.data.flights.filter((f) => !person || who(f) === person) : [];
 
   return (

@@ -72,8 +72,6 @@ desktop  desktop/src/pages/sessions/Playback.tsx       the player
          desktop/src/pages/sessions/AllFlights.tsx     the list (FlightRow is
                                                        copied from parts.tsx
                                                        SessionRow — PARITY marker)
-         desktop/src/lib/windowState.ts                its filters, kept while
-                                                       the window is open
          desktop/src/pages/sessions/SessionsPage.tsx   Play back on a session's
                                                        flights
          desktop/src/pages/control/auto/plan/trail.ts  the path flown, as runs
@@ -118,14 +116,6 @@ In Supabase: telemetry, flight_traces, flight_plans, flights (who, when).
 • ONE EVENT PER STRETCH WITHOUT BASE STATIONS, with its length: reception
   flickers on the lab's flights; d985c7a6 held P1 for 4.7 s with none.
 • Capped at an hour (playback.MAX_ROWS); the list at the newest 300.
-• THE FILTERS LAST AS LONG AS THE WINDOW (2026-10-24, Samuel: "what i select
-  there should be persistent, unless maybe i close and reopen the app"). Who
-  flew it and Both modes live in lib/windowState.ts, not in the list's own
-  state — every page is unmounted when the sidebar moves, which reset them on
-  every visit. Memory only, never localStorage: a filter remembered across
-  launches would hide flights on a fresh start without saying why. A
-  remembered person stays in the select even when this list has none of their
-  flights (a value with no option shows a blank).
 
 --------------------------------------------------------------------------------
 4. INVARIANTS
