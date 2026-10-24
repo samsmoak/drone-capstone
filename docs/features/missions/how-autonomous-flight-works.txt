@@ -127,5 +127,7 @@ KNOWN, NOT YET SOLVED
 - After some landings the drone locks its motors (the landing ends at ~5 cm
   with motors high, then cuts). The landing is in manual.py, which is
   locked — Samuel's decision. Today: Reset drone between missions if asked.
-- One base station only: if it is blocked mid-flight there is no second view
-  (a second station on channel 2 fixes this).
+- The second station is in the lab (2026-10-24, channel 2) and ② Position
+  measures both from one press now (../desktop/auto-control.txt) — but the
+  lab drone's deck saw NO light that day (all four sensors 0, nothing stored),
+  so two-station flight has not been tried yet.

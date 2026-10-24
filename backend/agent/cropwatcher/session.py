@@ -49,7 +49,7 @@ from cropwatcher.flight.checks import CheckResult, ChecksFailed, ReadyReport, co
 from cropwatcher.flight.control import GuardedFlight, PhaseEvent
 from cropwatcher.flight.controls_store import ControlsStore, valid_spot
 from cropwatcher.flight.core import DEFAULT_URI
-from cropwatcher.flight.geometry import SweepAngles, estimate_quick
+from cropwatcher.flight.geometry import SweepAngles, channel_name, estimate_quick
 from cropwatcher.flight.keyframe import FrameStatus, KeyFrame
 from cropwatcher.flight.link import DEFAULT_FENCE_M, DEFAULT_MAX_HEIGHT_M, DroneLink, LinkError
 from cropwatcher.flight.manual import CLIMB_RATE_M_S, MOVE_SPEED_M_S
@@ -1356,7 +1356,19 @@ class Session:
             "uncertainty_cm": (round(max(variances) ** 0.5 * 100, 1)
                                if len(variances) == 3 else None),
             "ready": status.ready,
+            # The same chain, per station (2026-10-24: two stations in the
+            # lab): every station any stage mentions, named by its channel.
+            "stations": self._per_station(status, snap),
         }
+
+    @staticmethod
+    def _per_station(status: Any, snap: Any) -> list[dict[str, Any]]:
+        active = set(station_ids(snap.get("lighthouse.bsActive")))
+        seen = sorted({*status.calibrated, *status.received, *status.with_geometry, *active})
+        return [{"id": s, "channel": s + 1,
+                 "calibrated": s in status.calibrated, "received": s in status.received,
+                 "measured": s in status.with_geometry, "active": s in active}
+                for s in seen]
 
     def measure_station(self) -> dict[str, Any]:
         """Measure where the base station stands from where the drone sits, and
@@ -1366,7 +1378,11 @@ class Session:
                                "on the floor, motors off.")
         link = self._require_link()
         cf = link.scf.cf
-        reader = SweepAngles(cf, min_stations=1)
+        # Every station the drone receives NOW must be in the record: storing
+        # clears any station it is not given, so recording while one blinks
+        # out would erase it. Refused in words instead (SweepAngles).
+        before = assess_positioning(link.snapshot())
+        reader = SweepAngles(cf, min_stations=max(1, len(before.received)))
         self._measuring = True
         try:
             result = estimate_quick(cf, lambda _step, _i: reader.record())
@@ -1380,6 +1396,9 @@ class Session:
             raise SessionError("The drone did not confirm it stored the base station's "
                                "place. Measure again.")
         log.info("base station geometry stored: %s", result.message)
+        # A station stored before and not measured now is cleared — and must
+        # be: (0, 0, 0) moved, so its old place would be in the wrong room.
+        cleared = [s for s in before.with_geometry if s not in result.stations]
         self._poses_cache = None                    # the green follows the new place
         # The estimate ran on no geometry until now — metres away and
         # climbing — and a filter that far off can reject the very beams that
@@ -1391,8 +1410,13 @@ class Session:
         # until they run again (Session.retry).
         then = (" This session's checks ran before it — check again before flying."
                 if self.snapshot().session_id is not None else "")
+        gone = ("" if not cleared else
+                " " + ", ".join(channel_name(s) for s in cleared).capitalize()
+                + " was not seen from here, so its stored place is cleared: measure"
+                  " again where every station can see the drone.")
         return {"message": f"{result.message} Stored on the drone; this spot is now "
-                           f"(0, 0, 0).{then}"}
+                           f"(0, 0, 0).{gone}{then}",
+                "stations": sorted(result.stations), "cleared": cleared}
 
     @property
     def measuring_station(self) -> bool:

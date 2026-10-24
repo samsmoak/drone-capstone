@@ -77,6 +77,35 @@ Rungs 7-10 are what PR #26 changed. They are the test of it.
 
 
 =========================================================================
+2026-10-24 — TWO STATIONS UP, AND THE DECK SEES NO LIGHT
+=========================================================================
+
+CONDITIONS
+  radio        Crazyradio 2.0 on USB (firmware 0x0302), drone answering at
+               radio://0/80/2M; DroneDeck closed for the reads below
+  stations     two set up by Samuel (channels 1 and 2), not otherwise checked
+  code         main at bd123b9
+
+READING THE POSITIONING DECK
+  DID          ./cropwatcher stations --seconds 25 ; params and the
+               lighthouse log block read over the radio
+  MEASURED     deck.bcLighthouse4 1, deck.bcAI 1, lighthouse.systemType 2
+               (V2). width0..width3 all 0 — NO light on any of the four
+               sensors. bsReceive 0, bsCalVal 0, bsGeoVal 0 (nothing stored),
+               lighthouse.status 0. Still on the bench, the estimate ran
+               -2.51 → -73.34 m in 25 s.
+  MEANT        the same reading as 2026-10-05 below, when the deck was under
+               the drone facing the floor. Not settled which it is this time:
+               the deck's firmware state was not read (DroneDeck opened and
+               took the radio first). Check in order: the deck on TOP with a
+               clear view up; both stations' LEDs solid green; Set up ›
+               Positioning deck (needs firmware?).
+  CHANGED      ② Position now measures every station from one press and keeps
+               both (it used to keep the first and erase the second) —
+               features/desktop/auto-control.txt. Not yet run on the drone.
+
+
+=========================================================================
 2026-10-05 — THE DECK BELONGS ON TOP; THE STATION IS MEASURED IN THE APP
 =========================================================================
 

@@ -255,3 +255,71 @@ class TestNothingRestartsTheDroneMidMeasurement:
         rig.session._measuring = False
         assert rest.Agent.rejoin(agent, reason="no frames") is True
         assert restarts == ["no frames"]
+
+
+class TestTwoStations:
+    """2026-10-24, the second station in the lab: measuring kept only the
+    first, and storing erased the other (cflib invalidates every station it is
+    not given)."""
+
+    @pytest.fixture
+    def two(self, tmp_path, monkeypatch):
+        rig = make_rig(tmp_path, monkeypatch)
+        rig.link.scf = SimpleNamespace(cf=SimpleNamespace())
+        rig.samples, rig.written, rig.asked = [], [], []
+
+        class FakeSweep:
+            def __init__(self, cf, *, min_stations):
+                rig.asked.append(min_stations)
+            def record(self):
+                return rig.samples.pop(0)
+
+        monkeypatch.setattr(session_module, "SweepAngles", FakeSweep)
+        monkeypatch.setattr(geometry, "_write",
+                            lambda cf, poses: rig.written.append(poses) or True)
+        monkeypatch.setattr(session_module, "reset_estimator", lambda cf: None)
+        return rig
+
+    def seen(self, rig, receive, geo=0):
+        rig.link.snapshot = lambda: Snapshot(MappingProxyType({
+            "lighthouse.bsReceive": receive, "lighthouse.bsCalVal": receive,
+            "lighthouse.bsGeoVal": geo, "lighthouse.bsActive": geo}), 1.0)
+
+    def test_both_are_measured_from_one_record_and_stored_together(self, two):
+        self.seen(two, 0b11)
+        two.samples[:] = [FakeSample({0: (FakePose(2, 0, 2), FakePose(-2, 0, -2)),
+                                      1: (FakePose(-1, 3, 2), FakePose(1, -3, -2))})]
+        out = two.session.measure_station()
+        assert two.asked == [2]                       # both, or it refuses
+        assert sorted(two.written[0]) == [0, 1]
+        assert out["stations"] == [0, 1] and out["cleared"] == []
+        assert "channel 1" in out["message"] and "channel 2" in out["message"]
+        assert "apart" in out["message"]
+
+    def test_a_station_not_in_the_record_is_named_as_cleared(self, two):
+        self.seen(two, 0b01, geo=0b11)                # 2 stored, 1 seen now
+        two.samples[:] = [still_at_origin()]
+        out = two.session.measure_station()
+        assert out["cleared"] == [1]
+        assert "channel 2 was not seen from here" in out["message"]
+
+    def test_one_upright_one_not_stores_the_one_and_says_so(self, two):
+        import numpy as np
+        self.seen(two, 0b11)
+        flipped_a, flipped_b = FakePose(2, 0, 2), FakePose(-2, 0, 2)
+        flipped_a.rot_matrix = flipped_b.rot_matrix = np.diag([1.0, -1.0, -1.0])
+        two.samples[:] = [FakeSample({0: (FakePose(2, 0, 2), FakePose(-2, 0, -2)),
+                                      1: (flipped_a, flipped_b)})]
+        out = two.session.measure_station()
+        assert sorted(two.written[0]) == [0]
+        assert "channel 2 could not be measured" in out["message"].lower()
+
+    def test_status_lists_each_station_by_channel(self, two):
+        self.seen(two, 0b11, geo=0b01)
+        stations = two.session.station_status()["stations"]
+        assert stations == [
+            {"id": 0, "channel": 1, "calibrated": True, "received": True,
+             "measured": True, "active": True},
+            {"id": 1, "channel": 2, "calibrated": True, "received": True,
+             "measured": False, "active": False},
+        ]

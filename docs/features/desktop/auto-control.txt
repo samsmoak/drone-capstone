@@ -1,6 +1,9 @@
 ================================================================================
 CONTROL IN AUTO — plan a mission, check the drone, fly it
-Last verified: 2026-10-11 for the room map's `trail` only (playback's path
+Last verified: 2026-10-24 for ② Position's two stations only (every station from
+one press, per-station rows), against agent/two-base-stations — test_geometry.py,
+test_station_measure.py (53), pnpm build; NOT on the drone (its deck saw no light).
+2026-10-11 for the room map's `trail` only (playback's path
 flown, drawn in PlanCanvas and Room3D; nothing else in the map changed), against
 desktop/mission-playback — pnpm build and the harness at the five widths.
 2026-10-09 for the RESULTS panel only (the findings, below; agent.ts's
@@ -279,6 +282,25 @@ desktop/src/lib/agent.ts                           the calls and types
   geometry`) for that case. Done = the drone says positioning is ready
   (/station), never "a press happened". The camera watchdog never restarts
   the drone mid-measurement (Session.measuring_station).
+• EVERY STATION FROM THE SAME PRESS (2026-10-24, the lab's second station).
+  estimate_quick took only the FIRST station of the record, and storing
+  writes the whole table — cflib's write_and_store_config INVALIDATES every
+  station it is not given — so measuring with two up erased the second. Now
+  each received station is solved from the one record (each by its own
+  upright test), all stored together; the record must hold every station the
+  drone receives at that moment (SweepAngles min_stations), so one blinking
+  out is refused in words rather than silently cleared. With two, the reply
+  says how far apart they are — check it with a tape. A station stored
+  before and not measured now is named as cleared: (0, 0, 0) moved, so its
+  old place would be wrong. ② Position lists each station by channel
+  (StationStages, /station `stations`); channel n is the firmware's station
+  n − 1.
+  NOT BUILT: refining the two from a 20 s carry. cflib's multi-station solver
+  needs a measured x-axis step and floor samples to fix the frame
+  (align_and_scale_solution); doing without them means new geometry maths
+  that writes what the drone flies on, and it cannot be checked until the
+  deck sees light again. The full solver is `cropwatcher geometry` (a 1 m
+  step and a few positions) — the refine that exists today.
 • THE STEP BAR IS NEVER SQUEEZED (StepBar.tsx, 2026-10-05): full labels;
   wide, the steps share the width; narrow, it scrolls sideways.
 • THE FLY MAP SHOWS THE AGENT'S AUTO-CORRECTED PLAN (GET …/from-drone every

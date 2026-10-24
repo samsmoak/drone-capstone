@@ -170,7 +170,7 @@ class SweepAngles:
         angles = captured["angles"]
         if len(angles) < self._min_stations:
             raise ValueError(
-                f"Only base station {', '.join(str(b) for b in sorted(angles))} reached "
+                f"Only the {', '.join(channel_name(b) for b in sorted(angles))} reached "
                 f"the drone here. {self._min_stations} are needed at every position — "
                 f"move the drone, or re-aim the station that is missing."
             )
@@ -305,31 +305,59 @@ def estimate_quick(
             message="No base station reached the drone at that position.",
         )
 
-    station = sorted(sample.angles_calibrated)[0]
-    candidates = list(sample.ippe_solutions[station])
-    # Ties (both upright) keep IPPE's order: the lower reprojection error first.
-    pose = max(candidates, key=_uprightness)
-    if _uprightness(pose) < MIN_UPRIGHT:
+    # EVERY station the record received (2026-10-24). This used to take the
+    # first one only — and storing writes the WHOLE table (cflib
+    # write_and_store_config invalidates every station it is not given), so a
+    # second station's place was erased on every measure.
+    poses: dict[int, Any] = {}
+    refused: list[int] = []
+    for station in sorted(sample.angles_calibrated):
+        candidates = list(sample.ippe_solutions[station])
+        # Ties (both upright) keep IPPE's order: the lower reprojection error first.
+        pose = max(candidates, key=_uprightness)
+        if _uprightness(pose) < MIN_UPRIGHT:
+            refused.append(station)
+        else:
+            poses[station] = pose
+    if not poses:
+        names = ", ".join(channel_name(s) for s in refused)
         return GeometryResult(
             converged=False,
             message=(
-                f"Neither answer has base station {station} standing upright, so the "
+                f"Neither answer has {names} standing upright, so the "
                 f"mirror cannot be ruled out from here. Check the station stands the "
                 f"right way up, or measure with two records 1 m apart."
             ),
         )
-    result = GeometryResult(
-        converged=True,
-        stations={station: pose},
-        message=(
-            f"Base station {station} measured from where the drone sits: "
-            f"{float(np.linalg.norm(pose.translation)):.2f} m away, "
-            f"{float(pose.translation[2]):.2f} m above the drone, standing upright."
-        ),
-    )
+    lines = [
+        f"{channel_name(station).capitalize()} measured from where the drone sits: "
+        f"{float(np.linalg.norm(pose.translation)):.2f} m away, "
+        f"{float(pose.translation[2]):.2f} m above the drone, standing upright."
+        for station, pose in sorted(poses.items())
+    ]
+    if len(poses) >= 2:
+        (a, pa), (b, pb) = sorted(poses.items())[:2]
+        apart = float(np.linalg.norm(pa.translation - pb.translation))
+        lines.append(
+            f"The two stations are {apart:.2f} m apart — measure the real tripods with a "
+            f"tape: a difference of more than a few centimetres means measure again.")
+    if refused:
+        lines.append(
+            f"{', '.join(channel_name(s) for s in refused).capitalize()} could not be measured "
+            f"from here (neither answer stands upright) and is cleared: measure again "
+            f"from a spot where it is seen clearly.")
+    result = GeometryResult(converged=True, stations=poses, message=" ".join(lines))
     if write:
-        result.written = _write(cf, {station: pose})
+        result.written = _write(cf, poses)
     return result
+
+
+def channel_name(station: int) -> str:
+    """How a station is named to the operator: by the channel it is set to,
+    which is what the station itself shows (Set up, step 3). The firmware
+    numbers them from 0 — channel 1 is station 0 (Bitcraze: two stations use
+    channels 1 and 2)."""
+    return f"base station on channel {station + 1}"
 
 
 def estimate_single(
