@@ -23,11 +23,10 @@ is already a JPEG and is passed through untouched.
 THE SIZE COMES FROM EACH FRAME'S HEADER, never a constant. The one constant the
 code had — 320x320 — was a guess, and the deck measured 324x244.
 
-WHOLE FRAMES ARRIVE (since 2026-09-24), but the deck can stall mid-send for
-seconds to minutes (docs/features/desktop/camera.txt). So a stalled socket is
-treated as the normal failure here — read timeouts, reconnect with backoff,
-and a frame older than STALE_S is not reported as live. How fast frames really
-arrive is measured, not assumed: `rate` (camera/rate.py).
+NOT MEASURED YET: a whole frame. The only capture stalled after 24 KB of the
+first 79 KB frame. So a stalled socket is treated as the normal failure here —
+read timeouts, reconnect with backoff, and a frame older than STALE_S is not
+reported as live.
 """
 
 from __future__ import annotations
@@ -41,7 +40,6 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from cropwatcher.camera.rate import FrameRate
 from cropwatcher.camera.source import CameraStatus, png_grey
 
 log = logging.getLogger(__name__)
@@ -201,8 +199,6 @@ class DeckStream:
         #: on this source's thread — how a session records them.
         self._listeners: list[Callable[[bytes, str, int, int], None]] = []
         self.deck_fitted: bool | None = None
-        #: What actually arrives, over the last few seconds (camera/rate.py).
-        self.rate = FrameRate(clock)
         self._thread = threading.Thread(target=self._run, name="deck-camera", daemon=True)
         if start:
             self._thread.start()
@@ -300,7 +296,6 @@ class DeckStream:
         """Read one frame and make it the latest. The thread's unit of work,
         exposed so tests can drive it without a socket."""
         frame = read_frame(read)
-        self.rate.add(len(frame.data), frame.format)
         data, ctype = encode(frame)
         with self._lock:
             self._latest = (data, ctype, self._clock(), frame.width, frame.height)

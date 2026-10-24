@@ -13,7 +13,6 @@ from cropwatcher.camera.recording import (
     COLUMNS,
     INDEX_NAME,
     FrameRecording,
-    NotRecording,
     Recorder,
     frames_to_upload,
 )
@@ -57,7 +56,7 @@ class TestFrameRecording:
 
     def test_two_a_second_are_marked_for_upload_and_every_frame_is_kept(self, tmp_path):
         clock = Clock()
-        rec = FrameRecording("s1", tmp_path, clock=clock)
+        rec = FrameRecording("s1", tmp_path, clock=clock, upload_fps=2.0)
         for _ in range(20):                      # 20 frames over 5 s, ~4 a second
             rec.add(b"x", "image/png", 2, 1)
             clock.t += 0.25
@@ -67,54 +66,13 @@ class TestFrameRecording:
 
     def test_a_stall_does_not_bunch_the_next_uploads(self, tmp_path):
         clock = Clock()
-        rec = FrameRecording("s1", tmp_path, clock=clock)
+        rec = FrameRecording("s1", tmp_path, clock=clock, upload_fps=2.0)
         rec.add(b"x", "image/png", 2, 1)         # t=0: upload
         clock.t = 7.0                            # 7 s stall
         rec.add(b"x", "image/png", 2, 1)         # upload
         clock.t = 7.1
         rec.add(b"x", "image/png", 2, 1)         # too soon after the last pick
         assert [r["upload"] for r in rows(tmp_path)] == ["1", "1", "0"]
-
-    def test_auto_capture_off_writes_nothing_but_manual_still_saves(self, tmp_path):
-        auto = {"on": False}
-        rec = FrameRecording("s1", tmp_path, auto=lambda: auto["on"])
-        assert rec.add(b"x", "image/png", 2, 1) is None
-        manual = rec.add_manual(b"by-hand", "image/png", 2, 1)
-        assert manual is not None and manual.source == "manual" and manual.upload
-        index = rows(tmp_path)
-        assert [(r["source"], r["why"], r["upload"]) for r in index] == [("manual", "manual", "1")]
-        auto["on"] = True                      # switched on mid-session: at once
-        assert rec.add(b"y", "image/png", 2, 1) is not None
-        assert rec.summary()["manual"] == 1 and rec.summary()["auto"] is True
-
-    def test_manual_captures_are_never_paced(self, tmp_path):
-        rec = FrameRecording("s1", tmp_path, clock=Clock())   # the clock never moves
-        for _ in range(3):
-            assert rec.add_manual(b"m", "image/png", 2, 1) is not None
-        assert [r["upload"] for r in rows(tmp_path)] == ["1", "1", "1"]
-
-    def test_the_index_says_why_and_by_how_much(self, tmp_path):
-        import cv2
-        import numpy as np
-        clock = Clock()
-        rec = FrameRecording("s1", tmp_path, clock=clock)
-
-        def png(level: int) -> bytes:
-            return cv2.imencode(".png", np.full((244, 324), level, np.uint8))[1].tobytes()
-
-        rec.add(png(100), "image/png", 324, 244)
-        clock.t = 1.0
-        rec.add(png(160), "image/png", 324, 244)
-        index = rows(tmp_path)
-        assert [r["why"] for r in index] == ["first", "change"]
-        assert float(index[1]["change"]) == 60.0 and index[0]["change"] == ""
-
-    def test_after_filters_by_source(self, tmp_path):
-        rec = FrameRecording("s1", tmp_path)
-        rec.add(b"a", "image/png", 2, 1)
-        rec.add_manual(b"m", "image/png", 2, 1)
-        assert [f.seq for f in rec.after(0, 10, "manual")] == [2]
-        assert [f.seq for f in rec.after(0, 10)] == [1, 2]
 
     def test_read_back_by_number_and_latest(self, tmp_path):
         rec = FrameRecording("s1", tmp_path)
@@ -144,23 +102,6 @@ class TestRecorder:
         recorder.on_frame(b"in-session", "image/png", 2, 1)
         recorder.stop()
         recorder.on_frame(b"after", "image/png", 2, 1)
-        assert recording.count == 1
-
-    def test_a_capture_by_hand_needs_a_session(self, tmp_path):
-        recorder = Recorder(Outbox(tmp_path / "outbox"))
-        with pytest.raises(NotRecording, match="Start a session"):
-            recorder.capture_manual(b"x", "image/png", 2, 1)
-        recording = recorder.start("s1", tmp_path / "s1")
-        frame = recorder.capture_manual(b"x", "image/png", 2, 1)
-        assert frame.source == "manual" and recording.count == 1
-
-    def test_the_session_switch_reaches_the_recording(self, tmp_path):
-        auto = {"on": True}
-        recorder = Recorder(Outbox(tmp_path / "outbox"), auto=lambda: auto["on"])
-        recording = recorder.start("s1", tmp_path / "s1")
-        recorder.on_frame(b"x", "image/png", 2, 1)
-        auto["on"] = False
-        recorder.on_frame(b"y", "image/png", 2, 1)
         assert recording.count == 1
 
     def test_the_outbox_holds_one_record_for_the_session(self, tmp_path):

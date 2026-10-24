@@ -14,10 +14,7 @@ stop.
                left (vitals, camera, scene), the controls on the right (the
                action rail and the step's own controls). IN AUTO the page is
                the mission flow instead — auto-control.txt.
-  Capture      the camera, Capture, and this session's pictures taken by hand;
-               starts and ends its own session (capture.txt)
-  Sessions     every session (who, when, how it ended) and one session's detail,
-               with its manual captures
+  Sessions     every session (who, when, how it ended) and one session's detail
   Playback     every flight — this computer's and everyone's in Supabase — and
                any one played back on the room map (mission-playback.txt)
   (standby)    signed in with no session, Home shows the drone on standby
@@ -536,9 +533,6 @@ depends-on        ../backend/sessions-and-modes.txt
                   keeps — the sidebar switch and the lock page
 consumed-by       mission-playback.txt
                   the Playback page is a sidebar page like the others
-consumed-by       capture.txt
-                  the Capture page is a sidebar page like the others; the
-                  camera feed is the window's (lib/cameraFeed.ts), not a tab's
 consumed-by       auto-control.txt
                   Auto reuses FlightDeck, Checklist, RetryPanel, HealthTestPanel,
                   Field, Tabs and the ConsolePane (`views`). SceneView's `plan`

@@ -64,9 +64,6 @@ consumed-by       interpret.txt
                   a finding's image support and note
 depends-on        ../desktop/camera.txt
                   frames.csv: each frame's time and position
-shares-data-with  ../desktop/capture.txt
-                  frames.csv: every frame stays on disk with auto-capture on;
-                  none are written with it off — then there is nothing to compare
 depends-on        classify.txt
                   runs inside both classifiers (ClassifyResult.views)
 depends-on        data-pipeline.txt

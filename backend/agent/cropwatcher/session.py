@@ -245,10 +245,6 @@ class Snapshot:
     #: flown with DPP off can still be processed from the page.
     processing: dict[str, Any] = field(default_factory=lambda: {
         "on": True, "chosen": False, "jobs": [], "last_flight_id": None})
-    #: The auto-capture switch (camera/recording.py): `auto` is whether the
-    #: camera's frames are recorded automatically; `chosen` False while it is
-    #: still the default (on). Manual captures are saved either way.
-    capture: dict[str, Any] = field(default_factory=lambda: {"auto": True, "chosen": False})
     #: Which way the arrow keys move the drone (flight/keyframe.py): the
     #: operator's choice (`key_frame`, "operator" or "room"), their marked
     #: spot (`operator`, room metres, or None for the takeoff spot) and, while
@@ -270,7 +266,6 @@ class Snapshot:
             "retry_required": self.retry_required,
             "mission": self.mission,
             "processing": self.processing,
-            "capture": self.capture,
             "controls": self.controls,
         }
 
@@ -307,9 +302,6 @@ class Session:
         #: The operator's DPP choice for this session, or None for the mode's
         #: default. Reset when a session ends: the choice is per session.
         self._processing_choice: bool | None = None
-        #: The operator's auto-capture choice for this session, or None for the
-        #: default (on). Reset when a session ends, like the DPP's.
-        self._capture_choice: bool | None = None
         #: Whether the flight recording now is to be processed when it ends —
         #: read as it began, so a switch flipped mid-flight is for the next one.
         self._flight_process = False
@@ -595,31 +587,6 @@ class Session:
         self._refresh_processing()
         audit.record(Action.PROCESSING_SET, session_id=self._snapshot.session_id,
                      detail={"on": bool(on), "mode": str(self._snapshot.mode)})
-
-    # ── the camera (the auto-capture switch) ─────────────────────────────
-
-    def capture_auto(self) -> bool:
-        """Whether the camera's frames are recorded automatically: the
-        operator's choice, kept until the session ends, else on. Read by the
-        recording on every frame, so a change takes effect at once."""
-        return self._capture_choice if self._capture_choice is not None else True
-
-    def set_capture_auto(self, on: bool) -> None:
-        """Turn auto-capture on or off — before a session or during one, in
-        Auto and in Manual alike. Off keeps the camera live and saves only
-        manual captures (2026-10-24, Samuel)."""
-        _, audit = self._require_operator()
-        self._capture_choice = bool(on)
-        self._set(capture={"auto": bool(on), "chosen": True})
-        audit.record(Action.CAPTURE_SET, session_id=self._snapshot.session_id,
-                     detail={"auto": bool(on), "mode": str(self._snapshot.mode)})
-
-    def record_capture(self, seq: int) -> None:
-        """A frame was captured by hand: on the audit trail, against the
-        session it belongs to. Never fails the capture — it is already saved."""
-        if self.audit is not None:
-            self.audit.record(Action.CAMERA_CAPTURE, session_id=self._snapshot.session_id,
-                              detail={"seq": seq, "mode": str(self._snapshot.mode)})
 
     def process_flight(self, flight_id: str) -> dict[str, Any]:
         """Process one recorded flight now, whatever the switch said when it
@@ -2084,8 +2051,6 @@ class Session:
         self._processing_choice = None
         self._last_flight_id = None
         self._refresh_processing()
-        self._capture_choice = None
-        self._set(capture={"auto": True, "chosen": False})
 
     def position(self) -> tuple[float, float, float] | None:
         """The drone's position now, or None when it has none it can stand

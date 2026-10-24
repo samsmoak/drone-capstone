@@ -91,7 +91,7 @@ backend/agent/tests/pipeline/                      fixture, conformance, tests
 --------------------------------------------------------------------------------
 • ON THE LAPTOP, IN THE AGENT — not Supabase. Edge Functions are Deno only with
   2 s of CPU a request; the laptop has every frame the moment the drone lands
-  (the cloud gets the captured ones, at most 2 a second); only the laptop can steer the drone, which
+  (the cloud gets 2 a second); only the laptop can steer the drone, which
   stories 4.9 and 4.10 need. PORTS AND ADAPTERS (FlightSource, ResultSink),
   stages chosen in one composition root: a cloud worker later is two adapters.
 • THE UNIT OF WORK IS THE FLIGHT (contract v2, 2026-10-09 — CHANGED from one
