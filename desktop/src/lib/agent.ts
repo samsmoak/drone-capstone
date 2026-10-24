@@ -263,7 +263,19 @@ export type StationStatus =
       usable: number[];
       uncertainty_cm: number | null;
       ready: boolean;
+      /** The same chain per station, named by channel (station id + 1).
+       *  Absent from older agents. */
+      stations?: StationRow[];
     };
+
+export type StationRow = {
+  id: number;
+  channel: number;
+  calibrated: boolean;
+  received: boolean;
+  measured: boolean;
+  active: boolean;
+};
 
 /** One reason a mission cannot start now, and what to do about it. */
 export type MissionBlocker = { code: string; message: string; fix: string };
@@ -601,7 +613,9 @@ export const api = {
   setBaseStationChannel: (port: string, channel: number) =>
     command<{ port: string; channel: number }>("/basestations/channel", { port, channel }),
   stationStatus: () => command<StationStatus>("/station", undefined, "GET"),
-  measureStation: () => command<{ message: string }>("/station/measure"),
+  /** Measure every station the drone receives, from where it sits. `cleared`:
+   *  stations stored before and not seen this time — their place is gone. */
+  measureStation: () => command<{ message: string; stations?: number[]; cleared?: number[] }>("/station/measure"),
   /** Every reason Start would refuse this mission now, with what to do —
    *  the same list Start refuses on (agent Session.mission_blockers). */
   missionBlockers: (missionId: string) =>

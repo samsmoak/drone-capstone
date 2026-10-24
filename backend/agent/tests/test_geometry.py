@@ -73,7 +73,7 @@ class TestRecordingOneSample:
     def test_one_station_is_refused_and_says_which(self):
         """A sample from a single station reads fine and poisons the solution."""
         FakeReader.answer = {0: (10, "vectors-0")}
-        with pytest.raises(ValueError, match="Only base station 0"):
+        with pytest.raises(ValueError, match="Only the base station on channel 1"):
             geometry.SweepAngles(SimpleNamespace()).record()
 
     def test_no_beams_at_all_times_out_with_something_to_do(self):
