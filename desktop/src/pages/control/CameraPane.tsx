@@ -155,6 +155,7 @@ export function CameraPane({ active }: {
                 {load.status.reason ?? "No camera is connected."}
               </p>
               <DeckLine fitted={load.status.deck_fitted} />
+              <DeckSays lines={load.status.deck?.lines ?? []} />
 
               <div className="flex justify-center">
                 <Button onClick={showDroneWifi}>Change Wi-Fi</Button>
@@ -334,6 +335,23 @@ function DeckLine({ fitted }: { fitted: boolean | null }) {
     <p className="mono text-[10px] uppercase tracking-[0.08em] text-[var(--console-dim)]">
       {text}
     </p>
+  );
+}
+
+/**
+ * The deck's own last words on the drone's console — what its Wi-Fi chip and
+ * camera chip said (agent camera/diagnose.py). Shown only with no picture:
+ * it is the evidence behind the reason above it.
+ */
+function DeckSays({ lines }: { lines: string[] }) {
+  if (lines.length === 0) return null;
+  return (
+    <div className="grid gap-1 text-left">
+      <p className="mono text-[10px] uppercase tracking-[0.08em] text-[var(--console-dim)]">The drone says</p>
+      <ul className="mono max-h-24 overflow-y-auto text-[10px] leading-relaxed text-[var(--console-ink)]">
+        {lines.slice(-5).map((line, i) => <li key={i} className="wrap-anywhere">{line}</li>)}
+      </ul>
+    </div>
   );
 }
 

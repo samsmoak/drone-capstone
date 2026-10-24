@@ -1,6 +1,7 @@
 ================================================================================
 CAMERA FIRMWARE — what runs on the AI deck's two chips, and how fast it sends
-Last verified: 2026-10-24 against desktop/camera-capture — both builds run
+Last verified: 2026-10-24 against camera/deck-diagnosis — the diagnosis's tests
+(test_camera_diagnose.py 16). Before, against desktop/camera-capture — both builds run
 (ESP32 714 192 bytes; GAP8 JPEG 73 760 bytes; GAP8 stock 61 472 bytes, the
 size of Bitcraze's release, 467 bytes differing), the patches read against
 Bitcraze's 2025.02 sources. NOT yet flashed: the throughput patch and the
@@ -41,6 +42,8 @@ backend/agent/cropwatcher/firmware_bundle/manifest.json  what Set up installs
 backend/agent/cropwatcher/camera/flash_gap8.py  writes either chip, by radio
 backend/agent/cropwatcher/camera/deck.py        reads the stream
 backend/agent/cropwatcher/camera/rate.py        measures it
+backend/agent/cropwatcher/camera/diagnose.py    which chip is silent, from
+                                                the drone's console
 
 --------------------------------------------------------------------------------
 3. THE WIRE FORMAT, measured 2026-09-23 from the real deck
@@ -77,6 +80,27 @@ sending: errno 113". The GAP8 sat in one frame's send for 19 minutes; a
 healthy frame took 32 ms. A weak signal (the deck's chip antenna, −84 dBm at
 the edge) is the likeliest trigger. JPEG shortens each send; it does not fix
 the stall.
+
+WHICH CHIP IS SILENT — ASKED, NOT GUESSED (2026-10-24). Measured that
+morning: the deck ACCEPTED the agent's camera connection 106 times and sent
+not one byte; the window said "sends nothing" and the agent restarted the
+drone every two minutes. Restarting over the radio cannot wake a camera chip
+that is not running. Both chips report on the drone's console, which the
+radio already carries (camera/diagnose.py):
+  ESP32 "Client connected", no GAP8 "Wifi client connection status: 1"
+      → the camera chip is not running: unplug the battery 10 s
+  GAP8 "status: 1", no "capture=" lines, or "Failed to open camera"
+      → the camera takes nothing: unplug; then the camera itself
+  "capture=" lines and ESP32 "Error occurred during sending"
+      → frames stuck leaving over Wi-Fi: a weak signal
+  none of these → said as unknown, never guessed
+After SILENT_CONNECTS (3) silent connections the Camera tab shows that reason
+and the deck's last console lines ("The drone says"); for the first two the
+watchdog stops restarting the drone. The stream's retries slow to every 5 s
+after 3 silent connections (deck.py SILENT_BACKOFF_S): ~10 connects every
+10 s was itself the connect/disconnect churn that has wedged the ESP32
+before. NOT yet seen on the drone — which branch fired that morning is
+unknown until it runs.
 
 --------------------------------------------------------------------------------
 5. DECISIONS

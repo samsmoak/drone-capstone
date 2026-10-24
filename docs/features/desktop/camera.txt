@@ -194,6 +194,9 @@ INVARIANTS
   feed — the tab had been dropping to NO SIGNAL after 5 missed frames (1 s).
 - A READ SILENT FOR 2 S IS A STALL (was 5 s); the agent reconnects at once and
   doubles from 0.2 s. A healthy raw frame takes ~32 ms (the GAP8's count).
+  THREE CONNECTIONS IN A ROW WITH NOT ONE BYTE (2026-10-24) slow the retries
+  to every 5 s and make the Camera tab say which chip is silent, from the
+  drone's own console (camera-firmware.txt, "WHICH CHIP IS SILENT").
 - img-src includes blob:, for the above.
 
 - Frame size comes from each frame's header, never a constant. The only
