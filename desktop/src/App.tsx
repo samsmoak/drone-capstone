@@ -50,6 +50,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { SessionsPage } from "@/pages/sessions/SessionsPage";
 import { PlaybackPage } from "@/pages/playback/PlaybackPage";
 import { CapturePage } from "@/pages/capture/CapturePage";
+import { CaptureLock } from "@/pages/control/CaptureLock";
 import { WindowLog } from "@/pages/sessions/WindowLog";
 import { StartupPage } from "@/pages/startup/StartupPage";
 import { SensorWindow, type WindowKey } from "@/pages/windows/SensorWindow";
@@ -413,6 +414,8 @@ export default function App() {
                 run={run}
                 onGo={setPage}
               />
+            ) : page === "control" && open && session?.purpose === "capture" ? (
+              <CaptureLock session={session} onOpenCapture={() => setPage("capture")} />
             ) : page === "control" && open && session && viewMode !== session.mode ? (
               <ModeLock session={session} looking={viewMode} onBack={() => setLookingAt(null)} />
             ) : page === "control" ? (

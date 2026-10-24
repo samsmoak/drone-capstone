@@ -98,6 +98,9 @@ class SessionMeta:
     end_reason: str | None = None
     #: Every mode this session was in at some point, in first-used order.
     modes: list[str] = field(default_factory=list)
+    #: "flight", or "capture" — a Capture-page session that never flew.
+    #: Sessions recorded before 2026-10-24 have none: read as "flight".
+    purpose: str = "flight"
     flights: list[FlightSummary] = field(default_factory=list)
     summary: SessionSummary = field(default_factory=SessionSummary)
     #: The session's own processing (its samples around the flights): queued,

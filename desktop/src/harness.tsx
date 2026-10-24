@@ -561,8 +561,10 @@ createRoot(document.getElementById("root")!).render(
     ))}
     {!agentToken && (
       <>
-        <Shell label="Capture · in a session">
-          <CapturePage session={{ ...session, state: "ready", session_id: "3f1c", message: null }} run={runHere} onOpenControl={() => {}} />
+        <Shell label="Capture · in a capture session">
+          <CapturePage session={{ ...session, state: "ready", session_id: "3f1c", message: null, purpose: "capture",
+                                  radio: { state: "connected", hardware_id: "cf-4a3b2c1d0e9f8a7b", message: null } }}
+                       run={runHere} onOpenControl={() => {}} />
         </Shell>
         <Shell label="Capture · no session">
           <CapturePage session={{ ...session, state: "idle", session_id: null, message: null }} run={runHere} onOpenControl={() => {}} />

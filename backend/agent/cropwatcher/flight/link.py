@@ -35,6 +35,7 @@ from cropwatcher.flight.checks import (
     _ai_deck_fitted,
     read_hardware_id,
     run_battery_test,
+    run_capture_checks,
     run_checks,
     run_prop_test,
 )
@@ -333,6 +334,12 @@ class DroneLink:
             reset_estimator=lambda: preflight.reset_estimator(scf.cf),
             request_recovery=lambda: self._request_crash_recovery(scf.cf),
         )
+
+    def capture_checks(self) -> Generator[CheckResult, None, ReadyReport]:
+        """A capture session's checks: the radio and the camera's deck only
+        (flight/checks.py run_capture_checks). Never arms."""
+        scf, stream = self._require_open()
+        return run_capture_checks(scf.cf, stream.snapshot)
 
     @staticmethod
     def _request_crash_recovery(cf: Any) -> None:

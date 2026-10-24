@@ -95,6 +95,19 @@ from cropwatcher.telemetry.sinks import CsvSink, FanOutSink, LiveUploadSink
 
 log = logging.getLogger(__name__)
 
+#: What a session is for (Snapshot.purpose). A CAPTURE session is the Capture
+#: page's (2026-10-24, Samuel: "the capture page only cares about taking picture
+#: manually and not the rest"): it checks the radio and the camera's deck only
+#: (checks.py run_capture_checks), records only what is captured by hand, and
+#: refuses every flight action — in the agent, not only on the page.
+FLIGHT = "flight"
+CAPTURE_PURPOSE = "capture"
+PURPOSES = (FLIGHT, CAPTURE_PURPOSE)
+CAPTURE_OPEN = ("Capture session open. Take pictures on the Capture page — this session "
+                "does not fly.")
+CAPTURE_NO_FLIGHT = ("This is a capture session: it takes pictures and does not fly. End it "
+                     "on the Capture page, then start a session on Control to fly.")
+
 MANUAL_GUARD_PERIOD_S = 0.1
 
 #: How often a signed-in agent with no drone looks for one. NOT faster: polling
@@ -249,6 +262,10 @@ class Snapshot:
     #: camera's frames are recorded automatically; `chosen` False while it is
     #: still the default (on). Manual captures are saved either way.
     capture: dict[str, Any] = field(default_factory=lambda: {"auto": True, "chosen": False})
+    #: What the session is for: "flight" (Control — every check, flying) or
+    #: "capture" (the Capture page — the radio and the camera's deck only, and
+    #: nothing flies). Kept while a session is open; "flight" otherwise.
+    purpose: str = "flight"
     #: Which way the arrow keys move the drone (flight/keyframe.py): the
     #: operator's choice (`key_frame`, "operator" or "room"), their marked
     #: spot (`operator`, room metres, or None for the takeoff spot) and, while
@@ -271,6 +288,7 @@ class Snapshot:
             "mission": self.mission,
             "processing": self.processing,
             "capture": self.capture,
+            "purpose": self.purpose,
             "controls": self.controls,
         }
 
@@ -601,7 +619,10 @@ class Session:
     def capture_auto(self) -> bool:
         """Whether the camera's frames are recorded automatically: the
         operator's choice, kept until the session ends, else on. Read by the
-        recording on every frame, so a change takes effect at once."""
+        recording on every frame, so a change takes effect at once. Never in a
+        capture session: it keeps only what is captured by hand."""
+        if self.capturing_only:
+            return False
         return self._capture_choice if self._capture_choice is not None else True
 
     def set_capture_auto(self, on: bool) -> None:
@@ -609,6 +630,9 @@ class Session:
         Auto and in Manual alike. Off keeps the camera live and saves only
         manual captures (2026-10-24, Samuel)."""
         _, audit = self._require_operator()
+        if self.capturing_only:
+            raise SessionError("A capture session keeps only the pictures you capture by "
+                               "hand. Auto-capture is for sessions started on Control.")
         self._capture_choice = bool(on)
         self._set(capture={"auto": bool(on), "chosen": True})
         audit.record(Action.CAPTURE_SET, session_id=self._snapshot.session_id,
@@ -725,7 +749,12 @@ class Session:
 
     # ── start: connect and check ─────────────────────────────────────────
 
-    def start(self) -> None:
+    def start(self, purpose: str = FLIGHT) -> None:
+        """Start a session — for flying (Control, every check) or for taking
+        pictures by hand (the Capture page, CAPTURE_PURPOSE: the radio and the
+        camera's deck only, and nothing flies)."""
+        if purpose not in PURPOSES:
+            raise SessionError(f"A session is for {' or '.join(PURPOSES)}, not {purpose!r}.")
         self._require_operator()
         with self._lock:
             if self._snapshot.state not in (State.IDLE, State.CHECKS_FAILED):
@@ -733,8 +762,14 @@ class Session:
             if self._snapshot.session_id is not None:
                 raise SessionError("This session is still open. Press Retry to check the "
                                    "drone again, or end the session first.")
-        self._set(state=State.STARTING, checks=[], message=None, health_test=None)
+        self._set(state=State.STARTING, checks=[], message=None, health_test=None,
+                  purpose=purpose)
         self._start_worker("start", self._do_start)
+
+    @property
+    def capturing_only(self) -> bool:
+        """A capture session: pictures by hand, nothing flies."""
+        return self._snapshot.purpose == CAPTURE_PURPOSE
 
     def _do_start(self) -> None:
         operator, audit = self._require_operator()
@@ -757,7 +792,8 @@ class Session:
             "started_at": datetime.now(UTC).isoformat(), "ended_at": None,
         })
         audit.record(Action.SESSION_START, session_id=session_id,
-                     drone_hardware_id=report.hardware_id)
+                     drone_hardware_id=report.hardware_id,
+                     detail={"purpose": self._snapshot.purpose})
         self._height_reference = report.ground_z_m if report.assisted else None
         try:
             self.history = SessionLog(
@@ -765,6 +801,7 @@ class Session:
                     id=session_id, operator_id=operator.id, operator_email=operator.email,
                     operator_name=operator.full_name, drone_hardware_id=report.hardware_id,
                     mode=str(self.snapshot().mode), assisted=report.assisted,
+                    purpose=self._snapshot.purpose,
                     started_at=datetime.now(UTC).isoformat(),
                 ),
                 height_reference=lambda: self._height_reference,
@@ -785,20 +822,28 @@ class Session:
                 self._on_session_open(session_id, folder)
             except Exception:
                 log.exception("session-open hook failed; the session carries on")
-        self._set(
-            state=State.AWAITING_CONFIRMATION, session_id=session_id,
-            drone={"hardware_id": report.hardware_id, "battery_v": round(report.vbat, 2),
-                   "endurance_s": round(report.endurance_s)},
-            assisted=report.assisted,
-            unassisted_reason=report.unassisted_reason,
-            ai_deck=report.ai_deck,
-            message=(
-                "Put the drone on a flat, clear surface, then confirm."
-                if report.assisted else
-                "The drone cannot hold a height by itself right now. Put it on a flat, "
-                "clear surface, then confirm to fly it by hand."
-            ),
-        )
+        if self.capturing_only:
+            # Nothing to confirm: confirming the area is for flying.
+            self._set(state=State.READY, session_id=session_id,
+                      drone={"hardware_id": report.hardware_id,
+                             "battery_v": round(report.vbat, 2), "endurance_s": 0},
+                      assisted=True, unassisted_reason=None, ai_deck=report.ai_deck,
+                      message=CAPTURE_OPEN)
+        else:
+            self._set(
+                state=State.AWAITING_CONFIRMATION, session_id=session_id,
+                drone={"hardware_id": report.hardware_id, "battery_v": round(report.vbat, 2),
+                       "endurance_s": round(report.endurance_s)},
+                assisted=report.assisted,
+                unassisted_reason=report.unassisted_reason,
+                ai_deck=report.ai_deck,
+                message=(
+                    "Put the drone on a flat, clear surface, then confirm."
+                    if report.assisted else
+                    "The drone cannot hold a height by itself right now. Put it on a flat, "
+                    "clear surface, then confirm to fly it by hand."
+                ),
+            )
         if self._syncer is not None:
             self._syncer.trigger()
 
@@ -834,7 +879,10 @@ class Session:
                     return None
 
         try:
-            report = collect(link.checks(), on_step)
+            # A capture session checks only what pictures need (checks.py
+            # run_capture_checks): a drone that cannot arm can still capture.
+            report = collect(link.capture_checks() if self.capturing_only else link.checks(),
+                             on_step)
         except ChecksFailed as e:
             audit.record(Action.CHECKS, Result.REFUSED, session_id=self._snapshot.session_id,
                          detail={"check": str(e.result.key), "reason": e.result.detail})
@@ -847,7 +895,7 @@ class Session:
         # Unassisted there is no origin and no fence — those coordinates are the
         # accelerometer integrating — so there is nothing to compare against.
         x, y = report.takeoff_xy
-        if report.assisted and max(abs(x), abs(y)) > self._fence:
+        if not self.capturing_only and report.assisted and max(abs(x), abs(y)) > self._fence:
             message = (
                 f"The drone is at ({x:+.2f}, {y:+.2f}) m, outside the {self._fence:.1f} m "
                 f"flight area. Move it nearer the middle of the room."
@@ -926,8 +974,16 @@ class Session:
 
     def _checked_again(self, report: ReadyReport, lead: str) -> None:
         """The checks passed again in this session: back to confirming the area,
-        exactly where a new session stands after its first checks."""
+        exactly where a new session stands after its first checks — or, in a
+        capture session, straight back to capturing."""
         self.report = report
+        if self.capturing_only:
+            self._set(state=State.READY, retry_required=False, activity=None,
+                      drone={"hardware_id": report.hardware_id,
+                             "battery_v": round(report.vbat, 2), "endurance_s": 0},
+                      assisted=True, unassisted_reason=None, ai_deck=report.ai_deck,
+                      message=f"{lead} {CAPTURE_OPEN}")
+            return
         self._height_reference = report.ground_z_m if report.assisted else None
         self._set(
             state=State.AWAITING_CONFIRMATION, retry_required=False, activity=None,
@@ -1088,6 +1144,8 @@ class Session:
         standing over the drone gets to decide that, having been told it.
         """
         _, audit = self._require_operator()
+        if self.capturing_only:
+            raise SessionError(CAPTURE_NO_FLIGHT)
         with self._lock:
             if self._snapshot.state is not State.AWAITING_CONFIRMATION:
                 raise SessionError("Run the checks first.")
@@ -2085,7 +2143,7 @@ class Session:
         self._last_flight_id = None
         self._refresh_processing()
         self._capture_choice = None
-        self._set(capture={"auto": True, "chosen": False})
+        self._set(capture={"auto": True, "chosen": False}, purpose=FLIGHT)
 
     def position(self) -> tuple[float, float, float] | None:
         """The drone's position now, or None when it has none it can stand
@@ -2345,6 +2403,8 @@ class Session:
 
     def _require_ready(self, what: str) -> None:
         self._require_operator()
+        if self.capturing_only:
+            raise SessionError(CAPTURE_NO_FLIGHT)
         with self._lock:
             state = self._snapshot.state
         if state is State.BUSY:

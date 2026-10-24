@@ -170,6 +170,14 @@ DECISIONS
   battery that cannot fly again.
 - Endurance is reported at the start ("about N seconds of flying left") so the
   operator plans the flight instead of discovering the limit in the air.
+- A SESSION HAS A PURPOSE (2026-10-24): "flight" (Control — every check, area
+  confirmed, it can fly) or "capture" (the Capture page — the radio and the
+  camera's deck only, READY at once, never flies; ../desktop/capture.txt).
+  Still one session at a time. The purpose is in Snapshot.purpose, the
+  session's meta.json and the SESSION_START audit detail — NOT in Supabase's
+  sessions table (no migration): on the web it is a session like any other.
+  Every flight action refuses in a capture session (_require_ready,
+  confirm_area), so a page cannot fly one by mistake.
 
 
 INVARIANTS

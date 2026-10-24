@@ -82,6 +82,8 @@ class CheckKey(StrEnum):
     DECK = "deck"
     POSITIONING = "positioning"
     ESTIMATE = "estimate"
+    #: A capture session's own check: the deck the camera lives on.
+    CAMERA = "camera"
 
 
 LABELS: dict[CheckKey, str] = {
@@ -92,6 +94,7 @@ LABELS: dict[CheckKey, str] = {
     CheckKey.DECK: "Positioning deck",
     CheckKey.POSITIONING: "Base stations",
     CheckKey.ESTIMATE: "Position settled",
+    CheckKey.CAMERA: "Camera deck",
 }
 
 
@@ -486,6 +489,80 @@ def _ai_deck_fitted(cf: Any) -> bool | None:
     except Exception:
         log.debug("deck.bcAI could not be read", exc_info=True)
         return None
+
+
+def run_capture_checks(
+    cf: Any,
+    snapshot: Callable[[], Snapshot],
+    *,
+    clock: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> Generator[CheckResult, None, ReadyReport]:
+    """The checks a CAPTURE session runs (2026-10-24): only what taking a
+    picture needs — the drone answers over the radio, and the deck the camera
+    lives on is fitted.
+
+    Nothing about flying: not the motors, not whether the battery can arm
+    (sys.canfly), not the base stations, not the flight area. A capture session
+    never flies (Session refuses every flight action in one), and on
+    2026-10-24 a drone that would not arm kept the Capture page from taking a
+    single picture. The battery is reported for the record, never failed on.
+    The camera's Wi-Fi and its picture are NOT checks either: they come up
+    after the session opens, and the Capture page shows them as they do.
+    """
+    def fail(key: CheckKey, detail: str, **data: Any) -> CheckResult:
+        return CheckResult(key, CheckStatus.FAILED, detail, data)
+
+    # 1. Identity — the radio reaches the drone.
+    yield CheckResult(CheckKey.IDENTITY, CheckStatus.RUNNING)
+    try:
+        hardware_id = read_hardware_id(cf)
+    except Exception as e:
+        result = fail(CheckKey.IDENTITY, f"Could not read the drone's ID ({type(e).__name__}).")
+        yield result
+        raise ChecksFailed(result) from e
+    yield CheckResult(CheckKey.IDENTITY, CheckStatus.PASSED, hardware_id,
+                      {"hardware_id": hardware_id})
+
+    # 2. Telemetry flowing — the battery reading and the console come with it.
+    yield CheckResult(CheckKey.TELEMETRY, CheckStatus.RUNNING)
+    deadline = clock() + TELEMETRY_TIMEOUT_S
+    snap = snapshot()
+    while snap.updated_at is None or (snap.age_s(clock()) or 0) > 1.0:
+        if clock() > deadline:
+            result = fail(CheckKey.TELEMETRY, "No telemetry from the drone. Check the radio link.")
+            yield result
+            raise ChecksFailed(result)
+        sleep(0.1)
+        snap = snapshot()
+    yield CheckResult(CheckKey.TELEMETRY, CheckStatus.PASSED, "Receiving at 10 Hz")
+
+    # 3. The battery, for the record only — a capture session does not fly.
+    vbat = snap.get("pm.vbat")
+    if vbat is None:
+        yield CheckResult(CheckKey.BATTERY, CheckStatus.WARNING,
+                          "No battery reading — for information only; nothing will fly.")
+    else:
+        yield CheckResult(CheckKey.BATTERY, CheckStatus.PASSED,
+                          f"{vbat:.2f} V — for information only; nothing will fly.",
+                          {"vbat": round(vbat, 2)})
+
+    # 4. The camera's deck — asked of the drone, never assumed.
+    fitted = _ai_deck_fitted(cf)
+    if fitted is False:
+        result = fail(CheckKey.CAMERA, "This drone has no AI deck, so there is no camera to "
+                                       "capture with.")
+        yield result
+        raise ChecksFailed(result)
+    yield CheckResult(CheckKey.CAMERA,
+                      CheckStatus.PASSED if fitted else CheckStatus.WARNING,
+                      "AI deck fitted" if fitted else
+                      "Could not ask whether the AI deck is fitted — carrying on.")
+
+    return ReadyReport(
+        hardware_id=hardware_id, vbat=float(vbat or 0.0), endurance_s=0.0, ground_z_m=0.0,
+        takeoff_xy=(0.0, 0.0), estimate_spread_m=0.0, positioning=assess_positioning(snap),
+        assisted=False, ai_deck=fitted)
 
 
 def collect(
