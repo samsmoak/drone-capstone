@@ -241,3 +241,6 @@ shares-data-with  ../desktop/setup.txt
                   pauses and resumes standby
 consumed-by       ../pipeline/session.txt
                   End session queues the session's own processing (DPP on)
+consumed-by       ../desktop/capture.txt
+                  the auto-capture switch (Session.capture), reset when a session
+                  ends; a capture needs a session

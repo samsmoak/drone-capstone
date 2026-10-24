@@ -49,10 +49,11 @@ import { FlightStrip } from "@/components/FlightStrip";
 import { Sidebar } from "@/components/Sidebar";
 import { SessionsPage } from "@/pages/sessions/SessionsPage";
 import { PlaybackPage } from "@/pages/playback/PlaybackPage";
+import { CapturePage } from "@/pages/capture/CapturePage";
 import { WindowLog } from "@/pages/sessions/WindowLog";
 import { StartupPage } from "@/pages/startup/StartupPage";
 import { SensorWindow, type WindowKey } from "@/pages/windows/SensorWindow";
-import { Message } from "@/components/ui";
+import { Message, Spinner } from "@/components/ui";
 import { DroneWifiDialog } from "@/components/DroneWifiDialog";
 import { PHASE_LABEL, PHASE_TONE, SHOW_DRONE_WIFI, droneWifi } from "@/lib/droneWifi";
 import { WifiPage } from "@/pages/wifi/WifiPage";
@@ -66,7 +67,7 @@ const HISTORY_LIMIT = HISTORY_S * 10;      // 10 Hz
 
 export type History = { t: number; values: Record<string, number>; height_m: number | null }[];
 
-export type Page = "home" | "setup" | "control" | "sessions" | "playback" | "wifi" | WindowKey;
+export type Page = "home" | "setup" | "control" | "capture" | "sessions" | "playback" | "wifi" | WindowKey;
 
 /** A command, and what to call it in the log. */
 export type Run = (action: () => Promise<unknown>, label?: string) => Promise<void>;
@@ -425,7 +426,12 @@ export default function App() {
                 logLines={logLines}
                 onClearLog={clearLog}
                 onOpenSessions={() => setPage("sessions")}
+                onOpenCapture={() => setPage("capture")}
               />
+            ) : page === "capture" && session ? (
+              <CapturePage session={session} run={run} onOpenControl={() => setPage("control")} />
+            ) : page === "capture" ? (
+              <Spinner label="Connecting to the flight agent…" />
             ) : page === "setup" ? (
               <SetupPage session={session} setup={setupState} wifi={cameraWifi} run={run} onGo={setPage} />
             ) : page === "wifi" ? (

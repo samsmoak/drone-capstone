@@ -449,6 +449,21 @@ def set_flight_processing(flight_id: str, state: str, error: str | None = None, 
         return False
 
 
+def session_frames(session_id: str, source: str | None = None, *,
+                   root: Path | None = None) -> list[dict[str, Any]]:
+    """A recorded session's camera frames — of one source ("manual": the
+    captures made by hand), oldest first. Raises ValueError for a bad id."""
+    from cropwatcher.camera.recording import read_index
+    return read_index(_session_folder(session_id, root), source)
+
+
+def session_frame(session_id: str, seq: int, *,
+                  root: Path | None = None) -> tuple[Path, str] | None:
+    """One recorded frame of a session, by number. Raises ValueError for a bad id."""
+    from cropwatcher.camera.recording import frame_file
+    return frame_file(_session_folder(session_id, root), seq)
+
+
 def _session_folder(session_id: str, root: Path | None) -> Path:
     # The id arrives from a URL: refuse anything that could walk out of the folder.
     if not session_id or any(c in session_id for c in "/\\."):

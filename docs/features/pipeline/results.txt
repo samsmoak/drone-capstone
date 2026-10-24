@@ -169,5 +169,7 @@ consumed-by       ../frontend/operator-dashboard.txt
                   /app/notifications
 depends-on        session.txt
                   the session's own result, uploaded beside its flights'
+depends-on        ../desktop/capture.txt
+                  frames.csv's source column: which uploaded frames were captured by hand
 shares-data-with  ../../design/components.txt
                   the readings table, the error table, the mark legend

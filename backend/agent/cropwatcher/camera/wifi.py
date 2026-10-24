@@ -169,6 +169,26 @@ class ConsoleWatch:
                 self.changed.set()
 
 
+def follow_console(cf: Any, on_line: Callable[[str], None]) -> Callable[[], None]:
+    """Call `on_line` with each complete line the drone prints, until the
+    returned function is called. cflib delivers the console in arbitrary
+    fragments, so a line is only passed on once its newline has arrived."""
+    buffer = [""]
+
+    def feed(text: str) -> None:
+        buffer[0] += text
+        *lines, buffer[0] = buffer[0].split("\n")
+        for line in lines:
+            on_line(line)
+
+    cf.console.receivedChar.add_callback(feed)
+
+    def stop() -> None:
+        with contextlib.suppress(Exception):
+            cf.console.receivedChar.remove_callback(feed)
+    return stop
+
+
 @dataclass
 class _Credentials:
     ssid: str
@@ -248,20 +268,7 @@ class DeckWifi:
         signal; now each one updates the state as it happens, and a new address
         moves the camera at once.
         """
-        buffer = [""]
-
-        def feed(text: str) -> None:
-            buffer[0] += text
-            *lines, buffer[0] = buffer[0].split("\n")
-            for line in lines:
-                self._console_line(line)
-
-        cf.console.receivedChar.add_callback(feed)
-
-        def stop() -> None:
-            with contextlib.suppress(Exception):
-                cf.console.receivedChar.remove_callback(feed)
-        return stop
+        return follow_console(cf, self._console_line)
 
     def _console_line(self, line: str) -> None:
         signal = _RSSI.search(line)
