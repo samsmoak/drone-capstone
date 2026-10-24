@@ -420,6 +420,16 @@ class TestArrowKeyControls:
         assert "not reporting a position" in response.json()["detail"]
 
 
+class TestSetupCommand:
+    def test_the_page_gets_the_command_for_this_machine(self, client):
+        body = client.get("/setup/command", headers=auth(client)).json()
+        assert body["command"].endswith("setup")
+        assert body["check"] == body["command"] + " --check"
+
+    def test_it_needs_the_agent_token(self, client):
+        assert client.get("/setup/command").status_code in (401, 403)
+
+
 class TestSetupInstall:
     @pytest.fixture(autouse=True)
     def signed_in(self, client):

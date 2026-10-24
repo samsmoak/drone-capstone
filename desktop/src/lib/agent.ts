@@ -617,9 +617,10 @@ export const api = {
   reconnectCamera: () => command<CameraWifi>("/camera/wifi/rejoin"),
   setupState: () => command<SetupState>("/setup", undefined, "GET"),
   setupCheck: () => command<SetupState>("/setup/check"),
-  /** Installs what is missing, plus `reinstall` — parts written again although
-   *  installed. "camera" and "wifi" always go together (the agent enforces it). */
-  setupInstall: (reinstall: SetupPart[] = []) => command<SetupState>("/setup/install", { reinstall }),
+  /** The terminal command that installs the drone's software on this machine
+   *  (`cropwatcher setup`). Set up shows it to copy: the install runs in a
+   *  terminal, with DroneDeck quit, not from a button (setup.txt). */
+  setupCommand: () => command<SetupCommand>("/setup/command", undefined, "GET"),
   recordedFrames: (after: number, limit: number) =>
     command<{ frames: RecordedFrameInfo[] }>(
       `/camera/recording/frames?after=${after}&limit=${limit}`, undefined, "GET"),
@@ -877,6 +878,9 @@ export type FlightPlayback = {
 
 /** Set up: installing the drone's software (drone_setup.py). */
 export type SetupPart = "main" | "lighthouse" | "camera" | "wifi";
+/** GET /setup/command — the exact line for this machine, ready to paste. */
+export type SetupCommand = { command: string; check: string };
+
 export type SetupState = {
   phase: "idle" | "checking" | "ready" | "installing" | "unplug" | "verifying" | "done" | "failed";
   message: string | null;

@@ -69,6 +69,7 @@ cd backend/agent && source .venv/bin/activate
 ruff check . && mypy cropwatcher && pytest   # gates
 cropwatcher serve                            # serve (the api module has no entry point)
 cropwatcher process --fixture                # the data pipeline, on the test fixture
+cropwatcher setup                            # install the drone's software (DroneDeck quit); --check, --reinstall
 
 # web
 cd web && pnpm dev

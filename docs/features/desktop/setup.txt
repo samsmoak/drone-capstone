@@ -6,8 +6,9 @@ WHAT IT IS
 The Set up page (sidebar). One list, one step open at a time:
 
   1. Connect the drone          Crazyradio in, drone on (ticks itself)
-  2. Install drone software     check → install what is missing (and anything
-                                ticked "Reinstall") → unplug → verified
+  2. Install drone software     check → copy the command, quit DroneDeck, run
+                                it in Terminal (installs what is missing, and
+                                anything ticked "Reinstall") → unplug → verified
   3. Base stations: one channel each   each station on USB → channel 1 / 2
   4. Connect the camera to Wi-Fi   → the Drone Wi-Fi page (drone-wifi.txt)
   5. Fly                        → Control › Auto (auto-control.txt)
@@ -26,13 +27,16 @@ WHERE IT LIVES
 
   desktop/src/pages/setup/SetupPage.tsx              the page
   backend/agent/cropwatcher/drone_setup.py           check, install, unplug, verify
+  backend/agent/cropwatcher/setup_cli.py             `cropwatcher setup` — the install command
+  backend/agent/tests/test_setup_cli.py
   backend/agent/cropwatcher/firmware_bundle/         the three files + manifest.json
   backend/agent/cropwatcher/flash_firmware.py        STM32 flasher (progress added)
   backend/agent/cropwatcher/camera/flash_gap8.py     AI-deck flasher, gap8 | esp
   backend/agent/packaging/cropwatcher-agent.spec     bundles firmware_bundle/
   firmware/drone-wifi/src/drone_wifi.c               the cwsetup.fw / .deck / .deckid params
   desktop/src/harness.tsx                            "Set up · new AI deck", "… reinstall"
-  GET /setup · POST /setup/check · POST /setup/install {reinstall: [part]}
+  GET /setup · POST /setup/check · GET /setup/command (this machine's line)
+  · POST /setup/install {reinstall: [part]} (kept; the page no longer calls it)
   · event "setup" (facts.deck_unrecorded: the deck fitted is not the one on record)
 
   step 3:
@@ -61,6 +65,28 @@ sha256, bump "bundle" (deck parts) or "drone_wifi" (main) so drones update.
 
 DECISIONS
 
+- THE INSTALL IS A TERMINAL COMMAND, NOT A BUTTON (2026-10-24, Samuel: "put
+  it in a command — which the user can run and get the firmware on the
+  drone"). Step 2 checks and lists the parts, then shows the command with a
+  Copy button; the ticks add `--reinstall <parts>`:
+
+      cropwatcher setup                          check, then install what is needed
+      cropwatcher setup --check                  check only; change nothing
+      cropwatcher setup --reinstall camera,wifi  write those parts again too
+
+  It is the same engine (DroneSetup) — same order, battery floor, unplug,
+  verification and marker — printing each step and a boxed UNPLUG prompt.
+  Exit 0 done, 1 failed, 2 DroneDeck open.
+  THE APP IS QUIT FIRST: the radio has one owner, and DroneDeck's agent holds
+  it while the app is open, so a second program would read "no drone". The
+  command asks 127.0.0.1:8765/health and refuses while it answers, rather
+  than reporting a missing drone. It does not borrow the app's agent token to
+  ask it to let go: that token is the app's alone.
+  WHICH COMMAND: an installed app has no Python on PATH — its own agent
+  binary is the whole CLI (packaging/sidecar.py), so the line is
+  `…/DroneDeck.app/Contents/MacOS/cropwatcher-agent setup` (PowerShell form
+  `& "…" setup` on Windows; a developer's venv `cropwatcher setup`). The agent
+  computes it (setup_cli.command_line), never the page, so it is the real path.
 - WHAT A DRONE HAS IS READ, NOT ASSUMED. cwsetup.fw (present only in our
   firmware) says whether main is ours and which version; cwsetup.deck, stored
   PERSISTENTLY on the drone after a verified install, says which deck bundle it
@@ -94,8 +120,9 @@ DECISIONS
   and Close. Until 2026-10-15 the step closed the moment it read "done", so
   reopening a set-up drone's step showed nothing; it now closes by itself only
   when an install finishes.
-- The agent does the flashing: it is the radio's only owner (standby paused,
-  resumed after). Refused during a session.
+- The agent's engine does the flashing, now run by the command in its own
+  process with the app quit (above). POST /setup/install still exists and is
+  refused during a session; the page no longer calls it.
 - Words on the page are instructions; the why is here.
 - STEP 3 SETS CHANNELS THE WAY BITCRAZE'S CLIENT DOES (cfclient
   basestation_mode_dialog.py, "Set BS channel"): a Base Station 2.0 on USB is
@@ -161,7 +188,12 @@ depends-on        ../backend/flight-safety.txt
                   rule that decides when it is done
 
 
-LAST VERIFIED  2026-10-15 (step 2, new AI deck + Reinstall): drone_wifi v3
+LAST VERIFIED  2026-10-24 (the command): tests/test_setup_cli.py (new drone,
+--check, set-up drone, --reinstall, unknown part, no drone, refused while
+DroneDeck runs, the line on macOS/Linux/Windows/dev); ruff, mypy; desktop
+build; harness "Set up · install by command" light and dark. NOT YET on a
+drone: the lab drone read no decks (0 1-wire memories) on 2026-10-24.
+2026-10-15 (step 2, new AI deck + Reinstall): drone_wifi v3
 built from 2025.12.1 (build.sh, wire test passed; cwsetup.deckid in the ELF),
 bundle sha256 regenerated; tests/test_drone_setup.py (swapped deck, v2 drone,
 unread serial, every reinstall path) and test_api.py TestSetupInstall; full

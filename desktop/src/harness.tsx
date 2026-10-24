@@ -484,6 +484,10 @@ const setupDone: SetupState = {
   facts: { battery_v: 4.12, ai_deck: true, deck_unrecorded: false },
   parts: { main: "installed", lighthouse: "installed", camera: "installed", wifi: "installed" },
 };
+const setupCommand = {
+  command: "/Applications/DroneDeck.app/Contents/MacOS/cropwatcher-agent setup",
+  check: "/Applications/DroneDeck.app/Contents/MacOS/cropwatcher-agent setup --check",
+};
 const setupSession: Session = { ...session, session_id: null, radio: { state: "searching", message: "Looking for the drone…", hardware_id: null } };
 
 createRoot(document.getElementById("root")!).render(
@@ -495,8 +499,11 @@ createRoot(document.getElementById("root")!).render(
     <Shell label="Set up · new AI deck">
       <SetupPage session={setupSession} setup={setupSwapped} wifi={null} run={runHere} onGo={() => {}} />
     </Shell>
+    <Shell label="Set up · install by command">
+      <Install setup={setupSwapped} run={runHere} busy={false} onClose={() => {}} command={setupCommand} />
+    </Shell>
     <Shell label="Set up · installed, reinstall">
-      <Install setup={setupDone} run={runHere} busy={false} onClose={() => {}} />
+      <Install setup={setupDone} run={runHere} busy={false} onClose={() => {}} command={setupCommand} />
     </Shell>
     <Shell label="Home">
       <HomePage session={session} telemetry={telemetry} sync={null} connected run={noop} onGo={() => {}} />

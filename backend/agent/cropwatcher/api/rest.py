@@ -1445,6 +1445,15 @@ def setup_state() -> dict:
     return agent.setup.state()
 
 
+@app.get("/setup/command", dependencies=[Command])
+def setup_command() -> dict:
+    """The terminal command that installs the drone's software on THIS machine
+    (cropwatcher setup), for the Set up page to show and copy."""
+    from cropwatcher.setup_cli import command_line
+    line = command_line()
+    return {"command": line, "check": f"{line} --check"}
+
+
 def _setup_allowed() -> None:
     if agent.session.snapshot().state is not State.IDLE:
         raise HTTPException(status_code=409, detail="End the session first — Set up "
