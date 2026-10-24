@@ -19,7 +19,11 @@ WHERE IT LIVES
   backend/agent/cropwatcher/api/rest.py     GET /history/sessions[/{id}[/samples]],
                                             GET /history/flights (this laptop's
                                             and Supabase's, merged),
-                                            GET /history/flights/{id}/playback
+                                            GET /history/flights/{id}/playback,
+                                            GET /history/sessions/{id}/frames
+                                            [/{seq}] — its camera frames, and
+                                            ?source=manual its captures by hand
+                                            (../desktop/capture.txt)
   desktop/src/pages/sessions/               RecentSessions, SessionsPage (Play back
                                             on every flight), WindowLog, Playback
 

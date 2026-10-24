@@ -52,8 +52,9 @@ from cropwatcher.api.events import EventHub
 from cropwatcher.api.tokens import HEADER, load_or_create_token
 from cropwatcher.camera import DeckStream, FrameSource, NoCamera, TestPattern
 from cropwatcher.camera.deck import parse_addr
-from cropwatcher.camera.recording import Recorder
-from cropwatcher.camera.wifi import DeckWifi, Phase, WifiError
+from cropwatcher.camera.rate import DeckTiming
+from cropwatcher.camera.recording import NotRecording, Recorder
+from cropwatcher.camera.wifi import DeckWifi, Phase, WifiError, follow_console
 from cropwatcher.drone_setup import DroneSetup, SetupError
 from cropwatcher.flight import basestation
 from cropwatcher.flight.manual import CLIMB_RATE_M_S, MAX_HEIGHT_M, MOVE_SPEED_M_S
@@ -174,6 +175,11 @@ class ProcessingRequest(BaseModel):
     on: bool
 
 
+class CaptureRequest(BaseModel):
+    #: Record the camera's frames automatically. Off: only manual captures.
+    auto: bool
+
+
 class KeyFrameRequest(BaseModel):
     #: Which way the arrow keys move the drone: "operator" (away from you) or
     #: "room" (the room's own directions). flight/keyframe.py.
@@ -224,10 +230,13 @@ class Agent:
             on_ip=self._deck_joined,
             joined_file=data_dir() / "deck-wifi.json",
         )
+        #: What the GAP8 says each frame cost it, from the drone's console.
+        self.deck_timing = DeckTiming()
         #: Every camera frame of a session, to disk first (camera/recording.py).
         #: Standby frames are shown, never recorded.
         self.recorder = Recorder(self.outbox, position=lambda: self.session.position(),
-                                 point_id=lambda: self.session.current_point_id())
+                                 point_id=lambda: self.session.current_point_id(),
+                                 auto=lambda: self.session.capture_auto())
         if isinstance(self.camera, DeckStream):
             self.camera.add_listener(self.recorder.on_frame)
         self.session = Session(
@@ -252,7 +261,14 @@ class Agent:
         """A link is up (standby's or a session's): follow the deck's Wi-Fi
         reports for as long as it lasts, then hand it the network."""
         self._cf = cf
-        self._unwatch = self.deck_wifi.watch(cf)
+        unwatch_wifi = self.deck_wifi.watch(cf)
+        # The GAP8's per-frame timings ride the same console (camera/rate.py).
+        unwatch_timing = follow_console(cf, self.deck_timing.feed_line)
+
+        def unwatch() -> None:
+            unwatch_wifi()
+            unwatch_timing()
+        self._unwatch = unwatch
         self.deck_wifi.apply(cf)
 
     def rejoin(self, *, reason: str) -> bool:
@@ -552,6 +568,10 @@ def camera_status() -> dict:
     status = agent.camera.status()
     snapshot = agent.session.snapshot()
     payload = {**status.to_dict(), "deck_fitted": snapshot.ai_deck}
+    # How fast it really is, from both ends (camera/rate.py): what arrives
+    # here, and what the GAP8 says each frame cost it. None without a deck.
+    payload["rate"] = agent.camera.rate.summary() if isinstance(agent.camera, DeckStream) else None
+    payload["deck_timing"] = agent.deck_timing.summary()
     # No frames AND no radio link: the likeliest reason is the drone itself —
     # off, or its battery flat — not the network. Say that first, rather than
     # a network theory about an address the drone may no longer have.
@@ -601,11 +621,35 @@ def camera_recording() -> dict:
 @app.get("/camera/recording/frames", dependencies=[Command])
 def camera_recording_frames(
     after: int = Query(0, ge=0), limit: int = Query(500, ge=1, le=2000),
+    source: str | None = Query(None, pattern="^(auto|manual)$"),
 ) -> dict:
-    """Recorded frames after `after`, for the backlog strip."""
+    """Recorded frames after `after`, for the backlog strip — or, with
+    source=manual, the session's manual captures (the Capture page)."""
     recording = agent.recorder.current
-    frames = recording.after(after, limit) if recording is not None else []
+    frames = recording.after(after, limit, source) if recording is not None else []
     return {"frames": [f.to_dict() for f in frames]}
+
+
+@app.post("/camera/capture", dependencies=[Command])
+def capture_frame() -> dict:
+    """Save the camera's newest frame into the session, by hand — the
+    Capture page's button. Works with auto-capture off. Refused outside a
+    session, and when the camera has no fresh frame (a stalled feed's last
+    picture is not what the operator is looking at now)."""
+    data = agent.camera.frame()          # None once the frame is older than STALE_S
+    if data is None:
+        status = agent.camera.status()
+        raise HTTPException(status_code=409, detail=(
+            "The camera has no fresh frame to capture. "
+            + (status.reason or "Wait for the picture to come back, then capture again.")))
+    status = agent.camera.status()
+    try:
+        frame = agent.recorder.capture_manual(data, agent.camera.content_type,
+                                              status.width or 0, status.height or 0)
+    except NotRecording as e:
+        raise HTTPException(status_code=409, detail=str(e)) from None
+    agent.session.record_capture(frame.seq)
+    return frame.to_dict()
 
 
 @app.get("/camera/recording/frame/{which}", dependencies=[Command])
@@ -755,6 +799,32 @@ def read_samples(
         raise HTTPException(status_code=404, detail="No such session on this computer.") from None
 
 
+@app.get("/history/sessions/{session_id}/frames", dependencies=[Command])
+def read_session_frames(
+    session_id: str, source: str | None = Query(None, pattern="^(auto|manual)$"),
+) -> dict:
+    """A session's recorded frames — with source=manual, its captures made
+    by hand (Sessions › a session, the Capture page after it ended)."""
+    try:
+        return {"frames": history.session_frames(session_id, source)}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="No such session on this computer.") from None
+
+
+@app.get("/history/sessions/{session_id}/frames/{seq}", dependencies=[Command])
+def read_session_frame(session_id: str, seq: int) -> Response:
+    """One recorded frame of a session, read from disk."""
+    try:
+        found = history.session_frame(session_id, seq)
+    except ValueError:
+        found = None
+    if found is None:
+        raise HTTPException(status_code=404, detail="No such frame on this computer.")
+    path, ctype = found
+    return Response(content=path.read_bytes(), media_type=ctype,
+                    headers={"Cache-Control": "no-store"})
+
+
 def _signed_in_cloud() -> SupabaseCloud | None:
     """The cloud client when someone is signed in — what the syncer uses."""
     return agent.cloud if getattr(agent.cloud, "operator", None) is not None else None
@@ -883,6 +953,12 @@ def process_flight(flight_id: str) -> dict:
 def set_processing(request: ProcessingRequest) -> dict:
     """The DPP switch: process this session's flights when they land."""
     return _run(lambda: agent.session.set_processing(request.on))
+
+
+@app.post("/session/capture", dependencies=[Command])
+def set_capture(request: CaptureRequest) -> dict:
+    """The auto-capture switch: record the camera's frames automatically."""
+    return _run(lambda: agent.session.set_capture_auto(request.auto))
 
 
 @app.post("/controls/frame", dependencies=[Command])

@@ -61,6 +61,10 @@ export type Session = {
    *  processed when it lands, whether that is the operator's choice or still
    *  the mode's default (on in Auto, off in Manual), and recent jobs. */
   processing: Processing;
+  /** The auto-capture switch (agent camera/recording.py): `auto` — frames are
+   *  recorded automatically; off, only manual captures are saved. Absent from
+   *  older agents. */
+  capture?: { auto: boolean; chosen: boolean };
   /** Which way the arrow keys move the drone (cropwatcher/flight/keyframe.py):
    *  the operator's choice, their marked spot, and — while flying — what the
    *  arrows mean right now. */
@@ -402,6 +406,32 @@ export type CameraStatus = {
   /** The size of the frames being served; null until one has arrived. */
   width: number | null;
   height: number | null;
+  /** What actually arrives at the agent, over the last few seconds
+   *  (camera/rate.py FrameRate). null without a deck camera. */
+  rate?: CameraRate | null;
+  /** What the GAP8 says each frame cost it, from the drone's console
+   *  (camera/rate.py DeckTiming). null when it has said nothing lately. */
+  deck_timing?: DeckTiming | null;
+};
+
+export type CameraRate = {
+  window_s: number;
+  frames: number;
+  fps: number;
+  mean_bytes: number | null;
+  /** Includes the gap still open, so a feed that just stopped shows it. */
+  longest_gap_s: number | null;
+  format: "raw" | "jpeg" | null;
+};
+
+export type DeckTiming = {
+  lines: number;
+  capture_ms: number;
+  encoding_ms: number;
+  transfer_ms: number;
+  bytes: number;
+  /** What the GAP8 could deliver if nothing downstream held it up. */
+  deck_fps: number | null;
 };
 
 export type Intent = {
@@ -608,6 +638,18 @@ export const api = {
     command<{ blockers: MissionBlocker[] }>(`/missions/${encodeURIComponent(missionId)}/blockers`, undefined, "GET"),
   /** The DPP switch for this session. */
   setProcessing: (on: boolean) => command<Session>("/session/processing", { on }),
+  /** The auto-capture switch. Applies at once, in either mode. */
+  setCaptureAuto: (auto: boolean) => command<Session>("/session/capture", { auto }),
+  /** Save the camera's newest frame into the session, by hand. */
+  captureFrame: () => command<RecordedFrameInfo>("/camera/capture"),
+  /** A recorded session's frames — "manual": its captures made by hand. */
+  sessionFrames: (sessionId: string, source?: "auto" | "manual") =>
+    command<{ frames: RecordedFrameInfo[] }>(
+      `/history/sessions/${encodeURIComponent(sessionId)}/frames${source ? `?source=${source}` : ""}`,
+      undefined, "GET"),
+  /** The session's manual captures, oldest first. */
+  manualCaptures: () =>
+    command<{ frames: RecordedFrameInfo[] }>("/camera/recording/frames?source=manual&limit=2000", undefined, "GET"),
   /** Which way the arrow keys move the drone. Works in the air. */
   setKeyFrame: (frame: KeyFrameChoice) => command<Session>("/controls/frame", { frame }),
   /** "I'm here": the drone's position now becomes the operator's spot. */
@@ -820,9 +862,18 @@ export type Recording =
       latest_t_s: number | null;
       upload_fps: number;
       write_errors: number;
+      /** Frames are recorded automatically (auto-capture on). False: only
+       *  manual captures are saved. Absent from older agents: true. */
+      auto?: boolean;
     };
 
-export type RecordedFrameInfo = { seq: number; t_s: number; recorded_at: string; upload: boolean };
+export type RecordedFrameInfo = {
+  seq: number; t_s: number; recorded_at: string; upload: boolean;
+  /** "auto", or "manual" — captured by hand. Absent from older agents. */
+  source?: "auto" | "manual";
+  /** The inspection point being held when it was taken (history only). */
+  point_id?: string | null;
+};
 
 /**
  * One recorded frame read back from disk, by number or "latest". A fetch with
@@ -834,6 +885,19 @@ export async function recordedFrame(which: number | "latest"): Promise<Blob | nu
     cache: "no-store",
   });
   if (response.status === 204) return null;
+  if (!response.ok) throw new AgentError("That frame could not be read.");
+  return response.blob();
+}
+
+/** One frame of a session that has ended, read from this laptop's disk — a
+ *  fetch with the token, like recordedFrame. Null when it is not there. */
+export async function sessionFrame(sessionId: string, seq: number): Promise<Blob | null> {
+  const response = await fetch(
+    `${base()}/history/sessions/${encodeURIComponent(sessionId)}/frames/${seq}`, {
+      headers: { "X-Agent-Token": token },
+      cache: "no-store",
+    });
+  if (response.status === 404) return null;
   if (!response.ok) throw new AgentError("That frame could not be read.");
   return response.blob();
 }
