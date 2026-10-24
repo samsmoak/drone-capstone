@@ -207,20 +207,17 @@ function ManualMapBody({ session, telemetry, history, run, fill = false, toolbar
 
   const layer = layerOf(space);
   const placed = live !== null;
-  // NOT PLACED: SAID INSIDE THE MAP, NOT DRAWN AS A DRONE (2026-10-24, Samuel:
-  // "it is so big and you have put it outside of the map"). A compass the
-  // size of the drone under the room read as the drone, outside it. Now the
-  // map carries one notice — the first stage that fails, and its fix — and a
-  // small badge for which way ↑ goes against the nose.
+  // NOT PLACED: SAID UNDER THE MAP, NEVER ON IT (2026-10-24, Samuel, twice:
+  // a drone-sized compass "outside of the map", then a notice over its corner
+  // — "remove this text from the editor, you are just blocking the view").
+  // The map stays clear; one line below it names the first stage that fails
+  // and its fix.
   const notice = !placed && !lost ? (
-    <div className="grid max-w-md gap-2">
-      {blocker ? <BlockerNote blocker={blocker} /> : (
-        <p role="status" className="border-l-2 border-[var(--status-warning)] bg-[var(--surface-2)] px-3 py-2 text-sm">
-          Not placed in the room yet{heard && !heard.light ? " — no light reaches the positioning deck" : ""}.
-        </p>
-      )}
-      {yaw !== null && forward.deg !== null && <NoseBadge yaw={yaw} forwardDeg={forward.deg} />}
-    </div>
+    blocker ? <BlockerNote blocker={blocker} /> : (
+      <p role="status" className="border-l-2 border-[var(--status-warning)] bg-[var(--surface-2)] px-3 py-2 text-sm">
+        Not placed in the room yet{heard && !heard.light ? " — no light reaches the positioning deck" : ""}.
+      </p>
+    )
   ) : null;
 
   return (
@@ -230,7 +227,7 @@ function ManualMapBody({ session, telemetry, history, run, fill = false, toolbar
         drone={drone} droneHeight={telemetry?.height_m ?? null} droneYaw={yaw} droneLost={lost}
         space={layer} trail={trail}
         keyArrows={placed && forward.deg !== null ? { forwardDeg: forward.deg } : null}
-        droneScale={MANUAL_DRONE_SCALE} fill={fill} overlay={notice}
+        droneScale={MANUAL_DRONE_SCALE} fill={fill}
         toolbar={(
           <>
             {/* The stations moved, or a new spot should be 0, 0: measure again
@@ -245,6 +242,7 @@ function ManualMapBody({ session, telemetry, history, run, fill = false, toolbar
         )}
         label="The room the base stations reach, the drone in it, and where each arrow key moves it"
       />
+      {notice}
       {outcome && !working && <Message tone={outcome.tone} text={outcome.text} />}
       {!layer && (
         <Message tone="warning" text="The base stations are measured, but their light does not overlap anywhere in the flying area — no green to draw." />
@@ -296,27 +294,6 @@ function NotMeasured({ session, station, outcome, working, canMeasure, measure }
           Measure from where the drone sits
         </Button>
       </div>
-    </div>
-  );
-}
-
-/**
- * Which way ↑ goes against the nose, with no position — small, in the map's
- * corner, and drawn as a dial, never as the drone. ↑ is at the top; the red
- * hand is the nose, turning as A and D turn the drone (takeoff frame).
- */
-function NoseBadge({ yaw, forwardDeg }: { yaw: number; forwardDeg: number }) {
-  const nose = yaw - forwardDeg;
-  return (
-    <div className="flex items-center gap-2 border border-[var(--border)] bg-[var(--surface-2)] px-2 py-1 text-xs">
-      <svg viewBox="-1 -1 2 2" className="h-10 w-10 shrink-0" role="img"
-           aria-label={`↑ is at the top; the nose is ${Math.round(((nose % 360) + 540) % 360 - 180)}° from it`}>
-        <circle cx={0} cy={0} r={0.9} style={{ fill: "var(--surface)", stroke: "var(--border)", strokeWidth: 0.08 }} />
-        <text x={0} y={-0.45} textAnchor="middle" style={{ fill: "var(--primary)", fontSize: 0.6, fontWeight: 800 }}>↑</text>
-        <line x1={0} y1={0} x2={0} y2={-0.75} transform={`rotate(${-nose})`}
-              style={{ stroke: "var(--status-critical)", strokeWidth: 0.16, strokeLinecap: "round" }} />
-      </svg>
-      <span>↑ moves it the way the top of the dial points; the red hand is the nose.</span>
     </div>
   );
 }
