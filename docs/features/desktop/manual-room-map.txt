@@ -12,7 +12,7 @@ STATUS  (Last verified: 2026-10-24)
 --------------------------------------------------------------------------------
   agent      BUILT — GET /station/space (session.manual_space); the session
              record keeps why the checks found no position (unassisted_reason)
-  desktop    BUILT — the map in Manual's console, Full screen, the in-map notice with
+  desktop    BUILT — the map in Manual's console, Full screen, the notice under it with
              no position, the Base stations vital, station lines in the log,
              "Look again" before barometer flight
   NOT BUILT  enforcing the green as a fence — shown only (Samuel was asked;
@@ -45,9 +45,8 @@ by hand:
               (green where measured, dashed amber where only estimated)
   the keys    F B L R round it — where ↑ ↓ ← → move it NOW; the nose is a
               separate red tick (bead in 3-D)
-  no position the drone cannot be placed: a notice INSIDE the map names the
-              first failing stage and its fix, and a small dial shows ↑
-              against the nose
+  no position the drone cannot be placed: one line UNDER the map names the
+              first failing stage and its fix; the map stays clear
 
 The right strip shows "Base stations 2 of 2 · Ch 1 Ch 2" (amber with one, red
 with none); the command log writes one line each time that changes.
@@ -55,7 +54,7 @@ with none); the command log writes one line each time that changes.
 --------------------------------------------------------------------------------
 2. WHERE IT LIVES
 --------------------------------------------------------------------------------
-desktop   desktop/src/pages/control/ManualMap.tsx — the map, notice, dial, Measure again
+desktop   desktop/src/pages/control/ManualMap.tsx — the map, the notice under it, Measure again
           desktop/src/pages/control/ConsolePane.tsx — `map`: attitude / room / log
           desktop/src/pages/control/ControlPage.tsx — Manual's console; "Look again"
           desktop/src/pages/control/auto/plan/keyArrows.ts — the four directions
@@ -107,12 +106,13 @@ harness   "Control · Manual, the room from the stations, flying / on the
   and the small dial shows ↑ against the nose (takeoff frame). WHY the stations
   drop in the air is not known yet — carry the drone up by hand and watch the
   Base stations vital to tell line of sight from the motors.
-• NOT PLACED IS SAID INSIDE THE MAP, NEVER DRAWN AS A DRONE (2026-10-24,
-  Samuel: "it is so big and you have put it outside of the map"). The first
-  version drew a drone-sized compass under the room when there was no
-  position, and it read as the drone, outside the room. Now the map carries
-  one notice in its corner — the first failing stage and its fix (the agent's
-  /station `blocker`) — and a small dial for ↑ against the nose. "Measure
+• NOT PLACED IS SAID UNDER THE MAP, NEVER ON IT (2026-10-24, Samuel, twice).
+  A drone-sized compass under the room read as the drone outside it ("it is
+  so big and you have put it outside of the map"); the notice that replaced
+  it sat over the map's corner and hid it ("remove this text from the
+  editor, you are just blocking the view"). Now one line below the map gives
+  the first failing stage and its fix (the agent's /station `blocker`), and
+  the map is left clear. RoomMap's `overlay` slot stays, unused. "Measure
   again" sits in the map's toolbar for stations that moved (the same request
   as ② Position; disabled until a station is decoded, and in flight).
 • TWO STATIONS ARE MEASURED TOGETHER (verified 2026-10-24): estimate_quick
