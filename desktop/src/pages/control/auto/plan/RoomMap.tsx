@@ -26,6 +26,7 @@ import { webglAvailable } from "./webgl";
 import type { PathSource } from "./path";
 import { SPACE_LABEL, type SpaceLayer } from "./space";
 import type { Trail } from "./trail";
+import type { KeyArrows } from "./keyArrows";
 
 const Room3D = lazy(() => import("./Room3D"));
 
@@ -42,8 +43,15 @@ export type MapEditing = Editing & Omit<Edit3D, keyof Editing | "onSelect" | "se
 export function RoomMap({
   outer, fence, obstacles, path, takeoffHeight = 0.4, problems = [], drone = null, droneHeight, droneYaw,
   progress, editing, label, below, heightClass = "h-[clamp(18rem,52vh,34rem)]", space = null,
-  trail = null, liveStations = true,
+  trail = null, liveStations = true, keyArrows = null, droneScale = 1, toolbar,
 }: {
+  /** Manual: where each arrow key moves the drone now, drawn round it, and
+   *  the nose as its own tick (keyArrows.ts). Auto passes none. */
+  keyArrows?: KeyArrows | null;
+  /** Manual draws the drone larger, to be read while flying. */
+  droneScale?: number;
+  /** Extra controls at the right of the 2D/3D bar (Manual's Full screen). */
+  toolbar?: ReactNode;
   /** Draw the base stations where the drone has them stored now. Off for a
    *  recorded flight: today's places would mislead about that day's. */
   liveStations?: boolean;
@@ -120,6 +128,7 @@ export function RoomMap({
             ))}
           </div>
         )}
+        {toolbar}
       </div>
 
       <div className={`relative min-h-0 min-w-0 overflow-hidden border border-[var(--border)] ${heightClass}`}>
@@ -129,6 +138,7 @@ export function RoomMap({
             problems={problems} drone={drone} progress={progress} label={label}
             editing={editing} selected={editing ? undefined : looking} space={space} sliceZ={shownZ}
             trail={trail} stations={stations}
+            droneYaw={keyArrows ? droneYaw ?? null : null} keyArrows={keyArrows} droneScale={droneScale}
             className="block h-full w-full touch-none select-none bg-[var(--surface-2)]"
           />
         ) : (
@@ -137,6 +147,7 @@ export function RoomMap({
               outer={outer} fence={fence} obstacles={obstacles} path={path} takeoffHeight={takeoffHeight}
               problems={problems} drone={drone} droneHeight={droneHeight} droneYaw={droneYaw}
               progress={progress} camera={camera} label={label} space={space} trail={trail} stations={stations}
+              keyArrows={keyArrows} droneScale={droneScale}
               editing={editing ? {
                 selected: editing.selected, onSelect: editing.onSelect, onFence: editing.onFence,
                 onObstacle: editing.onObstacle, onPoint: editing.onPoint, onHome: editing.onHome,

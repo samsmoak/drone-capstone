@@ -155,6 +155,44 @@ class TestTheGreenIsTheStationsReach:
         assert len(reads) == 1
 
 
+class TestManualSpace:
+    """Manual's room: the stations' reach with no room at all (2026-10-24,
+    Samuel: "detect the two base stations, then draw that room on the spot")."""
+
+    def test_it_is_the_stations_reach_over_the_flying_area(self, rig):
+        from tests.mission.test_coverage import CORNERS
+        rig.link.station_poses = lambda: list(CORNERS)
+        space = rig.session.manual_space()
+        assert space is not None and space.everywhere is not None
+        x0, y0, x1, y1 = space.everywhere.bounds()
+        half = rig.session.fence_half_extent_m
+        assert -half <= x0 < x1 <= half and -half <= y0 < y1 <= half
+        assert space.z_min == session_module.MANUAL_SPACE_FLOOR_M
+        assert space.z_max == rig.session._max_height
+
+    def test_no_station_measured_is_no_room(self, rig):
+        assert rig.session.manual_space() is None
+
+    def test_no_drone_is_no_room(self, rig):
+        from tests.mission.test_coverage import CORNERS
+        rig.link.station_poses = lambda: list(CORNERS)
+        rig.link.is_open = False
+        assert rig.session.manual_space() is None
+
+    def test_it_is_computed_once_until_the_stations_change(self, rig, monkeypatch):
+        from tests.mission.test_coverage import CORNERS
+        rig.link.station_poses = lambda: list(CORNERS)
+        runs = []
+        real = session_module.predict
+        monkeypatch.setattr(session_module, "predict",
+                            lambda *a, **k: runs.append(1) or real(*a, **k))
+        first = rig.session.manual_space()
+        assert rig.session.manual_space() is first
+        rig.session._poses_cache = None             # measured again
+        rig.session.manual_space()
+        assert len(runs) == 2
+
+
 class TestStatus:
     def test_it_reads_what_the_drone_reports(self, rig):
         rig.link.snapshot = lambda: Snapshot(MappingProxyType({

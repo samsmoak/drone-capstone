@@ -187,9 +187,14 @@ arrived, which meant the operator relearned the layout at every stage.
 The left column is three tabs:
 
   Vitals   the attitude indicator, then the command log, then the vitals tail
-           (the current VALUES moved up into the strip — see below)
+           (the current VALUES moved up into the strip — see below). IN
+           MANUAL (2026-10-24): the attitude indicator, then the ROOM drawn
+           from the base stations, then the command log — no vitals tail
+           (manual-room-map.txt)
   Camera   the real frame path, on a test pattern — see camera.txt
-  Scene    the drone drawn in the room, from its own position and attitude
+  Scene    the drone drawn in the room, from its own position and attitude.
+           Offered by no page since 2026-10-24: Auto never had it and
+           Manual's room replaced it — SceneView is dead code until removed
 
 THE CONSOLE OPENS FULL SCREEN from its tab strip, and so does the command log
 from its own footer — a camera frame or a 3D scene in part of a split column is a
@@ -524,6 +529,9 @@ should stay that way.
 
 RELATED
 
+shares-data-with  manual-room-map.txt
+                  Manual's Vitals tab hosts the room (ConsolePane `map`); the
+                  strip's VitalsNow gains Base stations
 depends-on        ../backend/manual-control.txt
                   the Arrows row shows and sets which way the arrow keys move
                   the drone (keyframe.py), from the session's `controls`

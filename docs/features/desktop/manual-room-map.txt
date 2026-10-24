@@ -1,0 +1,122 @@
+================================================================================
+MANUAL ROOM MAP — the room drawn from the two base stations, the drone in it,
+and where each arrow key moves it, on the Manual page
+Last verified: 2026-10-24 against manual/room-map — agent tests, desktop build,
+harness screenshots. NOT yet flown: no manual flight with both stations heard
+has run on it.
+SOURCE: desktop/src/pages/control/ManualMap.tsx
+================================================================================
+
+--------------------------------------------------------------------------------
+STATUS  (Last verified: 2026-10-24)
+--------------------------------------------------------------------------------
+  agent      BUILT — GET /station/space (session.manual_space); the session
+             record keeps why the checks found no position (unassisted_reason)
+  desktop    BUILT — the map in Manual's console, Full screen, the compass with
+             no position, the Base stations vital, station lines in the log,
+             "Look again" before barometer flight
+  NOT BUILT  enforcing the green as a fence — shown only (Samuel was asked;
+             the recommendation was shown only until it has been flown)
+  NOT BUILT  flight tuning: no manual flight with both stations heard has been
+             read yet (manual-control.txt is locked to Samuel)
+
+--------------------------------------------------------------------------------
+1. WHAT IT IS
+--------------------------------------------------------------------------------
+Samuel, 2026-10-24: "we first detect the two base stations, then we draw that
+room on the spot, and we show the drone's position in that particular room …
+forward, backwards, left and right on the drone, so that the user can easily
+see that before they press start a flight and as they are flying it."
+
+Manual's console, Vitals tab, top to bottom: the attitude indicator, the ROOM,
+the command log. The vitals tail is gone from Manual (the strip on the right
+carries the vitals) and so is the Scene tab (the room answers the same
+question). The room is Auto's own map (auto/plan/RoomMap.tsx) — 2-D or 3-D,
+the tripods with their channels, the origin and Forward — with nothing drawn
+by hand:
+
+  the room    the green: where the measured stations' light reaches over the
+              agent's flying area, 0.1 m to the ceiling (the same prediction
+              as Auto's ③, coverage.py predict, with no room)
+  the drone   live, 2.5x Auto's size, with its trail since the window opened
+              (green where measured, dashed amber where only estimated)
+  the keys    F B L R round it — where ↑ ↓ ← → move it NOW; the nose is a
+              separate red tick (bead in 3-D)
+  no position the stations not heard: the drone cannot be placed, so a compass
+              with ↑ at the top and the nose turning under it
+
+The right strip shows "Base stations 2 of 2 · Ch 1 Ch 2" (amber with one, red
+with none); the command log writes one line each time that changes.
+
+--------------------------------------------------------------------------------
+2. WHERE IT LIVES
+--------------------------------------------------------------------------------
+desktop   desktop/src/pages/control/ManualMap.tsx — the map, compass, Measure
+          desktop/src/pages/control/ConsolePane.tsx — `map`: attitude / room / log
+          desktop/src/pages/control/ControlPage.tsx — Manual's console; "Look again"
+          desktop/src/pages/control/auto/plan/keyArrows.ts — the four directions
+          desktop/src/pages/control/auto/plan/PlanCanvas.tsx — keyArrows, nose, scale (2-D)
+          desktop/src/pages/control/auto/plan/Room3D.tsx — the same in 3-D
+          desktop/src/pages/control/auto/plan/RoomMap.tsx — passes them; `toolbar`
+          desktop/src/lib/keyDirections.ts — which way ↑ goes, mirrored
+          desktop/src/lib/stationsHeard.ts — stations heard over a 2 s window
+          desktop/src/pages/control/VitalsNow.tsx — the Base stations vital
+          desktop/src/lib/commandLog.ts — useStationNarration
+agent     backend/agent/cropwatcher/session.py — manual_space, MANUAL_SPACE_FLOOR_M
+          backend/agent/cropwatcher/api/rest.py — GET /station/space
+          backend/agent/cropwatcher/history.py — SessionMeta.unassisted_reason
+tests     backend/agent/tests/test_station_measure.py TestManualSpace,
+          test_api.py TestStationSpace, test_session.py (the reason kept)
+harness   "Control · Manual, the room from the stations, flying / on the
+          ground", "Control · Manual, unassisted, look again"
+
+--------------------------------------------------------------------------------
+3. DECISIONS
+--------------------------------------------------------------------------------
+• THE KEYS ARE DRAWN WHERE THEY MOVE IT, NOT ON THE NOSE. The arrows never
+  follow the nose (keyframe.py, locked 2026-09-30): ↑ is away from the
+  operator, the room's forward, or the takeoff heading. An F on the nose would
+  lie after the first A/D turn. lib/keyDirections.ts mirrors resolve() — the
+  agent sends `controls.live` only when the MEANING changes, so "away from
+  you" is recomputed here from the spot and the drone each frame, with the
+  same 0.50/0.60 m hysteresis.
+• SHOWN, NOT ENFORCED. The green is where the position can be trusted, not a
+  fence; the guard still holds the agent's square (session._fence). Making the
+  manual guard stop at the green changes the safety rules — left for Samuel.
+• NO ROOM PICKER. An earlier plan had one; Samuel: "we are not drawing any
+  room … just using the auto detection". The room is the stations' reach.
+• STATIONS NOT MEASURED → MEASURE HERE. Manual has no ② Position step, so the
+  map offers the same stages and Measure button (StationStages) itself.
+• NOT IN THE LOCK. Nothing in manual.py, keyframe.py, tuning.py, keys.ts,
+  arrows.ts, ArrowFrame.tsx or App.tsx's keyboard handler changed;
+  test_manual_control_lock.py passes untouched.
+• BAROMETER FLIGHT IS THE SECOND BUTTON. Unassisted at confirmation, the
+  agent's reason is shown first, "Look again for the base stations" (retry) is
+  primary and "Fly on the barometer — I am flying it by eye" secondary.
+
+--------------------------------------------------------------------------------
+4. INVARIANTS
+--------------------------------------------------------------------------------
+• "HEARD" IS OVER A WINDOW, NEVER ONE SAMPLE. bsReceive flickers per sample
+  with both stations in view — the 2026-10-24 Auto traces read 0, 1, 2, 3 in
+  turn. A station counts as heard if any sample in the last 2 s had its bit;
+  one sample would log "lost" ten times a second.
+• Telemetry `at` is SECONDS (session.py time.time()), not milliseconds.
+• WHY THIS EXISTS: the 2026-10-24 05:38 manual flight heard no station (all
+  four light sensors 0 for the session), flew on the barometer, and bounced —
+  the barometer swung -0.6 to +2.5 m against a 0.62 m target, thrust slammed
+  20 000 to 65 535. Nothing on screen had said the stations were not heard;
+  the Auto session three minutes earlier heard both. The reason is now kept in
+  meta.json and said before barometer flight.
+
+--------------------------------------------------------------------------------
+5. RELATED
+--------------------------------------------------------------------------------
+depends-on        ../backend/manual-control.txt
+                  the keys' frame (keyframe.py) the arrows are drawn from
+copied-from       auto-control.txt
+                  the room map, tripods and green, reused with keyArrows added
+depends-on        setup.txt
+                  StationStages and the measure, shared with ② Position
+shares-data-with  pages-and-windows.txt
+                  the console's Vitals tab and VitalsNow, rearranged for Manual

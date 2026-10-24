@@ -18,6 +18,7 @@
 import type { Session, Telemetry } from "@/lib/agent";
 import { formatNumber } from "@/lib/format";
 import { StatusDot, type Tone } from "@/components/ui";
+import { channelOf, useStationsHeard, type StationsHeard } from "@/lib/stationsHeard";
 
 const read = (telemetry: Telemetry | null, name: string): number | null =>
   telemetry?.values[name] ?? null;
@@ -35,6 +36,7 @@ export function VitalsNow({ telemetry, session }: {
   const vbat = read(telemetry, "pm.vbat") ?? session?.drone?.battery_v ?? null;
   const varCm = telemetry ? uncertaintyCm(telemetry.values) : null;
   const canfly = read(telemetry, "sys.canfly");
+  const stations = useStationsHeard(telemetry);
 
   return (
     <div className="mono grid shrink-0 grid-cols-2 gap-x-4 gap-y-2 text-xs xl:grid-cols-3">
@@ -60,6 +62,34 @@ export function VitalsNow({ telemetry, session }: {
           )}
         </p>
       </div>
+      <StationsVital stations={stations} />
+    </div>
+  );
+}
+
+/** Which base stations the drone hears now, by channel (stationsHeard.ts) —
+ *  so "it flew on the barometer" is never a surprise after takeoff
+ *  (2026-10-24: a manual flight heard none and nothing on screen said so). */
+export function stationsWords(s: StationsHeard): { tone: Tone; text: string } {
+  const named = s.heard.map(channelOf).join(" ");
+  if (s.known.length === 0) {
+    return s.light
+      ? { tone: "warning", text: "Light, no station decoded" }
+      : { tone: "critical", text: "None — no light on the deck" };
+  }
+  const count = `${s.heard.length} of ${s.known.length}`;
+  if (s.heard.length === 0) return { tone: "critical", text: `${count} heard` };
+  return { tone: s.heard.length < s.known.length ? "warning" : "good", text: `${count} · ${named}` };
+}
+
+function StationsVital({ stations }: { stations: StationsHeard | null }) {
+  const said = stations ? stationsWords(stations) : null;
+  return (
+    <div className="col-span-2 min-w-0">
+      <p className="text-[10px] uppercase tracking-[0.08em] text-[var(--muted)]">Base stations</p>
+      <p className="mt-0.5 font-semibold">
+        {said ? <StatusDot tone={said.tone}>{said.text}</StatusDot> : <span className="text-[var(--muted)]">—</span>}
+      </p>
     </div>
   );
 }

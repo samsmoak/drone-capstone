@@ -1300,6 +1300,16 @@ def station_poses() -> dict:
     return {"stations": agent.session.station_markers()}
 
 
+@app.get("/station/space", dependencies=[Command])
+def station_space() -> dict:
+    """Manual's room, drawn on the spot from the base stations alone: where
+    their light reaches over the agent's flying area (session.manual_space).
+    `predicted` is null with no drone connected or no station measured."""
+    prediction = agent.session.manual_space()
+    return {"predicted": prediction.to_dict() if prediction else None,
+            "fence_half_extent_m": agent.session.fence_half_extent_m}
+
+
 @app.get("/station", dependencies=[Command])
 def station_status() -> dict:
     """The base station as the drone sees it: received, measured, usable."""

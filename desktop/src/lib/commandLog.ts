@@ -22,7 +22,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Check, Session } from "@/lib/agent";
+import type { Check, Session, Telemetry } from "@/lib/agent";
+import { channelOf, useStationsHeard } from "@/lib/stationsHeard";
 
 export type LogKind =
   | "command"    // the window asked for something
@@ -168,4 +169,36 @@ export function useSessionNarration(session: Session | null, connected: boolean,
       push("refused", "Retry required — the last flight ended early");
     }
   }, [session, push]);
+}
+
+/**
+ * The base stations, as the drone hears them — one line when that CHANGES,
+ * never ten a second (2026-10-24, Samuel: the command log should show the two
+ * stations detected). Over stationsHeard.ts's window, so the sample-to-sample
+ * flicker of bsReceive is not news; the stream stopping is the link's line to
+ * say, not a station lost.
+ *
+ *   ✓ Base stations: Ch 1 ✓ · Ch 2 ✓
+ *   ✗ Base stations: Ch 1 ✓ · Ch 2 ✗      Ch 2 lost
+ */
+export function useStationNarration(telemetry: Telemetry | null, push: Push) {
+  const stations = useStationsHeard(telemetry);
+  const said = useRef<string | null>(null);
+  useEffect(() => {
+    if (!stations) {
+      said.current = null;
+      return;
+    }
+    const line = stations.known.length
+      ? stations.known.map((id) => `${channelOf(id)} ${stations.heard.includes(id) ? "✓" : "✗"}`).join(" · ")
+      : stations.light ? "light on the deck, no station decoded" : "none heard — no light on the deck";
+    if (line === said.current) return;
+    const before = said.current;
+    said.current = line;
+    const all = stations.known.length > 0 && stations.heard.length === stations.known.length;
+    const lost = before === null ? [] : stations.known.filter(
+      (id) => !stations.heard.includes(id) && before.includes(`${channelOf(id)} ✓`));
+    push(all ? "ok" : "refused", `Base stations: ${line}`,
+         lost.length ? `${lost.map(channelOf).join(", ")} lost` : undefined);
+  }, [stations, push]);
 }

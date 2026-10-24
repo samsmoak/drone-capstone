@@ -36,6 +36,7 @@ import { useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode
 import type { Geofence, InspectionPoint, Obstacle, OuterBound, Problem, StationMarker, XY } from "@/lib/agent";
 import { stationLabel } from "./stations";
 import { NUDGE_M, mapBox } from "./geometry";
+import { KEY_DIRECTIONS, unit, type KeyArrows } from "./keyArrows";
 import { legsOf, landsAt, unflownIds, type PathSource } from "./path";
 import { SPACE_LABEL, insideOutline, type SpaceLayer } from "./space";
 import type { Trail } from "./trail";
@@ -87,8 +88,14 @@ export type Editing = {
 export function PlanCanvas({
   outer, fence, obstacles, path, takeoffHeight = 0.4, problems = [], drone = null,
   editing, label, progress, selected: shownSelected = null, className, space = null, sliceZ = null,
-  trail = null, stations = [],
+  trail = null, stations = [], droneYaw = null, keyArrows = null, droneScale = 1,
 }: {
+  /** The nose's heading, degrees from +x — drawn as a tick when given. */
+  droneYaw?: number | null;
+  /** Manual: where each arrow key moves the drone now (keyArrows.ts). */
+  keyArrows?: KeyArrows | null;
+  /** Manual draws the drone larger, to be read while flying. */
+  droneScale?: number;
   /** The measured base stations, from above (stations.ts). */
   stations?: StationMarker[];
   /** Playback: the path a recorded flight flew, up to the moment shown. */
@@ -414,14 +421,21 @@ export function PlanCanvas({
       <OriginMark />
       {stations.map((st) => <StationMark key={st.id ?? stationLabel(st)} station={st} />)}
 
+      {drone && keyArrows && <KeyArrowMarks at={drone} arrows={keyArrows} scale={droneScale} />}
       {drone && (
         <g role="img" aria-label={`The drone, ${(drone[0] - box.xMin).toFixed(2)} m from left and ${(drone[1] - box.yMin).toFixed(2)} m from front`}>
           {/* The ring carries the colour; the letter sits on --surface in
               --foreground, whose contrast holds in both themes. */}
-          <circle cx={drone[0]} cy={-drone[1]} r={0.1} {...thin}
+          <circle cx={drone[0]} cy={-drone[1]} r={0.1 * droneScale} {...thin}
                   style={{ fill: "var(--surface)", stroke: "var(--status-good)", strokeWidth: 3 }} />
-          <text x={drone[0]} y={-drone[1] + 0.045} textAnchor="middle"
-                style={{ fill: "var(--foreground)", fontSize: 0.13, fontWeight: 800 }}>D</text>
+          {droneYaw !== null && (
+            // The nose: a tick out of the ring, apart from the key arrows.
+            <line x1={drone[0] + unit(droneYaw)[0] * 0.1 * droneScale} y1={-(drone[1] + unit(droneYaw)[1] * 0.1 * droneScale)}
+                  x2={drone[0] + unit(droneYaw)[0] * 0.17 * droneScale} y2={-(drone[1] + unit(droneYaw)[1] * 0.17 * droneScale)}
+                  {...thin} style={{ stroke: "var(--status-critical)", strokeWidth: 4, strokeLinecap: "round" }} />
+          )}
+          <text x={drone[0]} y={-drone[1] + 0.045 * droneScale} textAnchor="middle"
+                style={{ fill: "var(--foreground)", fontSize: 0.13 * droneScale, fontWeight: 800 }}>D</text>
         </g>
       )}
     </svg>
@@ -466,6 +480,40 @@ function StationMark({ station: st }: { station: StationMarker }) {
               style={{ fill: "var(--surface)", stroke: "var(--foreground)", strokeWidth: 2.4 }} />
       <text x={x} y={-y - 0.15} textAnchor="middle"
             style={{ fill: "var(--foreground)", fontSize: 0.13, fontWeight: 800 }}>{stationLabel(st)}</text>
+    </g>
+  );
+}
+
+/** The arrow keys round the drone: where ↑ ← ↓ → move it now (keyArrows.ts).
+ *  F is drawn in --primary and heavier — the one to find first; the letters
+ *  sit on a --surface halo so they read over the green space and the trail. */
+function KeyArrowMarks({ at, arrows, scale }: { at: XY; arrows: KeyArrows; scale: number }) {
+  const thin = { vectorEffect: "non-scaling-stroke" as const };
+  const from = 0.15 * scale;
+  const to = 0.42 * scale;
+  return (
+    <g role="img" aria-label={`The arrow keys: ${KEY_DIRECTIONS.map((d) => `${d.key} ${d.word.toLowerCase()}`).join(", ")}, as drawn round the drone`}>
+      {KEY_DIRECTIONS.map((d) => {
+        const [ux, uy] = unit(arrows.forwardDeg + d.offsetDeg);
+        const main = d.letter === "F";
+        const colour = main ? "var(--primary)" : "var(--foreground)";
+        const angle = -(arrows.forwardDeg + d.offsetDeg);          // SVG's y is down
+        const tip: XY = [at[0] + ux * to, at[1] + uy * to];
+        const label: XY = [at[0] + ux * (to + 0.11 * scale), at[1] + uy * (to + 0.11 * scale)];
+        return (
+          <g key={d.letter} aria-hidden="true">
+            <line x1={at[0] + ux * from} y1={-(at[1] + uy * from)} x2={tip[0] - ux * 0.05 * scale} y2={-(tip[1] - uy * 0.05 * scale)}
+                  {...thin} style={{ stroke: colour, strokeWidth: main ? 4 : 2.5 }} />
+            <polygon points={`${0.07 * scale},0 ${-0.03 * scale},${0.05 * scale} ${-0.03 * scale},${-0.05 * scale}`}
+                     transform={`translate(${tip[0]} ${-tip[1]}) rotate(${angle})`} style={{ fill: colour }} />
+            <text x={label[0]} y={-label[1] + 0.045 * scale} textAnchor="middle"
+                  style={{ fill: colour, fontSize: 0.13 * scale, fontWeight: 800, paintOrder: "stroke",
+                           stroke: "var(--surface)", strokeWidth: 0.03 * scale }}>
+              {d.letter}
+            </text>
+          </g>
+        );
+      })}
     </g>
   );
 }
