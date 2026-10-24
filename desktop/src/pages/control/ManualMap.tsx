@@ -29,14 +29,13 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { History, Run } from "@/App";
 import { AgentError, api, type OuterBound, type Session, type StationSpace, type Telemetry, type XY } from "@/lib/agent";
 import { FullScreenOverlay } from "@/components/FullScreenOverlay";
-import { StationStages, useStation } from "@/components/StationStages";
+import { BlockerNote, StationStages, useStation } from "@/components/StationStages";
 import { Button, Message, Spinner, type Tone } from "@/components/ui";
 import { keyForward, FRAME_WORDS, type KeyForward } from "@/lib/keyDirections";
 import { channelOf, useStationsHeard } from "@/lib/stationsHeard";
 import { dronePosition } from "./auto/plan/MissionStep";
 import { RoomMap } from "./auto/plan/RoomMap";
 import { SmallButton } from "./auto/plan/fields";
-import { KEY_DIRECTIONS } from "./auto/plan/keyArrows";
 import type { SpaceLayer } from "./auto/plan/space";
 import type { Trail, TrailRun } from "./auto/plan/trail";
 
@@ -130,6 +129,29 @@ export function ManualMap({ session, telemetry, history, run }: {
   );
 }
 
+/** Measuring the base stations from where the drone sits — the same request
+ *  as Auto's ② Position (auto/PositionStep.tsx), for the map's own button. */
+function useMeasure(session: Session, run: Run) {
+  const station = useStation(session.radio?.state === "connected");
+  const [outcome, setOutcome] = useState<{ tone: Tone; text: string } | null>(null);
+  const working = station?.measuring === true;
+  const canMeasure = station?.connected === true && !working && session.state !== "busy"
+    && station.received.length > 0;
+  const measure = () => {
+    setOutcome(null);
+    void run(async () => {
+      try {
+        const r = await api.measureStation();
+        setOutcome({ tone: "good", text: r.message });
+      } catch (e) {
+        setOutcome({ tone: "critical", text: e instanceof AgentError ? e.message : "The measurement did not work." });
+        throw e;
+      }
+    }, "Measure the base stations");
+  };
+  return { station, outcome, working, canMeasure, measure };
+}
+
 function ManualMapBody({ session, telemetry, history, run, fill = false, toolbar }: {
   session: Session;
   telemetry: Telemetry | null;
@@ -142,6 +164,7 @@ function ManualMapBody({ session, telemetry, history, run, fill = false, toolbar
   const connected = session.radio?.state === "connected";
   const [loaded, retry] = useStationSpace(connected);
   const heard = useStationsHeard(telemetry);
+  const { station, outcome, working, canMeasure, measure } = useMeasure(session, run);
   const live = dronePosition(telemetry);
   // NEVER DROP THE DRONE (2026-10-24, Samuel: "once the drone begins to fly it
   // goes out of the editor"). Losing the stations in the air took it off the
@@ -162,6 +185,7 @@ function ManualMapBody({ session, telemetry, history, run, fill = false, toolbar
   useEffect(() => { near.current = forward.near; }, [forward.near]);
 
   const trail = useMemo(() => liveTrail(history), [history]);
+  const blocker = station?.connected ? station.blocker ?? null : null;
 
   if (!connected) {
     return <Message tone="idle" text="Connect the drone to see the room: plug in the Crazyradio and switch the drone on." />;
@@ -177,11 +201,28 @@ function ManualMapBody({ session, telemetry, history, run, fill = false, toolbar
   }
   const space = loaded.space;
   if (space.predicted === null) {
-    return <NotMeasured session={session} run={run} drone={live} yaw={yaw} forward={forward} />;
+    return <NotMeasured session={session} station={station} outcome={outcome} working={working}
+                        canMeasure={canMeasure} measure={measure} />;
   }
 
   const layer = layerOf(space);
   const placed = live !== null;
+  // NOT PLACED: SAID INSIDE THE MAP, NOT DRAWN AS A DRONE (2026-10-24, Samuel:
+  // "it is so big and you have put it outside of the map"). A compass the
+  // size of the drone under the room read as the drone, outside it. Now the
+  // map carries one notice — the first stage that fails, and its fix — and a
+  // small badge for which way ↑ goes against the nose.
+  const notice = !placed && !lost ? (
+    <div className="grid max-w-md gap-2">
+      {blocker ? <BlockerNote blocker={blocker} /> : (
+        <p role="status" className="border-l-2 border-[var(--status-warning)] bg-[var(--surface-2)] px-3 py-2 text-sm">
+          Not placed in the room yet{heard && !heard.light ? " — no light reaches the positioning deck" : ""}.
+        </p>
+      )}
+      {yaw !== null && forward.deg !== null && <NoseBadge yaw={yaw} forwardDeg={forward.deg} />}
+    </div>
+  ) : null;
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
       <RoomMap
@@ -189,25 +230,28 @@ function ManualMapBody({ session, telemetry, history, run, fill = false, toolbar
         drone={drone} droneHeight={telemetry?.height_m ?? null} droneYaw={yaw} droneLost={lost}
         space={layer} trail={trail}
         keyArrows={placed && forward.deg !== null ? { forwardDeg: forward.deg } : null}
-        droneScale={MANUAL_DRONE_SCALE} fill={fill} toolbar={toolbar}
+        droneScale={MANUAL_DRONE_SCALE} fill={fill} overlay={notice}
+        toolbar={(
+          <>
+            {/* The stations moved, or a new spot should be 0, 0: measure again
+                without leaving Manual (the same request as ② Position). */}
+            <SmallButton onClick={measure} disabled={!canMeasure}
+                         title={canMeasure ? "Measure where the base stations stand, from where the drone sits (motors off)"
+                           : "Needs the drone on the ground, decoding a base station, with no flight on"}>
+              {working ? "Measuring…" : "Measure again"}
+            </SmallButton>
+            {toolbar}
+          </>
+        )}
         label="The room the base stations reach, the drone in it, and where each arrow key moves it"
       />
+      {outcome && !working && <Message tone={outcome.tone} text={outcome.text} />}
       {!layer && (
         <Message tone="warning" text="The base stations are measured, but their light does not overlap anywhere in the flying area — no green to draw." />
       )}
       <KeysLegend forward={forward} placed={placed} />
       {lost && (
-        <Message tone="warning" text={`Position lost — ${heard && heard.heard.length ? `only ${heard.heard.map(channelOf).join(" and ")} heard, not enough to place it` : "no base station is heard"}. The drone is drawn where it was last placed (dashed). Until the stations are heard again, ↑ is the way the nose pointed at takeoff — see the compass.`} />
-      )}
-      {!placed && (
-        <div className="grid gap-2">
-          {!lost && <Message tone="warning" text={
-            heard && heard.known.length
-              ? `The drone is not placed in the room: it hears ${heard.heard.length ? heard.heard.map(channelOf).join(" and ") : "no base station"} — ${heard.heard.length ? "its position is not settled yet" : "check the stations are on and can see the top of the drone"}. Without a position Manual flies on the barometer.`
-              : "The drone is not placed in the room: no base station is heard. Without a position Manual flies on the barometer."
-          } />}
-          {yaw !== null && forward.deg !== null && <Compass yaw={yaw} forwardDeg={forward.deg} />}
-        </div>
+        <Message tone="warning" text={`Position lost — ${blocker ? blocker.text : heard && heard.heard.length ? `only ${heard.heard.map(channelOf).join(" and ")} heard, not enough to place it` : "no base station is heard"}. The drone is drawn where it was last placed (dashed). Until the stations are heard again, ↑ is the way the nose pointed at takeoff.`} />
       )}
     </div>
   );
@@ -225,27 +269,16 @@ function KeysLegend({ forward, placed }: { forward: KeyForward; placed: boolean 
   );
 }
 
-/** No station measured in this room: the stages, and Measure — the same as
- *  Auto's ② Position (auto/PositionStep.tsx), here because Manual has no flow. */
-function NotMeasured({ session, run, drone, yaw, forward }: {
-  session: Session; run: Run; drone: XY | null; yaw: number | null; forward: KeyForward;
+/** No station measured in this room (or the decks gone): the stages, with the
+ *  first that fails said first, and Measure. */
+function NotMeasured({ session, station, outcome, working, canMeasure, measure }: {
+  session: Session;
+  station: ReturnType<typeof useStation>;
+  outcome: { tone: Tone; text: string } | null;
+  working: boolean;
+  canMeasure: boolean;
+  measure: () => void;
 }) {
-  const station = useStation(session.radio?.state === "connected");
-  const [outcome, setOutcome] = useState<{ tone: Tone; text: string } | null>(null);
-  const working = station?.measuring === true;
-  const flying = session.state === "busy";
-  const measure = () => {
-    setOutcome(null);
-    void run(async () => {
-      try {
-        const r = await api.measureStation();
-        setOutcome({ tone: "good", text: r.message });
-      } catch (e) {
-        setOutcome({ tone: "critical", text: e instanceof AgentError ? e.message : "The measurement did not work." });
-        throw e;
-      }
-    }, "Measure the base stations");
-  };
   return (
     <div className="grid gap-3 p-3">
       {session.decks_lost ? (
@@ -259,61 +292,31 @@ function NotMeasured({ session, run, drone, yaw, forward }: {
       {working && <Spinner label="Measuring — keep the drone still…" />}
       {outcome && !working && <Message tone={outcome.tone} text={outcome.text} />}
       <div>
-        <Button variant="primary" onClick={measure}
-                disabled={!station?.connected || working || flying || station.received.length === 0}>
+        <Button variant="primary" onClick={measure} disabled={!canMeasure}>
           Measure from where the drone sits
         </Button>
       </div>
-      {drone === null && yaw !== null && forward.deg !== null && <Compass yaw={yaw} forwardDeg={forward.deg} />}
     </div>
   );
 }
 
 /**
- * The arrows without a room: ↑ at the top, always, and the drone drawn turning
- * under them — the nose at (heading − ↑) — so a turn with A / D is seen as the
- * drone turning, not the keys. For flight with no position (takeoff frame).
+ * Which way ↑ goes against the nose, with no position — small, in the map's
+ * corner, and drawn as a dial, never as the drone. ↑ is at the top; the red
+ * hand is the nose, turning as A and D turn the drone (takeoff frame).
  */
-function Compass({ yaw, forwardDeg }: { yaw: number; forwardDeg: number }) {
-  // Screen up is ↑; a nose this many degrees counter-clockwise of ↑ is drawn
-  // rotated that way (SVG rotates clockwise, so negated).
+function NoseBadge({ yaw, forwardDeg }: { yaw: number; forwardDeg: number }) {
   const nose = yaw - forwardDeg;
-  const r = 0.62;
   return (
-    <figure className="grid justify-items-center gap-1 border border-[var(--border)] bg-[var(--surface-2)] p-3">
-      <svg viewBox="-1 -1 2 2" className="h-44 w-44" role="img"
-           aria-label={`No position: ↑ is at the top; the drone's nose is ${Math.round(((nose % 360) + 540) % 360 - 180)}° from it`}>
-        <circle cx={0} cy={0} r={0.86} style={{ fill: "none", stroke: "var(--border)", strokeWidth: 0.02 }} />
-        {KEY_DIRECTIONS.map((d) => {
-          const a = ((d.offsetDeg + 90) * Math.PI) / 180;          // screen: ↑ at the top
-          const main = d.letter === "F";
-          return (
-            <text key={d.letter} x={Math.cos(a) * 0.86} y={-Math.sin(a) * 0.86 + 0.07} textAnchor="middle"
-                  style={{ fill: main ? "var(--primary)" : "var(--foreground)", fontSize: 0.22, fontWeight: 800,
-                           paintOrder: "stroke", stroke: "var(--surface-2)", strokeWidth: 0.06 }}>
-              {d.letter}
-            </text>
-          );
-        })}
-        <g transform={`rotate(${-nose})`}>
-          {[45, 135, 225, 315].map((deg) => {
-            const a = (deg * Math.PI) / 180;
-            return (
-              <g key={deg}>
-                <line x1={0} y1={0} x2={Math.cos(a) * r * 0.6} y2={Math.sin(a) * r * 0.6}
-                      style={{ stroke: "var(--foreground)", strokeWidth: 0.05 }} />
-                <circle cx={Math.cos(a) * r * 0.6} cy={Math.sin(a) * r * 0.6} r={0.13}
-                        style={{ fill: "none", stroke: "var(--status-good)", strokeWidth: 0.04 }} />
-              </g>
-            );
-          })}
-          <line x1={0} y1={0} x2={0} y2={-r * 0.85} style={{ stroke: "var(--status-critical)", strokeWidth: 0.08, strokeLinecap: "round" }} />
-        </g>
+    <div className="flex items-center gap-2 border border-[var(--border)] bg-[var(--surface-2)] px-2 py-1 text-xs">
+      <svg viewBox="-1 -1 2 2" className="h-10 w-10 shrink-0" role="img"
+           aria-label={`↑ is at the top; the nose is ${Math.round(((nose % 360) + 540) % 360 - 180)}° from it`}>
+        <circle cx={0} cy={0} r={0.9} style={{ fill: "var(--surface)", stroke: "var(--border)", strokeWidth: 0.08 }} />
+        <text x={0} y={-0.45} textAnchor="middle" style={{ fill: "var(--primary)", fontSize: 0.6, fontWeight: 800 }}>↑</text>
+        <line x1={0} y1={0} x2={0} y2={-0.75} transform={`rotate(${-nose})`}
+              style={{ stroke: "var(--status-critical)", strokeWidth: 0.16, strokeLinecap: "round" }} />
       </svg>
-      <figcaption className="text-center text-xs">
-        No position — ↑ (F) is the way the nose points at takeoff, and it stays there when A or D turn the
-        drone. The red line is the nose now.
-      </figcaption>
-    </figure>
+      <span>↑ moves it the way the top of the dial points; the red hand is the nose.</span>
+    </div>
   );
 }

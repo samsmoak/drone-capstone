@@ -53,6 +53,7 @@ from cropwatcher.flight.geometry import SweepAngles, channel_name, estimate_quic
 from cropwatcher.flight.keyframe import FrameStatus, KeyFrame
 from cropwatcher.flight.link import DEFAULT_FENCE_M, DEFAULT_MAX_HEIGHT_M, DroneLink, LinkError
 from cropwatcher.flight.manual import CLIMB_RATE_M_S, MOVE_SPEED_M_S
+from cropwatcher.flight.position_stages import first_blocker
 from cropwatcher.flight.preflight import reset_estimator
 from cropwatcher.flight.programs import HoverTest, Outcome, run_hover_test
 from cropwatcher.history import (
@@ -406,6 +407,9 @@ class Session:
         #: Drones (hardware ids) that reported an AI deck since the agent
         #: started — what makes a later "no deck" a LOST one (decks_lost).
         self._decks_seen: set[str] = set()
+        #: Whether the positioning deck needs its firmware, per link (it can
+        #: only change at power-on, which is a new link).
+        self._deck_fw_cache: tuple[Any, bool] | None = None
         #: Manual's space, kept with the poses it was computed from (by
         #: identity: _station_poses hands back the same list until they change).
         self._space_cache: tuple[list[Any], Prediction] | None = None
@@ -1456,6 +1460,35 @@ class Session:
     # which settles IPPE's mirror by the station standing upright. That spot
     # becomes (0, 0, 0). Motors off, over whichever link is open.
 
+    def _lighthouse_deck(self, link: Any) -> tuple[bool | None, bool | None]:
+        """Is the positioning deck detected, and does its firmware need writing?
+
+        Detected is the drone's own param (local, free). The firmware question
+        reads the deck memory over the radio, so it is asked ONCE per link —
+        decks only change at power-on, which is a new link — and never while
+        a flight is on. None means not known."""
+        cf = getattr(getattr(link, "scf", None), "cf", None)
+        if cf is None:
+            return None, None
+        try:
+            detected: bool | None = str(cf.param.get_value("deck.bcLighthouse4")) == "1"
+        except Exception:                                        # noqa: BLE001
+            detected = None
+        cached = self._deck_fw_cache
+        if cached is not None and cached[0] is link:
+            return detected, cached[1]
+        if not detected or self.snapshot().state is State.BUSY:
+            return detected, None
+        from cropwatcher.drone_setup import _deck_needs_fw
+        try:
+            needs: bool | None = _deck_needs_fw(cf, "bcLighthouse4")
+        except Exception:                                        # noqa: BLE001
+            log.debug("could not read the positioning deck's memory", exc_info=True)
+            needs = None
+        if needs is not None:
+            self._deck_fw_cache = (link, needs)
+        return detected, needs
+
     def station_status(self) -> dict[str, Any]:
         """What the drone receives and whether it can turn it into a position."""
         link = self.link
@@ -1464,9 +1497,18 @@ class Session:
         snap = link.snapshot()
         status = assess_positioning(snap)
         variances = [v for v in status.variance_m2 if v is not None]
+        detected, needs_fw = self._lighthouse_deck(link)
+        blocker = first_blocker(status, deck_detected=detected, deck_needs_fw=needs_fw)
         return {
             "connected": True,
             "measuring": self._measuring,
+            # The positioning deck itself, before any light (2026-10-24): a
+            # deck not detected, or whose firmware is not running, reads exactly
+            # like stations that are off — 0 of 4 sensors.
+            "deck": {"detected": detected, "needs_fw": needs_fw},
+            # The first stage that is not done, with its fix — the one rule the
+            # map, the stage list and ② Position all say (position_stages.py).
+            "blocker": blocker.to_dict() if blocker is not None else None,
             # The chain from light to position, stage by stage (stream.py):
             # light on the sensors → the station's data read (calibrated) →
             # sweeps decoded (received) → its place stored (measured) → in use

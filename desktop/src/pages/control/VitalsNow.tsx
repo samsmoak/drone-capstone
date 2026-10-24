@@ -78,7 +78,11 @@ export function stationsWords(s: StationsHeard): { tone: Tone; text: string } {
       : { tone: "critical", text: "None — no light on the deck" };
   }
   const count = `${s.heard.length} of ${s.known.length}`;
-  if (s.heard.length === 0) return { tone: "critical", text: `${count} heard` };
+  // "0 of 2 heard" alone did not say which of two very different faults it
+  // is (2026-10-24): no light at all, or light the drone cannot decode.
+  if (s.heard.length === 0) {
+    return { tone: "critical", text: s.light ? `${count} — light, not decoded` : `${count} — no light on the deck` };
+  }
   return { tone: s.heard.length < s.known.length ? "warning" : "good", text: `${count} · ${named}` };
 }
 

@@ -205,6 +205,11 @@ class PositioningStatus:
     with_geometry: tuple[int, ...]
     stored: tuple[int, ...]
     variance_m2: tuple[float | None, float | None, float | None]
+    #: How many of the deck's four light sensors see light (lighthouse.width0-3);
+    #: None when the stream does not carry them. 0 is not "no station decoded":
+    #: no light reaches the deck at all — stations off, asleep, out of view,
+    #: or a deck that is not receiving (2026-10-24: a whole session read 0).
+    light_sensors: int | None = None
 
     @property
     def usable(self) -> tuple[int, ...]:
@@ -224,7 +229,22 @@ class PositioningStatus:
     def problems(self) -> list[str]:
         """Why positioning is not ready, in words an operator can act on."""
         out: list[str] = []
-        if not self.received:
+        if not self.received and self.light_sensors == 0:
+            out.append(
+                "No light reaches the positioning deck — all 4 of its sensors read 0. "
+                "Check both base stations' front LEDs are solid green and can see the "
+                "top of the drone, with nothing in between. If they are and it still "
+                "reads 0 with the drone 1 m in front of a station, switch the drone "
+                "off and on; if that does not help, reseat the positioning deck."
+            )
+        elif not self.received and self.light_sensors:
+            out.append(
+                f"Light reaches the positioning deck ({self.light_sensors} of 4 sensors), "
+                "but no base station's sweep is decoded. Two stations on the same "
+                "channel blur into none: give each its own — Ch 1 and Ch 2 (Set up, "
+                "step 3)."
+            )
+        elif not self.received:
             out.append(
                 "No base station signal is reaching the drone where it is now. "
                 "Check the station is on (front LED solid green) and can see the "
@@ -305,7 +325,15 @@ def assess_positioning(snap: Snapshot) -> PositioningStatus:
             snap.get("kalman.varPY"),
             snap.get("kalman.varPZ"),
         ),
+        light_sensors=_light_sensors(snap),
     )
+
+
+def _light_sensors(snap: Snapshot) -> int | None:
+    widths = [snap.get(f"lighthouse.width{i}") for i in range(4)]
+    if all(w is None for w in widths):
+        return None
+    return sum(1 for w in widths if w)
 
 
 def position_trusted(snap: Snapshot) -> bool:
