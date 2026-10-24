@@ -24,8 +24,6 @@ export const NAV_GROUPS: NavGroup[] = [
       // The gamepad, taken verbatim from the web sidebar's "Manual" item: the
       // Control page IS the gamepad page, so the shared icon is the right one.
       { key: "control", label: "Control", icon: "M7 9h10a4 4 0 014 4v2a4 4 0 01-4 4H7a4 4 0 01-4-4v-2a4 4 0 014-4zm1 3v2H6v1.5h2V17h1.5v-1.5h2V14h-2v-2H8zm8 1a1 1 0 100 2 1 1 0 000-2z" },
-      // A camera: take pictures by hand, in a session of its own (pages/capture/).
-      { key: "capture", label: "Capture", icon: "M9 4l-1.5 2H4a2 2 0 00-2 2v10a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-3.5L15 4H9zm3 4.5a4.5 4.5 0 110 9 4.5 4.5 0 010-9zm0 2a2.5 2.5 0 100 5 2.5 2.5 0 000-5z" },
       { key: "sessions", label: "Sessions", icon: "M4 5h16v2H4V5zm0 5h16v2H4v-2zm0 5h10v2H4v-2z" },
       // A play triangle: watch a recorded flight again (pages/playback/).
       { key: "playback", label: "Playback", icon: "M8 5v14l11-7L8 5z" },

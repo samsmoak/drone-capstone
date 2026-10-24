@@ -228,37 +228,6 @@ export function Button({
   );
 }
 
-/**
- * An on/off switch with its state in words beside it ("…: on"), so the state
- * never rests on the knob's colour alone. The DPP switch and the auto-capture
- * switch at the top of Control are both this.
- */
-export function Switch({ on, label, onClick, disabled, title }: {
-  on: boolean;
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-  title?: string;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      disabled={disabled}
-      title={title}
-      onClick={onClick}
-      className="inline-flex min-h-9 items-center gap-2 border border-[var(--border)] bg-[var(--surface)] px-2.5 text-xs font-semibold disabled:opacity-40"
-    >
-      <span aria-hidden="true"
-            className={`relative inline-block h-4 w-7 rounded-full border ${on ? "border-[var(--primary)] bg-[var(--primary)]" : "border-[var(--muted)] bg-[var(--surface-2)]"}`}>
-        <span className={`absolute top-0.5 h-2.5 w-2.5 rounded-full ${on ? "left-3.5 bg-[var(--on-primary)]" : "left-0.5 bg-[var(--muted)]"}`} />
-      </span>
-      {label}: {on ? "on" : "off"}
-    </button>
-  );
-}
-
 /** An error the operator can act on. Never "something went wrong" alone. */
 export function Message({ text, tone }: { text: string; tone: Tone }) {
   return (

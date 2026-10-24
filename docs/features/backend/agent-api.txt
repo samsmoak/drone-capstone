@@ -54,13 +54,7 @@ ENDPOINTS
     POST /drone/connect             hold the drone on standby now — never arms
     POST /drone/disconnect          free the radio until Connect (409 mid-session)
     GET  /camera/recording          the session's recording: count, latest frame
-    GET  /camera/recording/frames   ?after=&limit=&source=auto|manual — frame
-                                    list for the backlog, or the manual captures
-    POST /camera/capture            save the newest frame into the session, by
-                                    hand (409: no session, or no fresh frame)
-    POST /session/capture           the auto-capture switch {auto}
-    GET  /history/sessions/{id}/frames      an ended session's frames ?source=
-    GET  /history/sessions/{id}/frames/{n}  one of them, from disk
+    GET  /camera/recording/frames   ?after=&limit= — frame list for the backlog
     GET  /camera/recording/frame/N  one recorded frame, or "latest", FROM DISK;
                                     204 when none. Token required: session data
     POST /camera/wifi/rejoin        restart the drone over the radio so the camera

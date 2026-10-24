@@ -27,7 +27,7 @@ import { announceFindings } from "@/lib/os-notify";
 import type { Run } from "@/App";
 import { api, AgentError, type FlightResult, type PipelineFinding, type ProcessingJob, type Session } from "@/lib/agent";
 import { formatTime } from "@/lib/format";
-import { Button, Message, Panel, Spinner, StatusDot, Switch, type Tone } from "@/components/ui";
+import { Button, Message, Panel, Spinner, StatusDot, type Tone } from "@/components/ui";
 
 export function ProcessingSwitch({ session, run }: { session: Session; run: Run }) {
   const on = session.processing?.on ?? true;
@@ -44,45 +44,21 @@ export function ProcessingSwitch({ session, run }: { session: Session; run: Run 
         : "On by default.";
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-      <Switch
-        on={on}
-        label="Process flights (DPP)"
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
         disabled={signedOut}
         title={signedOut ? "Sign in first." : undefined}
         onClick={() => void run(() => api.setProcessing(!on), on ? "Turn data processing off" : "Turn data processing on")}
-      />
-      <span className="text-xs text-[var(--muted)]">{note}</span>
-    </div>
-  );
-}
-
-/**
- * The auto-capture switch, beside the DPP's, in both modes (2026-10-24). On
- * by default; off keeps the camera live and saves only what is captured by
- * hand (agent camera/recording.py). Unlike the DPP it applies at once — the
- * recording reads it on every frame.
- */
-export function CaptureSwitch({ session, run }: { session: Session; run: Run }) {
-  const auto = session.capture?.auto ?? true;
-  const chosen = session.capture?.chosen ?? false;
-  const signedOut = session.state === "signed_out";
-  const inSession = session.session_id !== null;
-  const note = signedOut
-    ? "Sign in to change it."
-    : !auto
-      ? "The camera stays on; only frames you capture by hand are saved."
-      : chosen
-        ? inSession ? "Your choice until this session ends." : "Your choice for the session you start next."
-        : "On by default.";
-  return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-      <Switch
-        on={auto}
-        label="Auto-capture"
-        disabled={signedOut}
-        title={signedOut ? "Sign in first." : undefined}
-        onClick={() => void run(() => api.setCaptureAuto(!auto), auto ? "Turn auto-capture off" : "Turn auto-capture on")}
-      />
+        className="inline-flex min-h-9 items-center gap-2 border border-[var(--border)] bg-[var(--surface)] px-2.5 text-xs font-semibold disabled:opacity-40"
+      >
+        <span aria-hidden="true"
+              className={`relative inline-block h-4 w-7 rounded-full border ${on ? "border-[var(--primary)] bg-[var(--primary)]" : "border-[var(--muted)] bg-[var(--surface-2)]"}`}>
+          <span className={`absolute top-0.5 h-2.5 w-2.5 rounded-full ${on ? "left-3.5 bg-[var(--on-primary)]" : "left-0.5 bg-[var(--muted)]"}`} />
+        </span>
+        Process flights (DPP): {on ? "on" : "off"}
+      </button>
       <span className="text-xs text-[var(--muted)]">{note}</span>
     </div>
   );
