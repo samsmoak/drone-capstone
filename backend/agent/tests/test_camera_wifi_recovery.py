@@ -207,49 +207,44 @@ class TestReasons:
 
 
 class TestTheLadder:
-    """Agent.recover_camera: ask and rejoin first; restart the drone only when
-    the deck cannot, never more than once a minute, and never in a session."""
+    """Agent.recover_camera: ask, then rejoin — and NEVER restart the drone.
+    A restart over the radio (stm_power_cycle) unpowered the decks and they
+    did not come back until a real power-off (2026-10-24)."""
 
-    def agent(self, outcome: str, restarts_ok: bool = True):
-        import time as _time
+    def agent(self, outcome: str):
         from types import SimpleNamespace
 
         from cropwatcher.api import rest
 
         restarts: list[str] = []
         fake = SimpleNamespace(
-            _cf=object(), _last_recover=0.0, _last_rejoin=0.0,
+            _cf=object(), _last_recover=0.0,
             deck_wifi=SimpleNamespace(recover=lambda cf, why: outcome),
-            rejoin=lambda *, reason: restarts.append(reason) or restarts_ok)
+            session=SimpleNamespace(restart_drone=lambda *, reason: restarts.append(reason)))
         fake.recover_camera = lambda why: rest.Agent.recover_camera(fake, why)
-        return fake, restarts, _time
+        return fake, restarts
 
     def test_a_deck_that_answers_is_never_restarted(self):
-        fake, restarts, _ = self.agent("answered")
+        fake, restarts = self.agent("answered")
         assert fake.recover_camera("No answer.") == "answered"
         assert restarts == []
 
     def test_a_rejoin_is_enough(self):
-        fake, restarts, _ = self.agent("rejoined")
+        fake, restarts = self.agent("rejoined")
         assert fake.recover_camera("No answer.") == "rejoined" and restarts == []
 
-    def test_old_camera_software_falls_back_to_a_restart(self):
-        fake, restarts, _ = self.agent("unsupported")
-        assert fake.recover_camera("No answer.") == "restarted"
-        assert restarts == ["No answer."]
-
-    def test_a_restart_refused_in_a_session_is_reported_as_it_was(self):
-        fake, restarts, _ = self.agent("unsupported", restarts_ok=False)
-        assert fake.recover_camera("No answer.") == "unsupported"
-
-    def test_never_more_than_one_restart_a_minute(self):
-        fake, restarts, time_ = self.agent("needs_restart")
-        fake._last_rejoin = time_.monotonic()          # restarted a moment ago
-        assert fake.recover_camera("No answer.") == "needs_restart"
+    @pytest.mark.parametrize("outcome", ["unsupported", "needs_restart"])
+    def test_old_camera_software_is_told_about_not_restarted(self, outcome):
+        fake, restarts = self.agent(outcome)
+        assert fake.recover_camera("No answer.") == outcome
         assert restarts == []
 
+    def test_the_agent_has_no_restart_path_for_the_camera(self):
+        from cropwatcher.api import rest
+        assert not hasattr(rest.Agent, "rejoin")
+
     def test_no_drone_no_recovery(self):
-        fake, _, _ = self.agent("answered")
+        fake, _ = self.agent("answered")
         fake._cf = None
         assert fake.recover_camera("No answer.") == "no-drone"
 
@@ -282,3 +277,21 @@ class TestTheRoute:
                                              headers={HEADER: rest.agent.token})
         assert response.status_code == 200
         assert asked.wait(2)
+
+    def test_with_no_ai_deck_detected_it_says_to_power_cycle(self, monkeypatch, tmp_path):
+        """Pressing Reconnect with no deck detected used to end in a restart over
+        the radio, which is what had unpowered the decks. Now it says the fix."""
+        from fastapi.testclient import TestClient
+
+        from cropwatcher.api import rest
+        from cropwatcher.api.tokens import HEADER
+
+        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+        monkeypatch.setattr(rest.agent, "_cf", object())
+        monkeypatch.setattr(rest.agent.session._snapshot, "ai_deck", False)
+        monkeypatch.setattr(rest.agent, "recover_camera",
+                            lambda why: pytest.fail("must not try to recover"))
+        response = TestClient(rest.app).post("/camera/wifi/rejoin",
+                                             headers={HEADER: rest.agent.token})
+        assert response.status_code == 409
+        assert "off and on" in response.json()["detail"]

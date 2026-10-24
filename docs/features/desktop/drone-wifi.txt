@@ -183,6 +183,16 @@ INVARIANTS
   when the drone's cwsetup.deck says the deck carries bundle 2 — the drone
   checks, not the ground, so a ground that guesses wrong cannot crash an old
   deck. On an old deck: ALREADY_APPLIED, and changing network means a restart.
+- THE AGENT NEVER RESTARTS THE DRONE FOR THE CAMERA (2026-10-24). The
+  recovery asks, then rejoins; a deck too old to do either (no bundle 2) is
+  TOLD ABOUT — "switch the drone off and on with its button" — never restarted
+  over the radio. That restart (cflib stm_power_cycle) cut the decks' power
+  and they did not come back: 06:39 that day, 8 deck memories before it, 0
+  after, "AI deck: not fitted" and no base stations until a hand power-off.
+  The watchdog's "answers but sends nothing" case says the same, and stops
+  trying while no AI deck is detected. Reconnect camera is refused with the
+  fix when no AI deck is detected (409), and says so when it starts — a press
+  with no answer read as "nothing happens".
 - ASK BEFORE REJOINING. When a link opens on a drone that already applied
   THIS network, the deck is asked first and only rejoined if it does not
   answer: a rejoin costs the camera seconds of picture. A DIFFERENT network is

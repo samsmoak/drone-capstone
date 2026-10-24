@@ -110,7 +110,14 @@ Auto program's worker wind down, close the flight, restart the drone over the
 radio, reconnect as soon as it answers, run every check — and stand in
 awaiting_confirmation in the SAME session, retry_required cleared. A restart is
 the one thing that clears what a crash can leave inside the drone: a latched
-motor lock, and decks, which are only detected at power-on. Measured on the lab
+motor lock. NOT THE DECKS — this said "and decks" until 2026-10-24, and it was
+wrong: cflib's stm_power_cycle cuts the decks' power and they do not come
+back. Every restart over the radio that day was followed by fewer deck
+memories (8 → 5 → 0), "AI deck: not fitted" and no base stations, until the
+drone was switched off and on by hand. The session's `decks_lost` (the AI deck
+seen on this drone, then not) makes the app say "switch the drone off and on"
+instead of "not fitted"; nothing else restarts the drone any more — the camera
+recovery does not (drone-wifi.txt). Measured on the lab
 drone: 9.4 s from press to checked. No session open, it is restart_drone.
 Refused while checks run or the session ends. A restart the radio cannot do,
 or a drone that does not answer within RESET_RECONNECT_S (12 s) after the

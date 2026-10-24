@@ -160,6 +160,8 @@ class DroneLink:
         self._configure = configure
         self._cut_motors = cut_motors
         self.scf: Any = None
+        #: The missing-Lighthouse-memory warning, said once per link.
+        self._said_no_lighthouse_memory = False
         self.stream: TelemetryStream | None = None
         self._tuning: FlightTuning | None = None
         #: What the last manual flight changed, for the audit trail and history.
@@ -315,8 +317,18 @@ class DroneLink:
 
         try:
             LighthouseMemHelper(self.scf.cf).read_all_geos(read)
-        except Exception:                                        # noqa: BLE001
-            log.exception("could not read the base station geometry")
+        except Exception as e:                                   # noqa: BLE001
+            # cflib raises "Unexpected nr of memories found: 0" when the drone
+            # detected no Lighthouse deck at boot — decks unpowered or loose,
+            # not a fault here. Said once per link, not with a traceback every
+            # few seconds (2026-10-24: it filled the log).
+            if "nr of memories" in str(e):
+                if not self._said_no_lighthouse_memory:
+                    log.warning("no Lighthouse deck memory on this drone (%s) — the "
+                                "decks were not detected at power-on", e)
+                    self._said_no_lighthouse_memory = True
+            else:
+                log.exception("could not read the base station geometry")
             return []
         if not done.wait(timeout_s):
             return []

@@ -279,22 +279,6 @@ class TestAPositionIsOnlyAPlaceWhenTheDroneStandsBehindIt:
         assert flags == [False, True]
 
 
-class TestNothingRestartsTheDroneMidMeasurement:
-    def test_the_camera_watchdog_waits(self, rig):
-        from cropwatcher.api import rest
-
-        restarts = []
-        rig.session.restart_drone = lambda *, reason: restarts.append(reason)
-        agent = SimpleNamespace(session=rig.session, _last_rejoin=0.0)
-        rig.session._measuring = True                   # mid-measurement
-        assert rest.Agent.rejoin(agent, reason="no frames") is False
-        assert restarts == []
-
-        rig.session._measuring = False
-        assert rest.Agent.rejoin(agent, reason="no frames") is True
-        assert restarts == ["no frames"]
-
-
 class TestTwoStations:
     """2026-10-24, the second station in the lab: measuring kept only the
     first, and storing erased the other (cflib invalidates every station it is

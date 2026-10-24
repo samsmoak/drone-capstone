@@ -88,8 +88,11 @@ export type Editing = {
 export function PlanCanvas({
   outer, fence, obstacles, path, takeoffHeight = 0.4, problems = [], drone = null,
   editing, label, progress, selected: shownSelected = null, className, space = null, sliceZ = null,
-  trail = null, stations = [], droneYaw = null, keyArrows = null, droneScale = 1,
+  trail = null, stations = [], droneYaw = null, keyArrows = null, droneScale = 1, droneLost = false,
 }: {
+  /** The position is lost: the drone is drawn where it was LAST placed,
+   *  dashed in the warning colour, not dropped off the map. */
+  droneLost?: boolean;
   /** The nose's heading, degrees from +x — drawn as a tick when given. */
   droneYaw?: number | null;
   /** Manual: where each arrow key moves the drone now (keyArrows.ts). */
@@ -427,7 +430,8 @@ export function PlanCanvas({
           {/* The ring carries the colour; the letter sits on --surface in
               --foreground, whose contrast holds in both themes. */}
           <circle cx={drone[0]} cy={-drone[1]} r={0.1 * droneScale} {...thin}
-                  style={{ fill: "var(--surface)", stroke: "var(--status-good)", strokeWidth: 3 }} />
+                  style={{ fill: "var(--surface)", stroke: droneLost ? "var(--status-warning)" : "var(--status-good)",
+                           strokeWidth: 3, strokeDasharray: droneLost ? "6 4" : undefined }} />
           {droneYaw !== null && (
             // The nose: a tick out of the ring, apart from the key arrows.
             <line x1={drone[0] + unit(droneYaw)[0] * 0.1 * droneScale} y1={-(drone[1] + unit(droneYaw)[1] * 0.1 * droneScale)}

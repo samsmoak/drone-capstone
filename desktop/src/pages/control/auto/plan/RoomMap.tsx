@@ -44,7 +44,10 @@ export function RoomMap({
   outer, fence, obstacles, path, takeoffHeight = 0.4, problems = [], drone = null, droneHeight, droneYaw,
   progress, editing, label, below, heightClass = "h-[clamp(18rem,52vh,34rem)]", space = null,
   trail = null, liveStations = true, keyArrows = null, droneScale = 1, toolbar, fill = false,
+  droneLost = false,
 }: {
+  /** The position is lost: the drone stays at its last place, in the warning colour. */
+  droneLost?: boolean;
   /** Take the height the parent gives it (a flex column), instead of
    *  `heightClass`: Manual's map grows and shrinks with the console's
    *  dividers — up/down between the panes, sideways between the columns. */
@@ -143,6 +146,7 @@ export function RoomMap({
             editing={editing} selected={editing ? undefined : looking} space={space} sliceZ={shownZ}
             trail={trail} stations={stations}
             droneYaw={keyArrows ? droneYaw ?? null : null} keyArrows={keyArrows} droneScale={droneScale}
+            droneLost={droneLost}
             className="block h-full w-full touch-none select-none bg-[var(--surface-2)]"
           />
         ) : (
@@ -151,7 +155,7 @@ export function RoomMap({
               outer={outer} fence={fence} obstacles={obstacles} path={path} takeoffHeight={takeoffHeight}
               problems={problems} drone={drone} droneHeight={droneHeight} droneYaw={droneYaw}
               progress={progress} camera={camera} label={label} space={space} trail={trail} stations={stations}
-              keyArrows={keyArrows} droneScale={droneScale}
+              keyArrows={keyArrows} droneScale={droneScale} droneLost={droneLost}
               editing={editing ? {
                 selected: editing.selected, onSelect: editing.onSelect, onFence: editing.onFence,
                 onObstacle: editing.onObstacle, onPoint: editing.onPoint, onHome: editing.onHome,

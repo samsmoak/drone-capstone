@@ -48,6 +48,9 @@ export type Session = {
    *  programs, and the position guards cannot run. */
   assisted: boolean;
   unassisted_reason: string | null;
+  /** The drone reported its AI deck earlier and now does not: the decks lost
+   *  power or contact. Only switching it off and on brings them back. */
+  decks_lost?: boolean;
   /** The last flight ended abnormally. Nothing flies until Retry has run every
    *  check again in this session — after a tumble the drone holds its motors. */
   retry_required: boolean;
@@ -435,6 +438,8 @@ export type CameraStatus = {
   /** The DRONE's own answer (deck.bcAI). null until a drone has been asked,
    *  which is not the same as "not fitted". */
   deck_fitted: boolean | null;
+  /** The deck was detected earlier and is not now — power-cycle, not "not fitted". */
+  decks_lost?: boolean;
   /** The agent is actively working towards a picture (the drone is joining or
    *  rejoining Wi-Fi, or the camera is reconnecting): show progress, not "no
    *  signal". */

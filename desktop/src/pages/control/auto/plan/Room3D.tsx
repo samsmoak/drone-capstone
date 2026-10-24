@@ -97,6 +97,9 @@ export type Room3DProps = {
   keyArrows?: KeyArrows | null;
   /** Manual draws the drone larger, to be read while flying. */
   droneScale?: number;
+  /** The position is lost: the drone stays where it was last placed, ringed
+   *  in the warning colour. */
+  droneLost?: boolean;
   label: string;
 };
 
@@ -180,7 +183,7 @@ export default function Room3D(props: Room3DProps) {
 function Scene({
   outer, fence, obstacles, path, takeoffHeight, problems, drone, droneHeight, droneYaw,
   progress, editing, selected: shownSelected, onSelect, camera, palette, box, moved, space = null,
-  trail = null, stations = [], keyArrows = null, droneScale = 1,
+  trail = null, stations = [], keyArrows = null, droneScale = 1, droneLost = false,
 }: Room3DProps & { palette: Palette; box: Box; moved: (e: { clientX: number; clientY: number }) => boolean }) {
   const current = editing?.selected ?? shownSelected ?? null;
   const select = editing?.onSelect ?? onSelect;
@@ -281,7 +284,7 @@ function Scene({
       ))}
 
       {drone && <Drone at={drone} height={droneHeight ?? 0} yaw={droneYaw ?? 0} palette={palette} box={box}
-                       scale={droneScale} keyArrows={keyArrows} />}
+                       scale={droneScale} keyArrows={keyArrows} lost={droneLost} />}
 
       <RoomOrigin palette={palette} />
       {stations.map((st) => <BaseStation key={st.id ?? stationLabel(st)} station={st} palette={palette} />)}
@@ -915,10 +918,11 @@ function StartPad({ at, palette, opacity, bad, selected, editing, box, select, m
 
 /** The Crazyflie, roughly to scale (1.5×): a body, four arms, four rotors, a
  *  green ring on the floor under it, and a "D" that always faces the camera. */
-function Drone({ at, height, yaw, palette, scale: bigger = 1, keyArrows = null }: {
+function Drone({ at, height, yaw, palette, scale: bigger = 1, keyArrows = null, lost = false }: {
   at: XY; height: number; yaw: number; palette: Palette; box: Box;
-  scale?: number; keyArrows?: KeyArrows | null;
+  scale?: number; keyArrows?: KeyArrows | null; lost?: boolean;
 }) {
+  const ring = lost ? palette.warning : palette.good;
   const DRONE_SCALE = BASE_DRONE_SCALE * bigger;
   const arm = 0.046 * DRONE_SCALE;
   const z = Math.max(0.02, height);
@@ -926,7 +930,7 @@ function Drone({ at, height, yaw, palette, scale: bigger = 1, keyArrows = null }
     <group>
       <mesh position={[at[0], at[1], 0.005]}>
         <ringGeometry args={[0.09, 0.12, 32]} />
-        <meshBasicMaterial color={palette.good} />
+        <meshBasicMaterial color={ring} />
       </mesh>
       {height > 0.03 && (
         <Line points={[[at[0], at[1], 0], [at[0], at[1], z]]} color={palette.good} lineWidth={1} dashed dashSize={0.03} gapSize={0.03} />
@@ -957,7 +961,7 @@ function Drone({ at, height, yaw, palette, scale: bigger = 1, keyArrows = null }
           <meshBasicMaterial color={palette.critical} />
         </mesh>
       </group>
-      <TextLabel text="D" position={[at[0], at[1], z + 0.12 * bigger]} palette={palette} ring={palette.good} />
+      <TextLabel text="D" position={[at[0], at[1], z + 0.12 * bigger]} palette={palette} ring={ring} />
       {keyArrows && <KeyArrows3D at={at} z={z} arrows={keyArrows} scale={bigger} palette={palette} />}
     </group>
   );

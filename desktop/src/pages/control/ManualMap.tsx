@@ -142,7 +142,18 @@ function ManualMapBody({ session, telemetry, history, run, fill = false, toolbar
   const connected = session.radio?.state === "connected";
   const [loaded, retry] = useStationSpace(connected);
   const heard = useStationsHeard(telemetry);
-  const drone = dronePosition(telemetry);
+  const live = dronePosition(telemetry);
+  // NEVER DROP THE DRONE (2026-10-24, Samuel: "once the drone begins to fly it
+  // goes out of the editor"). Losing the stations in the air took it off the
+  // map. Now it stays where it was last placed, in the warning colour, and
+  // the page says the position is lost. Forgotten when the radio drops.
+  const last = useRef<XY | null>(null);
+  useEffect(() => {
+    if (live) last.current = live;
+    else if (!connected) last.current = null;
+  });
+  const drone = live ?? last.current;
+  const lost = live === null && drone !== null;
   const yaw = telemetry?.values["stabilizer.yaw"] ?? null;
 
   // keyframe.py's hysteresis, remembered between frames.
@@ -166,16 +177,16 @@ function ManualMapBody({ session, telemetry, history, run, fill = false, toolbar
   }
   const space = loaded.space;
   if (space.predicted === null) {
-    return <NotMeasured session={session} run={run} drone={drone} yaw={yaw} forward={forward} />;
+    return <NotMeasured session={session} run={run} drone={live} yaw={yaw} forward={forward} />;
   }
 
   const layer = layerOf(space);
-  const placed = drone !== null;
+  const placed = live !== null;
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
       <RoomMap
         outer={squareOf(space.fence_half_extent_m)} fence={null} obstacles={[]} path={null}
-        drone={drone} droneHeight={telemetry?.height_m ?? null} droneYaw={yaw}
+        drone={drone} droneHeight={telemetry?.height_m ?? null} droneYaw={yaw} droneLost={lost}
         space={layer} trail={trail}
         keyArrows={placed && forward.deg !== null ? { forwardDeg: forward.deg } : null}
         droneScale={MANUAL_DRONE_SCALE} fill={fill} toolbar={toolbar}
@@ -185,13 +196,16 @@ function ManualMapBody({ session, telemetry, history, run, fill = false, toolbar
         <Message tone="warning" text="The base stations are measured, but their light does not overlap anywhere in the flying area — no green to draw." />
       )}
       <KeysLegend forward={forward} placed={placed} />
+      {lost && (
+        <Message tone="warning" text={`Position lost — ${heard && heard.heard.length ? `only ${heard.heard.map(channelOf).join(" and ")} heard, not enough to place it` : "no base station is heard"}. The drone is drawn where it was last placed (dashed). Until the stations are heard again, ↑ is the way the nose pointed at takeoff — see the compass.`} />
+      )}
       {!placed && (
         <div className="grid gap-2">
-          <Message tone="warning" text={
+          {!lost && <Message tone="warning" text={
             heard && heard.known.length
               ? `The drone is not placed in the room: it hears ${heard.heard.length ? heard.heard.map(channelOf).join(" and ") : "no base station"} — ${heard.heard.length ? "its position is not settled yet" : "check the stations are on and can see the top of the drone"}. Without a position Manual flies on the barometer.`
               : "The drone is not placed in the room: no base station is heard. Without a position Manual flies on the barometer."
-          } />
+          } />}
           {yaw !== null && forward.deg !== null && <Compass yaw={yaw} forwardDeg={forward.deg} />}
         </div>
       )}
@@ -234,7 +248,13 @@ function NotMeasured({ session, run, drone, yaw, forward }: {
   };
   return (
     <div className="grid gap-3 p-3">
-      <Message tone="warning" text="The base stations are not measured from this drone yet, so the room cannot be drawn. Put the drone flat on the floor in view of both stations and press Measure — that spot becomes 0, 0." />
+      {session.decks_lost ? (
+        // Not "not measured": the drone had its decks a moment ago (2026-10-24
+        // — a restart over the radio unpowered them). Measuring cannot help.
+        <Message tone="warning" text="The drone does not detect its decks now — the positioning deck and the camera. Switch the drone off and on with its button (or unplug the battery for 10 seconds): decks are only detected at power-on." />
+      ) : (
+        <Message tone="warning" text="The base stations are not measured from this drone yet, so the room cannot be drawn. Put the drone flat on the floor in view of both stations and press Measure — that spot becomes 0, 0." />
+      )}
       {station?.connected && <StationStages station={station} />}
       {working && <Spinner label="Measuring — keep the drone still…" />}
       {outcome && !working && <Message tone={outcome.tone} text={outcome.text} />}

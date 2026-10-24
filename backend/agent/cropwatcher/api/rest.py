@@ -84,9 +84,11 @@ DEFAULT_HOST = "127.0.0.1"
 #: How long a REMEMBERED deck address may go unanswered before the window is
 #: told it is stale and the drone needs a restart (wifi.WifiState.remembered).
 STALE_ADDRESS_S = 15.0
-#: At most one automatic deck restart per this many seconds: a deck out of
-#: range will not come back by being restarted in a loop.
-REJOIN_EVERY_S = 60.0
+#: Said when the drone does not detect its AI deck. A restart over the radio
+#: cannot help — it is what unpowers the decks (Agent.recover_camera).
+NO_DECK_WORDS = ("The drone does not detect its AI deck right now, so there is no camera "
+                 "to reconnect. Switch the drone off and on with its button (or unplug "
+                 "the battery for 10 seconds) — the decks are only detected at power-on.")
 #: At most one recovery (ask, then rejoin — no restart) per this many seconds.
 RECOVER_EVERY_S = 30.0
 #: Joining or rejoining this long without an address: ask, and rejoin.
@@ -270,7 +272,6 @@ class Agent:
     _last_recover: float = 0.0
     #: The Crazyflie of the link that is up; None when down.
     _cf: Any = None
-    _last_rejoin: float = 0.0
 
     def _link_ready(self, cf: Any) -> None:
         """A link is up (standby's or a session's): follow the deck's Wi-Fi
@@ -289,41 +290,27 @@ class Agent:
         self._unwatch = unwatch
         self.deck_wifi.apply(cf)
 
-    def rejoin(self, *, reason: str) -> bool:
-        """Make the deck join afresh and ANNOUNCE ITS ADDRESS — by restarting
-        the drone over the radio (Session.restart_drone), between sessions only.
-
-        The deck's address is the network's to give, not ours to fix: on a
-        campus network it changed under us without the drone restarting
-        (2026-09-24), a static address is not ours to take there, and the deck
-        firmware has no name lookup (mDNS was never finished — Bitcraze). The
-        one reliable source is the drone saying it over the radio; this makes it
-        say it again. False when a session runs, or no one is signed in.
-        """
-        if self.session.measuring_station:
-            # A restart mid-measurement drops the link it is reading.
-            log.info("not restarting the drone (%s): the base station is being measured",
-                     reason)
-            return False
-        try:
-            self.session.restart_drone(reason=reason)
-        except SessionError as e:
-            log.info("not restarting the drone (%s): %s", reason, e)
-            return False
-        self._last_rejoin = time.monotonic()
-        return True
-
     def recover_camera(self, why: str) -> str:
-        """Get the camera back on the network, the least disruptive way first
-        (2026-10-24 — it used to restart the drone, and never in a session):
+        """Get the camera back on the network, the least disruptive way:
 
           1. ASK the deck where it is, and follow it there   (any time)
           2. REJOIN it to the network                        (any time)
-          3. RESTART the drone — only when the deck cannot do 1 and 2 (camera
-             software older than bundle 2), and never in a session
 
-        1 and 2 touch only the deck's Wi-Fi: not the radio link, not the flight.
-        Returns DeckWifi.recover's outcome, or "restarted".
+        Both touch only the deck's Wi-Fi: not the radio link, not the flight.
+        A deck that can do neither (camera software older than bundle 2) is
+        TOLD ABOUT, never restarted: the state says to switch the drone off and
+        on (DeckWifi.recover's "unsupported" / "needs_restart").
+
+        NO RESTART OVER THE RADIO (2026-10-24). It used to restart the drone
+        here (cflib stm_power_cycle), between sessions. That cuts the decks'
+        power and they do not come back until a real power-off: at 06:39 that
+        day the drone connected with 8 deck memories, the camera did not
+        answer, the agent restarted it — and every connection after read 0,
+        "AI deck: not fitted", no base stations. Every such restart that day
+        was followed by fewer deck memories (5, then 0); only switching the
+        drone off and on by hand brought them back.
+
+        Returns DeckWifi.recover's outcome.
         """
         cf = self._cf
         if cf is None:
@@ -331,10 +318,6 @@ class Agent:
         self._last_recover = time.monotonic()
         outcome = self.deck_wifi.recover(cf, why)
         log.info("camera recovery (%s): %s", why, outcome)
-        if (outcome in ("unsupported", "needs_restart")
-                and time.monotonic() - self._last_rejoin >= REJOIN_EVERY_S
-                and self.rejoin(reason=why)):
-            return "restarted"
         return outcome
 
     def watchdog(self) -> None:
@@ -347,6 +330,10 @@ class Agent:
                 camera = self.camera
                 if (self._cf is None or not isinstance(camera, DeckStream)
                         or time.monotonic() - self._last_recover < RECOVER_EVERY_S):
+                    continue
+                # No AI deck detected: nothing on the drone can answer, and
+                # asking every half minute only fills the radio and the log.
+                if self.session.snapshot().ai_deck is False:
                     continue
                 # A camera chip that is not running, or a camera that fails, is
                 # not a network problem: rejoining or restarting cannot help —
@@ -363,13 +350,14 @@ class Agent:
                         self.recover_camera(f"No answer from the camera at {wifi.ip}.")
                         continue
                     # It answers and sends nothing, and the drone has not said
-                    # why: asking settles nothing, so the old cure stands — a
-                    # restart clears the ESP32's stuck-client state (firmware/
-                    # aideck-esp), between sessions only.
-                    if time.monotonic() - self._last_rejoin >= REJOIN_EVERY_S:
-                        self._last_recover = time.monotonic()
-                        self.rejoin(reason=f"no frames at {wifi.ip} for "
-                                           f"{camera.no_frames_for():.0f} s")
+                    # why: asking settles nothing. A power-off clears the
+                    # ESP32's stuck-client state (firmware/aideck-esp); the
+                    # operator is told, the drone is not restarted (above).
+                    self._last_recover = time.monotonic()
+                    self.deck_wifi.needs_power_cycle(
+                        f"The camera at {wifi.ip} answers but has sent no picture for "
+                        f"{camera.no_frames_for():.0f} s. Switch the drone off and on "
+                        "with its button to restart the camera.")
                 elif (wifi.phase in (Phase.JOINING, Phase.RECONNECTING)
                       and self.deck_wifi.phase_age() > JOIN_STUCK_S):
                     self.recover_camera(f"Still not on {wifi.ssid} after "
@@ -626,7 +614,8 @@ def camera_status() -> dict:
     """
     status = agent.camera.status()
     snapshot = agent.session.snapshot()
-    payload = {**status.to_dict(), "deck_fitted": snapshot.ai_deck}
+    payload = {**status.to_dict(), "deck_fitted": snapshot.ai_deck,
+               "decks_lost": snapshot.decks_lost}
     # How fast it really is, from both ends (camera/rate.py): what arrives
     # here, and what the GAP8 says each frame cost it. None without a deck.
     payload["rate"] = agent.camera.rate.summary() if isinstance(agent.camera, DeckStream) else None
@@ -777,13 +766,19 @@ def set_camera_wifi(body: DeckWifiRequest) -> dict:
 
 @app.post("/camera/wifi/rejoin", dependencies=[Command])
 def rejoin_camera_wifi() -> dict:
-    """The operator's "Reconnect camera": ask the deck where it is, rejoin it,
-    and restart the drone only when its camera software cannot do either
-    (Agent.recover_camera). Works in a session. Runs in the background — it
-    can take half a minute — and the page follows the Wi-Fi state."""
+    """The operator's "Reconnect camera": ask the deck where it is, then rejoin
+    it (Agent.recover_camera) — never a restart. Works in a session. Runs in
+    the background — it can take half a minute — and the page follows the
+    Wi-Fi state.
+
+    Refused, with the fix, when the drone does not detect its AI deck: there
+    is nothing to ask, and before 2026-10-24 this press restarted the drone
+    over the radio, which is what had unpowered the decks in the first place."""
     if agent._cf is None:
         raise HTTPException(status_code=409, detail="Connect the drone first: the camera "
                                                     "is reached through it.")
+    if agent.session.snapshot().ai_deck is False:
+        raise HTTPException(status_code=409, detail=NO_DECK_WORDS)
     threading.Thread(target=agent.recover_camera, args=("You asked to reconnect.",),
                      daemon=True, name="camera-recover").start()
     return agent.deck_wifi.state().to_dict()

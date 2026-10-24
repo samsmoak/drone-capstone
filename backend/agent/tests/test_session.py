@@ -563,6 +563,30 @@ class TestEnd:
         assert "session_end" in actions and actions[-1] == "sign_out"
 
 
+class TestDecksLost:
+    """2026-10-24: a restart over the radio left the decks unpowered and the
+    page read "no camera on this drone". A deck seen and then gone is LOST."""
+
+    def report(self, rig, fitted):
+        rig.session._set(ai_deck=fitted, radio={"state": "connected", "hardware_id": "cf-lab",
+                                                "message": None})
+        return rig.session.snapshot()
+
+    def test_a_drone_never_seen_with_a_deck_is_not_lost(self, rig):
+        assert self.report(rig, False).decks_lost is False
+
+    def test_seen_then_gone_is_lost_and_back_clears_it(self, rig):
+        assert self.report(rig, True).decks_lost is False
+        assert self.report(rig, False).decks_lost is True
+        assert rig.session.snapshot().to_dict()["decks_lost"] is True
+        assert self.report(rig, True).decks_lost is False
+
+    def test_not_asked_yet_changes_nothing(self, rig):
+        self.report(rig, True)
+        self.report(rig, False)
+        assert self.report(rig, None).decks_lost is True
+
+
 class TestUnassisted:
     """Flying with no position estimate.
 
