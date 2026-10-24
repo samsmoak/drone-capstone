@@ -465,6 +465,9 @@ class DeckWifi:
         try:
             with self._talk(cf) as (exchange, watch):
                 if exchange(bytes([CMD_STATUS])) is None:
+                    self._set(Phase.FAILED, creds.ssid,
+                              message="The drone did not answer over the radio, so its camera "
+                                      "could not be asked where it is. Check the drone is on.")
                     return "unreachable"
                 with self._lock:
                     drops = self._state.drops
@@ -475,6 +478,14 @@ class DeckWifi:
                     log.info("deck recovery: it answered at %s", found.ip)
                     return "answered"
                 if not supported:
+                    # Never leave "Asking…" standing: say what this drone can do
+                    # and what fixes it for good (2026-10-24, it stayed on screen).
+                    self._set(Phase.FAILED, creds.ssid, drops=drops, needs_restart=True,
+                              message=f"{why} This drone's camera software cannot be asked "
+                                      "where it is, or rejoin by itself — install the update "
+                                      "in Set up (then it does both, even mid-session). Until "
+                                      "then only a restart reconnects it, and that waits for "
+                                      "the session to end.")
                     return "unsupported"
                 self._set(Phase.RECONNECTING, creds.ssid, drops=drops,
                           message=f"The camera is not on {creds.ssid}. Rejoining it — the "

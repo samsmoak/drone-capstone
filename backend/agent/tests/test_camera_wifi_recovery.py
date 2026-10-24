@@ -137,6 +137,10 @@ class TestRecover:
         drone = FakeV4(applied=True, version=3)
         assert deck.recover(drone, "No answer.") == "unsupported"
         assert network_packets(drone) == []          # an old deck is never re-applied
+        # Never left on "Asking…": what it can do, and the fix.
+        state = deck.state()
+        assert state.phase is Phase.FAILED and state.needs_restart
+        assert "Set up" in (state.message or "") and "Asking" not in (state.message or "")
 
     def test_an_old_deck_on_a_v4_drone_cannot_be_asked(self):
         deck, _, _ = configured()
@@ -147,6 +151,7 @@ class TestRecover:
     def test_no_answer_over_the_radio(self):
         deck, _, _ = configured()
         assert deck.recover(FakeV4(flashed=False), "No answer.") == "unreachable"
+        assert "did not answer over the radio" in (deck.state().message or "")
 
     def test_nothing_to_rejoin_without_a_network(self):
         deck, _, _ = make()
