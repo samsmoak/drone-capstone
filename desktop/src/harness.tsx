@@ -24,9 +24,11 @@ import { PlaybackPage } from "@/pages/playback/PlaybackPage";
 import { CapturePage } from "@/pages/capture/CapturePage";
 import { StartupPage } from "@/pages/startup/StartupPage";
 import { Install, SetupPage } from "@/pages/setup/SetupPage";
+import { WifiPage } from "@/pages/wifi/WifiPage";
 import {
   EMPTY_INTENT, connectToShell,
-  type FlightList, type FlightPlayback, type MissionView, type PlanLimits, type RoomView, type Session, type SetupState,
+  type CameraWifi, type FlightList, type FlightPlayback, type MissionView, type PlanLimits, type RoomView, type Session,
+  type SetupState,
   type Telemetry,
 } from "@/lib/agent";
 import type { LogLine } from "@/lib/commandLog";
@@ -488,6 +490,17 @@ const setupCommand = {
   command: "/Applications/DroneDeck.app/Contents/MacOS/cropwatcher-agent setup",
   check: "/Applications/DroneDeck.app/Contents/MacOS/cropwatcher-agent setup --check",
 };
+/** Drone Wi-Fi: a deck joined at the lab's weak signal, its radio held at
+ *  reduced power after a brownout (wifi-link.patch). */
+const wifiBrownout: CameraWifi = {
+  ssid: "VT Open WiFi", phase: "joined", ip: "100.96.55.59", rssi: -86, drops: 0,
+  message: "On VT Open WiFi at 100.96.55.59 · -86 dBm (weak). Its radio is on reduced power since a brownout — unplug the battery for 10 seconds to clear it.",
+  link: { bandwidth_mhz: 20, power_dbm: 20, beacon_timeout_s: 15, brownout: true },
+};
+const wifiFull: CameraWifi = {
+  ...wifiBrownout, message: "On VT Open WiFi at 100.96.55.59 · -86 dBm (weak).",
+  link: { bandwidth_mhz: 20, power_dbm: 20, beacon_timeout_s: 15, brownout: false },
+};
 const setupSession: Session = { ...session, session_id: null, radio: { state: "searching", message: "Looking for the drone…", hardware_id: null } };
 
 createRoot(document.getElementById("root")!).render(
@@ -498,6 +511,12 @@ createRoot(document.getElementById("root")!).render(
     </Shell>
     <Shell label="Set up · new AI deck">
       <SetupPage session={setupSession} setup={setupSwapped} wifi={null} run={runHere} onGo={() => {}} />
+    </Shell>
+    <Shell label="Drone Wi-Fi · deck radio after a brownout">
+      <WifiPage wifi={wifiBrownout} session={setupSession} onSaved={() => {}} />
+    </Shell>
+    <Shell label="Drone Wi-Fi · deck radio at full power">
+      <WifiPage wifi={wifiFull} session={setupSession} onSaved={() => {}} />
     </Shell>
     <Shell label="Set up · install by command">
       <Install setup={setupSwapped} run={runHere} busy={false} onClose={() => {}} command={setupCommand} />

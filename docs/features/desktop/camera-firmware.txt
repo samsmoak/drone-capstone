@@ -12,16 +12,17 @@ SOURCE: firmware/aideck-gap8/build.sh
 --------------------------------------------------------------------------------
 STATUS  (Last verified: 2026-10-24)
 --------------------------------------------------------------------------------
-  esp32      BUNDLE 2 (lab branch, 2026-10-24) — Bitcraze 2025.02 +
+  esp32      BUNDLE 3 (lab branch, 2026-10-24) — Bitcraze 2025.02 +
              close-client-once.patch + wifi-throughput.patch (no modem sleep,
-             TCP_NODELAY) + wifi-recovery.patch (rejoin, report, reasons —
-             drone-wifi.txt). NOT yet flashed on a drone.
-  gap8       UNCHANGED in bundle 2 — Bitcraze's own release, raw frames, so a
+             TCP_NODELAY) + wifi-recovery.patch (rejoin, report, reasons) +
+             wifi-link.patch (20 MHz, 20 dBm, 15 s beacon timeout, brownout
+             said — drone-wifi.txt). NOT yet flashed on a drone.
+  gap8       UNCHANGED in bundle 3 — Bitcraze's own release, raw frames, so a
              change in the feed is the Wi-Fi's and nothing else's. BUILT, NOT
              BUNDLED — the JPEG streamer (jpeg-streamer.patch), next.
-  main       BUNDLE 2 needs drone_wifi v4 (rejoin and report) on the STM32.
-  bundle     2, on the private lab branch only (experiment/samuel) — Set up
-             there offers the update to any drone on bundle 1. Not on public
+  main       BUNDLE 2 and 3 need drone_wifi v4 (rejoin and report) on the STM32.
+  bundle     3, on the private lab branch only (experiment/samuel) — Set up
+             there offers the update to any drone on bundle 1 or 2. Not on public
              main until it is proven on the drone.
   measure    BUILT — the window shows what arrives and what the GAP8 says each
              frame cost (camera.txt, "HOW FAST")
@@ -40,6 +41,8 @@ frames look on the wire, and why the feed is as slow as it is.
 firmware/aideck-esp/build.sh                    ESP-IDF 4.3.1, native, cached
 firmware/aideck-esp/close-client-once.patch     the stale-disconnect fix
 firmware/aideck-esp/wifi-throughput.patch       no modem sleep; TCP_NODELAY
+firmware/aideck-esp/wifi-recovery.patch         rejoin, report, reasons
+firmware/aideck-esp/wifi-link.patch             20 MHz, 20 dBm, 15 s; brownout
 firmware/aideck-gap8/build.sh                   Bitcraze's image, in Docker
 firmware/aideck-gap8/jpeg-streamer.patch        JPEG, a 30 KB buffer
 backend/agent/cropwatcher/firmware_bundle/manifest.json  what Set up installs
@@ -144,12 +147,13 @@ programmer — do not plan on it.
 7. IN THE LAB — to finish this
 --------------------------------------------------------------------------------
   1. Note the Camera tab's rate line on bundle 1, drone still, 2 minutes.
-  2. Set up › install: it flashes drone_wifi v4 and the bundle 2 ESP32, asks
+  2. Set up › install: it flashes drone_wifi v4 and the bundle 3 ESP32, asks
      for the battery out ~10 s. Same spot, same 2 minutes: fps, longest gap,
      "send" ms. Then the rejoin: turn the drone away until the deck drops, and
      watch the Drone Wi-Fi page ask and rejoin with no restart — in a session.
+     Read "Deck radio" there: 20 MHz · 20 dBm · holds 15 s, and no brownout.
   3. Then JPEG: flash firmware/aideck-gap8/build/aideck_gap8.bin (chip gap8),
-     compare again; bundle it as 3 if it helped.
+     compare again; bundle it as 4 if it helped.
   4. Record the numbers here and in ../../flight-log.txt.
 
 --------------------------------------------------------------------------------

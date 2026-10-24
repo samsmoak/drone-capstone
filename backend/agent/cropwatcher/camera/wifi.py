@@ -81,6 +81,10 @@ _IP = re.compile(r"WiFi connected to ip: (\d{1,3}(?:\.\d{1,3}){3})")
 #: The ESP32's own line for the same event (aideck-esp-firmware main/wifi.c).
 _GOT_IP = re.compile(r"WIFI: got ip: (\d{1,3}(?:\.\d{1,3}){3})")
 _RSSI = re.compile(r"WIFI: rssi: (-?\d+)")
+#: wifi-link.patch: what the deck's radio is really set to, read back — at
+#: start and on every CMD_REPORT. "power" is in 0.25 dBm steps (80 = 20 dBm).
+_LINK = re.compile(r"WIFI: link: (\d+) MHz, power (-?\d+), beacon timeout (\d+) s, "
+                   r"brownout (\d)")
 _DISCONNECT = "Disconnected from access point"
 #: wifi-recovery.patch adds the reason: "…access point, reason 201".
 _REASON = re.compile(r"Disconnected from access point, reason (\d+)|"
@@ -151,12 +155,51 @@ class WifiState:
     needs_restart: bool = False
     #: Why it last dropped off, as the deck said (REASON_WORDS); None if never.
     reason: str | None = None
+    #: What the deck's radio is set to (wifi-link.patch); None from a deck
+    #: without it, or before it has said.
+    link: DeckLink | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {"ssid": self.ssid, "phase": str(self.phase), "ip": self.ip,
                 "message": self.message, "rssi": self.rssi, "drops": self.drops,
                 "remembered": self.remembered, "needs_restart": self.needs_restart,
-                "reason": self.reason}
+                "reason": self.reason,
+                "link": self.link.to_dict() if self.link else None}
+
+
+@dataclass(frozen=True)
+class DeckLink:
+    """The deck radio's own settings, as its ESP32 read them back.
+
+    BROWNOUT. After a brownout reset ESP-IDF holds the radio at its lowest
+    transmit power (13 dBm, against 20) for the whole boot — Bitcraze's
+    CONFIG_ESP32_REDUCE_PHY_TX_POWER — and nothing but a power-off clears it.
+    A deck in that state reaches the laptop 7 dB weaker with nothing else
+    wrong, so it is said in words rather than left for a signal number to
+    imply."""
+    bandwidth_mhz: int
+    power_dbm: float | None
+    beacon_timeout_s: int
+    brownout: bool
+
+    @classmethod
+    def parse(cls, line: str) -> DeckLink | None:
+        got = _LINK.search(line)
+        if not got:
+            return None
+        quarter = int(got.group(2))
+        return cls(bandwidth_mhz=int(got.group(1)),
+                   power_dbm=quarter / 4 if quarter >= 0 else None,
+                   beacon_timeout_s=int(got.group(3)), brownout=got.group(4) == "1")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"bandwidth_mhz": self.bandwidth_mhz, "power_dbm": self.power_dbm,
+                "beacon_timeout_s": self.beacon_timeout_s, "brownout": self.brownout}
+
+
+#: Said beside the signal while the deck's radio is held low (DeckLink).
+BROWNOUT_WORDS = ("Its radio is on reduced power since a brownout — unplug the "
+                  "battery for 10 seconds to clear it.")
 
 
 def validate(ssid: str, password: str) -> tuple[bytes, bytes]:
@@ -272,6 +315,9 @@ class DeckWifi:
         #: The deck's last reported signal. Kept apart from the state, which
         #: every step rewrites; the signal belongs to the association.
         self._rssi: int | None = None
+        #: The deck radio's settings (wifi-link.patch) — per deck boot, so
+        #: also kept apart from the state.
+        self._link: DeckLink | None = None
         self._joined: tuple[str, str] | None = self._load_joined()
         self._on_change = on_change
         self._on_ip = on_ip
@@ -327,6 +373,20 @@ class DeckWifi:
         return follow_console(cf, self._console_line)
 
     def _console_line(self, line: str) -> None:
+        link = DeckLink.parse(line)
+        if link is not None:
+            with self._lock:
+                self._link = link
+                state = self._state
+                self._state = WifiState(**{**vars(state), "link": link})
+            if state.phase is Phase.JOINED:
+                self._set(Phase.JOINED, state.ssid, ip=state.ip, drops=state.drops,
+                          message=self._joined_words(
+                              WifiState(ssid=state.ssid, ip=state.ip, rssi=self._rssi,
+                                        link=link)))
+            else:
+                self._changed()
+            return
         gave = _REASON.search(line)
         if gave:
             with self._lock:
@@ -339,7 +399,8 @@ class DeckWifi:
             if state.phase is Phase.JOINED:
                 self._set(Phase.JOINED, state.ssid, ip=state.ip, drops=state.drops,
                           message=self._joined_words(
-                              WifiState(ssid=state.ssid, ip=state.ip, rssi=self._rssi)))
+                              WifiState(ssid=state.ssid, ip=state.ip, rssi=self._rssi,
+                                        link=self._link)))
             return
         got = _GOT_IP.search(line) or _IP.search(line)
         if got:
@@ -353,7 +414,8 @@ class DeckWifi:
                 self._remember((ssid, ip))
             self._on_ip(ip)
             self._set(Phase.JOINED, ssid, ip=ip, drops=state.drops,
-                      message=self._joined_words(WifiState(ssid=ssid, ip=ip, rssi=self._rssi)))
+                      message=self._joined_words(WifiState(ssid=ssid, ip=ip, rssi=self._rssi,
+                                                           link=self._link)))
             return
         if _DISCONNECT in line:
             with self._lock:
@@ -377,7 +439,8 @@ class DeckWifi:
         signal = ""
         if state.rssi is not None:
             signal = f" · {state.rssi} dBm" + (" (weak)" if state.rssi < WEAK_RSSI_DBM else "")
-        return f"On {state.ssid} at {state.ip}{signal}."
+        held = f" {BROWNOUT_WORDS}" if state.link and state.link.brownout else ""
+        return f"On {state.ssid} at {state.ip}{signal}.{held}"
 
     def link_down(self) -> WifiState:
         """The radio link to the drone closed or dropped.
@@ -557,7 +620,7 @@ class DeckWifi:
                 return self._set(Phase.JOINED, creds.ssid, ip=watch.ip,
                                  message=self._joined_words(
                                      WifiState(ssid=creds.ssid, ip=watch.ip,
-                                               rssi=self._rssi))), True
+                                               rssi=self._rssi, link=self._link))), True
         if watch.reason is not None:
             with self._lock:
                 self._reason = watch.reason
@@ -617,7 +680,8 @@ class DeckWifi:
                 self._on_ip(watch.ip)
                 return self._set(Phase.JOINED, creds.ssid, ip=watch.ip,
                                  message=self._joined_words(
-                                     WifiState(ssid=creds.ssid, ip=watch.ip, rssi=self._rssi)))
+                                     WifiState(ssid=creds.ssid, ip=watch.ip, rssi=self._rssi,
+                                               link=self._link)))
             if watch.reason is not None:
                 with self._lock:
                     self._reason = watch.reason
@@ -668,7 +732,7 @@ class DeckWifi:
             self._state = WifiState(ssid=ssid, phase=phase, ip=ip, message=message,
                                     rssi=self._rssi, drops=drops, remembered=remembered,
                                     needs_restart=needs_restart,
-                                    reason=reason_words(self._reason))
+                                    reason=reason_words(self._reason), link=self._link)
         self._changed()
         return self.state()
 

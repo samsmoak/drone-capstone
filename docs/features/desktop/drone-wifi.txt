@@ -40,6 +40,7 @@ WHERE IT LIVES
   backend/agent/tests/test_camera_wifi.py    against a fake drone_wifi app
   backend/agent/tests/test_camera_wifi_recovery.py  ask, rejoin, reasons, the ladder
   firmware/aideck-esp/wifi-recovery.patch    the ESP32: rejoin, report, reasons
+  firmware/aideck-esp/wifi-link.patch        the ESP32: hold a weak link (below)
   desktop/src-tauri/src/wifi/                scan (macOS, Windows), secure store
   desktop/src-tauri/src/lib.rs               wifi_* / drone_wifi_* commands
   desktop/src-tauri/Info.plist               the Location prompt's wording
@@ -193,6 +194,30 @@ INVARIANTS
   Drone Wi-Fi page and the join messages show it. The stock "connect"
   ESP_ERROR_CHECKs that rebooted the chip on a harmless "busy" are logged
   instead (sta_connect).
+- A WEAK LINK IS HELD, NOT DROPPED (bundle 3, wifi-link.patch, 2026-10-24).
+  The lab reads the deck at -86 dBm; Wi-Fi itself lasts to about -97 dBm, at
+  its slowest rate. Three stock settings gave that margin away:
+    20 MHz, not 40   ESP-IDF's default is 40 MHz when the router offers it:
+                     twice the noise, ~3 dB less sensitivity, and the first
+                     thing a busy 2.4 GHz band breaks. Set before start, so
+                     the join negotiates 20.
+    power 20 dBm     set explicitly (esp_wifi_set_max_tx_power 80) and read
+                     back, not left to the PHY data.
+    15 s, not 6      without a beacon before the station drops. A turning
+                     drone fades for seconds; a real loss still rejoins at
+                     once (the disconnect handler reconnects).
+  NOT A FIXED RATE — this was proposed and is wrong: rate control already
+  falls to 11b 1 Mbps, the most sensitive rate, when frames fail (11b stays in
+  the protocol set); ESP-IDF refuses a fixed rate while TX AMPDU is on
+  (esp_private/wifi.h); and 1 Mbps would cap raw frames near one a second.
+  BROWNOUT HOLDS THE POWER AT 13 dBm. After a brownout reset ESP-IDF runs the
+  PHY at its lowest power for that whole boot (CONFIG_ESP32_REDUCE_PHY_TX_POWER,
+  Bitcraze's setting, kept — full power right after a brownout can brown it
+  out again) and the maximum set above cannot lift it; only a power-off
+  clears it. The deck says so in one line, at start and on every ask
+  ("WIFI: link: 20 MHz, power 80, beacon timeout 15 s, brownout 0"); the agent
+  reads it (wifi.DeckLink) and the Drone Wi-Fi page shows "Deck radio",
+  amber with the fix in words when a brownout holds it low.
 - THE LAST JOIN IS KEPT ON DISK (app data, deck-wifi.json: name and address,
   never the password). ALREADY_APPLIED means the drone has not restarted since
   it joined, so that address is still its address — an agent that restarted in
@@ -266,7 +291,12 @@ shares-data-with  pages-and-windows.txt
                   the Drone Wi-Fi page and badge
 
 
-LAST VERIFIED  2026-10-24 for asking, rejoining and the reasons: drone_wifi v4
+LAST VERIFIED  2026-10-24 for the weak link (bundle 3): wifi-link.patch
+applied on the three before it and built clean (ESP-IDF 4.3.1, 716 352 bytes,
+the link line in the binary); every call checked against the 4.3.1 headers;
+test_camera_wifi.py TestDeckLink (7); harness "Drone Wi-Fi · deck radio"
+light and dark. NOT yet on the drone — its decks read 0 that day.
+2026-10-24 for asking, rejoining and the reasons: drone_wifi v4
 built (its wire test passed), the patched ESP32 built (ESP-IDF 4.3.1),
 tests/test_camera_wifi_recovery.py (24) and test_camera_wifi.py (41) against
 a fake drone_wifi v4; the agent suite. NOT yet on the drone (bundle 2).

@@ -388,6 +388,59 @@ class TestWatch:
         assert drone.console.receivedChar.callbacks == []
 
 
+class TestDeckLink:
+    """wifi-link.patch's read-back line: the radio's real settings, and a
+    brownout that holds its power low until the battery comes out."""
+
+    FULL = "CPX: ESP32: I (2) WIFI: link: 20 MHz, power 80, beacon timeout 15 s, brownout 0\n"
+    HELD = "CPX: ESP32: I (2) WIFI: link: 20 MHz, power 80, beacon timeout 15 s, brownout 1\n"
+
+    def test_the_line_is_read_in_its_units(self):
+        link = wifi.DeckLink.parse(self.FULL)
+        assert link == wifi.DeckLink(bandwidth_mhz=20, power_dbm=20.0,
+                                     beacon_timeout_s=15, brownout=False)
+
+    def test_an_unread_power_is_unknown_not_zero(self):
+        link = wifi.DeckLink.parse(
+            "WIFI: link: 0 MHz, power -1, beacon timeout 0 s, brownout 0")
+        assert link is not None and link.power_dbm is None
+
+    def test_other_lines_are_not_a_link(self):
+        assert wifi.DeckLink.parse("CPX: ESP32: I (1) WIFI: rssi: -84") is None
+
+    def test_a_joined_deck_carries_its_link(self):
+        deck, _, say, _, _ = TestWatch().joined()
+        say(self.FULL)
+        state = deck.state()
+        assert state.link is not None and state.link.bandwidth_mhz == 20
+        assert state.to_dict()["link"]["power_dbm"] == 20.0
+        assert "brownout" not in (state.message or "")
+
+    def test_a_brownout_is_said_in_words_beside_the_signal(self):
+        deck, _, say, _, _ = TestWatch().joined()
+        say(self.HELD)
+        state = deck.state()
+        assert state.phase is Phase.JOINED
+        assert "-84 dBm (weak)" in (state.message or "")
+        assert wifi.BROWNOUT_WORDS in (state.message or "")
+
+    def test_the_link_heard_before_joining_is_kept_through_the_join(self):
+        deck = DeckWifi(sleep=lambda _s: None)
+        deck.configure("VT Open WiFi", "")
+        drone = FakeDrone(ip="100.96.93.94")
+        deck.watch(drone)
+        drone.console.receivedChar.call(self.HELD)
+        assert deck.state().link is not None          # shown before the join
+        deck.apply(drone)
+        state = deck.state()
+        assert state.phase is Phase.JOINED and state.link and state.link.brownout
+        assert wifi.BROWNOUT_WORDS in (state.message or "")
+
+    def test_a_deck_without_the_patch_has_no_link(self):
+        deck, *_ = TestWatch().joined()
+        assert deck.state().link is None and deck.state().to_dict()["link"] is None
+
+
 class TestRememberedIsUnverified:
     def test_an_address_from_memory_says_so(self, tmp_path):
         joined = tmp_path / "deck-wifi.json"

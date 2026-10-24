@@ -97,6 +97,18 @@ export function WifiPage({ wifi, session, onSaved }: {
             ? [wifi.ssid, wifi.ip, wifi.rssi != null ? `${wifi.rssi} dBm` : null].filter(Boolean).join(" · ")
             : wifi?.message && (phase === "reconnecting" || phase === "failed") ? wifi.message : PHASE_LABEL[phase]}
         />
+        {wifi?.link && (
+          <Line
+            tone={wifi.link.brownout ? "warning" : "good"}
+            label="Deck radio"
+            value={wifi.link.brownout
+              ? "Reduced power since a brownout — unplug the battery for 10 s"
+              : [`${wifi.link.bandwidth_mhz} MHz`,
+                 wifi.link.power_dbm != null ? `${wifi.link.power_dbm} dBm` : null,
+                 wifi.link.beacon_timeout_s ? `holds ${wifi.link.beacon_timeout_s} s` : null,
+                ].filter(Boolean).join(" · ")}
+          />
+        )}
         <Line
           tone={camera?.live ? "good" : "idle"}
           label="Camera"
