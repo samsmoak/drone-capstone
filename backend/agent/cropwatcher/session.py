@@ -1337,6 +1337,21 @@ class Session:
                  "measured": s in status.with_geometry, "active": s in active}
                 for s in seen]
 
+    def station_markers(self) -> list[dict[str, Any]]:
+        """Where each measured base station stands and which way it faces, in
+        the room's metres — for the tripods on the room map (2026-10-24). The
+        drone's own stored geometry, read once per link and again after each
+        measure (_station_poses): the place the drone positions against."""
+        out = []
+        for pose in self._station_poses():
+            axes = pose.axes()
+            out.append({
+                "id": pose.station, "channel": None if pose.station is None else pose.station + 1,
+                "origin": [round(v, 3) for v in pose.origin],
+                **{name: [round(v, 4) for v in vec] for name, vec in axes.items()},
+            })
+        return out
+
     def measure_station(self) -> dict[str, Any]:
         """Measure where the base station stands from where the drone sits, and
         store it on the drone. The drone's spot becomes the room's origin."""

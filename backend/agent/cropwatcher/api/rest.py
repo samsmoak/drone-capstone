@@ -1137,6 +1137,13 @@ def stop_survey(body: dict = Body(default={})) -> dict:  # noqa: B008 — FastAP
     return {"room": _room_view(room) if room is not None else None}
 
 
+@app.get("/station/poses", dependencies=[Command])
+def station_poses() -> dict:
+    """Each measured base station's place and facing, for the room map.
+    Empty with no drone connected or nothing measured."""
+    return {"stations": agent.session.station_markers()}
+
+
 @app.get("/station", dependencies=[Command])
 def station_status() -> dict:
     """The base station as the drone sees it: received, measured, usable."""

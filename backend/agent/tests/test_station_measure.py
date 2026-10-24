@@ -323,3 +323,30 @@ class TestTwoStations:
             {"id": 1, "channel": 2, "calibrated": True, "received": True,
              "measured": False, "active": False},
         ]
+
+
+class TestTripods:
+    """The stations on the room map (2026-10-24): where each stands and which
+    way it faces — the drone's own stored geometry, by channel."""
+
+    def test_axes_are_the_rotations_columns(self):
+        from cropwatcher.mission.plan.coverage import StationPose
+        # The lab's station, 2026-10-05 (test_geometry: standing upright).
+        rows = ((0.24, 0.95, 0.19), (-0.86, 0.30, -0.41), (-0.45, -0.06, 0.89))
+        axes = StationPose((-1.33, 1.74, 1.49), rows, station=0).axes()
+        assert axes["forward"] == (0.24, -0.86, -0.45)     # out of its face, tilted down
+        assert axes["left"] == (0.95, 0.30, -0.06)
+        assert axes["up"] == (0.19, -0.41, 0.89)           # mostly up: upright
+
+    def test_markers_carry_the_channel_place_and_facing(self, rig):
+        from cropwatcher.mission.plan.coverage import StationPose
+        eye = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
+        rig.link.station_poses = lambda: [StationPose((2.0, -1.0, 1.8), eye, station=1)]
+        (marker,) = rig.session.station_markers()
+        assert marker["id"] == 1 and marker["channel"] == 2
+        assert marker["origin"] == [2.0, -1.0, 1.8]
+        assert marker["forward"] == [1.0, 0.0, 0.0] and marker["up"] == [0.0, 0.0, 1.0]
+
+    def test_no_drone_no_tripods(self, rig):
+        rig.link.is_open = False
+        assert rig.session.station_markers() == []

@@ -323,6 +323,16 @@ if (!agentToken) {
         },
       });
     }
+    // Two base stations at the room's corners, as /station/poses gives them:
+    // the tripods on the map (stations.ts), facing back into the room.
+    if (path === "/station/poses") {
+      return json({ stations: [
+        { id: 0, channel: 1, origin: [-2.3, 1.9, 1.62], forward: [0.721, -0.515, -0.464],
+          left: [0.581, 0.814, 0], up: [0.377, -0.269, 0.886] },
+        { id: 1, channel: 2, origin: [2.4, 2.1, 1.71], forward: [-0.78, -0.468, -0.416],
+          left: [0.514, -0.857, 0], up: [-0.357, -0.214, 0.909] },
+      ] });
+    }
     if (path.startsWith("/history/flights/") && path.endsWith("/playback")) return json(samplePlayback);
     if (path === "/history/flights") return json(sampleFlights);
     if (path.startsWith("/missions/")) return json(missions.find((m) => path.endsWith(m.id)) ?? sampleMission);

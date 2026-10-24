@@ -33,7 +33,8 @@
  */
 
 import { useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
-import type { Geofence, InspectionPoint, Obstacle, OuterBound, Problem, XY } from "@/lib/agent";
+import type { Geofence, InspectionPoint, Obstacle, OuterBound, Problem, StationMarker, XY } from "@/lib/agent";
+import { stationLabel } from "./stations";
 import { NUDGE_M, mapBox } from "./geometry";
 import { legsOf, landsAt, unflownIds, type PathSource } from "./path";
 import { SPACE_LABEL, insideOutline, type SpaceLayer } from "./space";
@@ -86,8 +87,10 @@ export type Editing = {
 export function PlanCanvas({
   outer, fence, obstacles, path, takeoffHeight = 0.4, problems = [], drone = null,
   editing, label, progress, selected: shownSelected = null, className, space = null, sliceZ = null,
-  trail = null,
+  trail = null, stations = [],
 }: {
+  /** The measured base stations, from above (stations.ts). */
+  stations?: StationMarker[];
   /** Playback: the path a recorded flight flew, up to the moment shown. */
   trail?: Trail | null;
   /** The flyable space (space.ts), drawn under the plan; points outside it are ringed red. */
@@ -115,10 +118,20 @@ export function PlanCanvas({
   const [dragging, setDragging] = useState<{ handle: Handle; last: XY } | null>(null);
 
   const box = mapBox(outer);
-  const vx = box.xMin - MARGIN_M;
-  const vy = -(box.yMax + MARGIN_M);
-  const vw = box.xMax - box.xMin + 2 * MARGIN_M;
-  const vh = box.yMax - box.yMin + 2 * MARGIN_M;
+  // The view takes in the stations too: they stand at the room's edges, often
+  // outside the flying area, and a tripod off the drawing tells nobody where
+  // anything is. The room's own box (`box`) is unchanged — only the view.
+  // The origin and its Forward label stay in view as well.
+  const seen = {
+    xMin: Math.min(box.xMin, -0.15, ...stations.map((st) => st.origin[0] - 0.4)),
+    xMax: Math.max(box.xMax, 1.1, ...stations.map((st) => st.origin[0] + 0.4)),
+    yMin: Math.min(box.yMin, -0.15, ...stations.map((st) => st.origin[1] - 0.4)),
+    yMax: Math.max(box.yMax, 0.15, ...stations.map((st) => st.origin[1] + 0.4)),
+  };
+  const vx = seen.xMin - MARGIN_M;
+  const vy = -(seen.yMax + MARGIN_M);
+  const vw = seen.xMax - seen.xMin + 2 * MARGIN_M;
+  const vh = seen.yMax - seen.yMin + 2 * MARGIN_M;
 
   const current = editing?.selected ?? shownSelected;
   const focus = isRoomObject(current) ? current : null;
@@ -398,6 +411,9 @@ export function PlanCanvas({
         </g>
       )}
 
+      <OriginMark />
+      {stations.map((st) => <StationMark key={st.id ?? stationLabel(st)} station={st} />)}
+
       {drone && (
         <g role="img" aria-label={`The drone, ${(drone[0] - box.xMin).toFixed(2)} m from left and ${(drone[1] - box.yMin).toFixed(2)} m from front`}>
           {/* The ring carries the colour; the letter sits on --surface in
@@ -409,6 +425,62 @@ export function PlanCanvas({
         </g>
       )}
     </svg>
+  );
+}
+
+/**
+ * A base station from above: where it stands, a wedge the way it faces (the
+ * forward axis projected on the floor), L and R as seen standing behind it,
+ * and its channel. Words carry the meaning; the colour only groups.
+ */
+function StationMark({ station: st }: { station: StationMarker }) {
+  const thin = { vectorEffect: "non-scaling-stroke" as const };
+  const [x, y] = st.origin;
+  const flat = (v: [number, number, number]) => {
+    const n = Math.hypot(v[0], v[1]) || 1;
+    return [v[0] / n, v[1] / n] as const;
+  };
+  const [fx, fy] = flat(st.forward);
+  const [lx, ly] = flat(st.left);
+  const spread = Math.PI / 6;
+  const ray = (a: number, m: number) => {
+    const c = Math.cos(a), s = Math.sin(a);
+    return [x + (fx * c - fy * s) * m, y + (fx * s + fy * c) * m] as const;
+  };
+  const [ax, ay] = ray(spread, 0.6);
+  const [bx, by] = ray(-spread, 0.6);
+  return (
+    <g role="img" aria-label={`Base station ${stationLabel(st)}, at x ${x.toFixed(2)} and y ${y.toFixed(2)} m, ${st.origin[2].toFixed(2)} m up`}>
+      <polygon points={`${x},${-y} ${ax},${-ay} ${bx},${-by}`} {...thin}
+               style={{ fill: "var(--primary)", fillOpacity: 0.12, stroke: "var(--primary)", strokeWidth: 1.2 }} />
+      <line x1={x} y1={-y} x2={x + lx * 0.28} y2={-(y + ly * 0.28)} {...thin}
+            style={{ stroke: "var(--muted)", strokeWidth: 1.6 }} />
+      <line x1={x} y1={-y} x2={x - lx * 0.28} y2={-(y - ly * 0.28)} {...thin}
+            style={{ stroke: "var(--muted)", strokeWidth: 1.6 }} />
+      <text x={x + lx * 0.36} y={-(y + ly * 0.36) + 0.04} textAnchor="middle"
+            style={{ fill: "var(--foreground)", fontSize: 0.11, fontWeight: 700 }}>L</text>
+      <text x={x - lx * 0.36} y={-(y - ly * 0.36) + 0.04} textAnchor="middle"
+            style={{ fill: "var(--foreground)", fontSize: 0.11, fontWeight: 700 }}>R</text>
+      {/* A tripod's three feet, seen from above. */}
+      <circle cx={x} cy={-y} r={0.09} {...thin}
+              style={{ fill: "var(--surface)", stroke: "var(--foreground)", strokeWidth: 2.4 }} />
+      <text x={x} y={-y - 0.15} textAnchor="middle"
+            style={{ fill: "var(--foreground)", fontSize: 0.13, fontWeight: 800 }}>{stationLabel(st)}</text>
+    </g>
+  );
+}
+
+/** (0, 0): where the drone sat when the stations were measured, and the
+ *  room's forward (+x) — the way the drone flies when told forward. */
+function OriginMark() {
+  const thin = { vectorEffect: "non-scaling-stroke" as const };
+  return (
+    <g role="img" aria-label="The origin, 0, 0, where the stations were measured; the arrow is forward">
+      <circle cx={0} cy={0} r={0.05} {...thin} style={{ fill: "none", stroke: "var(--status-critical)", strokeWidth: 2 }} />
+      <line x1={0} y1={0} x2={0.45} y2={0} {...thin} style={{ stroke: "var(--status-critical)", strokeWidth: 2 }} />
+      <polygon points="0.52,0 0.44,0.035 0.44,-0.035" style={{ fill: "var(--status-critical)" }} />
+      <text x={0.58} y={0.035} style={{ fill: "var(--foreground)", fontSize: 0.1, fontWeight: 700 }}>Forward</text>
+    </g>
   );
 }
 

@@ -1,6 +1,7 @@
 ================================================================================
 CONTROL IN AUTO — plan a mission, check the drone, fly it
-Last verified: 2026-10-24 for ② Position's two stations only (every station from
+Last verified: 2026-10-24 for the tripods on the map (harness, both views and
+themes, screenshots; the layout at five widths 10 PASS) and ② Position's two stations only (every station from
 one press, per-station rows), against agent/two-base-stations — test_geometry.py,
 test_station_measure.py (53), pnpm build; NOT on the drone (its deck saw no light).
 2026-10-11 for the room map's `trail` only (playback's path
@@ -301,6 +302,25 @@ desktop/src/lib/agent.ts                           the calls and types
   that writes what the drone flies on, and it cannot be checked until the
   deck sees light again. The full solver is `cropwatcher geometry` (a 1 m
   step and a few positions) — the refine that exists today.
+• THE BASE STATIONS ARE ON THE MAP, 2-D AND 3-D (2026-10-24, Samuel: "so
+  that we know where the base station is, both in the real world and in the
+  software"). Each measured station is a tripod where the drone has it
+  stored (GET /station/poses; plan/stations.ts, every 5 s): its head turned
+  the way it was measured, the edges of what it sweeps (Valve's 150° × 110°,
+  0.7 m long), L and R as seen standing behind it, "Ch n" and its height. A
+  red ring at 0, 0 — where the drone sat to measure — with an arrow along
+  +x, "Forward": the way the drone flies when told forward. Plan x/y ARE
+  Lighthouse metres (../missions/floor-plans.txt), so they line up with the
+  plan. The 2-D view and the 3-D camera widen to take the tripods in; the
+  room's own box is unchanged. Off in Playback (liveStations={false}):
+  today's places would mislead about a past flight's.
+  The tripods are AS RIGHT AS THE LAST MEASUREMENT AND NO MORE — not
+  tracked; a station moved since is drawn where it was until ② Position is
+  pressed again. A station's axes are its rotation's columns: x forward out
+  of its face, y its left, z up (coverage.py StationPose.axes).
+  NOT BUILT, by the owner's choice: the laptop's position (the radio gives
+  no direction) and an "I'm standing here" marker — the two stations and
+  the forward arrow are the reference.
 • THE STEP BAR IS NEVER SQUEEZED (StepBar.tsx, 2026-10-05): full labels;
   wide, the steps share the width; narrow, it scrolls sideways.
 • THE FLY MAP SHOWS THE AGENT'S AUTO-CORRECTED PLAN (GET …/from-drone every

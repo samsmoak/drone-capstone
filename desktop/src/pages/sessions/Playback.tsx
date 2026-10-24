@@ -188,7 +188,7 @@ function Player({ data, title, startAt, startFullScreen }: {
   const label = `${title}${when ? ` · ${when}` : ""}`;
 
   const map = (heightClass: string) => (
-    <RoomMap
+    <RoomMap liveStations={false}
       outer={room?.outer ?? data.outer} fence={room?.geofence ?? null} obstacles={room?.obstacles ?? []}
       path={data.mission} takeoffHeight={data.mission?.cruise_height_m ?? 0.4}
       drone={shownDrone} droneHeight={shownDrone ? sample?.z_m ?? null : null}
