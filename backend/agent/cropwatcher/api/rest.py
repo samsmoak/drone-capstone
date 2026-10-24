@@ -30,7 +30,7 @@ import threading
 import time
 from collections.abc import Callable
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import (
     Body,
@@ -178,6 +178,12 @@ class MissionRunRequest(BaseModel):
 class ProcessingRequest(BaseModel):
     #: Process this session's flights through the data pipeline when they land.
     on: bool
+
+
+class StartRequest(BaseModel):
+    #: "flight" (every check; it can fly) or "capture" (the radio and the
+    #: camera's deck only; it never flies).
+    purpose: Literal["flight", "capture"] = "flight"
 
 
 class CaptureRequest(BaseModel):
@@ -1051,8 +1057,11 @@ def set_mode(request: ModeRequest) -> dict:
 
 
 @app.post("/session/start", dependencies=[Command])
-def start_session() -> dict:
-    return _run(agent.session.start)
+def start_session(request: StartRequest | None = None) -> dict:
+    """Start a session: for flying (Control, the default) or, with
+    {"purpose": "capture"}, for taking pictures (the Capture page)."""
+    purpose = request.purpose if request is not None else "flight"
+    return _run(lambda: agent.session.start(purpose))
 
 
 @app.post("/session/confirm", dependencies=[Command])

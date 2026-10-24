@@ -117,6 +117,18 @@ class FakeLink:
         yield CheckResult(CheckKey.ESTIMATE, CheckStatus.PASSED, "steady")
         return self.report
 
+    def capture_checks(self):
+        """A capture session's checks: the radio and the camera deck only —
+        `check_failure` (a flight check) never reaches them."""
+        self.capture_runs = getattr(self, "capture_runs", 0) + 1
+        yield CheckResult(CheckKey.IDENTITY, CheckStatus.PASSED, "cf-lab")
+        failure = getattr(self, "capture_failure", None)
+        if failure is not None:
+            yield failure
+            raise ChecksFailed(failure)
+        yield CheckResult(CheckKey.CAMERA, CheckStatus.PASSED, "AI deck fitted")
+        return self.report
+
     def health_test(self):
         if self.health_error:
             raise self.health_error

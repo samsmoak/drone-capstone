@@ -48,6 +48,8 @@ shown — instead of hundreds of copies of the same view (the rule, §3).
 2. WHERE IT LIVES
 --------------------------------------------------------------------------------
 agent    backend/agent/cropwatcher/camera/capture.py     the rule, small_grey
+         backend/agent/cropwatcher/flight/checks.py      run_capture_checks
+         backend/agent/tests/test_capture_session.py     the capture session
          backend/agent/cropwatcher/camera/recording.py   add (auto), add_manual,
                                                          read_index, frame_file
          backend/agent/cropwatcher/session.py            capture_auto,
@@ -65,7 +67,11 @@ agent    backend/agent/cropwatcher/camera/capture.py     the rule, small_grey
                                                          CAMERA_CAPTURE
          backend/agent/tests/test_camera_capture.py, test_capture_switch.py,
          test_recording.py
-desktop  desktop/src/pages/capture/CapturePage.tsx       the page
+desktop  desktop/src/pages/capture/CapturePage.tsx       the page: Readiness,
+                                                         SessionStrip
+         desktop/src/pages/control/CaptureLock.tsx       Control during a capture
+                                                         session (copied from
+                                                         ModeLock.tsx — PARITY)
          desktop/src/components/CaptureGallery.tsx       the gallery (Capture
                                                          and Sessions)
          desktop/src/pages/control/DataPipeline.tsx      CaptureSwitch
@@ -99,17 +105,32 @@ why (first | change | similar | still | point | undecoded | manual), change
   flight cannot be re-run (CLAUDE.md #6), and the pipeline's scene@1 and the
   backlog scrubber read them all. Off is the exception: nothing is written.
 • MANUAL CAPTURES ARE NEVER PACED and upload whatever the switch says.
-• A SESSION IS REQUIRED to capture. Its recording opens when the checks pass,
-  before the area is confirmed — confirming is for flying, so the Capture page
-  does not ask for it.
-• ONE SESSION, TWO PAGES. The Capture page and Control drive the same agent
-  session: started on either, joined on the other. "Capture images →" on
-  Control during a session, "Fly it on Control →" on Capture.
+• THE CAPTURE PAGE HAS ITS OWN SESSION (2026-10-24, changed; Samuel: "the
+  capture page only cares about taking picture manually and not the rest").
+  "Start capture session" starts a session whose PURPOSE is capture
+  (Session.start("capture"); POST /session/start {"purpose": "capture"}):
+    checks   the radio (identified, telemetry) and the camera's deck
+             (deck.bcAI) only — flight/checks.py run_capture_checks; the
+             battery is shown, never failed on
+    records  only what is captured by hand: auto-capture is off and cannot
+             be turned on
+    flies    never: every flight action (arm, mission, program, battery &
+             motor test, confirm the area) is refused IN THE AGENT
+  It used to run Control's full flight checks; on 2026-10-24 a drone that
+  would not arm (sys.canfly=0, 3.87 V) kept the page from taking a picture.
+  The page shows three rows instead of a checklist — Radio, Wi-Fi, Camera —
+  each in the agent's own words, with no auto-capture switch.
+• ONE SESSION AT A TIME, TWO PURPOSES. While a capture session is open,
+  Control shows CaptureLock ("A capture session is open — end it on Capture
+  to fly"). Control's own FLIGHT session can be captured into from the
+  Capture page ("In Control's session"), and is ended on Control; "Capture
+  images →" on Control leads there.
 • CAPTURE SITS IN THE CAMERA PANEL'S HEADER: measured, it fell below the fold
   when placed under the picture at 1280 px.
 • THE SWITCH IS ON BY DEFAULT and per session, like the DPP's (the choice
   resets when the session ends), but it applies AT ONCE — the recording reads
-  it on every frame; the DPP's is read as a flight begins.
+  it on every frame; the DPP's is read as a flight begins. It lives on Control
+  only: a capture session has no auto-capture at all.
 
 --------------------------------------------------------------------------------
 4. INVARIANTS

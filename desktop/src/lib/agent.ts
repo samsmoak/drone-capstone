@@ -65,6 +65,9 @@ export type Session = {
    *  recorded automatically; off, only manual captures are saved. Absent from
    *  older agents. */
   capture?: { auto: boolean; chosen: boolean };
+  /** What the session is for: "flight" (Control) or "capture" (the Capture
+   *  page, which never flies). Absent from older agents: "flight". */
+  purpose?: "flight" | "capture";
   /** Which way the arrow keys move the drone (cropwatcher/flight/keyframe.py):
    *  the operator's choice, their marked spot, and — while flying — what the
    *  arrows mean right now. */
@@ -589,7 +592,10 @@ export const api = {
     command<Session>("/auth/sign-in", { email, password }),
   signOut: () => command<Session>("/auth/sign-out"),
   setMode: (mode: Mode) => command<Session>("/session/mode", { mode }),
-  start: () => command<Session>("/session/start"),
+  /** Start a session: "flight" (Control — every check, it can fly) or
+   *  "capture" (the Capture page — the radio and the camera deck only, it
+   *  never flies). Callers that pass nothing start a flight session. */
+  start: (purpose: "flight" | "capture" = "flight") => command<Session>("/session/start", { purpose }),
   confirmArea: (acceptUnassisted = false) =>
     command<Session>("/session/confirm", { accept_unassisted: acceptUnassisted }),
   healthTest: () => command<Session>("/session/health-test"),
