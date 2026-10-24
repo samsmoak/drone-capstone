@@ -12,11 +12,19 @@
  * for the battery unplug the camera needs, and only calls it done once the
  * camera has started and the positioning deck kept its firmware.
  *
+ * THE INSTALL RUNS IN A TERMINAL, not from a button (2026-10-24, Samuel): step
+ * 2 checks the drone and lists its parts, then shows the command that writes
+ * them — `cropwatcher setup`, this machine's exact line from GET /setup/command
+ * — with a Copy button. DroneDeck is quit first: the radio has one owner, and
+ * while the app is open its agent holds it. Reopened, "Check the drone" reads
+ * the result.
+ *
  * Step 2 holds the list only while it has something to do (see listed below).
  * Opened by its button it stays open once the check finds everything
  * installed, so any part can be ticked and written again ("Reinstall"). A
  * replaced AI deck needs no tick: the agent tells it apart by its factory
- * serial and lists its camera and Wi-Fi as to install (setup.txt).
+ * serial and lists its camera and Wi-Fi as to install (setup.txt). A tick adds
+ * `--reinstall <parts>` to the command.
  *
  * Step 3 sets each base station's channel over its USB cable (agent
  * flight/basestation.py — Bitcraze's "Set BS channel"): every V2 station must
@@ -32,8 +40,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Page, Run } from "@/App";
 import {
-  AgentError, api, type BaseStation, type CameraWifi, type Session, type SetupPart, type SetupState,
-  type StationStatus,
+  AgentError, api, type BaseStation, type CameraWifi, type Session, type SetupCommand, type SetupPart,
+  type SetupState, type StationStatus,
 } from "@/lib/agent";
 import { StationStages, useStation } from "@/components/StationStages";
 import { Button, Message, PageHeader, Spinner, StatusDot, type Tone } from "@/components/ui";
@@ -133,9 +141,46 @@ export function SetupPage({ session, setup, wifi, run, onGo }: {
 /** The AI deck's two chips are recorded as one bundle, so they are ticked together. */
 const DECK_PARTS: SetupPart[] = ["camera", "wifi"];
 
-/** Step 2's body; exported for the layout harness (harness.tsx). */
-export function Install({ setup, run, busy, onClose }: {
-  setup: SetupState | null; run: Run; busy: boolean; onClose: () => void;
+/** The install command for this machine, from the agent: loading, failed with
+ *  a retry, or the line. */
+function useSetupCommand(given?: SetupCommand) {
+  const [cmd, setCmd] = useState<SetupCommand | null>(given ?? null);
+  const [failed, setFailed] = useState(false);
+  const load = () => {
+    setFailed(false);
+    api.setupCommand().then(setCmd, () => setFailed(true));
+  };
+  useEffect(() => {
+    if (!given) load();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return { cmd, failed, retry: load };
+}
+
+/** One line to paste into a terminal, shown whole (it wraps, never cut) with a
+ *  Copy button. */
+function CommandBox({ line }: { line: string }) {
+  const [copied, setCopied] = useState<"yes" | "no" | null>(null);
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(null), 2500);
+    return () => clearTimeout(t);
+  }, [copied]);
+  const copy = () => navigator.clipboard.writeText(line).then(() => setCopied("yes"), () => setCopied("no"));
+  return (
+    <div className="grid gap-2">
+      <div className="flex flex-wrap items-start gap-2 border border-[var(--border)] bg-[var(--surface-2)] p-3">
+        <code className="min-w-0 flex-1 select-all break-all font-mono text-sm">{line}</code>
+        <Button onClick={() => void copy()}>{copied === "yes" ? "Copied" : "Copy"}</Button>
+      </div>
+      {copied === "no" && <Message tone="warning" text="Could not copy. Select the line and copy it." />}
+    </div>
+  );
+}
+
+/** Step 2's body; exported for the layout harness (harness.tsx), which passes
+ *  `command` because it has no agent to ask. */
+export function Install({ setup, run, busy, onClose, command }: {
+  setup: SetupState | null; run: Run; busy: boolean; onClose: () => void; command?: SetupCommand;
 }) {
   const phase = setup?.phase ?? "idle";
   const working = phase === "checking" || phase === "installing" || phase === "verifying";
@@ -155,7 +200,11 @@ export function Install({ setup, run, busy, onClose }: {
     }
     return next;
   });
-  const install = (label: string) => void run(() => api.setupInstall([...again]), label);
+  const { cmd, failed: cmdFailed, retry: cmdRetry } = useSetupCommand(command);
+  // The order the agent lists parts in, so the line reads the same every time.
+  const ticked = (setup?.order ?? []).filter((p) => again.has(p));
+  const line = cmd && (ticked.length ? `${cmd.command} --reinstall ${ticked.join(",")}` : cmd.command);
+  const showCommand = !working && ((phase === "ready" && needsAny) || (phase === "done" && again.size > 0));
 
   if (phase === "unplug") {
     // The one step only a person can do — alone, and large.
@@ -174,7 +223,7 @@ export function Install({ setup, run, busy, onClose }: {
 
       {phase === "ready" && setup?.facts?.deck_unrecorded && (
         <Message tone="warning"
-                 text="This AI deck is not recorded on this drone — a new deck, or one set up before decks were recorded. Install puts its camera and Wi-Fi software on it." />
+                 text="This AI deck is not recorded on this drone — a new deck, or one set up before decks were recorded. The command below puts its camera and Wi-Fi software on it." />
       )}
 
       {setup && setup.order && Object.keys(setup.parts).length > 0 && (
@@ -224,28 +273,31 @@ export function Install({ setup, run, busy, onClose }: {
       {phase === "failed" && setup?.message && <Message tone="critical" text={setup.message} />}
       {phase === "done" && setup?.message && <Message tone="good" text={setup.message} />}
 
+      {showCommand && (
+        <div className="grid gap-2">
+          <p className="text-sm font-medium">Quit DroneDeck, then run this in Terminal:</p>
+          {line ? <CommandBox line={line} />
+            : cmdFailed ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <Message tone="critical" text="Could not get the install command from the agent." />
+                <Button onClick={cmdRetry}>Try again</Button>
+              </div>
+            ) : <Spinner label="Getting the command…" />}
+          <p className="text-xs text-[var(--muted)]">
+            About 5 minutes. Keep the drone on until it asks you to unplug the battery. Then open DroneDeck and check the drone.
+          </p>
+        </div>
+      )}
+
       {!working && (
         <div className="flex flex-wrap items-center gap-2">
-          {phase === "ready" && needsAny ? (
+          {phase === "done" ? (
             <>
-              <Button variant="primary" disabled={busy} onClick={() => install("Install drone software")}>
-                Install
-              </Button>
-              <span className="text-xs text-[var(--muted)]">About 5 minutes. Keep the drone on.</span>
-            </>
-          ) : phase === "done" ? (
-            <>
-              <Button variant="primary" disabled={busy || again.size === 0}
-                      onClick={() => install("Reinstall drone software")}>
-                Reinstall
-              </Button>
               <Button onClick={onClose}>Close</Button>
-              <span className="text-xs text-[var(--muted)]">
-                {again.size === 0 ? "Tick a part to write it again." : "Keep the drone on."}
-              </span>
+              {again.size === 0 && <span className="text-xs text-[var(--muted)]">Tick a part to write it again.</span>}
             </>
           ) : (
-            <Button variant="primary" disabled={busy}
+            <Button variant={showCommand ? "secondary" : "primary"} disabled={busy}
                     onClick={() => void run(api.setupCheck, "Check the drone")}>
               {phase === "failed" ? "Try again" : "Check the drone"}
             </Button>

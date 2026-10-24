@@ -109,6 +109,9 @@ def build_parser() -> argparse.ArgumentParser:
                          help="check and describe the mission; never connect")
     _add_flight_common(mission)
 
+    from cropwatcher.setup_cli import add_parser as add_setup_parser
+    add_setup_parser(sub)
+
     serve = sub.add_parser("serve", help="run the local API for the desktop app")
     serve.add_argument("--host", default="127.0.0.1",
                        help="binding beyond localhost exposes drone control")
@@ -892,6 +895,11 @@ def _start_logging(*, verbose: bool) -> None:
         "unhandled exception", exc_info=e)
 
 
+def _cmd_setup(args: argparse.Namespace) -> int:
+    from cropwatcher.setup_cli import cmd_setup
+    return cmd_setup(args)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     _start_logging(verbose=args.verbose)
@@ -908,6 +916,7 @@ def main(argv: list[str] | None = None) -> int:
         "calibrate": cmd_calibrate,
         "serve": cmd_serve,
         "selftest": cmd_selftest,
+        "setup": _cmd_setup,
     }
     try:
         return handlers[args.command](args)
