@@ -21,7 +21,7 @@
  * and are locked (CLAUDE.md, manual flight control), so capturing is a button.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { Run } from "@/App";
 import { AgentError, api, recordedFrame, type CameraStatus, type CameraWifi, type Session } from "@/lib/agent";
 import { useCameraFeed } from "@/lib/cameraFeed";
@@ -90,43 +90,46 @@ export function CapturePage({ session, run, onOpenControl }: {
   };
 
   const count = gallery.kind === "ready" ? gallery.frames.length : null;
+  const sessionTile = sessionTileOf(session, run, onOpenControl, count);
 
   return (
     <div className="grid gap-4">
       <PageHeader eyebrow="Operate" title="Capture">
-        Take pictures with the drone's camera by hand. Start a capture session, capture what you
-        need, then end it — each picture is saved on this computer, labelled as captured manually,
-        and uploaded with the session. Nothing here flies the drone.
+        Take pictures with the drone's camera by hand. Each one is saved on this computer, labelled as
+        captured manually, and uploaded with its session. Nothing here flies the drone.
       </PageHeader>
 
-      <Readiness session={session} wifi={wifi} camera={status} />
-
-      <SessionStrip session={session} run={run} onOpenControl={onOpenControl} count={count} />
+      {/* ONE ROW OF FOUR, all the same (2026-10-24, Samuel: "more beautiful
+          and uniform"): what a picture needs, and the session it goes into,
+          each a tile with the same label, status and place for its action. */}
+      <Tiles tiles={[...readinessTiles(session, wifi, status), sessionTile.tile]} />
+      {sessionTile.detail}
 
       <div className="@container">
-        <div className="grid gap-4 @4xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-          {/* Capture is in the camera's own header: the button and the
-              picture it takes are seen together, never a scroll apart. */}
-          <Panel
-            title="Camera"
-            bodyClassName="flex min-h-[360px] flex-col"
-            action={
-              <Button variant="primary" onClick={() => void capture()} disabled={capturing || captureReason !== null}
-                      title={captureReason ?? undefined}>
-                {capturing ? "Capturing…" : "Capture"}
-              </Button>
-            }
-          >
-            {(captureReason || captureMessage) && (
-              <div className="grid gap-2 border-b border-[var(--border)] px-4 py-2">
-                {captureReason && <p role="status" className="text-xs">{captureReason}</p>}
-                {captureMessage && <Message tone={captureMessage.tone} text={captureMessage.text} />}
+        <div className="grid items-start gap-4 @4xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+          {/* Capture sits right above the picture it takes — one glance,
+              never a scroll apart (the camera's own stats run below it) —
+              and out of the header, so both panels' headers match. */}
+          <Panel title="Camera" bodyClassName="flex min-h-[360px] flex-col">
+            <div className="grid gap-2 border-b border-[var(--border)] px-4 py-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <Button variant="primary" onClick={() => void capture()} disabled={capturing || captureReason !== null}
+                        title={captureReason ?? undefined}>
+                  {capturing ? "Capturing…" : "Capture"}
+                </Button>
+                {captureReason
+                  ? <p role="status" className="text-sm">{captureReason}</p>
+                  : captureMessage?.tone === "good"
+                    ? <p role="status" className="text-sm"><StatusDot tone="good">{captureMessage.text}</StatusDot></p>
+                    : <p className="text-sm">Saves the picture you see now.</p>}
               </div>
-            )}
+              {captureMessage?.tone === "critical" && <Message tone="critical" text={captureMessage.text} />}
+            </div>
             <CameraPane active />
           </Panel>
 
-          <Panel title={count ? `Captured manually · ${count}` : "Captured manually"}
+          <Panel title="Captured manually"
+                 action={count !== null ? <span className="mono text-sm font-semibold">{count}</span> : undefined}
                  note={inSession ? "This session's pictures, newest first." : undefined}>
             <CaptureGallery
               load={gallery}
@@ -143,160 +146,140 @@ export function CapturePage({ session, run, onOpenControl }: {
   );
 }
 
+type Tile = { label: string; tone: Tone; text: string; action?: ReactNode };
+
+/** Tiles of equal weight in one bordered strip: one row of four when there is
+ *  room, two by two, or one column. The hairlines are the strip's own colour
+ *  showing through a 1 px gap, so every edge is the same at every width. */
+function Tiles({ tiles }: { tiles: Tile[] }) {
+  return (
+    <section aria-label="Ready to capture" className="@container border border-[var(--border)] bg-[var(--border)]">
+      <ul className="grid gap-px @2xl:grid-cols-2 @5xl:grid-cols-4">
+        {tiles.map((t) => (
+          <li key={t.label} className="flex min-w-0 flex-col justify-between gap-2 bg-[var(--surface)] px-4 py-3">
+            <div className="grid min-w-0 gap-1">
+              <p className="eyebrow">{t.label}</p>
+              <p className="wrap-anywhere text-sm"><StatusDot tone={t.tone}>{t.text}</StatusDot></p>
+            </div>
+            {t.action && <div className="flex flex-wrap gap-2">{t.action}</div>}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 /**
  * The three things a picture needs, each as the agent reports it now: the
  * drone reachable over the radio, its camera on the network, the picture
  * coming. Each says what is wrong in its own words, and where to fix it.
  */
-function Readiness({ session, wifi, camera }: {
-  session: Session;
-  wifi: CameraWifi | null;
-  camera: CameraStatus | null;
-}) {
+function readinessTiles(session: Session, wifi: CameraWifi | null, camera: CameraStatus | null): Tile[] {
   const radio = session.radio;
-  const radioRow: [Tone, string] = radio?.state === "connected"
-    ? ["good", `Connected${radio.hardware_id ? ` · ${radio.hardware_id}` : ""}`]
+  const radioTile: Tile = radio?.state === "connected"
+    ? { label: "Radio", tone: "good", text: `Connected${radio.hardware_id ? ` · ${radio.hardware_id}` : ""}` }
     : radio?.state === "searching" || radio?.state === "restarting"
-      ? ["warning", radio.message ?? "Looking for the drone…"]
-      : ["idle", radio?.message ?? "Not connected — switch the drone on."];
+      ? { label: "Radio", tone: "warning", text: radio.message ?? "Looking for the drone…" }
+      : { label: "Radio", tone: "idle", text: radio?.message ?? "Not connected — switch the drone on." };
 
   const phase = wifi?.phase ?? "not-set";
-  const wifiRow: [Tone, string] = phase === "joined" && wifi?.ip
+  const wifiText: [Tone, string] = phase === "joined" && wifi?.ip
     ? ["good", [wifi.ssid, wifi.ip, wifi.rssi != null ? `${wifi.rssi} dBm` : null].filter(Boolean).join(" · ")]
     : phase === "failed"
       ? ["critical", wifi?.message ?? "The drone could not join its network."]
       : phase === "not-set"
         ? ["idle", "No network set for the drone's camera."]
         : ["warning", wifi?.message ?? "Joining…"];
+  const wifiTile: Tile = {
+    label: "Wi-Fi", tone: wifiText[0], text: wifiText[1],
+    action: phase !== "joined" ? <Button onClick={showDroneWifi}>Drone Wi-Fi</Button> : undefined,
+  };
 
   const fps = camera?.rate?.frames ? ` · ${camera.rate.fps.toFixed(1)} fps` : "";
-  const cameraRow: [Tone, string] = camera?.live
-    ? ["good", `Live${camera.width && camera.height ? ` · ${camera.width}×${camera.height}` : ""}${fps}`]
+  const cameraTile: Tile = camera?.live
+    ? { label: "Camera", tone: "good", text: `Live${camera.width && camera.height ? ` · ${camera.width}×${camera.height}` : ""}${fps}` }
     : camera?.connecting
-      ? ["warning", camera.reason ?? "Connecting to the camera…"]
-      : ["idle", camera?.reason ?? "No picture yet."];
+      ? { label: "Camera", tone: "warning", text: camera.reason ?? "Connecting to the camera…" }
+      : { label: "Camera", tone: "idle", text: camera?.reason ?? "No picture yet." };
 
-  const rows: [string, [Tone, string], React.ReactNode?][] = [
-    ["Radio", radioRow],
-    ["Wi-Fi", wifiRow, phase !== "joined" ? <Button onClick={showDroneWifi}>Drone Wi-Fi</Button> : null],
-    ["Camera", cameraRow],
-  ];
-  return (
-    <Panel title="Ready to capture" bodyClassName="grid">
-      <ul className="divide-y divide-[var(--border)]" aria-label="What a picture needs">
-        {rows.map(([label, [tone, text], action]) => (
-          <li key={label} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2.5">
-            <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-              <span className="w-16 shrink-0 text-sm font-semibold">{label}</span>
-              <span className="min-w-0 text-sm"><StatusDot tone={tone}>{text}</StatusDot></span>
-            </span>
-            {action}
-          </li>
-        ))}
-      </ul>
-    </Panel>
-  );
+  return [radioTile, wifiTile, cameraTile];
 }
 
-/** Starting or ending a capture session — or, while Control's flight
- *  session is open, saying that pictures go into it. */
-function SessionStrip({ session, run, onOpenControl, count }: {
-  session: Session;
-  run: Run;
-  onOpenControl: () => void;
-  count: number | null;
-}) {
+/** The session tile — starting or ending a capture session, or, while
+ *  Control's flight session is open, saying pictures go into it — and what
+ *  needs more room than a tile (the checks while it starts, a failure). */
+function sessionTileOf(session: Session, run: Run, onOpenControl: () => void,
+                       count: number | null): { tile: Tile; detail: ReactNode } {
   const open = session.session_id !== null && sessionOpen(session);
   const capturing = session.purpose === "capture";
+  const label = "Session";
 
   if (session.state === "signed_out") {
-    return (
-      <Panel title="Session">
-        <div className="flex flex-wrap items-center gap-3">
-          <p className="text-sm">Sign in to start a capture session. Pictures are recorded against the person who took them.</p>
-          <Button onClick={onOpenControl}>Sign in on Control</Button>
-        </div>
-      </Panel>
-    );
+    return {
+      tile: { label, tone: "idle", text: "Sign in to start a capture session.",
+              action: <Button onClick={onOpenControl}>Sign in on Control</Button> },
+      detail: null,
+    };
   }
-
   if (session.state === "starting") {
-    return (
-      <Panel title="Session">
-        <div className="grid gap-2">
-          <Spinner label={capturing ? "Connecting to the drone and its camera…" : "Control is checking the drone…"} />
-          {session.checks.length > 0 && (
-            <ul className="grid gap-1 text-xs">
-              {session.checks.map((c) => (
-                <li key={c.key}>
-                  <StatusDot tone={c.status === "passed" ? "good" : c.status === "failed" ? "critical" : c.status === "warning" ? "warning" : "idle"}>
-                    {c.label}{c.detail ? ` — ${c.detail}` : ""}
-                  </StatusDot>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </Panel>
-    );
+    return {
+      tile: { label, tone: "warning", text: capturing ? "Connecting to the drone and its camera…" : "Control is checking the drone…" },
+      detail: session.checks.length > 0 ? (
+        <ul className="grid gap-1 border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-xs">
+          {session.checks.map((c) => (
+            <li key={c.key}>
+              <StatusDot tone={c.status === "passed" ? "good" : c.status === "failed" ? "critical" : c.status === "warning" ? "warning" : "idle"}>
+                {c.label}{c.detail ? ` — ${c.detail}` : ""}
+              </StatusDot>
+            </li>
+          ))}
+        </ul>
+      ) : <Spinner label="Starting…" />,
+    };
   }
-
   if (session.state === "checks_failed" && capturing) {
-    return (
-      <Panel title="Session">
-        <div className="grid gap-2">
-          <Message tone="critical" text={session.message ?? "The capture session could not start."} />
-          <div className="flex flex-wrap gap-2">
-            {session.session_id
-              ? <Button variant="primary" onClick={() => void run(api.retry, "Retry")}>Try again</Button>
-              : <Button variant="primary" onClick={() => void run(() => api.start("capture"), "Start capture session")}>Try again</Button>}
-          </div>
-        </div>
-      </Panel>
-    );
+    return {
+      tile: {
+        label, tone: "critical", text: "Could not start",
+        action: session.session_id
+          ? <Button variant="primary" onClick={() => void run(api.retry, "Retry")}>Try again</Button>
+          : <Button variant="primary" onClick={() => void run(() => api.start("capture"), "Start capture session")}>Try again</Button>,
+      },
+      detail: <Message tone="critical" text={session.message ?? "The capture session could not start."} />,
+    };
   }
-
   if (open && !capturing) {
     // Control's flight session: pictures go into it; it is ended on Control.
-    return (
-      <Panel title="Session">
-        <div className="flex flex-wrap items-center gap-3">
-          <StatusDot tone="good">
-            In Control's session{count !== null ? ` · ${count} captured by hand` : ""}
-          </StatusDot>
-          <span className="text-xs text-[var(--muted)]">Pictures are saved into it. End it on Control.</span>
-          <Button onClick={onOpenControl}>Open Control →</Button>
-        </div>
-      </Panel>
-    );
+    return {
+      tile: { label, tone: "good", text: `In Control's session${count !== null ? ` · ${count} by hand` : ""}`,
+              action: <Button onClick={onOpenControl}>Open Control →</Button> },
+      detail: null,
+    };
   }
-
   if (open) {
-    return (
-      <Panel title="Session">
-        <div className="flex flex-wrap items-center gap-3">
-          <StatusDot tone="good">Capture session open{count !== null ? ` · ${count} captured` : ""}</StatusDot>
+    return {
+      tile: {
+        label, tone: "good", text: `Capture session open${count !== null ? ` · ${count} captured` : ""}`,
+        action: (
           <Button variant="danger" onClick={() => void run(api.endSession, "End capture session")}
                   disabled={session.state === "ending"}>
             {session.state === "ending" ? "Ending…" : "End capture session"}
           </Button>
-        </div>
-      </Panel>
-    );
+        ),
+      },
+      detail: null,
+    };
   }
-
-  return (
-    <Panel title="Session">
-      <div className="flex flex-wrap items-center gap-3">
-        <StatusDot tone="idle">No session</StatusDot>
+  return {
+    tile: {
+      label, tone: "idle", text: "No session — connects to the drone and its camera; nothing flies.",
+      action: (
         <Button variant="primary" onClick={() => void run(() => api.start("capture"), "Start capture session")}
                 disabled={session.state !== "idle" && session.state !== "checks_failed"}>
           Start capture session
         </Button>
-        <span className="text-xs text-[var(--muted)]">
-          Connects to the drone and its camera — no flight checks, nothing flies.
-        </span>
-      </div>
-    </Panel>
-  );
+      ),
+    },
+    detail: null,
+  };
 }

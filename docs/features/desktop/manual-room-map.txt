@@ -30,8 +30,11 @@ see that before they press start a flight and as they are flying it."
 
 Manual's console, Vitals tab, top to bottom: the attitude indicator, the ROOM,
 the command log. The vitals tail is gone from Manual (the strip on the right
-carries the vitals) and so is the Scene tab (the room answers the same
-question). The room is Auto's own map (auto/plan/RoomMap.tsx) — 2-D or 3-D,
+carries the vitals) and so is the Scene tab — deleted outright, SceneView
+with it (Samuel: "it's of no use"). The map FILLS its pane: drag the dividers
+up and down between the attitude indicator, the room and the log, or sideways
+between the console and the controls, and the map grows with them
+(RoomMap `fill`). The room is Auto's own map (auto/plan/RoomMap.tsx) — 2-D or 3-D,
 the tripods with their channels, the origin and Forward — with nothing drawn
 by hand:
 

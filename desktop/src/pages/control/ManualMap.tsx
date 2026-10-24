@@ -118,12 +118,11 @@ export function ManualMap({ session, telemetry, history, run }: {
   return (
     <>
       <ManualMapBody session={session} telemetry={telemetry} history={history} run={run}
-                     heightClass="h-[clamp(16rem,40vh,28rem)]" toolbar={fullButton} />
+                     fill toolbar={fullButton} />
       {full && (
         <FullScreenOverlay label="Room — manual flight" onClose={() => setFull(false)}>
           <div className="flex min-h-0 flex-1 flex-col overflow-auto bg-[var(--surface)] p-3">
-            <ManualMapBody session={session} telemetry={telemetry} history={history} run={run}
-                           heightClass="h-[calc(100vh-11rem)]" />
+            <ManualMapBody session={session} telemetry={telemetry} history={history} run={run} fill />
           </div>
         </FullScreenOverlay>
       )}
@@ -131,12 +130,13 @@ export function ManualMap({ session, telemetry, history, run }: {
   );
 }
 
-function ManualMapBody({ session, telemetry, history, run, heightClass, toolbar }: {
+function ManualMapBody({ session, telemetry, history, run, fill = false, toolbar }: {
   session: Session;
   telemetry: Telemetry | null;
   history: History;
   run: Run;
-  heightClass: string;
+  /** Fill the parent's height (a flex column) — the console pane, or full screen. */
+  fill?: boolean;
   toolbar?: ReactNode;
 }) {
   const connected = session.radio?.state === "connected";
@@ -172,13 +172,13 @@ function ManualMapBody({ session, telemetry, history, run, heightClass, toolbar 
   const layer = layerOf(space);
   const placed = drone !== null;
   return (
-    <div className="grid min-w-0 gap-2">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
       <RoomMap
         outer={squareOf(space.fence_half_extent_m)} fence={null} obstacles={[]} path={null}
         drone={drone} droneHeight={telemetry?.height_m ?? null} droneYaw={yaw}
         space={layer} trail={trail}
         keyArrows={placed && forward.deg !== null ? { forwardDeg: forward.deg } : null}
-        droneScale={MANUAL_DRONE_SCALE} heightClass={heightClass} toolbar={toolbar}
+        droneScale={MANUAL_DRONE_SCALE} fill={fill} toolbar={toolbar}
         label="The room the base stations reach, the drone in it, and where each arrow key moves it"
       />
       {!layer && (

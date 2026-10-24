@@ -118,6 +118,14 @@ INVARIANTS
   measured 0.7 s to scan and about 2 s for the TOCs. On 2026-09-22 the
   un-timed version wedged the desktop app: the checks worker never returned
   and every later action refused with "Something is already running".
+  A TIMED-OUT HANDSHAKE IS CLOSED, NOT ONLY ABANDONED (DroneLink._abandon,
+  2026-10-24). SyncCrazyflie.close_link does nothing until the handshake has
+  finished (it checks is_link_open), so the Crazyflie's own close_link is
+  called. Left open, the stalled link's radio thread kept polling the
+  Crazyradio and every later standby attempt shared the dongle with it:
+  measured that day, ten minutes of "Connected" at the radio and no setup,
+  the agent at 32 % CPU, drone on and dongle in. The message now says what
+  works first — switch the drone off and on.
 
 - A BUSY MESSAGE MUST NAME WHAT IS BUSY. The session records the running
   worker and when it started, so the refusal says which step is stuck, for how

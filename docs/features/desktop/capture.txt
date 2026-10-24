@@ -67,8 +67,8 @@ agent    backend/agent/cropwatcher/camera/capture.py     the rule, small_grey
                                                          CAMERA_CAPTURE
          backend/agent/tests/test_camera_capture.py, test_capture_switch.py,
          test_recording.py
-desktop  desktop/src/pages/capture/CapturePage.tsx       the page: Readiness,
-                                                         SessionStrip
+desktop  desktop/src/pages/capture/CapturePage.tsx       the page: Tiles
+                                                         (readiness + session)
          desktop/src/pages/control/CaptureLock.tsx       Control during a capture
                                                          session (copied from
                                                          ModeLock.tsx — PARITY)
@@ -88,6 +88,14 @@ why (first | change | similar | still | point | undecoded | manual), change
 --------------------------------------------------------------------------------
 3. DECISIONS
 --------------------------------------------------------------------------------
+• ONE STRIP OF FOUR EQUAL TILES, then the camera beside the gallery
+  (2026-10-24, Samuel: "more beautiful and uniform"). Radio, Wi-Fi, Camera and
+  Session are each a label, a status and a place for their action, in one
+  bordered strip (four across, two by two, or one column by container width)
+  — before, three full-width panels of different heights put the camera
+  below the fold. Capture is a bar at the TOP of the camera panel: right above
+  the picture it takes, and out of the header, so the camera's and the
+  gallery's headers are the same height.
 • THE RULE (Samuel, 2026-10-24: "if there are 3 same images captured from the
   past three seconds … if they do not differ from the ones that we already
   have, don't save them"). With auto-capture on:

@@ -43,8 +43,12 @@ export type MapEditing = Editing & Omit<Edit3D, keyof Editing | "onSelect" | "se
 export function RoomMap({
   outer, fence, obstacles, path, takeoffHeight = 0.4, problems = [], drone = null, droneHeight, droneYaw,
   progress, editing, label, below, heightClass = "h-[clamp(18rem,52vh,34rem)]", space = null,
-  trail = null, liveStations = true, keyArrows = null, droneScale = 1, toolbar,
+  trail = null, liveStations = true, keyArrows = null, droneScale = 1, toolbar, fill = false,
 }: {
+  /** Take the height the parent gives it (a flex column), instead of
+   *  `heightClass`: Manual's map grows and shrinks with the console's
+   *  dividers — up/down between the panes, sideways between the columns. */
+  fill?: boolean;
   /** Manual: where each arrow key moves the drone now, drawn round it, and
    *  the nose as its own tick (keyArrows.ts). Auto passes none. */
   keyArrows?: KeyArrows | null;
@@ -103,7 +107,7 @@ export function RoomMap({
     // the form (2026-09-29). overflow-hidden on the frame for the frame between
     // a resize and the renderer catching up.
     <div
-      className="grid min-w-0 gap-0"
+      className={fill ? "flex min-h-0 min-w-0 flex-1 flex-col" : "grid min-w-0 gap-0"}
       onKeyDown={(e) => {
         const typing = (e.target as HTMLElement).closest("input, textarea, select");
         if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -131,7 +135,7 @@ export function RoomMap({
         {toolbar}
       </div>
 
-      <div className={`relative min-h-0 min-w-0 overflow-hidden border border-[var(--border)] ${heightClass}`}>
+      <div className={`relative min-h-0 min-w-0 overflow-hidden border border-[var(--border)] ${fill ? "min-h-[12rem] flex-1" : heightClass}`}>
         {shown === "2d" ? (
           <PlanCanvas
             outer={outer} fence={fence} obstacles={obstacles} path={path} takeoffHeight={takeoffHeight}

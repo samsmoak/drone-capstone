@@ -138,6 +138,8 @@ def _heading(snapshot: Snapshot) -> float | None:
 #: from cache, so 20 s is far beyond anything normal and still short enough
 #: that an operator is told rather than left watching a spinner.
 CONNECT_TIMEOUT_S = 20.0
+#: How long closing a stalled handshake may take before it is left behind.
+ABANDON_CLOSE_S = 3.0
 
 
 class DroneLink:
@@ -215,15 +217,46 @@ class DroneLink:
         worker.join(timeout_s)
 
         if worker.is_alive():
+            DroneLink._abandon(scf)
             raise LinkError(
-                f"The drone stopped answering while connecting (no reply for "
-                f"{timeout_s:.0f} s). Check the Crazyradio is still plugged in and the "
-                f"drone is still switched on, then try again."
+                f"The drone answered the radio but did not finish connecting (no reply "
+                f"for {timeout_s:.0f} s). Switch the drone off and on again — it reconnects "
+                f"by itself. If it keeps happening, charge the battery and check the "
+                f"Crazyradio is plugged in."
             )
         if failure:
             raise LinkError(
                 f"The drone was found but the link failed to open ({failure[0]})."
             ) from failure[0]
+
+    @staticmethod
+    def _abandon(scf: Any) -> None:
+        """Close a link whose handshake never finished — the radio half of it.
+
+        cflib's SyncCrazyflie.close_link does NOTHING until the handshake has
+        completed (it checks is_link_open), so the Crazyflie's own close_link
+        is called. Left open, the stalled link's radio thread kept polling the
+        Crazyradio, and every later attempt shared the dongle with it.
+        Measured 2026-10-24: after one stall, every standby attempt for the
+        next ten minutes reached "Connected" at the radio and never finished
+        setting up, the agent at 32 % CPU — while the drone sat on and the
+        dongle stayed plugged in. Bounded: a close that blocks is abandoned
+        too, on a daemon thread, rather than wedging the caller.
+        """
+        cf = getattr(scf, "cf", None)
+        close = getattr(cf, "close_link", None)
+        if close is None:
+            return
+
+        def shut() -> None:
+            try:
+                close()
+            except Exception:                              # noqa: BLE001
+                log.debug("closing an abandoned link failed — it is dropped anyway")
+
+        closer = threading.Thread(target=shut, daemon=True, name="cf-abandon")
+        closer.start()
+        closer.join(ABANDON_CLOSE_S)
 
     def close(self) -> None:
         if not self.is_open:
