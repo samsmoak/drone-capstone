@@ -90,3 +90,10 @@ INVARIANTS
 - The skills discover project rules from the repo; they never carry another
   project's conventions. Keep project facts in CLAUDE.md and docs/, not in the
   skill files.
+
+
+RELATED
+
+shares-data-with  commands.txt
+                  the slash commands here are deliberately excluded from the
+                  shell-command index; that doc points back to this one for them
