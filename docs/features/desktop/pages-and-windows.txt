@@ -56,7 +56,6 @@ WHERE IT LIVES
                                            CommandLog       what we asked for
                                            VitalsTail       what it reports
                                            CameraPane       what it can see
-                                           SceneView        where it is
   desktop/src/pages/windows/             the five live sensor windows, LiveChart
   desktop/src/pages/sessions/            RecentSessions, SessionsPage, WindowLog,
                                          and the parts they share
@@ -192,9 +191,9 @@ The left column is three tabs:
            from the base stations, then the command log — no vitals tail
            (manual-room-map.txt)
   Camera   the real frame path, on a test pattern — see camera.txt
-  Scene    the drone drawn in the room, from its own position and attitude.
-           Offered by no page since 2026-10-24: Auto never had it and
-           Manual's room replaced it — SceneView is dead code until removed
+  (Scene)  DELETED 2026-10-24 (Samuel: "it's of no use"): the drone in a
+           declared 4 m box. Auto never showed it; Manual's room, drawn
+           from the base stations, answers the same question
 
 THE CONSOLE OPENS FULL SCREEN from its tab strip, and so does the command log
 from its own footer — a camera frame or a 3D scene in part of a split column is a
@@ -549,11 +548,7 @@ consumed-by       capture.txt
                   camera feed is the window's (lib/cameraFeed.ts), not a tab's
 consumed-by       auto-control.txt
                   Auto reuses FlightDeck, Checklist, RetryPanel, HealthTestPanel,
-                  Field, Tabs and the ConsolePane (`views`). SceneView's `plan`
-                  is no longer used by anyone (Fly draws the room with
-                  RoomMap since 2026-09-29) — dead code, left so Manual's
-                  Scene tab was not touched; remove when SceneView is next
-                  edited
+                  Field, Tabs and the ConsolePane (`views`)
 
 
 LAST VERIFIED  2026-09-29, against desktop/src and a headless measurement pass

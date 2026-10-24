@@ -43,12 +43,8 @@ import { CaptureSwitch, DataPipelinePanel, ProcessingSwitch } from "./DataPipeli
 import { ArrowFrame } from "./ArrowFrame";
 import { arrowWords } from "@/lib/arrows";
 import type { FlowStart } from "./auto/MissionFlow";
-import { ConsolePane, type ConsoleTab } from "./ConsolePane";
+import { ConsolePane } from "./ConsolePane";
 import { ManualMap } from "./ManualMap";
-
-/** Manual's console: the room replaces the Scene tab — it is the same
- *  question ("where is it?") answered with the stations and the keys. */
-const MANUAL_VIEWS: readonly ConsoleTab[] = ["vitals", "camera"];
 import { VitalsNow } from "./VitalsNow";
 
 type Props = {
@@ -150,7 +146,8 @@ export function ControlPage({
             // A flex COLUMN, like the second: ConsolePane's `fill` is flex-1,
             // which only takes height from a flex parent. As a plain block the
             // console was content-tall — Vitals and Camera have content and
-            // hid it, but the Scene is only a canvas and collapsed to 0 px.
+            // hid it, but a canvas-only tab (the Scene, since deleted)
+            // collapsed to 0 px.
             //
             // A FIXED height, one window, and `self-start` so the row cannot
             // stretch it (2026-09-24): with the columns flowing, every new
@@ -163,7 +160,6 @@ export function ControlPage({
                 logLines={logLines}
                 onClearLog={onClearLog}
                 fill
-                views={MANUAL_VIEWS}
                 map={<ManualMap session={session} telemetry={telemetry} history={history} run={run} />}
               />
             </div>
@@ -212,7 +208,6 @@ export function ControlPage({
             history={history}
             logLines={logLines}
             onClearLog={onClearLog}
-            views={MANUAL_VIEWS}
             map={<ManualMap session={session} telemetry={telemetry} history={history} run={run} />}
           />
         </div>

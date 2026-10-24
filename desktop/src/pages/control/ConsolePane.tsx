@@ -1,16 +1,20 @@
 /**
  * The left half of the Control page: what the drone is telling us.
  *
- * Three views behind one tab strip, because they answer three different
- * questions and only one is wanted at a time:
+ * Two views behind one tab strip, because they answer different questions and
+ * only one is wanted at a time:
  *
  *   Vitals   how it is sitting (the attitude indicator), what we asked it to
  *            do (the command log), and what it is reporting (the vitals tail)
+ *            — in Manual, the room in place of the tail (ManualMap.tsx)
  *   Camera   what it can see — see camera.txt for why that is a test pattern
- *   Scene    where it is in the room, drawn
+ *
+ * There was a third, Scene: the drone in a declared 4 m box. Manual's room
+ * answers the same question from the base stations, so it was deleted
+ * (2026-10-24, Samuel: "it's of no use"); Auto never showed it.
  *
  * The panels are hidden rather than unmounted on a tab switch, so the command
- * log keeps its scroll position and the scene keeps its trail.
+ * log keeps its scroll position and the room its trail.
  *
  * TWO THINGS THE OPERATOR OWNS. The Vitals tab carries a draggable divider
  * between the attitude indicator and the log — drag it up mid-flight to read
@@ -30,37 +34,34 @@ import { StatusDot } from "@/components/ui";
 import { AttitudeIndicator } from "./AttitudeIndicator";
 import { CameraPane } from "./CameraPane";
 import { CommandLog } from "./CommandLog";
-import { SceneView } from "./SceneView";
 import { VitalsTail } from "./VitalsTail";
 
-export type ConsoleTab = "vitals" | "camera" | "scene";
+export type ConsoleTab = "vitals" | "camera";
 
 const TABS: readonly TabDef<ConsoleTab>[] = [
   { key: "vitals", label: "Vitals" },
   { key: "camera", label: "Camera" },
-  { key: "scene", label: "Scene" },
 ];
 
 const TAB_LABEL: Record<ConsoleTab, string> = {
-  vitals: "Vitals", camera: "Camera", scene: "Scene",
+  vitals: "Vitals", camera: "Camera",
 };
 
 /**
  * Which tab to open on.
  *
  * Always "vitals" in the app — index.html is loaded with no query string. The
- * override exists for the harness, which has to be able to put the Camera and
- * Scene tabs on screen to measure or screenshot them: they are behind a click
- * that a headless browser cannot easily make, and the Scene canvas does not
- * draw at all while its tab is inactive.
+ * override exists for the harness, which has to be able to put the Camera tab
+ * on screen to measure or screenshot it: it is behind a click that a headless
+ * browser cannot easily make.
  */
 function initialTab(views: readonly ConsoleTab[]): ConsoleTab {
   const wanted = new URLSearchParams(window.location.search).get("tab");
-  const asked = wanted === "camera" || wanted === "scene" ? wanted : "vitals";
+  const asked = wanted === "camera" ? wanted : "vitals";
   return views.includes(asked) ? asked : views[0];
 }
 
-const ALL_VIEWS: readonly ConsoleTab[] = ["vitals", "camera", "scene"];
+const ALL_VIEWS: readonly ConsoleTab[] = ["vitals", "camera"];
 
 export function ConsolePane({
   telemetry, history, logLines, onClearLog, fill = false, views = ALL_VIEWS, map,
@@ -78,8 +79,7 @@ export function ConsolePane({
   /** Fill the height a parent gives it (the split) instead of setting its own.
    *  Stacked, there is no parent height to fill, so it sets one. */
   fill?: boolean;
-  /** Which tabs to offer. Auto hosts the Scene in its Fly step instead, so its
-   *  monitor shows Vitals and Camera only (auto/AutoControl.tsx). */
+  /** Which tabs to offer (both, unless a caller narrows it). */
   views?: readonly ConsoleTab[];
 }) {
   const [tab, setTab] = useState<ConsoleTab>(() => initialTab(views));
@@ -127,7 +127,9 @@ export function ConsolePane({
               first={
                 <div className="console-scroll flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
                   <PaneTitle>Room — from the base stations</PaneTitle>
-                  <div className="min-h-0 flex-1 p-2">{map}</div>
+                  {/* A flex column all the way down, so the map fills what the
+                      dividers give it rather than scrolling at a fixed height. */}
+                  <div className="flex min-h-0 flex-1 flex-col p-2">{map}</div>
                 </div>
               }
               second={
@@ -173,13 +175,6 @@ export function ConsolePane({
         <CameraPane active={tab === "camera"} />
       </TabPanel>
 
-      {views.includes("scene") && (
-        <TabPanel id="console" tabKey="scene" active={tab === "scene"} className="flex min-h-0 flex-1 flex-col">
-          {/* `active` stops the canvas repainting behind a hidden tab — the panel
-              stays mounted so the trail survives, but the loop does not run. */}
-          <SceneView telemetry={telemetry} history={history} active={tab === "scene"} />
-        </TabPanel>
-      )}
     </>
   );
 

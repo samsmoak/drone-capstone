@@ -5,10 +5,12 @@ WHAT IT IS
 
 The Set up page (sidebar). One list, one step open at a time:
 
-  1. Connect the drone          Crazyradio in, drone on (ticks itself)
-  2. Install drone software     check → copy the command, quit DroneDeck, run
-                                it in Terminal (installs what is missing, and
-                                anything ticked "Reinstall") → unplug → verified
+  1. Connect the drone          Crazyradio in, drone on (ticks itself); when it
+                                cannot reach the drone: the agent's reason and
+                                the three fixes, in the order they work
+  2. Install drone software     COMMANDS ONLY — copy a line, quit DroneDeck,
+                                run it in Terminal: install what is missing,
+                                reinstall one part, or read only (--check)
   3. Base stations: one channel each   each station on USB → channel 1 / 2
   4. Connect the camera to Wi-Fi   → the Drone Wi-Fi page (drone-wifi.txt)
   5. Fly                        → Control › Auto (auto-control.txt)
@@ -16,7 +18,8 @@ The Set up page (sidebar). One list, one step open at a time:
 Step 2 puts on a new drone exactly what the first drone was given by hand —
 and on a new AI deck too: a replaced deck is told apart by its factory serial
 and gets its camera and Wi-Fi software without being asked. Any installed
-part can be ticked and written again ("Check or reinstall" reopens the step).
+part can be written again with its own line ("Install or reinstall" reopens
+the step).
 Step 3 puts every base station on its own channel, so the drone can decode
 their sweeps. Telling the drone where the station stands is part of flying,
 not set-up: Control › Auto › ② Position (auto-control.txt) — it was step 4
@@ -111,16 +114,16 @@ DECISIONS
 - A SERIAL THAT CANNOT BE READ leaves cwsetup.deck alone to decide, and is
   saved as 0. Reinstalling on every check instead would loop: nothing could
   ever record that it was done.
-- "REINSTALL" IS A TICK PER INSTALLED PART, not one button for everything:
-  rewriting the drone firmware or the positioning deck to fix a camera adds
-  minutes and risk. Ticks are offered while the step is settled (ready or
-  done) and clear when it moves on. Reinstalling still refuses a low battery,
-  keeps the order, and a deck that is not fitted stays "No deck fitted".
-  A ticked positioning deck is not overruled by the after-main re-ask.
-- A CHECK THAT FINDS EVERYTHING INSTALLED KEEPS STEP 2 OPEN, with Reinstall
-  and Close. Until 2026-10-15 the step closed the moment it read "done", so
-  reopening a set-up drone's step showed nothing; it now closes by itself only
-  when an install finishes.
+- NO BUTTON WRITES TO THE DRONE (2026-10-24, Samuel: "i dont want people
+  accidentally pressing a button to reinstall a firmware"). Step 2 is lines
+  to copy: install what is missing; reinstall ONE part — drone firmware
+  (--reinstall main), positioning deck (lighthouse), camera and camera Wi-Fi
+  (camera,wifi: one bundle); and read only (--check). Its one button, Read
+  what is installed, changes nothing. The reinstall ticks that built the line
+  (2026-10-15) are gone with the Install button: a part per line, not one
+  line for everything — rewriting the drone firmware to fix a camera adds
+  minutes and risk. Reinstalling still refuses a low battery, keeps the
+  order, and a deck that is not fitted is not written.
 - The agent's engine does the flashing, now run by the command in its own
   process with the app quit (above). POST /setup/install still exists and is
   refused during a session; the page no longer calls it.

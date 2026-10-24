@@ -341,8 +341,7 @@ depends-on        ../missions/mission-controller.txt
                   GET /missions/{id}/from-drone
 depends-on        pages-and-windows.txt
                   FlightDeck, Checklist, RetryPanel, HealthTestPanel, Field,
-                  ConsolePane, Tabs and SceneView are Manual's, reused — not
-                  copied
+                  ConsolePane and Tabs are Manual's, reused — not copied
 depends-on        ../pipeline/data-pipeline.txt
                   the DPP switch (Session.processing), POST /session/processing,
                   GET /flights/{id}/result

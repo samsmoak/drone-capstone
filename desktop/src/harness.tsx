@@ -424,7 +424,7 @@ const logLines: LogLine[] = [
  * `?only=<substring>` renders just the sections whose label matches.
  *
  * The harness stacks every page, so a screenshot captures whichever one happens
- * to be at the top. Isolating a section is how a canvas — the Scene tab, which
+ * to be at the top. Isolating a section is how a canvas — the room maps, which
  * the DOM measurement cannot see into — gets looked at at all.
  */
 const only = query.get("only")?.toLowerCase();
