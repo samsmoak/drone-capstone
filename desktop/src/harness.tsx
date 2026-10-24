@@ -21,6 +21,7 @@ import { WindowLog } from "@/pages/sessions/WindowLog";
 import { SessionsPage } from "@/pages/sessions/SessionsPage";
 import { FlightPlaybackView } from "@/pages/sessions/Playback";
 import { PlaybackPage } from "@/pages/playback/PlaybackPage";
+import { CapturePage } from "@/pages/capture/CapturePage";
 import { StartupPage } from "@/pages/startup/StartupPage";
 import { Install, SetupPage } from "@/pages/setup/SetupPage";
 import {
@@ -279,6 +280,24 @@ const sampleMissions: MissionView[] = [
   { ...sampleMission, id: "m-ok", name: "Pump check", points: sampleMission.points.slice(0, 2),
     problems: [sampleRoom.problems[0]], valid: true, flown_revision: null, estimated_duration_s: 41 },
 ];
+/** A stand-in camera frame, 324x244 like the deck's, drawn once. */
+let frameBlob: Promise<Blob> | null = null;
+function sampleFrame(): Promise<Blob> {
+  frameBlob ??= new Promise<Blob>((resolve) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 324;
+    canvas.height = 244;
+    const ctx = canvas.getContext("2d")!;
+    const g = ctx.createLinearGradient(0, 0, 324, 244);
+    g.addColorStop(0, "#202020");
+    g.addColorStop(1, "#7a7a7a");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 324, 244);
+    canvas.toBlob((b) => resolve(b ?? new Blob()), "image/png");
+  });
+  return frameBlob;
+}
+
 if (!agentToken) {
   const realFetch = window.fetch.bind(window);
   const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
@@ -322,6 +341,27 @@ if (!agentToken) {
           summary: { P1: { readings: 60, frames: 22 }, P2: { readings: 52, frames: 18 }, P3: { readings: 81, frames: 30 } },
         },
       });
+    }
+    // The camera, for the Capture page and the Camera tab: a live deck with
+    // the measured rate, a frame drawn here, and five manual captures.
+    if (path === "/camera") {
+      return json({ live: true, kind: "ai-deck", reason: null, deck_fitted: true, width: 324, height: 244,
+        connecting: false,
+        rate: { window_s: 10, frames: 37, fps: 3.7, mean_bytes: 79056, longest_gap_s: 1.4, format: "raw" },
+        deck_timing: { lines: 20, capture_ms: 76, encoding_ms: 0, transfer_ms: 182, bytes: 79056, deck_fps: 3.88 } });
+    }
+    if (path === "/camera/wifi") return json({ ssid: "VT Open WiFi", phase: "joined", ip: "100.96.55.59", message: null, rssi: -61 });
+    if (path === "/camera/frame" || path.startsWith("/camera/recording/frame/")) return new Response(await sampleFrame());
+    if (path === "/camera/recording") {
+      return json({ recording: true, session_id: "3f1c", count: 412, latest_seq: 412, latest_t_s: 754.2,
+        upload_fps: 2, write_errors: 0, auto: true, captured: 96, manual: 5 });
+    }
+    if (path === "/camera/recording/frames") {
+      return json({ frames: [12, 88, 140, 301, 412].map((seq) => ({ seq, t_s: seq * 1.83,
+        recorded_at: "2026-10-24T10:00:00+00:00", upload: true, source: "manual" })) });
+    }
+    if (path === "/camera/capture" && post) {
+      return json({ seq: 413, t_s: 755.1, recorded_at: "2026-10-24T10:12:35+00:00", upload: true, source: "manual" });
     }
     if (path.startsWith("/history/flights/") && path.endsWith("/playback")) return json(samplePlayback);
     if (path === "/history/flights") return json(sampleFlights);
@@ -521,6 +561,12 @@ createRoot(document.getElementById("root")!).render(
     ))}
     {!agentToken && (
       <>
+        <Shell label="Capture · in a session">
+          <CapturePage session={{ ...session, state: "ready", session_id: "3f1c", message: null }} run={runHere} onOpenControl={() => {}} />
+        </Shell>
+        <Shell label="Capture · no session">
+          <CapturePage session={{ ...session, state: "idle", session_id: null, message: null }} run={runHere} onOpenControl={() => {}} />
+        </Shell>
         <Shell label="Playback · the page, all flights">
           <PlaybackPage refreshKey="h" mode={(query.get("mode") as "auto" | "manual") ?? "auto"} />
         </Shell>

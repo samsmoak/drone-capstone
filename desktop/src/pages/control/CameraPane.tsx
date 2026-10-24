@@ -21,32 +21,21 @@
  * written to disk first (camera/recording.py) and read back from there, so
  * what is watched is what was saved and what uploads. A scrubber walks back
  * through the session's frames; Live returns to the newest.
+ *
+ * THE FEED IS THE WINDOW'S, NOT THIS TAB'S (2026-10-24): lib/cameraFeed.ts
+ * keeps it going whichever page or tab is showing, so coming back to the
+ * camera finds a current picture instead of starting from nothing. This pane
+ * only renders it, and owns what is particular to looking: scrubbing back.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  api, cameraFrameUrl, recordedFrame,
-  type CameraStatus, type CameraWifi, type RecordedFrameInfo, type Recording,
-} from "@/lib/agent";
+import { useEffect, useRef, useState } from "react";
+import { api, recordedFrame, type CameraRate, type DeckTiming, type RecordedFrameInfo } from "@/lib/agent";
+import { useCameraFeed } from "@/lib/cameraFeed";
 import { showDroneWifi } from "@/lib/droneWifi";
 import { Button, Message, Spinner, StatusDot } from "@/components/ui";
 
-/** How often a new frame is pulled while the feed is live. */
-const FRAME_MS = 200;
-
 /** How long a frame can be stale before the overlay stops claiming "live". */
 const STALE_MS = 2000;
-
-/** How often the agent is asked again while there is no feed. The agent
- *  reconnects to the deck on its own; without this the tab would not notice
- *  until someone pressed Try again — which is how a feed that recovered in
- *  seconds looked dead for good. */
-const RETRY_MS = 2000;
-
-/** Missed frames in a row before the tab treats the feed as dropped and goes
- *  back to asking the agent. At FRAME_MS that is ten seconds: a drone swung
- *  through a weak spot drops out for a few seconds and comes back. */
-const DROP_AFTER = 50;
 
 /**
  * How long the LAST GOOD FRAME stays on screen through a drop-out, overlaid
@@ -56,111 +45,33 @@ const DROP_AFTER = 50;
  */
 const HOLD_MS = 30_000;
 
-/** How often the session's recording is asked about (frame count, latest). */
-const RECORDING_POLL_MS = 1000;
-
 /** Seconds as m:ss, for a frame's place in the session. */
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
-type Load =
-  | { kind: "probing" }
-  | { kind: "error"; message: string }
-  | { kind: "ready"; status: CameraStatus; wifi?: CameraWifi | null };
-
 export function CameraPane({ active }: {
-  /** Whether the Camera tab is the one showing. Frames are not pulled behind a
-   *  hidden tab — that is a request every 200 ms for an image nobody sees. */
+  /** Whether this pane can be seen right now. Behind a hidden tab the
+   *  window's feed slows down; it never stops (lib/cameraFeed.ts). */
   active: boolean;
 }) {
-  const [load, setLoad] = useState<Load>({ kind: "probing" });
-  // The last frame that arrived whole, as an object URL, and when. Kept across
-  // drop-outs on purpose — see HOLD_MS.
-  const [shown, setShown] = useState<{ url: string; at: number } | null>(null);
+  const { load, shown: liveShown, recording, retry } = useCameraFeed(active);
   const [now, setNow] = useState(() => Date.now());
-  const failures = useRef(0);
-  // The session's recording, when one runs; and what is being looked at —
-  // "live" (the newest frame) or a frame number, scrubbed back to.
-  const [recording, setRecording] = useState<Recording | null>(null);
+  // What is being looked at — "live" (the newest frame) or a frame number,
+  // scrubbed back to — and that scrubbed frame, fetched once from disk.
   const [view, setView] = useState<"live" | number>("live");
   const [viewInfo, setViewInfo] = useState<RecordedFrameInfo | null>(null);
+  const [scrubShown, setScrubShown] = useState<{ url: string; at: number } | null>(null);
   const recordingOn = recording?.recording === true;
   // The scrubber walks back through this session's saved frames. Hidden until
   // asked for: watching live does not need it (2026-09-24, "why the dial?").
   const [showBacklog, setShowBacklog] = useState(false);
-  // The recorded frame number on screen. A frame counts as NEW only when this
-  // goes up: "latest" keeps answering with the last frame after the deck
-  // stalls, and taking that as fresh would present a frozen picture as live.
-  const shownSeq = useRef(0);
-
-  /** `quiet` re-asks without the spinner, so a background retry does not
-   *  flash the pane every two seconds. */
-  const probe = useCallback(async (quiet = false) => {
-    if (!quiet) setLoad({ kind: "probing" });
-    failures.current = 0;
-    try {
-      const [status, wifi] = await Promise.all([
-        api.cameraStatus(),
-        // Where the deck is in joining the operator's network. Optional: the
-        // camera can still work on the deck's own access point without it.
-        api.cameraWifi().catch(() => null),
-      ]);
-      setLoad({ kind: "ready", status, wifi });
-    } catch (e) {
-      setLoad({
-        kind: "error",
-        message: e instanceof Error ? e.message : "Could not ask the agent about the camera.",
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    if (active) void probe();
-  }, [active, probe]);
-
-  const live = load.kind === "ready" && load.status.live;
-
-  // No feed — not yet, or it dropped: keep asking while the tab is showing.
-  // Joining the deck's Wi-Fi or the deck coming back then needs no click.
-  useEffect(() => {
-    if (!active || live || load.kind === "probing") return;
-    const timer = window.setTimeout(() => void probe(true), RETRY_MS);
-    return () => window.clearTimeout(timer);
-  }, [active, live, load, probe]);
-
-  // Is a session recording? Asked while the tab shows; a session ending drops
-  // back to the live feed and to "live".
-  useEffect(() => {
-    if (!active) return;
-    let stopped = false;
-    const read = () => api.cameraRecording()
-      .then((r) => { if (!stopped) setRecording(r); })
-      .catch(() => { if (!stopped) setRecording(null); });
-    void read();
-    const timer = window.setInterval(read, RECORDING_POLL_MS);
-    return () => { stopped = true; window.clearInterval(timer); };
-  }, [active]);
 
   useEffect(() => {
     if (!recordingOn) setView("live");
-    shownSeq.current = 0;
   }, [recordingOn]);
-
-  // Back to Live from a scrubbed frame: the newest must be fetched again.
-  useEffect(() => {
-    if (view === "live") shownSeq.current = 0;
-  }, [view]);
-
-  const showBlob = useCallback((blob: Blob) => {
-    const url = URL.createObjectURL(blob);
-    setShown((previous) => {
-      if (previous) URL.revokeObjectURL(previous.url);
-      return { url, at: Date.now() };
-    });
-  }, []);
 
   // A scrubbed-to frame: fetched once, from disk.
   useEffect(() => {
-    if (!active || view === "live") return;
+    if (view === "live") return;
     let stopped = false;
     void (async () => {
       const [blob, info] = await Promise.all([
@@ -168,62 +79,26 @@ export function CameraPane({ active }: {
         api.recordedFrames(view - 1, 1).then((r) => r.frames[0] ?? null).catch(() => null),
       ]);
       if (stopped) return;
-      if (blob) showBlob(blob);
+      if (blob) {
+        const url = URL.createObjectURL(blob);
+        setScrubShown((previous) => {
+          if (previous) URL.revokeObjectURL(previous.url);
+          return { url, at: Date.now() };
+        });
+      }
       setViewInfo(info);
     })();
     return () => { stopped = true; };
-  }, [active, view, showBlob]);
+  }, [view]);
 
-  // Pull frames only while the tab is showing AND something is producing them.
-  // One request at a time (no pile-up behind a slow one), fetched as a blob so
-  // a failed request never replaces the picture — an <img> pointed at a URL
-  // that 204s shows nothing at all.
-  // In a session the newest frame comes from the RECORDING (read back from
-  // disk); outside one, straight from the feed.
-  useEffect(() => {
-    if (!active || !live || view !== "live") return;
-    let stopped = false;
-    let timer = 0;
-    const tick = async () => {
-      try {
-        let blob: Blob | null = null;
-        if (recordingOn) {
-          const now = await api.cameraRecording();
-          if (stopped) return;
-          setRecording(now);
-          if (now.recording && now.latest_seq > shownSeq.current) {
-            blob = await recordedFrame(now.latest_seq);
-            if (blob) shownSeq.current = now.latest_seq;
-          }
-        } else {
-          const response = await fetch(cameraFrameUrl(Date.now()), { cache: "no-store" });
-          if (response.status === 200) blob = await response.blob();
-        }
-        if (stopped) return;
-        if (blob) {
-          failures.current = 0;
-          showBlob(blob);
-        } else {
-          failures.current += 1;
-        }
-      } catch {
-        failures.current += 1;
-      }
-      if (stopped) return;
-      if (failures.current >= DROP_AFTER) {
-        // Long enough to stop pulling and go back to asking the agent, which
-        // is reconnecting to the deck on its own. The last frame stays up.
-        setLoad((current) => current.kind === "ready"
-          ? { ...current, status: { ...current.status, live: false,
-              reason: "The camera stream stopped — reconnecting." } }
-          : current);
-        return;
-      }
-      timer = window.setTimeout(() => void tick(), FRAME_MS);
-    };
-    void tick();
-    return () => { stopped = true; window.clearTimeout(timer); };
-  }, [active, live, view, recordingOn, showBlob]);
+  // Release the scrubbed frame's object URL when the pane goes away. The live
+  // one is the feed's, and outlives this pane.
+  const scrubRef = useRef(scrubShown);
+  scrubRef.current = scrubShown;
+  useEffect(() => () => { if (scrubRef.current) URL.revokeObjectURL(scrubRef.current.url); }, []);
+
+  const live = load.kind === "ready" && load.status.live;
+  const shown = view === "live" ? liveShown : scrubShown;
 
   // A clock for the frame's age, only while there is a frame to age.
   useEffect(() => {
@@ -231,11 +106,6 @@ export function CameraPane({ active }: {
     const timer = window.setInterval(() => setNow(Date.now()), 250);
     return () => window.clearInterval(timer);
   }, [active, shown]);
-
-  // Release the last object URL when the pane goes away.
-  const shownRef = useRef(shown);
-  shownRef.current = shown;
-  useEffect(() => () => { if (shownRef.current) URL.revokeObjectURL(shownRef.current.url); }, []);
 
   const scrubbed = view !== "live";
   const age = shown === null ? null : Math.max(0, now - shown.at);
@@ -261,7 +131,7 @@ export function CameraPane({ active }: {
             <div className="absolute inset-0 grid content-center gap-3 px-6">
               <Message tone="critical" text={load.message} />
               <div className="flex justify-center">
-                <Button onClick={() => void probe()}>Try again</Button>
+                <Button onClick={retry}>Try again</Button>
               </div>
             </div>
           )}
@@ -310,7 +180,10 @@ export function CameraPane({ active }: {
                   role="status"
                   className="mono absolute left-2 top-2 border border-[var(--console-line)] bg-[var(--console)] px-2 py-1 text-[10px] uppercase tracking-[0.08em] text-[var(--console-ink)]"
                 >
-                  Reconnecting · last frame {(age / 1000).toFixed(1)} s ago
+                  {/* Said, never silent: a picture that just stops moving is
+                      the freeze operators reported (2026-10-24). */}
+                  {load.kind === "ready" && load.status.connecting ? "Reconnecting" : "Camera stalled"}
+                  {" · no new frame for "}{(age / 1000).toFixed(1)} s
                 </p>
               )}
             </>
@@ -364,7 +237,34 @@ export function CameraPane({ active }: {
           )}
         </span>
       </div>
+      {load.kind === "ready" && (load.status.rate?.frames || load.status.deck_timing) ? (
+        <RateLine rate={load.status.rate ?? null} timing={load.status.deck_timing ?? null} />
+      ) : null}
     </div>
+  );
+}
+
+/**
+ * How fast the feed really is, from both ends (agent camera/rate.py): what
+ * arrives here, and what the GAP8 says each frame cost it. The line that
+ * says whether the camera, the encoder or the Wi-Fi is the slow part.
+ */
+function RateLine({ rate, timing }: { rate: CameraRate | null; timing: DeckTiming | null }) {
+  const arriving = rate && rate.frames > 0
+    ? [`${rate.fps.toFixed(1)} fps`,
+       rate.mean_bytes !== null ? `${Math.round(rate.mean_bytes / 1024)} KB ${rate.format ?? ""}`.trim() : null,
+       rate.longest_gap_s !== null ? `longest gap ${rate.longest_gap_s.toFixed(1)} s` : null]
+      .filter(Boolean).join(" · ")
+    : "no frames in the last 10 s";
+  const deck = timing
+    ? `deck: capture ${Math.round(timing.capture_ms)} · encode ${Math.round(timing.encoding_ms)} · send ${Math.round(timing.transfer_ms)} ms`
+      + (timing.deck_fps !== null ? ` (≤ ${timing.deck_fps.toFixed(1)} fps)` : "")
+    : null;
+  return (
+    <p className="mono flex flex-wrap gap-x-4 gap-y-1 border-t border-[var(--console-line)] bg-[var(--console)] px-3 py-1.5 text-[10px] uppercase tracking-[0.08em] text-[var(--console-ink)]">
+      <span>{arriving}</span>
+      {deck && <span>{deck}</span>}
+    </p>
   );
 }
 
