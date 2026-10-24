@@ -97,6 +97,18 @@ harness   "Control · Manual, the room from the stations, flying / on the
   agent's reason is shown first, "Look again for the base stations" (retry) is
   primary and "Fly on the barometer — I am flying it by eye" secondary.
 
+• THE DRONE IS NEVER DROPPED FROM THE MAP (2026-10-24, Samuel: "once the drone
+  begins to fly it goes out of the editor"). The 06:38 flight heard both
+  stations on the floor and neither from ~0.3 m up (bsReceive 3 → 0, Kalman
+  variance 0.0002 → 0.16 in 6 s); the map had no trusted position and took
+  the drone away. Now it stays where it was last placed, ringed dashed in the
+  warning colour, the page says "Position lost" and which stations are heard,
+  and the compass shows the arrows in the takeoff frame. WHY the stations
+  drop in the air is not known yet — carry the drone up by hand and watch the
+  Base stations vital to tell line of sight from the motors.
+• DECKS LOST IS NOT "NOT MEASURED". With the decks unpowered (0 deck
+  memories), the page says to switch the drone off and on, not to Measure.
+
 --------------------------------------------------------------------------------
 4. INVARIANTS
 --------------------------------------------------------------------------------

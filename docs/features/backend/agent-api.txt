@@ -63,8 +63,9 @@ ENDPOINTS
     GET  /history/sessions/{id}/frames/{n}  one of them, from disk
     GET  /camera/recording/frame/N  one recorded frame, or "latest", FROM DISK;
                                     204 when none. Token required: session data
-    POST /camera/wifi/rejoin        restart the drone over the radio so the camera
-                                    rejoins (409 in a session)
+    POST /camera/wifi/rejoin        ask the deck where it is, then rejoin it — never
+                                    a restart; 409 with no drone, or with no AI
+                                    deck detected ("switch it off and on")
     GET  /camera/wifi               the deck's network and join progress; no password
     PUT  /camera/wifi               {ssid, password} — see desktop/drone-wifi.txt
     DELETE /camera/wifi             forget it

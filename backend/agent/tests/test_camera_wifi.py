@@ -226,15 +226,23 @@ class TestApply:
         state = deck.apply(drone)
         assert (state.phase, state.ip) == (Phase.JOINED, "10.0.0.42")
 
-    def test_already_applied_with_no_address_asks_for_a_restart(self):
+    def test_already_applied_with_no_address_asks_for_a_power_cycle(self):
         """The ESP32 cannot re-apply without a reboot, and resetting only the
-        deck breaks its UART link (cpx_uart_transport.c) — so the state says a
-        restart is needed, and on standby the agent does it."""
+        deck breaks its UART link (cpx_uart_transport.c) — so the state says to
+        switch the drone off and on. The agent never restarts it over the radio:
+        that unpowered the decks (2026-10-24)."""
         deck, _, _ = make()
         deck.configure("Lab", "password1")
         state = deck.apply(FakeDrone(applied=True))
         assert (state.phase, state.needs_restart) == (Phase.FAILED, True)
-        assert "restart" in (state.message or "")
+        assert "off and on" in (state.message or "")
+
+    def test_needs_power_cycle_says_so_in_words(self):
+        deck, _, _ = make()
+        deck.configure("Lab", "password1")
+        state = deck.needs_power_cycle("Switch the drone off and on.")
+        assert (state.phase, state.needs_restart) == (Phase.FAILED, True)
+        assert state.message == "Switch the drone off and on."
 
     def test_listeners_are_removed_afterwards(self):
         deck, _, _ = make()

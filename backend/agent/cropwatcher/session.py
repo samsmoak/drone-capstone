@@ -238,6 +238,13 @@ class Snapshot:
     #: until a drone has been asked, which is NOT the same as "not fitted".
     #: Recorded and shown; it gates nothing.
     ai_deck: bool | None = None
+    #: The drone reported its AI deck earlier in this agent's life and now
+    #: does not: the decks lost power or contact, not a drone without one.
+    #: Only a power-off brings them back (deck detection runs at boot) — the
+    #: app says so instead of "not fitted" (2026-10-24: a restart over the
+    #: radio left the decks unpowered and the page read "no camera on this
+    #: drone").
+    decks_lost: bool = False
     #: The radio, apart from any session. "off" (signed out, or not started),
     #: "searching" (no drone found yet — `message` says why), "connected" (a
     #: link is open: vitals stream, the camera gets its network), "paused" (the
@@ -286,7 +293,7 @@ class Snapshot:
             "checks": self.checks, "health_test": self.health_test, "flight": self.flight,
             "message": self.message, "can_fly": self.can_fly, "restoring": self.restoring,
             "assisted": self.assisted, "unassisted_reason": self.unassisted_reason,
-            "ai_deck": self.ai_deck,
+            "ai_deck": self.ai_deck, "decks_lost": self.decks_lost,
             "radio": self.radio,
             "retry_required": self.retry_required,
             "mission": self.mission,
@@ -391,6 +398,9 @@ class Session:
         self._measuring = False
         #: The stations' stored poses for the link that read them (_station_poses).
         self._poses_cache: tuple[Any, list[Any]] | None = None
+        #: Drones (hardware ids) that reported an AI deck since the agent
+        #: started — what makes a later "no deck" a LOST one (decks_lost).
+        self._decks_seen: set[str] = set()
         #: Manual's space, kept with the poses it was computed from (by
         #: identity: _station_poses hands back the same list until they change).
         self._space_cache: tuple[list[Any], Prediction] | None = None
@@ -441,11 +451,27 @@ class Session:
 
     def _set(self, **changes: Any) -> None:
         with self._lock:
+            if "ai_deck" in changes:
+                changes["decks_lost"] = self._decks_lost_locked(changes)
             for key, value in changes.items():
                 setattr(self._snapshot, key, value)
             self._snapshot.can_fly = self._snapshot.state in (State.READY, State.BUSY)
             payload = self._snapshot.to_dict()
         self._emit("session", payload)
+
+    def _decks_lost_locked(self, changes: dict[str, Any]) -> bool:
+        """Every report of the AI deck comes through _set: remember the drones
+        that had one, and call a later "no deck" on the same drone LOST."""
+        fitted = changes["ai_deck"]
+        hardware_id = ((changes.get("radio") or {}).get("hardware_id")
+                       or (changes.get("drone") or {}).get("hardware_id")
+                       or (self._snapshot.radio or {}).get("hardware_id"))
+        if fitted is None or hardware_id is None:
+            return self._snapshot.decks_lost
+        if fitted:
+            self._decks_seen.add(hardware_id)
+            return False
+        return hardware_id in self._decks_seen
 
     # ── auth ─────────────────────────────────────────────────────────────
 

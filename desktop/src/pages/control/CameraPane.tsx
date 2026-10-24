@@ -154,7 +154,7 @@ export function CameraPane({ active }: {
               <p className="text-sm leading-relaxed text-[var(--console-ink)]">
                 {load.status.reason ?? "No camera is connected."}
               </p>
-              <DeckLine fitted={load.status.deck_fitted} />
+              <DeckLine fitted={load.status.deck_fitted} lost={load.status.decks_lost === true} />
               <DeckSays lines={load.status.deck?.lines ?? []} />
 
               <div className="flex justify-center">
@@ -326,11 +326,15 @@ function Backlog({ latest, latestT, view, onView }: {
  * problem, not fitted is a hardware one, and "nothing has asked" is neither —
  * it just means no session has run the checks yet.
  */
-function DeckLine({ fitted }: { fitted: boolean | null }) {
+function DeckLine({ fitted, lost }: { fitted: boolean | null; lost: boolean }) {
   // One line. The long explanation of why frames need Wi-Fi lives in
   // camera.txt, not on an operator's screen every time the feed is down.
+  // LOST is not "not fitted": the drone had it a moment ago (2026-10-24 — a
+  // restart over the radio unpowered the decks and this read "no camera").
   const text = fitted === null ? "AI deck: not asked yet"
-    : fitted ? "AI deck: fitted" : "AI deck: not fitted — no camera on this drone";
+    : fitted ? "AI deck: fitted"
+    : lost ? "AI deck: not detected now — switch the drone off and on with its button"
+    : "AI deck: not fitted — no camera on this drone";
   return (
     <p className="mono text-[10px] uppercase tracking-[0.08em] text-[var(--console-dim)]">
       {text}

@@ -103,7 +103,7 @@ radio already carries (camera/diagnose.py):
   none of these → said as unknown, never guessed
 After SILENT_CONNECTS (3) silent connections the Camera tab shows that reason
 and the deck's last console lines ("The drone says"); for the first two the
-watchdog stops restarting the drone. The stream's retries slow to every 5 s
+watchdog stops trying to recover it (it never restarts the drone — drone-wifi.txt). The stream's retries slow to every 5 s
 after 3 silent connections (deck.py SILENT_BACKOFF_S): ~10 connects every
 10 s was itself the connect/disconnect churn that has wedged the ESP32
 before. NOT yet seen on the drone — which branch fired that morning is

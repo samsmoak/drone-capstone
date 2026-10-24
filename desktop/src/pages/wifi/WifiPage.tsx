@@ -21,7 +21,7 @@ import { PHASE_LABEL, PHASE_TONE, droneWifi } from "@/lib/droneWifi";
 import { useMediaQuery, WIDE } from "@/lib/useMediaQuery";
 import { DroneWifiForm } from "@/components/DroneWifiForm";
 import { CameraPane } from "@/pages/control/CameraPane";
-import { Button, PageHeader, Panel, StatusDot, TONE_COLOR, TONE_ICON, type Tone } from "@/components/ui";
+import { Button, Message, PageHeader, Panel, StatusDot, TONE_COLOR, TONE_ICON, type Tone } from "@/components/ui";
 
 /** How often the camera's reachability is re-read while this page is open. */
 const CAMERA_POLL_MS = 3000;
@@ -55,14 +55,17 @@ export function WifiPage({ wifi, session, onSaved }: {
   const phase = wifi?.phase ?? "not-set";
   const showForm = editing || !saved;
 
-  const [note, setNote] = useState<string | null>(null);
+  const [note, setNote] = useState<{ tone: Tone; text: string } | null>(null);
   const reconnect = async () => {
     setBusy(true);
     setNote(null);
     try {
       await api.reconnectCamera();
+      // It runs in the background; the network line above follows it. Say it
+      // started — a press with no visible answer read as "nothing happens".
+      setNote({ tone: "idle", text: "Asking the drone where its camera is — the network line above shows how it goes (up to half a minute)." });
     } catch (e) {
-      setNote(e instanceof Error ? e.message : "Could not reconnect the camera.");
+      setNote({ tone: "warning", text: e instanceof Error ? e.message : "Could not reconnect the camera." });
     } finally {
       setBusy(false);
     }
@@ -147,14 +150,14 @@ export function WifiPage({ wifi, session, onSaved }: {
               </Button>
               <span className="text-xs text-[var(--muted)]">
                 Asks the drone where its camera is, then rejoins it — in a session too; the
-                flight is not touched. Older camera software is restarted instead, between sessions.
+                flight is not touched. Older camera software cannot: switch the drone off and on.
               </span>
             </div>
           )}
           {wifi?.reason && phase !== "joined" && (
             <p className="text-xs">Last dropped off because {wifi.reason}.</p>
           )}
-          {note && <p className="text-xs text-[var(--muted)]">{note}</p>}
+          {note && <Message tone={note.tone} text={note.text} />}
         </div>
       )}
       {editing && phase === "joined" && (
