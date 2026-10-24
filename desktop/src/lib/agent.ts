@@ -548,7 +548,9 @@ export const api = {
   reconnectCamera: () => command<CameraWifi>("/camera/wifi/rejoin"),
   setupState: () => command<SetupState>("/setup", undefined, "GET"),
   setupCheck: () => command<SetupState>("/setup/check"),
-  setupInstall: () => command<SetupState>("/setup/install"),
+  /** Installs what is missing, plus `reinstall` — parts written again although
+   *  installed. "camera" and "wifi" always go together (the agent enforces it). */
+  setupInstall: (reinstall: SetupPart[] = []) => command<SetupState>("/setup/install", { reinstall }),
   recordedFrames: (after: number, limit: number) =>
     command<{ frames: RecordedFrameInfo[] }>(
       `/camera/recording/frames?after=${after}&limit=${limit}`, undefined, "GET"),
@@ -788,12 +790,18 @@ export type FlightPlayback = {
   events: PlaybackEvent[];
 };
 
-/** Set up: installing the camera software on a drone (drone_setup.py). */
+/** Set up: installing the drone's software (drone_setup.py). */
 export type SetupPart = "main" | "lighthouse" | "camera" | "wifi";
 export type SetupState = {
   phase: "idle" | "checking" | "ready" | "installing" | "unplug" | "verifying" | "done" | "failed";
   message: string | null;
-  facts: { battery_v: number | null; ai_deck: boolean | null } | null;
+  facts: {
+    battery_v: number | null;
+    ai_deck: boolean | null;
+    /** The camera software is on record, but not for the AI deck fitted now
+     *  — a replaced deck, or a drone from before decks were recorded. */
+    deck_unrecorded?: boolean;
+  } | null;
   parts: Partial<Record<SetupPart, "installed" | "needed" | "installing" | "done" | "absent">>;
   current: SetupPart | null;
   progress: number;

@@ -13,6 +13,10 @@
  * camera has started and the positioning deck kept its firmware.
  *
  * Step 2 holds the list only while it has something to do (see listed below).
+ * Opened by its button it stays open once the check finds everything
+ * installed, so any part can be ticked and written again ("Reinstall"). A
+ * replaced AI deck needs no tick: the agent tells it apart by its factory
+ * serial and lists its camera and Wi-Fi as to install (setup.txt).
  *
  * Step 3 sets each base station's channel over its USB cable (agent
  * flight/basestation.py — Bitcraze's "Set BS channel"): every V2 station must
@@ -25,10 +29,11 @@
  * it sat here as step 4 and could not be found).
  */
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Page, Run } from "@/App";
 import {
-  AgentError, api, type BaseStation, type CameraWifi, type Session, type SetupState, type StationStatus,
+  AgentError, api, type BaseStation, type CameraWifi, type Session, type SetupPart, type SetupState,
+  type StationStatus,
 } from "@/lib/agent";
 import { StationStages, useStation } from "@/components/StationStages";
 import { Button, Message, PageHeader, Spinner, StatusDot, type Tone } from "@/components/ui";
@@ -64,9 +69,17 @@ export function SetupPage({ session, setup, wifi, run, onGo }: {
   const installPending = ["checking", "installing", "verifying", "unplug", "failed"].includes(phase)
     || (phase === "ready" && setup !== null && Object.values(setup.parts).some((p) => p === "needed"));
 
+  // An install that finishes hands over to the next step. A check that finds
+  // everything installed does not: the operator opened step 2 to see it, or to
+  // reinstall something, and closes it with its own button.
+  const lastPhase = useRef(phase);
   useEffect(() => {
-    if (opened === "install" && installed) setOpened(null);
-  }, [opened, installed]);
+    const was = lastPhase.current;
+    lastPhase.current = phase;
+    if (opened === "install" && phase === "done" && ["installing", "unplug", "verifying"].includes(was)) {
+      setOpened(null);
+    }
+  }, [opened, phase]);
 
   const listed: Step = !connected ? "connect" : installPending ? "install"
     : !decoding ? "channels" : !wifiDone ? "wifi" : "session";
@@ -91,8 +104,8 @@ export function SetupPage({ session, setup, wifi, run, onGo }: {
 
         <Item n={2} title="Install drone software" done={done("install")} open={current === "install"}
               summary="Drone firmware, positioning deck, camera and camera Wi-Fi installed"
-              onReopen={() => setOpened("install")} reopenLabel="Check">
-          <Install setup={setup} run={run} busy={inSession} />
+              onReopen={() => setOpened("install")} reopenLabel="Check or reinstall">
+          <Install setup={setup} run={run} busy={inSession} onClose={() => setOpened(null)} />
         </Item>
 
         <Item n={3} title="Base stations: one channel each" done={done("channels")} open={current === "channels"}
@@ -117,11 +130,32 @@ export function SetupPage({ session, setup, wifi, run, onGo }: {
   );
 }
 
-function Install({ setup, run, busy }: { setup: SetupState | null; run: Run; busy: boolean }) {
+/** The AI deck's two chips are recorded as one bundle, so they are ticked together. */
+const DECK_PARTS: SetupPart[] = ["camera", "wifi"];
+
+/** Step 2's body; exported for the layout harness (harness.tsx). */
+export function Install({ setup, run, busy, onClose }: {
+  setup: SetupState | null; run: Run; busy: boolean; onClose: () => void;
+}) {
   const phase = setup?.phase ?? "idle";
   const working = phase === "checking" || phase === "installing" || phase === "verifying";
+  const settled = phase === "ready" || phase === "done";
   const battery = setup?.facts?.battery_v;
   const needsAny = setup ? Object.values(setup.parts).some((p) => p === "needed") : false;
+  // Installed parts ticked to be written again. A tick belongs to the check it
+  // was made against, so it clears whenever Set up moves on.
+  const [again, setAgain] = useState<ReadonlySet<SetupPart>>(new Set());
+  useEffect(() => {
+    if (!settled) setAgain(new Set());
+  }, [settled]);
+  const tick = (part: SetupPart, on: boolean) => setAgain((prev) => {
+    const next = new Set(prev);
+    for (const p of DECK_PARTS.includes(part) ? DECK_PARTS : [part]) {
+      if (on) next.add(p); else next.delete(p);
+    }
+    return next;
+  });
+  const install = (label: string) => void run(() => api.setupInstall([...again]), label);
 
   if (phase === "unplug") {
     // The one step only a person can do — alone, and large.
@@ -138,16 +172,33 @@ function Install({ setup, run, busy }: { setup: SetupState | null; run: Run; bus
     <div className="grid gap-3">
       {busy && <Message tone="warning" text="End the session first — set up needs the radio." />}
 
+      {phase === "ready" && setup?.facts?.deck_unrecorded && (
+        <Message tone="warning"
+                 text="This AI deck is not recorded on this drone — a new deck, or one set up before decks were recorded. Install puts its camera and Wi-Fi software on it." />
+      )}
+
       {setup && setup.order && Object.keys(setup.parts).length > 0 && (
         <ul className="grid border border-[var(--border)]">
           {setup.order.map((part) => {
             const status = setup.parts[part];
             const active = setup.current === part && phase === "installing";
+            const canTick = settled && status === "installed";
             return (
               <li key={part} className="grid gap-1 border-b border-[var(--border)] px-3 py-2 last:border-b-0">
-                <div className="flex items-center justify-between gap-3 text-sm">
+                <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm">
                   <span className="font-medium">{setup.labels[part]}</span>
-                  <PartStatus status={status} active={active} progress={setup.progress} />
+                  <span className="flex flex-wrap items-center gap-3">
+                    <PartStatus status={status} active={active} progress={setup.progress}
+                                again={canTick && again.has(part)} />
+                    {canTick && (
+                      <label className="inline-flex min-h-11 items-center gap-2 text-xs">
+                        <input type="checkbox" className="h-5 w-5" disabled={busy}
+                               checked={again.has(part)} onChange={(e) => tick(part, e.target.checked)}
+                               aria-label={`Reinstall ${setup.labels[part]}`} />
+                        Reinstall
+                      </label>
+                    )}
+                  </span>
                 </div>
                 {active && (
                   <div className="h-1.5 w-full bg-[var(--surface-2)]" role="progressbar"
@@ -173,15 +224,25 @@ function Install({ setup, run, busy }: { setup: SetupState | null; run: Run; bus
       {phase === "failed" && setup?.message && <Message tone="critical" text={setup.message} />}
       {phase === "done" && setup?.message && <Message tone="good" text={setup.message} />}
 
-      {!working && phase !== "done" && (
+      {!working && (
         <div className="flex flex-wrap items-center gap-2">
           {phase === "ready" && needsAny ? (
             <>
-              <Button variant="primary" disabled={busy}
-                      onClick={() => void run(api.setupInstall, "Install drone software")}>
+              <Button variant="primary" disabled={busy} onClick={() => install("Install drone software")}>
                 Install
               </Button>
               <span className="text-xs text-[var(--muted)]">About 5 minutes. Keep the drone on.</span>
+            </>
+          ) : phase === "done" ? (
+            <>
+              <Button variant="primary" disabled={busy || again.size === 0}
+                      onClick={() => install("Reinstall drone software")}>
+                Reinstall
+              </Button>
+              <Button onClick={onClose}>Close</Button>
+              <span className="text-xs text-[var(--muted)]">
+                {again.size === 0 ? "Tick a part to write it again." : "Keep the drone on."}
+              </span>
             </>
           ) : (
             <Button variant="primary" disabled={busy}
@@ -267,10 +328,11 @@ function Channels({ station, run, onDone }: {
   );
 }
 
-function PartStatus({ status, active, progress }: {
-  status: string | undefined; active: boolean; progress: number;
+function PartStatus({ status, active, progress, again }: {
+  status: string | undefined; active: boolean; progress: number; again: boolean;
 }) {
   const [tone, label]: [Tone, string] = active ? ["warning", `${Math.round(progress * 100)}%`]
+    : again ? ["idle", "To reinstall"]
     : status === "installed" || status === "done" ? ["good", "Installed"]
     : status === "needed" ? ["idle", "To install"]
     : status === "absent" ? ["idle", "No deck fitted"] : ["idle", "—"];

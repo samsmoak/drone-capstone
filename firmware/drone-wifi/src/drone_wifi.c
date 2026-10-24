@@ -90,14 +90,21 @@ static CPXPacket_t cpxTx;
  *   cwsetup.deck  the camera-software bundle last installed on the AI deck,
  *                 written by the desktop after a VERIFIED install and kept
  *                 across power-offs (the deck's chips cannot report their own
- *                 firmware over the radio). 0 = never set up. */
-#define DRONE_WIFI_VERSION 2
+ *                 firmware over the radio). 0 = never set up.
+ *   cwsetup.deckid WHICH AI deck that bundle was verified on: a 32-bit digest
+ *                 of the deck's 1-wire factory serial, written with .deck.
+ *                 A replaced deck reads a different serial, so it is set up
+ *                 even though .deck still names the current bundle (v3,
+ *                 2026-10-15). 0 = no deck recorded. */
+#define DRONE_WIFI_VERSION 3
 static uint8_t fwVersion = DRONE_WIFI_VERSION;
 static uint8_t deckBundle = 0;
+static uint32_t deckId = 0;
 
 PARAM_GROUP_START(cwsetup)
 PARAM_ADD(PARAM_UINT8 | PARAM_RONLY, fw, &fwVersion)
 PARAM_ADD(PARAM_UINT8 | PARAM_PERSISTENT, deck, &deckBundle)
+PARAM_ADD(PARAM_UINT32 | PARAM_PERSISTENT, deckid, &deckId)
 PARAM_GROUP_STOP(cwsetup)
 
 static void reply(uint8_t cmd, uint8_t code) {
