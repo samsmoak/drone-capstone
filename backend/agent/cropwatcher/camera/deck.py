@@ -71,6 +71,14 @@ READ_TIMEOUT_S = 2.0
 #: First retry after a drop, then doubling to RECONNECT_MAX_S.
 RECONNECT_FIRST_S = 0.2
 RECONNECT_MAX_S = 5.0
+#: Connections in a row that ended without ONE byte before the retries slow
+#: down, and how slow. Measured 2026-10-24: the deck accepted ~10 connections
+#: every 10 s for a whole morning and sent nothing; that churn of connects and
+#: disconnects is the pattern that has wedged the deck's ESP32 before
+#: (firmware/aideck-esp close-client-once.patch). Why it is silent is the
+#: drone's console's to say (camera/diagnose.py), not a faster retry's.
+SILENT_BACKOFF_AFTER = 3
+SILENT_BACKOFF_S = 5.0
 
 
 class StreamError(Exception):
@@ -158,6 +166,15 @@ def _socket_reader(sock: socket.socket) -> Callable[[int], bytes]:
     return read
 
 
+def _counting(read: Callable[[int], bytes], got: list[int]) -> Callable[[int], bytes]:
+    """The same reader, counting the bytes it returned into got[0]."""
+    def counted(n: int) -> bytes:
+        data = read(n)
+        got[0] += len(data)
+        return data
+    return counted
+
+
 Connect = Callable[[tuple[str, int]], socket.socket]
 
 
@@ -197,6 +214,8 @@ class DeckStream:
         #: Cuts a reconnect backoff short — the deck just reported an address.
         self._kick = threading.Event()
         self._sock: socket.socket | None = None
+        #: Connections in a row that ended without a single byte.
+        self._silent = 0
         #: Called with every decoded frame (data, content type, width, height),
         #: on this source's thread — how a session records them.
         self._listeners: list[Callable[[bytes, str, int, int], None]] = []
@@ -263,6 +282,12 @@ class DeckStream:
         with self._lock:
             return self._clock() - self._last_frame_at
 
+    def silent_connects(self) -> int:
+        """Connections in a row the deck accepted and sent nothing on; 0 once
+        a byte arrives. The camera/diagnose.py trigger."""
+        with self._lock:
+            return self._silent
+
     def unreachable_for(self) -> float:
         """Seconds the current address has been failing to connect; 0 when it
         answered last, or has not been tried."""
@@ -280,6 +305,7 @@ class DeckStream:
             self._addr = (host, self._addr[1])
             self._latest = None
             self._failing_since = None
+            self._silent = 0
             self._last_frame_at = self._clock()
             self._problem = f"Connecting to the AI deck at {host}…"
         log.info("deck camera moving to %s", host)
@@ -330,8 +356,9 @@ class DeckStream:
                 with self._lock:
                     self._sock = sock
                     self._failing_since = None
+                got = [0]
                 try:
-                    read = _socket_reader(sock)
+                    read = _counting(_socket_reader(sock), got)
                     while not self._stop.is_set():
                         self.pump(read)
                 except (OSError, StreamError) as e:
@@ -342,7 +369,11 @@ class DeckStream:
                 finally:
                     with self._lock:
                         self._sock = None
+                        self._silent = 0 if got[0] else self._silent + 1
+                        silent = self._silent
                     sock.close()
+                if silent >= SILENT_BACKOFF_AFTER:
+                    backoff = SILENT_BACKOFF_S
             if self._kick.wait(backoff):
                 self._kick.clear()
                 backoff = RECONNECT_FIRST_S

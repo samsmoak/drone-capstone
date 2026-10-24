@@ -412,6 +412,14 @@ export type CameraStatus = {
   /** What the GAP8 says each frame cost it, from the drone's console
    *  (camera/rate.py DeckTiming). null when it has said nothing lately. */
   deck_timing?: DeckTiming | null;
+  /** What the deck itself said on the drone's console, and — after a few
+   *  connections it accepted and sent nothing on — which chip is silent and
+   *  what to do (agent camera/diagnose.py). */
+  deck?: {
+    lines: string[];
+    silent_connects: number;
+    diagnosis: { code: "gap8_silent" | "no_capture" | "send_stuck" | "unknown"; message: string } | null;
+  };
 };
 
 export type CameraRate = {

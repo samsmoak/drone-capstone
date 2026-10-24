@@ -52,6 +52,7 @@ from cropwatcher.api.events import EventHub
 from cropwatcher.api.tokens import HEADER, load_or_create_token
 from cropwatcher.camera import DeckStream, FrameSource, NoCamera, TestPattern
 from cropwatcher.camera.deck import parse_addr
+from cropwatcher.camera.diagnose import GAP8_SILENT, NO_CAPTURE, DeckConsole
 from cropwatcher.camera.rate import DeckTiming
 from cropwatcher.camera.recording import NotRecording, Recorder
 from cropwatcher.camera.wifi import DeckWifi, Phase, WifiError, follow_console
@@ -232,6 +233,8 @@ class Agent:
         )
         #: What the GAP8 says each frame cost it, from the drone's console.
         self.deck_timing = DeckTiming()
+        #: The deck's own console lines, and why it is silent (camera/diagnose.py).
+        self.deck_console = DeckConsole()
         #: Every camera frame of a session, to disk first (camera/recording.py).
         #: Standby frames are shown, never recorded.
         self.recorder = Recorder(self.outbox, position=lambda: self.session.position(),
@@ -263,7 +266,10 @@ class Agent:
         self._cf = cf
         unwatch_wifi = self.deck_wifi.watch(cf)
         # The GAP8's per-frame timings ride the same console (camera/rate.py).
-        unwatch_timing = follow_console(cf, self.deck_timing.feed_line)
+        def deck_line(line: str) -> None:
+            self.deck_timing.feed_line(line)
+            self.deck_console.feed_line(line)
+        unwatch_timing = follow_console(cf, deck_line)
 
         def unwatch() -> None:
             unwatch_wifi()
@@ -312,6 +318,13 @@ class Agent:
                 # clears both.
                 stuck = (wifi.phase is Phase.JOINED and not camera.status().live
                          and camera.no_frames_for() > STALE_ADDRESS_S)
+                # A restart over the radio cannot wake a camera chip that is
+                # not running, nor a camera that fails: the battery must come
+                # out (camera/diagnose.py). Restarting anyway, every minute,
+                # is what the lab saw all morning on 2026-10-24.
+                found = self.deck_console.diagnose(camera.silent_connects())
+                if stuck and found is not None and found.code in (GAP8_SILENT, NO_CAPTURE):
+                    continue
                 if stuck:
                     why = ("no answer" if camera.unreachable_for() > 0 else "no frames")
                     self.rejoin(reason=f"{why} at {wifi.ip} for "
@@ -572,6 +585,9 @@ def camera_status() -> dict:
     # here, and what the GAP8 says each frame cost it. None without a deck.
     payload["rate"] = agent.camera.rate.summary() if isinstance(agent.camera, DeckStream) else None
     payload["deck_timing"] = agent.deck_timing.summary()
+    # What the deck itself says, and why it is silent when it is.
+    silent = agent.camera.silent_connects() if isinstance(agent.camera, DeckStream) else 0
+    payload["deck"] = agent.deck_console.to_dict(silent)
     # No frames AND no radio link: the likeliest reason is the drone itself —
     # off, or its battery flat — not the network. Say that first, rather than
     # a network theory about an address the drone may no longer have.
@@ -593,6 +609,13 @@ def camera_status() -> dict:
         elif wifi.phase in (Phase.SENDING, Phase.JOINING, Phase.RECONNECTING):
             payload["connecting"] = True
             payload["reason"] = wifi.message
+        elif (found := agent.deck_console.diagnose(silent)) is not None \
+                and found.code in (GAP8_SILENT, NO_CAPTURE):
+            # The drone has said why, and it is not ours to fix by retrying:
+            # the operator acts (the battery), so no spinner — and the
+            # watchdog does not restart it either.
+            payload["connecting"] = False
+            payload["reason"] = found.message
         elif wifi.phase is Phase.JOINED and \
                 agent.camera.no_frames_for() > STALE_ADDRESS_S:
             # Not at that address any more. The watchdog restarts the deck so it
