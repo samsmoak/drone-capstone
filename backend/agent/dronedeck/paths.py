@@ -7,9 +7,9 @@ one write that "cannot fail" (CLAUDE.md #6) — would have failed.
 
 Everything now lives in the per-user application data folder:
 
-    macOS    ~/Library/Application Support/CropWatcher
-    Windows  %APPDATA%\\CropWatcher
-    Linux    $XDG_DATA_HOME/CropWatcher  (default ~/.local/share)
+    macOS    ~/Library/Application Support/DroneDeck
+    Windows  %APPDATA%\\DroneDeck
+    Linux    $XDG_DATA_HOME/DroneDeck  (default ~/.local/share)
 
 ``DRONEDECK_DATA_DIR`` overrides it, for tests and for a lab laptop that wants
 flights on a specific disk.
@@ -21,21 +21,58 @@ import os
 import sys
 from pathlib import Path
 
-# The app is DroneDeck since 2026-09-28; the folder keeps its first name so an
-# existing sign-in, session history and outbox are found where they were.
-APP_NAME = "CropWatcher"
+# The app is DroneDeck. It was CropWatcher until 2026-09-28 (name) and its data
+# folder kept that first name until 2026-10-25, when the project-wide rename
+# moved it here; _migrate_legacy() carries an existing folder over on first run.
+APP_NAME = "DroneDeck"
+LEGACY_APP_NAME = "CropWatcher"
+
+_migrated = False
+
+
+def _app_base() -> Path:
+    """The per-OS folder that holds the app's data directory."""
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support"
+    if sys.platform == "win32":
+        return Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+    return Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+
+
+def _migrate_legacy(base: Path) -> None:
+    """One-time move of the pre-rename CropWatcher folder into the DroneDeck one.
+
+    Per-entry, so it is safe even when the desktop shell created the new folder
+    first (it writes a launch log there before the agent starts): each flight,
+    result, mission, room, outbox record and the sign-in moves across unless the
+    new folder already holds that entry. Best-effort — a locked or already-moved
+    entry is left where it is rather than failing a path the whole agent needs.
+    """
+    legacy = base / LEGACY_APP_NAME
+    new = base / APP_NAME
+    if legacy == new or not legacy.is_dir():
+        return
+    new.mkdir(parents=True, exist_ok=True)
+    for entry in legacy.iterdir():
+        target = new / entry.name
+        if not target.exists():
+            try:
+                entry.rename(target)
+            except OSError:
+                pass
 
 
 def data_dir() -> Path:
+    global _migrated
     override = os.environ.get("DRONEDECK_DATA_DIR", "").strip()
     if override:
         root = Path(override).expanduser()
-    elif sys.platform == "darwin":
-        root = Path.home() / "Library" / "Application Support" / APP_NAME
-    elif sys.platform == "win32":
-        root = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / APP_NAME
     else:
-        root = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / APP_NAME
+        base = _app_base()
+        if not _migrated:
+            _migrate_legacy(base)
+            _migrated = True
+        root = base / APP_NAME
     root.mkdir(parents=True, exist_ok=True)
     return root
 

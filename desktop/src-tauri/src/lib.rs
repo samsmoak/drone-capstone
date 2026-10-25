@@ -145,10 +145,10 @@ fn agent_data_dir() -> Option<std::path::PathBuf> {
             None => home()?.join(".local").join("share"),
         }
     };
-    // Still "CropWatcher": the app was renamed DroneDeck on 2026-09-28, but its
-    // data folder (sign-in, sessions, logs — backend/agent/dronedeck/paths.py)
-    // kept the old name so nobody's record moved.
-    Some(root.join("CropWatcher"))
+    // The agent's data folder (sign-in, sessions, logs — the DroneDeck rename
+    // moved it from CropWatcher to DroneDeck on 2026-10-25; the agent's
+    // dronedeck/paths.py carries an existing folder over on first run).
+    Some(root.join("DroneDeck"))
 }
 
 /// Append a line to the shell's own log, beside the agent's.
@@ -600,6 +600,6 @@ mod tests {
         assert_eq!(agent_data_dir(), Some(std::path::PathBuf::from("/tmp/cw-data")));
         std::env::remove_var("DRONEDECK_DATA_DIR");
         let default = agent_data_dir().expect("a home directory");
-        assert!(default.ends_with("CropWatcher"), "{}", default.display());
+        assert!(default.ends_with("DroneDeck"), "{}", default.display());
     }
 }

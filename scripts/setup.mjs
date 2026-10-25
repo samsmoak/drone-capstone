@@ -390,7 +390,7 @@ function venvState(targetCpu) {
 // ── main ──────────────────────────────────────────────────────────────────
 
 const os = { darwin: "macOS", win32: "Windows", linux: "Linux" }[process.platform] ?? process.platform;
-console.log(`\nCropWatcher setup — ${os} ${process.arch}${CHECK_ONLY ? " (checking only)" : ""}\n`);
+console.log(`\nDroneDeck setup — ${os} ${process.arch}${CHECK_ONLY ? " (checking only)" : ""}\n`);
 
 checkWsl();
 checkNode();

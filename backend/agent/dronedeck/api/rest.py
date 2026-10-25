@@ -505,7 +505,7 @@ async def lifespan(api: FastAPI):
         finished.set()
 
 
-app = FastAPI(title="CropWatcher Agent", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="DroneDeck Agent", version="0.2.0", lifespan=lifespan)
 
 
 #: Refusals already logged, as (origin, reason). A browser refused a preflight

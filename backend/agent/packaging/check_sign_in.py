@@ -8,7 +8,7 @@ This is its online companion, run by CI on every machine it installs on, and
 by hand on a machine where sign-in fails:
 
     .venv/bin/python packaging/check_sign_in.py <path to dronedeck-agent>
-    e.g. /Applications/CropWatcher.app/Contents/MacOS/dronedeck-agent
+    e.g. /Applications/DroneDeck.app/Contents/MacOS/dronedeck-agent
 
 It signs in with an account that does not exist. The correct answer is the
 agent's own refusal — HTTP 409, "Could not sign in as …" — because that means

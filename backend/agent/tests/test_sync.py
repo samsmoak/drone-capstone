@@ -144,7 +144,7 @@ def rig(tmp_path):
 
 def add_flight(outbox: Outbox, tmp_path: Path, *, flight_id="flight-1", rows=5, ended=True):
     outbox.put(Kind.DRONE, "cf-1", {
-        "hardware_id": "cf-1", "name": "CropWatcher 1", "uri": "radio://0/80/2M"})
+        "hardware_id": "cf-1", "name": "DroneDeck 1", "uri": "radio://0/80/2M"})
     outbox.put(Kind.SESSION, "session-1", {
         "id": "session-1", "drone_hardware_id": "cf-1", "started_at": "2026-09-16T20:00:00Z",
         "ended_at": "2026-09-16T20:30:00Z" if ended else None,

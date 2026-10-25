@@ -1,7 +1,7 @@
 [project]
 name = "dronedeck-agent"
 version = "0.1.0"
-description = "CropWatcher flight agent — the only process that talks to the Crazyradio"
+description = "DroneDeck flight agent — the only process that talks to the Crazyradio"
 requires-python = ">=3.11"
 
 dependencies = [

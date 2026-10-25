@@ -135,7 +135,7 @@ function runningCopy(target) {
     return found.status === 0 && found.stdout.trim() !== "";
   }
   if (WINDOWS) {
-    for (const image of [`${APP}.exe`, `${LEGACY_APP}.exe`, "desktop.exe", "cropwatcher-agent.exe"]) {
+    for (const image of [`${APP}.exe`, `${LEGACY_APP}.exe`, "desktop.exe", "dronedeck-agent.exe", "cropwatcher-agent.exe"]) {
       const found = spawnSync("tasklist", ["/FI", `IMAGENAME eq ${image}`, "/NH"],
         { encoding: "utf8", windowsHide: true });
       if ((found.stdout ?? "").toLowerCase().includes(image.toLowerCase())) return true;

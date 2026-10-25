@@ -4,8 +4,8 @@
  * THE WHOLE PATH IS REAL NOW; only the camera is not. Frames come from the
  * agent's own `/camera/frame`, through the window's content policy, into this
  * tab. What the agent puts behind that route is a `FrameSource`: "there is no
- * camera", a generated test pattern (`CROPWATCHER_CAMERA=test`), or the AI
- * deck's Wi-Fi streamer (`CROPWATCHER_CAMERA=deck`, with this laptop joined to
+ * camera", a generated test pattern (`DRONEDECK_CAMERA=test`), or the AI
+ * deck's Wi-Fi streamer (`DRONEDECK_CAMERA=deck`, with this laptop joined to
  * the deck's access point). This pane does not know which.
  *
  * The frames cannot come over the radio: usable CRTP throughput is a few KB/s

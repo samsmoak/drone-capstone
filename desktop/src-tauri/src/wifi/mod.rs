@@ -117,9 +117,11 @@ pub fn merge(raw: Vec<Network>) -> Vec<Network> {
 
 // ── the secure store ─────────────────────────────────────────────────────
 
-// Kept from before the rename to DroneDeck (2026-09-28): a new service name
-// would orphan every Wi-Fi password already saved.
-const SERVICE: &str = "CropWatcher";
+// The keychain service. Renamed CropWatcher -> DroneDeck in the 2026-10-25
+// project-wide rename: a Wi-Fi password saved under the old name is re-asked
+// once (App.tsx's banner already says a renamed app asks again). Not migrated —
+// one password, and macOS treats the new bundle identifier as a new app anyway.
+const SERVICE: &str = "DroneDeck";
 const ACCOUNT: &str = "drone-wifi";
 
 #[derive(Serialize, Deserialize)]
