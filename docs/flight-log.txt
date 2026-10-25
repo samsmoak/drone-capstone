@@ -77,6 +77,80 @@ Rungs 7-10 are what PR #26 changed. They are the test of it.
 
 
 =========================================================================
+2026-10-24 (evening) — THE RADIO RESTART IS NOT WHAT BROKE THE CAMERA
+=========================================================================
+
+CONDITIONS
+  battery      fresh, 4.15 V at the start, 4.07 V at the end
+  firmware     main drone_wifi v4 (cwsetup.fw 4); AI deck cwsetup.deck 0 —
+               no deck install ever confirmed; Set up reads Camera and
+               Camera Wi-Fi "needed"
+  network      VT Open WiFi (open); the laptop on it at 100.96.55.209
+  tools        DroneDeck closed; scratch scripts driving the agent's own
+               DeckWifi and stream reader over radio://0/80/2M
+
+THE QUESTION
+  Samuel's theory: the new firmware separated the drone's restart from the
+  deck's Wi-Fi restart; going back to the old one, where a radio reset
+  restarted both, would bring the camera back.
+
+  MEASURED     the day's agent log: every camera recovery 04:01-07:16 was
+               "unsupported" — the deck never carried the new deck firmware,
+               so the morning's ~20 radio restarts (03:11-06:38) ran on the
+               old deck firmware and none brought frames back
+  MEASURED     drone_wifi v4 (as found), fresh battery: DroneDeck's own join
+               at 21:55 failed; 3 radio restarts (cflib stm_power_cycle) —
+               each a fresh apply accepted, 0 of 3 joined in 30 s. The drone
+               prints "DRONEWIFI: joining"; the ESP32 never answers
+  MEASURED     drone_wifi v3 (bundle 1's cf2.bin, sha256 58a61894…, flashed
+               for this test): first boot + 2 radio restarts, 0 of 3 joined
+  MEASURED     the deck memories after every one of the 6 radio restarts: 8,
+               deck.bcAI 1, deck.bcLighthouse4 1. No deck lost
+  MEASURED     one restart's console: "Assert failed at radiolink.c:166"
+               (ASSERT(xQueueSend(crtpPacketDelivery…)) — the radio receive
+               queue overflowed) and on the reboot that followed:
+               "OW: Cmd 0x22 timeout", "DECK_CORE: 1 deck(s) found"
+  MEASURED     a clean boot's console: 2 decks, "CPX External router
+               initialized" (the ESP32 answered the UART handshake), and in
+               25 s NOT ONE line from the GAP8 — the stock streamer always
+               prints "-- WiFi image streamer example --" and "Setting up
+               WiFi AP". cflib deck memory: bcAI:esp and bcAI:gap8 both
+               started, neither in its bootloader
+  MEASURED     after a radio restart with no network sent, the deck's own
+               access point "WiFi streaming example" was NOT found by the
+               laptop (3 tries)
+  MEANT        The theory does not hold: v3 and v4 fail alike, and v4's join
+               path for a bundle-0 deck is the same code as v3's (git diff
+               d51a3e5 — v4 only adds rejoin/report for bundle 2). The radio
+               restart is not the fault either — it kept both decks six
+               times on a charged battery. The fault is ON THE AI DECK: its
+               Wi-Fi chip never joins and its camera chip says nothing. The
+               two lost-deck readings fit a chain, not yet proven: a stuck
+               ESP32 stops draining CPX → drone_wifi blocks in
+               cpxSendPacketBlocking → the radio queue overflows → the STM32
+               asserts and reboots → that boot misses the AI deck on 1-wire.
+               NOT SETTLED: whether a radio restart power-cycles the AI deck
+               at all — no deck AP after it says either "no" or "the GAP8 is
+               not running". A hand power-off with no network sent, then the
+               console and the AP, separates the two.
+  CHANGED      nothing in code — drone_wifi v4 flashed back (sha256
+               d16bcf79…, the bundle's own). The automatic radio restart
+               stays removed: it does not bring the camera back.
+
+BASE STATIONS (Samuel asked, same session)
+  DID          ./cropwatcher check ; ./cropwatcher stations --seconds 10
+  MEASURED     received: station 1 only; calibration stored for 0 and 1;
+               geometry: none; estimate drifting ~1.5 m/s
+               (+48.6 → +60.8 m in 10 s)
+  MEANT        the deck sees light — one station's sweeps decode. The second
+               station is not received, and with no geometry there is no
+               position. The geometry was already missing this morning
+               (bsGeoVal 0, entry below), so the test flashes did not erase it.
+  CHANGED      nothing — owed: the second station's LED and line of sight,
+               then ② Position › Measure once.
+
+
+=========================================================================
 2026-10-24 — TWO STATIONS UP, AND THE DECK SEES NO LIGHT
 =========================================================================
 
