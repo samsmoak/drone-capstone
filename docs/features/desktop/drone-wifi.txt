@@ -189,6 +189,12 @@ INVARIANTS
   over the radio. That restart (cflib stm_power_cycle) cut the decks' power
   and they did not come back: 06:39 that day, 8 deck memories before it, 0
   after, "AI deck: not fitted" and no base stations until a hand power-off.
+  CORRECTED 2026-10-24 evening: the restart itself does not lose the decks —
+  6 radio restarts on a 4.1 V battery kept all 8 deck memories each time.
+  The one lost AI deck that evening followed an STM32 assert (radiolink.c:166,
+  radio queue overflow) during a join to a deck whose ESP32 never answered.
+  The rule stands for a different reason: on that drone 0 of 6 restarts
+  brought the camera back, on drone_wifi v3 and v4 alike (flight-log.txt).
   The watchdog's "answers but sends nothing" case says the same, and stops
   trying while no AI deck is detected. Reconnect camera is refused with the
   fix when no AI deck is detected (409), and says so when it starts — a press
@@ -306,7 +312,11 @@ shares-data-with  ../development/commands.txt
                   the build.sh + flash_firmware commands, indexed there
 
 
-LAST VERIFIED  2026-10-24 for the weak link (bundle 3): wifi-link.patch
+LAST VERIFIED  2026-10-24 evening on the drone (deck bundle 0): joins 0 of 7
+on drone_wifi v4 and v3, with and without a radio restart; decks kept 6 of 6
+restarts; the ESP32 and GAP8 started, not in bootloader, the GAP8 silent —
+flight-log.txt. Open: does a radio restart power-cycle the AI deck.
+2026-10-24 for the weak link (bundle 3): wifi-link.patch
 applied on the three before it and built clean (ESP-IDF 4.3.1, 716 352 bytes,
 the link line in the binary); every call checked against the 4.3.1 headers;
 test_camera_wifi.py TestDeckLink (7); harness "Drone Wi-Fi · deck radio"
