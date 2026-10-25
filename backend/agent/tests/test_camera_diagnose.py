@@ -167,7 +167,7 @@ class TestTheCameraRoute:
 
         from dronedeck.api import rest
 
-        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
         stream = DeckStream(start=False)
         stream._silent = SILENT_CONNECTS
         monkeypatch.setattr(rest.agent, "camera", stream)

@@ -109,7 +109,7 @@ class TestPositioningReadiness:
         """A second station is a second viewpoint. Where they exist, wanting
         both is worth asking for — the pair solver needs two, and only two
         give an occluded deck somewhere else to look."""
-        monkeypatch.setenv("CROPWATCHER_MIN_STATIONS", "2")
+        monkeypatch.setenv("DRONEDECK_MIN_STATIONS", "2")
         status = assess_positioning(snap(**{"lighthouse__bsReceive": 0b01}))
         assert not status.ready
         assert "Only 1 usable" in " ".join(status.problems())
@@ -122,7 +122,7 @@ class TestPositioningReadiness:
         assert "No base station signal" in " ".join(status.problems())
 
     def test_asking_for_none_still_requires_one(self, monkeypatch):
-        monkeypatch.setenv("CROPWATCHER_MIN_STATIONS", "0")
+        monkeypatch.setenv("DRONEDECK_MIN_STATIONS", "0")
         status = assess_positioning(snap(**{"lighthouse__bsReceive": 0b00}))
         assert not status.ready
 

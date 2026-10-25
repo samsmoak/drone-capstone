@@ -315,7 +315,7 @@ const pyVersion = (py) => py.version.join(".");
 /** A Python ≥ 3.11 for the same CPU Rust builds for. */
 function findPython(targetCpu) {
   const candidates = [];
-  if (process.env.CROPWATCHER_PYTHON) candidates.push([process.env.CROPWATCHER_PYTHON]);
+  if (process.env.DRONEDECK_PYTHON) candidates.push([process.env.DRONEDECK_PYTHON]);
   // 3.11 first: it is what CI builds with, so it is the proven one.
   if (WINDOWS) {
     candidates.push(["py", "-3.11"], ["py", "-3.12"], ["py", "-3.13"], ["python"], ["py", "-3"]);
@@ -441,7 +441,7 @@ step("install the desktop app's packages", "pnpm", ["install", "--frozen-lockfil
   { cwd: DESKTOP, shell: WINDOWS });
 
 // scripts/install.mjs runs this first and says what comes next itself.
-if (process.env.CROPWATCHER_SETUP_QUIET_NEXT) process.exit(0);
+if (process.env.DRONEDECK_SETUP_QUIET_NEXT) process.exit(0);
 
 console.log(`
 Ready. To build the app and install it (into Applications on a Mac, for this

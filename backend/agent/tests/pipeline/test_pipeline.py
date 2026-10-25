@@ -210,6 +210,6 @@ class TestCommand:
         assert "P1" in out and "insufficient_data" in out and "saved" in out
 
     def test_process_an_unknown_flight_says_so(self, tmp_path, monkeypatch, capsys):
-        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
         assert main(["process", "--flight", "nope-nope"]) == 2
         assert "No readings" in capsys.readouterr().out

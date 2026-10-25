@@ -50,7 +50,7 @@ from dronedeck.telemetry.stream import Snapshot
 # off the drone, so there is no optical flow and no rangefinder.
 #
 # The default is what the room actually has. A stricter room asks for two with
-# CROPWATCHER_MIN_STATIONS=2.
+# DRONEDECK_MIN_STATIONS=2.
 MIN_USABLE_STATIONS = 1
 
 #: What the kit was designed around, and what the geometry pair-solver needs.
@@ -62,7 +62,7 @@ def required_stations() -> int:
 
     One by default — see MIN_USABLE_STATIONS for why that is enough to fly and
     what the second one buys. A room with two can insist on both with
-    CROPWATCHER_MIN_STATIONS=2, which is worth doing wherever they exist: the
+    DRONEDECK_MIN_STATIONS=2, which is worth doing wherever they exist: the
     geometry pair-solver needs two, and only two give the drone somewhere else
     to look when its deck is occluded.
 
@@ -74,7 +74,7 @@ def required_stations() -> int:
     control law that the checks already offer by name. It is a different
     answer, not a looser threshold.
     """
-    raw = os.environ.get("CROPWATCHER_MIN_STATIONS", "").strip()
+    raw = os.environ.get("DRONEDECK_MIN_STATIONS", "").strip()
     if not raw:
         return MIN_USABLE_STATIONS
     try:

@@ -5,7 +5,7 @@ websites on this machine: an unauthenticated local API that can arm a drone is
 reachable from any page the operator has open. Every command therefore carries
 a token that only the app which launched the agent knows.
 
-The desktop app passes it in ``CROPWATCHER_AGENT_TOKEN`` when it spawns the
+The desktop app passes it in ``DRONEDECK_AGENT_TOKEN`` when it spawns the
 sidecar. Run from a terminal, the agent generates one and writes it to the data
 folder (owner-readable), so the CLI and diagnostics can use it.
 
@@ -24,7 +24,7 @@ from dronedeck.paths import data_dir
 
 log = logging.getLogger(__name__)
 
-ENV_VAR = "CROPWATCHER_AGENT_TOKEN"
+ENV_VAR = "DRONEDECK_AGENT_TOKEN"
 HEADER = "X-Agent-Token"
 
 

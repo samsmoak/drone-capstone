@@ -25,7 +25,7 @@ set -euo pipefail
 
 GAP8_TAG=2025.02
 HERE="$(cd "$(dirname "$0")" && pwd)"
-CACHE="${CROPWATCHER_CACHE:-$HOME/.cache/cropwatcher}"
+CACHE="${DRONEDECK_CACHE:-$HOME/.cache/dronedeck}"
 SRC="$CACHE/aideck-gap8-build"
 IMAGE="bitcraze/aideck"
 

@@ -51,8 +51,8 @@ class TestTheSwitch:
 class TestTheRoutes:
     @pytest.fixture
     def api(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
-        monkeypatch.setenv("CROPWATCHER_STANDBY", "0")
+        monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("DRONEDECK_STANDBY", "0")
         cloud = FakeCloud()
         cloud.sign_in = lambda email, password: Operator("user-1", email, "Ada", "operator")
         session = Session(cloud=cloud, outbox=Outbox(tmp_path / "outbox"),
@@ -150,7 +150,7 @@ class TestHistory:
 
     def test_the_routes(self, tmp_path, monkeypatch):
         from dronedeck.camera.recording import FrameRecording
-        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
         from dronedeck.history import sessions_dir
         rec = FrameRecording("s9", sessions_dir() / "s9")
         rec.add_manual(b"by-hand", "image/png", 2, 1)

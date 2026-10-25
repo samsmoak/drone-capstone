@@ -11,7 +11,7 @@ Everything now lives in the per-user application data folder:
     Windows  %APPDATA%\\CropWatcher
     Linux    $XDG_DATA_HOME/CropWatcher  (default ~/.local/share)
 
-``CROPWATCHER_DATA_DIR`` overrides it, for tests and for a lab laptop that wants
+``DRONEDECK_DATA_DIR`` overrides it, for tests and for a lab laptop that wants
 flights on a specific disk.
 """
 
@@ -27,7 +27,7 @@ APP_NAME = "CropWatcher"
 
 
 def data_dir() -> Path:
-    override = os.environ.get("CROPWATCHER_DATA_DIR", "").strip()
+    override = os.environ.get("DRONEDECK_DATA_DIR", "").strip()
     if override:
         root = Path(override).expanduser()
     elif sys.platform == "darwin":

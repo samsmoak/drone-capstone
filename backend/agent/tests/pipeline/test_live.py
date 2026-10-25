@@ -54,7 +54,7 @@ class TestTheLivePoint:
     def test_the_command(self, data, monkeypatch, capsys):
         from dronedeck import cli, paths
 
-        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(data))
+        monkeypatch.setenv("DRONEDECK_DATA_DIR", str(data))
         assert cli.main(["process", "--flight", FLIGHT, "--live-point", "P2"]) == 0
         assert live_path(paths.results_dir(), FLIGHT, "P2").exists()
         assert "P2:" in capsys.readouterr().out

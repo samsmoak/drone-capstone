@@ -118,7 +118,7 @@ class TestTheRoute:
         from dronedeck.api import rest
         from dronedeck.api.tokens import HEADER
 
-        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
         asked: list[str] = []
         monkeypatch.setattr(rest.agent.session, "start",
                             lambda purpose="flight": asked.append(purpose))

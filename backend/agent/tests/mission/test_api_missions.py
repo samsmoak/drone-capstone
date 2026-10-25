@@ -19,8 +19,8 @@ from tests.test_sync import FakeCloud
 
 @pytest.fixture
 def api(tmp_path, monkeypatch):
-    monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("CROPWATCHER_STANDBY", "0")
+    monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("DRONEDECK_STANDBY", "0")
     cloud = FakeCloud()
     cloud.sign_in = lambda email, password: Operator("user-1", email, "Ada", "operator")
     session = Session(cloud=cloud, outbox=Outbox(tmp_path / "outbox"),

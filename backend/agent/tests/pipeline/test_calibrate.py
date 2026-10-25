@@ -72,7 +72,7 @@ def test_the_command_prints_and_saves_the_report(data, monkeypatch, capsys):
     from dronedeck import cli
 
     warm_at(data, "P1", 3.0)
-    monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(data))
+    monkeypatch.setenv("DRONEDECK_DATA_DIR", str(data))
     assert cli.main(["calibrate", "--flight", FLIGHT, "--at", "P1"]) == 0
     out = capsys.readouterr().out
     assert "P1" in out and "MIN_EVENT_C" in out and "reviewed pull request" in out

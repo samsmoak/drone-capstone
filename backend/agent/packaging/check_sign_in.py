@@ -76,7 +76,7 @@ def check(binary: Path) -> str:
     with tempfile.TemporaryDirectory(prefix="dronedeck-sign-in-",
                                      ignore_cleanup_errors=True) as work:
         env = _probe_env(str(Path(work) / "data"))
-        env.update(CROPWATCHER_AGENT_TOKEN=TOKEN, SUPABASE_URL=url, SUPABASE_ANON_KEY=key)
+        env.update(DRONEDECK_AGENT_TOKEN=TOKEN, SUPABASE_URL=url, SUPABASE_ANON_KEY=key)
         log_path = Path(work) / "agent.log"
         with open(log_path, "w") as log:
             process = subprocess.Popen(

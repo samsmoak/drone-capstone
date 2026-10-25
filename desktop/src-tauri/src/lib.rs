@@ -123,7 +123,7 @@ fn agent_data_dir() -> Option<std::path::PathBuf> {
     let home = || {
         std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(PathBuf::from)
     };
-    if let Ok(value) = std::env::var("CROPWATCHER_DATA_DIR") {
+    if let Ok(value) = std::env::var("DRONEDECK_DATA_DIR") {
         let value = value.trim();
         if !value.is_empty() {
             return match value.strip_prefix('~') {
@@ -380,7 +380,7 @@ fn spawn_agent(app: &tauri::AppHandle) -> Result<(), String> {
         .shell()
         .sidecar("cropwatcher-agent")
         .map_err(|e| format!("the bundled agent is missing: {e}"))?
-        .env("CROPWATCHER_AGENT_TOKEN", token)
+        .env("DRONEDECK_AGENT_TOKEN", token)
         .env("SUPABASE_URL", configured("SUPABASE_URL", SUPABASE_URL))
         .env("SUPABASE_ANON_KEY", configured("SUPABASE_ANON_KEY", SUPABASE_ANON_KEY))
         // The app reads the AI deck's camera by default. An app opened from
@@ -388,7 +388,7 @@ fn spawn_agent(app: &tauri::AppHandle) -> Result<(), String> {
         // to the environment meant the bundled agent always had no camera.
         // With no deck in reach it retries quietly and the tab says to join
         // the deck's Wi-Fi.
-        .env("CROPWATCHER_CAMERA", configured("CROPWATCHER_CAMERA", "deck"))
+        .env("DRONEDECK_CAMERA", configured("DRONEDECK_CAMERA", "deck"))
         // `--exit-with-parent` is what actually stops the agent. Killing the
         // child below only reaches PyInstaller's bootloader; the real Python
         // process is its child and survives, orphaned onto launchd, still
@@ -596,9 +596,9 @@ mod tests {
     #[test]
     fn the_log_path_honours_the_override_like_the_agent() {
         // One test owns this variable; nothing else in the suite reads it.
-        std::env::set_var("CROPWATCHER_DATA_DIR", "/tmp/cw-data");
+        std::env::set_var("DRONEDECK_DATA_DIR", "/tmp/cw-data");
         assert_eq!(agent_data_dir(), Some(std::path::PathBuf::from("/tmp/cw-data")));
-        std::env::remove_var("CROPWATCHER_DATA_DIR");
+        std::env::remove_var("DRONEDECK_DATA_DIR");
         let default = agent_data_dir().expect("a home directory");
         assert!(default.ends_with("CropWatcher"), "{}", default.display());
     }

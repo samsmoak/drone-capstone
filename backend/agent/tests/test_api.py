@@ -42,10 +42,10 @@ COMMANDS = [
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
-    monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
     # Standby is exercised in test_session.py, driven step by step; a
     # background loop here would race every API test.
-    monkeypatch.setenv("CROPWATCHER_STANDBY", "0")
+    monkeypatch.setenv("DRONEDECK_STANDBY", "0")
     cloud = FakeCloud()
     cloud.sign_in = lambda email, password: Operator("user-1", email, "Ada", "operator")
     cloud.sign_out = lambda: None

@@ -43,7 +43,7 @@ class TestSurvey:
             sample(rig, x, y)
 
     def test_a_walk_becomes_the_rooms_coverage(self, rig, monkeypatch):
-        monkeypatch.setenv("CROPWATCHER_MIN_STATIONS", "2")     # a two-station room
+        monkeypatch.setenv("DRONEDECK_MIN_STATIONS", "2")     # a two-station room
         rig.session.start_survey("lab")
         self.walk(rig)
         sample(rig, 5.0, 5.0, mask=0b01)              # one station: not counted

@@ -127,7 +127,7 @@ BUILTIN_ORIGINS = (*DESKTOP_ORIGINS, *WEBSITE_ORIGINS)
 
 
 def allowed_origins() -> frozenset[str]:
-    extra = os.environ.get("CROPWATCHER_ALLOWED_ORIGINS", "")
+    extra = os.environ.get("DRONEDECK_ALLOWED_ORIGINS", "")
     return frozenset(
         [*BUILTIN_ORIGINS, *(o.strip().rstrip("/") for o in extra.split(",") if o.strip())]
     )
@@ -427,18 +427,18 @@ class Agent:
 
 
 def _camera_from_env() -> FrameSource:
-    """Where camera frames come from, chosen by CROPWATCHER_CAMERA.
+    """Where camera frames come from, chosen by DRONEDECK_CAMERA.
 
     unset   NoCamera — the default, because joining the deck's access point
             takes this laptop off its normal network, so it is opt-in.
-    deck    the AI deck's Wi-Fi streamer, at CROPWATCHER_DECK_ADDR
+    deck    the AI deck's Wi-Fi streamer, at DRONEDECK_DECK_ADDR
             (default 192.168.4.1:5000). The laptop must be on the deck's Wi-Fi.
     test    a generated pattern, which proves the route, the content policy
             and the window without a camera.
     """
-    choice = os.environ.get("CROPWATCHER_CAMERA", "").strip().lower()
+    choice = os.environ.get("DRONEDECK_CAMERA", "").strip().lower()
     if choice == "deck":
-        return DeckStream(parse_addr(os.environ.get("CROPWATCHER_DECK_ADDR")))
+        return DeckStream(parse_addr(os.environ.get("DRONEDECK_DECK_ADDR")))
     if choice == "test":
         return TestPattern()
     return NoCamera()
@@ -462,8 +462,8 @@ async def lifespan(api: FastAPI):
     agent.hub.bind(asyncio.get_running_loop())
     # What the last run left unfinished is finished — flights it was recording
     # when the app closed are closed (sync/syncer.py), and below, flights it was
-    # processing are processed again. Off in tests (CROPWATCHER_RESUME=0).
-    resume = os.environ.get("CROPWATCHER_RESUME", "1").strip() != "0"
+    # processing are processed again. Off in tests (DRONEDECK_RESUME=0).
+    resume = os.environ.get("DRONEDECK_RESUME", "1").strip() != "0"
     if resume:
         close_orphaned_flights(agent.outbox)
         # Flights flown before playback's upload existed get theirs queued
@@ -475,15 +475,15 @@ async def lifespan(api: FastAPI):
     # happens, so it runs beside startup rather than in front of it.
     threading.Thread(target=_restore_sign_in, daemon=True, name="restore-sign-in").start()
     # Hold the drone on standby whenever someone is signed in and no session
-    # runs: vitals and the camera before any session. CROPWATCHER_STANDBY=0
+    # runs: vitals and the camera before any session. DRONEDECK_STANDBY=0
     # turns it off — for tests, and for a developer who wants the radio free.
-    if os.environ.get("CROPWATCHER_STANDBY", "1").strip() != "0":
+    if os.environ.get("DRONEDECK_STANDBY", "1").strip() != "0":
         agent.session.start_standby()
         threading.Thread(target=agent.watchdog, name="camera-watchdog", daemon=True).start()
     # Flights the last run left half-processed (the app closed first) are
     # processed again, in the background. NOT in Agent(): that is built when
     # this module is imported, and a test importing it must never start
-    # processing the laptop's real flights. CROPWATCHER_RESUME=0 turns it off.
+    # processing the laptop's real flights. DRONEDECK_RESUME=0 turns it off.
     if resume:
         threading.Thread(target=agent.session.resume_processing, daemon=True,
                          name="resume-processing").start()

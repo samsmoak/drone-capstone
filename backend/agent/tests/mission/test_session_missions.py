@@ -89,7 +89,7 @@ class PositionedLink(FakeLink):
 
 
 def make_rig(tmp_path, monkeypatch, controller=StandInController, at=(-1.0, -1.0)):
-    monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
     STARTED.clear()
     cloud = FakeCloud()
     cloud.sign_in = lambda email, password: Operator("user-1", email, "Ada", "operator")

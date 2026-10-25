@@ -230,7 +230,7 @@ class TestTheCommand:
     def data(self, tmp_path, monkeypatch):
         root = tmp_path / "data"
         write_session(root, seconds=200, frames=(10, 20))
-        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(root))
+        monkeypatch.setenv("DRONEDECK_DATA_DIR", str(root))
         return root
 
     def test_process_session_saves_a_session_result_and_records_it(self, data, capsys):

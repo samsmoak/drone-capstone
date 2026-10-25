@@ -34,7 +34,7 @@ set -euo pipefail
 
 ESP_TAG=2025.02
 HERE="$(cd "$(dirname "$0")" && pwd)"
-CACHE="${CROPWATCHER_CACHE:-$HOME/.cache/cropwatcher}"
+CACHE="${DRONEDECK_CACHE:-$HOME/.cache/dronedeck}"
 SRC="$CACHE/aideck-esp-firmware"
 
 if [ ! -d "$SRC/.git" ]; then

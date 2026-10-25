@@ -368,7 +368,7 @@ def cmd_geometry(args: argparse.Namespace) -> int:
             print("  WARNING: the drone did not confirm the write")
         if alone:
             print("\n  One station carries no redundancy: lose sight of it and x and y")
-            print("  become the accelerometer integrating. Set CROPWATCHER_MIN_STATIONS=1")
+            print("  become the accelerometer integrating. Set DRONEDECK_MIN_STATIONS=1")
             print("  to let the checks accept it.")
         print("\n  Now run:  dronedeck check     (it should settle under 2 cm)\n")
     return 0

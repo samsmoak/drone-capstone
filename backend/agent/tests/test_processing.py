@@ -97,7 +97,7 @@ class TestTheQueue:
 
 @pytest.fixture
 def rig(tmp_path, monkeypatch):
-    monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
     cloud = FakeCloud()
     cloud.sign_in = lambda email, password: Operator("user-1", email, "Ada", "operator")
     cloud.sign_out = lambda: None
@@ -259,8 +259,8 @@ def test_a_closed_sessions_flight_is_recorded_in_its_file(tmp_path):
 class TestTheRoutes:
     @pytest.fixture
     def api(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
-        monkeypatch.setenv("CROPWATCHER_STANDBY", "0")
+        monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("DRONEDECK_STANDBY", "0")
         cloud = FakeCloud()
         cloud.sign_in = lambda email, password: Operator("user-1", email, "Ada", "operator")
         session = Session(cloud=cloud, outbox=Outbox(tmp_path / "outbox"),
@@ -349,9 +349,9 @@ class TestResumingAfterTheAppClosed:
 @pytest.mark.parametrize(("setting", "resumed"), [("1", True), ("0", False)])
 def test_the_agent_resumes_as_it_starts_unless_told_not_to(monkeypatch, tmp_path, setting,
                                                            resumed):
-    monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("CROPWATCHER_STANDBY", "0")
-    monkeypatch.setenv("CROPWATCHER_RESUME", setting)
+    monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("DRONEDECK_STANDBY", "0")
+    monkeypatch.setenv("DRONEDECK_RESUME", setting)
     called, closed = [], []
     monkeypatch.setattr(rest.agent.session, "resume_processing", lambda: called.append(1))
     # rest.agent's outbox is the LAPTOP'S OWN — built when the module was
@@ -382,7 +382,7 @@ class TestProcessAll:
         (empty / "meta.json").write_text(json.dumps({"id": "empty-session", "flights": [
             {"id": "00000000-0000-4000-8000-000000000000", "mode": "manual",
              "started_at": "2026-09-25T08:00:00+00:00"}]}))
-        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(root))
+        monkeypatch.setenv("DRONEDECK_DATA_DIR", str(root))
         return root
 
     def test_every_flight_is_processed_and_queued_and_an_empty_one_skipped(self, data, capsys):

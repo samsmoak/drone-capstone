@@ -52,7 +52,7 @@ def _start(port: int, data_dir: Path, *extra: str) -> subprocess.Popen:
     # Its own data folder and no standby. Without these the probe agent read the
     # operator's saved sign-in, wrote into their agent.log, and could have
     # opened the radio under a running app (seen 2026-09-30 in a real log).
-    env = os.environ | {"CROPWATCHER_DATA_DIR": str(data_dir), "CROPWATCHER_STANDBY": "0"}
+    env = os.environ | {"DRONEDECK_DATA_DIR": str(data_dir), "DRONEDECK_STANDBY": "0"}
     process = subprocess.Popen(
         [sys.executable, "-m", "dronedeck.cli", "serve", "--port", str(port), *extra],
         stdin=subprocess.PIPE,
@@ -153,8 +153,8 @@ class TestShutdownIsBounded:
     def test_sigterm_is_bounded_too(self, hung_end, tmp_path, monkeypatch):
         """The lifespan shutdown calls the same `session.end`; serve arms it."""
         exits, _, release = hung_end
-        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
-        monkeypatch.setenv("CROPWATCHER_STANDBY", "0")
+        monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("DRONEDECK_STANDBY", "0")
         monkeypatch.setattr(rest.app.state, "exit_deadline_s", 0.2, raising=False)
         # The shutdown runs on this thread, so the fake exit must unblock it.
         monkeypatch.setattr(rest.os, "_exit", lambda code: (exits.append(code), release.set()))

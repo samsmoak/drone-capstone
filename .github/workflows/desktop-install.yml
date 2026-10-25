@@ -98,7 +98,7 @@ jobs:
       - name: node scripts/install.mjs
         env:
           # The Python setup-python installed, not whichever one PATH finds first.
-          CROPWATCHER_PYTHON: ${{ steps.python.outputs.python-path }}
+          DRONEDECK_PYTHON: ${{ steps.python.outputs.python-path }}
         run: node scripts/install.mjs
 
       # The frozen agent must SIGN IN on this machine, not only start: an Intel

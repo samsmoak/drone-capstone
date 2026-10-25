@@ -33,7 +33,7 @@
 // which is also what makes an Intel Mac and an Apple-silicon Mac each get the
 // right one (PyInstaller freezes for the CPU of the machine it runs on).
 //
-// CROPWATCHER_INSTALL_DIR (macOS: the folder for DroneDeck.app; Linux: the
+// DRONEDECK_INSTALL_DIR (macOS: the folder for DroneDeck.app; Linux: the
 // program folder) installs somewhere else — for testing.
 //
 // The Crazyradio needs a one-time administrator step on Windows (a driver)
@@ -91,7 +91,7 @@ function step(label, command, args, { cwd = ROOT, shell = false, env } = {}) {
 // ── where it installs, and whether a copy is running there ────────────────
 
 function macInstallDir() {
-  if (process.env.CROPWATCHER_INSTALL_DIR) return resolve(process.env.CROPWATCHER_INSTALL_DIR);
+  if (process.env.DRONEDECK_INSTALL_DIR) return resolve(process.env.DRONEDECK_INSTALL_DIR);
   try {
     accessSync("/Applications", constants.W_OK);
     return "/Applications";
@@ -111,7 +111,7 @@ const linuxPathsFor = (name) => ({
 });
 const linuxPaths = () => ({
   ...linuxPathsFor("dronedeck"),
-  ...(process.env.CROPWATCHER_INSTALL_DIR ? { dir: resolve(process.env.CROPWATCHER_INSTALL_DIR) } : {}),
+  ...(process.env.DRONEDECK_INSTALL_DIR ? { dir: resolve(process.env.DRONEDECK_INSTALL_DIR) } : {}),
 });
 /** Where a CropWatcher-era install lives: the same layout under the old name. */
 const legacyLinuxPaths = () => linuxPathsFor("cropwatcher");
@@ -153,8 +153,8 @@ function refuseIfRunning(target, name = APP) {
 
 const target = MAC ? join(macInstallDir(), `${APP}.app`) : LINUX ? linuxPaths().dir : null;
 // The CropWatcher-era copy, removed after the install — so it must not be
-// running either. Skipped for a test install into CROPWATCHER_INSTALL_DIR.
-const MIGRATE = INSTALL && !process.env.CROPWATCHER_INSTALL_DIR;
+// running either. Skipped for a test install into DRONEDECK_INSTALL_DIR.
+const MIGRATE = INSTALL && !process.env.DRONEDECK_INSTALL_DIR;
 const legacyTarget = !MIGRATE ? null
   : MAC ? join(macInstallDir(), `${LEGACY_APP}.app`) : LINUX ? legacyLinuxPaths().dir : null;
 // Before minutes of building, not after.
@@ -165,7 +165,7 @@ if (legacyTarget && existsSync(legacyTarget)) refuseIfRunning(legacyTarget, LEGA
 
 step("check the toolchain and install what the build needs",
   process.execPath, [join(ROOT, "scripts", "setup.mjs"), ...(flags.includes("--dev") ? ["--dev"] : [])],
-  { env: { ...process.env, CROPWATCHER_SETUP_QUIET_NEXT: "1" } });
+  { env: { ...process.env, DRONEDECK_SETUP_QUIET_NEXT: "1" } });
 
 // ── 2. build ──────────────────────────────────────────────────────────────
 

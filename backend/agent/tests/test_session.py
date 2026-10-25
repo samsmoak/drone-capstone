@@ -160,7 +160,7 @@ class FakeLink:
 
 @pytest.fixture
 def rig(tmp_path, monkeypatch):
-    monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
     cloud = FakeCloud()
     cloud.sign_in = lambda email, password: Operator("user-1", email, "Ada", "operator")
     cloud.sign_out = lambda: None
@@ -589,7 +589,7 @@ class TestDecksLost:
 
 class TestNoDeckHook:
     def test_a_link_without_an_ai_deck_calls_the_no_deck_hook_once(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
         calls: list[str] = []
         session = Session(cloud=FakeCloud(), outbox=Outbox(tmp_path / "outbox"),
                           link_factory=FakeLink, on_link_ready=lambda cf: calls.append("ready"),
@@ -1080,7 +1080,7 @@ def standby(tmp_path, monkeypatch):
     The loop thread is never started: `_standby_tick` is driven directly, so
     each test says exactly when the agent looks for the drone.
     """
-    monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
     cloud = FakeCloud()
     cloud.sign_in = lambda email, password: Operator("user-1", email, "Ada", "operator")
     cloud.sign_out = lambda: None
@@ -1215,7 +1215,7 @@ class TestStandby:
 
 class TestLinkDownHook:
     def test_every_close_reports_it(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
         cloud = FakeCloud()
         cloud.sign_in = lambda email, password: Operator("user-1", email, "Ada", "operator")
         cloud.sign_out = lambda: None
@@ -1233,7 +1233,7 @@ class TestRestartDrone:
     """The one supported way to make the deck rejoin and say its address."""
 
     def make(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
         cloud = FakeCloud()
         cloud.sign_in = lambda email, password: Operator("user-1", email, "Ada", "operator")
         cloud.sign_out = lambda: None
@@ -1276,7 +1276,7 @@ class TestResetDrone:
     drone, and stand exactly where a new session stands after its checks."""
 
     def make(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
         cloud = FakeCloud()
         cloud.sign_in = lambda email, password: Operator("user-1", email, "Ada", "operator")
         cloud.sign_out = lambda: None

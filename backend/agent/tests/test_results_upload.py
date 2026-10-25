@@ -178,7 +178,7 @@ class TestTheUpload:
 def test_processing_a_flight_queues_its_result(tmp_path, monkeypatch, capsys):
     root = tmp_path / "data"
     shutil.copytree(FIXTURE, root)
-    monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(root))
+    monkeypatch.setenv("DRONEDECK_DATA_DIR", str(root))
     assert main(["process", "--flight", FLIGHT]) == 0
     assert "queued for upload" in capsys.readouterr().out
     record = Outbox(root / "outbox").get(Kind.RESULTS, FLIGHT)

@@ -96,9 +96,9 @@ def _probe_env(data_dir: str) -> dict[str, str]:
     the camera — a build step touching the radio.
     """
     env = dict(os.environ)
-    env["CROPWATCHER_DATA_DIR"] = data_dir
-    env["CROPWATCHER_STANDBY"] = "0"
-    env.pop("CROPWATCHER_CAMERA", None)
+    env["DRONEDECK_DATA_DIR"] = data_dir
+    env["DRONEDECK_STANDBY"] = "0"
+    env.pop("DRONEDECK_CAMERA", None)
     return env
 
 

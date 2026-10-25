@@ -59,11 +59,11 @@ class TestNoDroneWording:
 
 class TestProbeIsolation:
     def test_the_probe_never_touches_the_operators_data_radio_or_camera(self, monkeypatch):
-        monkeypatch.setenv("CROPWATCHER_CAMERA", "deck")
+        monkeypatch.setenv("DRONEDECK_CAMERA", "deck")
         env = verify_sidecar._probe_env("/tmp/probe-data")
-        assert env["CROPWATCHER_DATA_DIR"] == "/tmp/probe-data"
-        assert env["CROPWATCHER_STANDBY"] == "0"
-        assert "CROPWATCHER_CAMERA" not in env
+        assert env["DRONEDECK_DATA_DIR"] == "/tmp/probe-data"
+        assert env["DRONEDECK_STANDBY"] == "0"
+        assert "DRONEDECK_CAMERA" not in env
 
 
 def _free_port() -> int:

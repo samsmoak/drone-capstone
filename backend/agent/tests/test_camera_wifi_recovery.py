@@ -290,7 +290,7 @@ class TestTheRoute:
         from dronedeck.api import rest
         from dronedeck.api.tokens import HEADER
 
-        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
         monkeypatch.setattr(rest.agent, "_cf", None)
         client = TestClient(rest.app)
         response = client.post("/camera/wifi/rejoin", headers={HEADER: rest.agent.token})
@@ -302,7 +302,7 @@ class TestTheRoute:
         from dronedeck.api import rest
         from dronedeck.api.tokens import HEADER
 
-        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
         asked = threading.Event()
         monkeypatch.setattr(rest.agent, "_cf", object())
         monkeypatch.setattr(rest.agent, "recover_camera",
@@ -320,7 +320,7 @@ class TestTheRoute:
         from dronedeck.api import rest
         from dronedeck.api.tokens import HEADER
 
-        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
         restarted: list[str] = []
         monkeypatch.setattr(rest.agent, "_cf", None)
         monkeypatch.setattr(rest.agent.session._snapshot, "ai_deck", False)
@@ -337,7 +337,7 @@ class TestTheRoute:
         from dronedeck.api import rest
         from dronedeck.api.tokens import HEADER
 
-        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
         monkeypatch.setattr(rest.agent, "_cf", object())
         monkeypatch.setattr(rest.agent.session._snapshot, "ai_deck", False)
         monkeypatch.setattr(rest.agent, "recover_camera",
@@ -357,7 +357,7 @@ class TestTheRoute:
         from dronedeck.api import rest
         from dronedeck.api.tokens import HEADER
 
-        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
         monkeypatch.setattr(rest.agent, "_cf", None)
         monkeypatch.setattr(rest.agent.session._snapshot, "ai_deck", False)
         monkeypatch.setattr(rest.agent, "restart_for_camera", lambda *, reason: False)
@@ -371,7 +371,7 @@ class TestTheRoute:
         from dronedeck.api import rest
         from dronedeck.camera.wifi import Phase
 
-        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
         rest.agent.deck_wifi.configure("Lab", "password1")
         rest.agent._link_no_deck()
         state = rest.agent.deck_wifi.state()

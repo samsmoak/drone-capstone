@@ -1,7 +1,7 @@
 """The camera path: where frames come from, and what is done with them.
 
 THREE SOURCES, one shape. `NoCamera` (the default), `TestPattern`
-(CROPWATCHER_CAMERA=test) and `DeckStream` (CROPWATCHER_CAMERA=deck), which
+(DRONEDECK_CAMERA=test) and `DeckStream` (DRONEDECK_CAMERA=deck), which
 reads the AI deck's own Wi-Fi image streamer — see deck.py for the wire format
 as measured from the real deck.
 

@@ -393,7 +393,7 @@ def test_the_report_from_files_matches_the_report_from_rows(tmp_path):
 
 def test_mission_report_prints_and_its_json_carries_the_same_numbers(tmp_path, monkeypatch,
                                                                       capsys):
-    monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
     write_flight(tmp_path)
     assert cli.main(["mission-report", "--flight", FLIGHT]) == 0
     text = capsys.readouterr().out
@@ -416,27 +416,27 @@ def test_mission_report_prints_and_its_json_carries_the_same_numbers(tmp_path, m
 
 
 def test_mission_report_on_a_missing_flight_says_so_and_fails(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
     assert cli.main(["mission-report", "--flight", "nope"]) != 0
     assert "No readings for flight nope" in capsys.readouterr().out
 
 
 def test_mission_report_on_a_flight_with_no_plan_flown_says_why(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
     write_flight(tmp_path, keep_plan=False)
     assert cli.main(["mission-report", "--flight", FLIGHT]) != 0
     assert "dronedeck mission" in capsys.readouterr().out
 
 
 def test_mission_report_without_a_trace_still_reports(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
     write_flight(tmp_path, keep_trace=False)
     assert cli.main(["mission-report", "--flight", FLIGHT]) == 0
     assert "no control trace" in capsys.readouterr().out
 
 
 def test_mission_report_over_several_flights(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
     other = "e5f6a7b8-0000-4000-8000-000000000002"
     write_flight(tmp_path)
     write_flight(tmp_path, other)

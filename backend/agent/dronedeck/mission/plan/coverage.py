@@ -50,7 +50,7 @@ GRID_M = 0.10
 def stations_needed(override: int | None = None) -> int:
     """How many stations must see a spot for it to count: the project's own
     policy (safety/flight_guard.py required_stations — ONE by default, as the
-    lab has flown on one; two with CROPWATCHER_MIN_STATIONS=2). This was a
+    lab has flown on one; two with DRONEDECK_MIN_STATIONS=2). This was a
     fixed 2 until 2026-10-01, which made the survey count nothing in a
     one-station room."""
     if override is not None:

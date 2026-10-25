@@ -1,6 +1,6 @@
 """The AI deck's own camera, read from its Wi-Fi image streamer.
 
-    CROPWATCHER_CAMERA=deck  [CROPWATCHER_DECK_ADDR=192.168.4.1:5000]
+    DRONEDECK_CAMERA=deck  [DRONEDECK_DECK_ADDR=192.168.4.1:5000]
 
 WHAT IS ON THE OTHER END. The GAP8 runs Bitcraze's
 `aideck_gap8_wifi_img_streamer_with_ap` (flashed by flash_gap8.py). The deck
