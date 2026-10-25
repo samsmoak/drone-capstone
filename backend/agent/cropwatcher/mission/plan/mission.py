@@ -38,10 +38,13 @@ from typing import Any
 from cropwatcher.mission.plan.floorplan import FORMAT, PlanError, check_id, now_iso
 from cropwatcher.mission.plan.shapes import Point, is_finite
 
-#: Story 3.4: "at least 10 frames and 5 seconds of readings are saved for every
-#: inspection point" — the camera's ~3.7 frames a second needs about 3 s for 10
-#: frames, so the readings' 5 s is the binding figure.
-MIN_HOLD_S = 5.0
+#: The shortest hold a point may ask for. 2 s since 2026-10-25 (Samuel: "the
+#: drone is spending too much time at each point … if we can make it like 2
+#: seconds"). It was 5 s for story 3.4 — "at least 10 frames and 5 seconds of
+#: readings are saved for every inspection point" — which the owner relaxed: at
+#: 2 s a point keeps ~20 readings (10 Hz) and ~7 frames (~3.7 a second). Any
+#: point may still ask for longer, up to MAX_HOLD_S.
+MIN_HOLD_S = 2.0
 MAX_HOLD_S = 300.0
 MAX_POINTS = 100
 

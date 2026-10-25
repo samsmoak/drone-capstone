@@ -36,6 +36,7 @@ import { FlightStrip } from "@/components/FlightStrip";
 import { Sidebar } from "@/components/Sidebar";
 import type { History } from "@/App";
 import { reportInto } from "@/measure";
+import { MissionStep } from "@/pages/control/auto/plan/MissionStep";
 import "./styles.css";
 
 const session: Session = {
@@ -145,7 +146,7 @@ if (agentToken) {
  */
 const sampleLimits: PlanLimits = {
   outer: { vertices: [[-2, -2], [2, -2], [2, 2], [-2, 2]], measured: false },
-  default_clearance_m: 0.25, min_hold_s: 5, z_min_m: 0.1, z_max_m: 1.0,
+  default_clearance_m: 0.25, min_hold_s: 2, z_min_m: 0.1, z_max_m: 1.0,
   move_speed_m_s: 0.2, climb_rate_m_s: 0.15,
 };
 const sampleRoom: RoomView = {
@@ -684,6 +685,12 @@ createRoot(document.getElementById("root")!).render(
         </Shell>
         <Shell label="Sessions">
           <SessionsPage refreshKey="h" mode={(query.get("mode") as "auto" | "manual") ?? "manual"} selectedId={query.get("session")} onSelect={() => {}} />
+        </Shell>
+        {/* `?edit=<mission id>`: the real editor on the real agent — edit, save
+            and reopen a saved mission end to end (2026-10-25). */}
+        <Shell label="Plan · editor on the agent">
+          <MissionStep run={runHere} telemetry={telemetry} selectedId={null} onUse={() => {}}
+                       openEditor={query.get("edit") ?? undefined} />
         </Shell>
       </>
     )}

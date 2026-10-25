@@ -189,7 +189,7 @@ def validate_mission(mission: Mission, room: Room, *, outer: Geofence) -> list[P
         if hold is not None and not MIN_HOLD_S <= hold <= MAX_HOLD_S:
             problems.append(Problem(
                 "hold", f"{label} holds {hold:.1f} s; it must hold {MIN_HOLD_S:.0f}–"
-                f"{MAX_HOLD_S:.0f} s (at least 5 s of readings and 10 frames — story 3.4).",
+                f"{MAX_HOLD_S:.0f} s.",
                 where=where))
 
     # Every leg: inside a fence that may not be convex, and clear all the way —

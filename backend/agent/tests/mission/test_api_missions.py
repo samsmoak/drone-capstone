@@ -101,7 +101,7 @@ def test_flying_a_mission_before_the_checks_is_refused_in_words(api):
 
 def test_the_limits_the_editor_clamps_to(api):
     limits = api.get("/plan/limits", headers=token()).json()
-    assert limits["min_hold_s"] == 5.0
+    assert limits["min_hold_s"] == 2.0
     assert limits["z_max_m"] == 1.0
     assert limits["default_clearance_m"] == 0.25
 
