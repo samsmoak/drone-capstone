@@ -143,7 +143,7 @@ because what must be installed FIRST differs (Xcode tools; the C++ Build
 Tools and WebView2; Tauri's Linux packages, D-Bus headers and python3-dev). The commands themselves are the same on both since 2026-09-25 —
 clone, then `node scripts/install.mjs` — in any shell. The steps are titled
 "Install from a terminal": that is how the app is installed now (see
-../development/releases.txt). The "Install the CropWatcher app" download step
+../development/releases.txt). The "Install the DroneDeck app" download step
 above them still reads the old bucket, whose files are stale — a known
 divergence awaiting the owner's call. (Before, Windows had
 to use Git Bash for a bash build script, and this doc claimed the Windows CI
@@ -162,7 +162,7 @@ Its editor is now /admin/pages/setup-desktop.
 A REWRITE CAN RETIRE AN OLD SAVED COPY: PageSpec.defaultsRevised. A page whose
 defaults have been rewritten carries the date; getPageContent sets aside a
 stored row saved BEFORE it, and an edit saved after it wins as usual. Home has
-it (2026-09-28): its 2026-09-21 row would otherwise have kept the CropWatcher
+it (2026-09-28): its 2026-09-21 row would otherwise have kept the DroneDeck
 greenhouse wording live over the DroneDeck rewrite. The admin editor reads
 through the same function, so it opens on the new wording too.
 

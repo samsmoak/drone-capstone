@@ -65,9 +65,9 @@ desktop   desktop/src/pages/control/ManualMap.tsx — the map, the notice under 
           desktop/src/lib/stationsHeard.ts — stations heard over a 2 s window
           desktop/src/pages/control/VitalsNow.tsx — the Base stations vital
           desktop/src/lib/commandLog.ts — useStationNarration
-agent     backend/agent/cropwatcher/session.py — manual_space, MANUAL_SPACE_FLOOR_M
-          backend/agent/cropwatcher/api/rest.py — GET /station/space
-          backend/agent/cropwatcher/history.py — SessionMeta.unassisted_reason
+agent     backend/agent/dronedeck/session.py — manual_space, MANUAL_SPACE_FLOOR_M
+          backend/agent/dronedeck/api/rest.py — GET /station/space
+          backend/agent/dronedeck/history.py — SessionMeta.unassisted_reason
 tests     backend/agent/tests/test_station_measure.py TestManualSpace,
           test_api.py TestStationSpace, test_session.py (the reason kept)
 harness   "Control · Manual, the room from the stations, flying / on the

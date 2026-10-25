@@ -14,7 +14,7 @@ wins.
                   more.
   Where           Auto › Control › ① Mission (the desktop app)
   Your files      desktop/src/pages/control/auto/plan/        the planner
-                  backend/agent/cropwatcher/mission/plan/     rooms, missions,
+                  backend/agent/dronedeck/mission/plan/     rooms, missions,
                                                               the checks, saving
                   backend/agent/tests/mission/
   Not in scope    the mission controller body (../done/mission-controller.txt,

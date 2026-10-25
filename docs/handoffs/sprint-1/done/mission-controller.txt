@@ -3,7 +3,7 @@ TICKET — The mission controller: the state machine
 
 STATUS: BUILT (2026-10-10, #104). Hannah's #102 was merged alongside
 Samuel's implementation of the same ticket; the team kept one controller —
-one implementation, never two. The one on main: backend/agent/cropwatcher/mission/controller/mission_controller.py,
+one implementation, never two. The one on main: backend/agent/dronedeck/mission/controller/mission_controller.py,
 BUILT = True, with tests/mission/test_controller.py (94 tests, one or more
 per rule of THE SPEC). The code is the authority.
 
@@ -31,11 +31,11 @@ disagree with itself.
                   3.5 "tagged with ... associated inspection point ID" (the
                   flying half).
   Branch          feat/mission-controller, off main
-  Your files      backend/agent/cropwatcher/mission/controller/mission_controller.py
+  Your files      backend/agent/dronedeck/mission/controller/mission_controller.py
                   backend/agent/tests/mission/test_controller.py      (new)
                   backend/agent/tests/mission/test_boundaries.py      (one test)
   Yordi's files   tests/sim_drone.py, tests/test_sim_drone.py,
-                  cropwatcher/mission/review.py (the mission report) and its
+                  dronedeck/mission/review.py (the mission report) and its
                   `mission-report` command, tests/mission/test_review.py,
                   tests/mission/test_mission_sim.py, docs/flight-log.txt —
                   and, after the lab, the constants block in your file
@@ -201,7 +201,7 @@ WHAT A MISSION IS
 
 A mission is DATA — a plan, never code. It arrives already validated.
 
-  backend/agent/cropwatcher/mission/plan/mission.py
+  backend/agent/dronedeck/mission/plan/mission.py
 
   InspectionPoint                 one place the drone must hold and record
     id: str                       stable, unique within the mission ("P1"). Every
@@ -485,7 +485,7 @@ ACCEPTANCE
 ──────────
 
   [ ] Every required test passes; gates pass from backend/agent/:
-      ruff check . && mypy cropwatcher && pytest
+      ruff check . && mypy dronedeck && pytest
   [ ] BUILT = True, and test_boundaries.py's "refuses to start" test
       replaced by one that checks the session now arms a mission.
   [ ] Yordi's scenarios (test_mission_sim.py) pass on feat/mission-controller

@@ -5,7 +5,7 @@ STATUS: PART B DONE (2026-10-09, branch dpp/classify). REWRITTEN — Samuel
 built the sensor half (blocks@1) on the owner's call, as BLOCKS against what
 was expected rather than an ML model: there are no labelled runs to train one
 on. PART A (the image model, story 4.4) is still Reagan's — see FOLLOW-UPS.
-The code is the authority: backend/agent/cropwatcher/pipeline/stages/classify/.
+The code is the authority: backend/agent/dronedeck/pipeline/stages/classify/.
 
   Owner           Samuel (Part B, blocks@1); Reagan (Part A, the image model)
   Stories         4.4: "a model that looks at an image and can define it as

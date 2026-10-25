@@ -3,7 +3,7 @@ INTERPRET — findings@1: each event judged, put into words, pinned to its point
 with the frames taken then
 Last verified: 2026-10-09 against docs/pipeline-v2 — tests/pipeline/
 test_interpret.py, the end-to-end test of a warm patch on the fixture flight.
-SOURCE: backend/agent/cropwatcher/pipeline/stages/interpret/findings.py
+SOURCE: backend/agent/dronedeck/pipeline/stages/interpret/findings.py
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -16,7 +16,7 @@ STATUS  (Last verified: 2026-10-09)
   agent     a finding is "supported" when the camera's view changed during it
             (scene@1); a session's findings are said for the ground
   NOT BUILT severities measured on a real heat source (PROVISIONAL until the
-            hand-warmer flights — `cropwatcher calibrate`, calibrate.txt)
+            hand-warmer flights — `dronedeck calibrate`, calibrate.txt)
 
 --------------------------------------------------------------------------------
 1. WHAT IT IS
@@ -30,8 +30,8 @@ normal when it was analysed and nothing did, insufficient data otherwise.
 --------------------------------------------------------------------------------
 2. WHERE IT LIVES
 --------------------------------------------------------------------------------
-backend/agent/cropwatcher/pipeline/stages/interpret/findings.py   FindingInterpreter
-backend/agent/cropwatcher/pipeline/stages/interpret/labels.py     LabelInterpreter
+backend/agent/dronedeck/pipeline/stages/interpret/findings.py   FindingInterpreter
+backend/agent/dronedeck/pipeline/stages/interpret/labels.py     LabelInterpreter
 backend/agent/tests/pipeline/test_interpret.py
 desktop/src/pages/control/DataPipeline.tsx     the findings on the desktop
 desktop/src/lib/os-notify.ts                   the OS notification

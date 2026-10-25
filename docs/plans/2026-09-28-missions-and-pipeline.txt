@@ -164,12 +164,12 @@ PHASE 0 — BASELINE                                                   1–6
   3  This plan, replacing the 70-stage draft.                            done
   4  Handoff tickets rewritten: each opens with the whole system and where
      its owner's part fits.
-  5  (owner, lab) `cropwatcher geometry --distance 1.0`, then the assisted
+  5  (owner, lab) `dronedeck geometry --distance 1.0`, then the assisted
      ladder rungs 3–8, logged in flight-log.txt.
   6  (owner, lab) Hand-carried coverage survey of the room.
 
 PHASE 1 — SHAPES AND THE GEOFENCE                                    7–15
-  7  cropwatcher/mission/ package with a docstring map of its parts.
+  7  dronedeck/mission/ package with a docstring map of its parts.
   8  mission/plan/shapes.py: point-in-polygon, segment intersection,
      point-to-segment and segment-to-segment distance, polygon area,
      self-intersection.
@@ -208,7 +208,7 @@ PHASE 2 — OBSTACLES, ROOMS, INSPECTION POINTS, MISSIONS              16–30
      obstacle by the clearance.
  28  Checks: cruise height in the band; ids unique; at least one point.
  29  Tests for every problem code, and a clean mission with none.
- 30  A test that mission/plan imports nothing from cropwatcher.flight.
+ 30  A test that mission/plan imports nothing from dronedeck.flight.
 
 PHASE 3 — SAVING                                                     31–38
  31  paths.py: rooms_dir(), missions_dir(), results_dir().
@@ -293,7 +293,7 @@ PHASE 9 — THE PIPELINE SKELETON                                      74–82
  78  sinks.py: LocalResultSink → <data>/results/<flight id>/result.json.
  79  runner.py: point by point; a stage error is recorded and skipped.
  80  compose.py: the one place each stage's implementation is chosen.
- 81  `cropwatcher process --flight <id>` and `--fixture`.
+ 81  `dronedeck process --flight <id>` and `--fixture`.
  82  tests/pipeline: fixtures from a real flight, conformance.py (the rules
      every implementation must pass), and the import boundary.
 
@@ -301,7 +301,7 @@ PHASE 10 — THE CONTROL PAGE IN AUTO                                  83–94
  83  lib/agent.ts: rooms, missions, validate, runMission; the types.
  84  pages/control/auto/AutoControl.tsx: left the flow, right FlightDeck and
      the monitor tabs; Manual untouched.
- 85  Its own divider key (cropwatcher.split.control.auto); stacking below lg.
+ 85  Its own divider key (dronedeck.split.control.auto); stacking below lg.
  86  The step bar: tappable, aria-current="step", reachability from the
      agent's own state; locked on Fly while flying.
  87  ① Mission: the list, with its four states.

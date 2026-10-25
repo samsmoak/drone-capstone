@@ -19,7 +19,7 @@ STAGES, EACH ITS OWN BRANCH (lab), MERGED INTO experiment/samuel
   3  dpp/live               story 4.9: a point's verdict from the flight so
                             far, ahead in the queue
      desktop/live-verdicts  the verdicts in the Fly step's Progress
-  4  dpp/calibrate          cropwatcher calibrate and the lab procedure
+  4  dpp/calibrate          dronedeck calibrate and the lab procedure
   5  data/session-results   migration 0018, Kind.SESSION_RESULTS,
                             session_results_check 12/12
   6  web/tables             marks (colour = data, depth = severity), the
@@ -29,7 +29,7 @@ STAGES, EACH ITS OWN BRANCH (lab), MERGED INTO experiment/samuel
 
 WHAT IS OWED (not code)
   • The hand-warmer flights: every anomaly threshold stays PROVISIONAL until
-    `cropwatcher calibrate` has measured a real heat source (calibrate.txt).
+    `dronedeck calibrate` has measured a real heat source (calibrate.txt).
   • Migration 20261009000018 on the hosted database.
   • A real mission flown with live verdicts on.
   • An image model that judges the equipment stays Reagan's (story 4.4); there

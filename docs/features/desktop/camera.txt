@@ -23,18 +23,18 @@ best — and the deck has delivered 0.7–4.9 (camera-firmware.txt).
 
 WHERE IT LIVES
 
-  backend/agent/cropwatcher/camera/source.py   FrameSource, NoCamera, TestPattern
-  backend/agent/cropwatcher/camera/rate.py     FrameRate, DeckTiming — how fast
-  backend/agent/cropwatcher/camera/deck.py     DeckStream — the deck's stream
-  backend/agent/cropwatcher/camera/flash_gap8.py  puts the streamer on the GAP8
-  backend/agent/cropwatcher/api/rest.py        GET /camera, GET /camera/frame
-  backend/agent/cropwatcher/flight/checks.py   _ai_deck_fitted — deck.bcAI
+  backend/agent/dronedeck/camera/source.py   FrameSource, NoCamera, TestPattern
+  backend/agent/dronedeck/camera/rate.py     FrameRate, DeckTiming — how fast
+  backend/agent/dronedeck/camera/deck.py     DeckStream — the deck's stream
+  backend/agent/dronedeck/camera/flash_gap8.py  puts the streamer on the GAP8
+  backend/agent/dronedeck/api/rest.py        GET /camera, GET /camera/frame
+  backend/agent/dronedeck/flight/checks.py   _ai_deck_fitted — deck.bcAI
   backend/agent/tests/test_camera.py, test_camera_deck.py
   desktop/src/pages/control/CameraPane.tsx     the tab and its four states
   desktop/src/lib/cameraFeed.ts                the window's one feed
   desktop/src/lib/agent.ts                     cameraFrameUrl, api.cameraStatus
   desktop/src-tauri/tauri.conf.json            the img-src the frames need
-  desktop/src-tauri/src/lib.rs                 spawn_agent sets CROPWATCHER_CAMERA=deck
+  desktop/src-tauri/src/lib.rs                 spawn_agent sets DRONEDECK_CAMERA=deck
 
 
 THE RADIO CANNOT CARRY FRAMES — the 50 Hz setpoint stream shares it — so the
@@ -42,11 +42,11 @@ deck has its own Wi-Fi; deck presence is read as a param (deck.bcAI). Why,
 measured: camera-firmware.txt, "THE RADIO".
 
 
-THE SOURCES — chosen by CROPWATCHER_CAMERA
+THE SOURCES — chosen by DRONEDECK_CAMERA
 
   (unset)  NoCamera     the default. Frames are None; the route answers 204
   test     TestPattern  a generated 320x320 PNG
-  deck     DeckStream   the deck at CROPWATCHER_DECK_ADDR (192.168.4.1:5000)
+  deck     DeckStream   the deck at DRONEDECK_DECK_ADDR (192.168.4.1:5000)
 
 THE DESKTOP APP SETS `deck` for its bundled agent (lib.rs, spawn_agent), so
 `pnpm app` is the whole test: build, launch, join the deck's Wi-Fi, open the
@@ -58,7 +58,7 @@ switch is needed: the agent reads the deck's new address off the drone's console
 and DeckStream.set_host moves the stream there. The access point is what the
 deck falls back to when no network has been set.
 
-For a bare `cropwatcher serve`, `deck` stays opt-in because it needs the laptop JOINED to the deck's access point
+For a bare `dronedeck serve`, `deck` stays opt-in because it needs the laptop JOINED to the deck's access point
 ("WiFi streaming example"), and while it is, the laptop has no internet — the
 agent cannot sync, and a remote assistant driving the laptop loses its link.
 A second network adapter (USB Wi-Fi or ethernet for the internet) removes that.
@@ -217,7 +217,7 @@ INVARIANTS
 LAST VERIFIED  2026-10-24 — the shared feed and the rate line in the harness
   (real time: "LIVE · 0 MS"), the agent's rate tests. Before:
   test pattern   rendered in the tab through the real CSP and the real <img>
-  deck source    a real agent with CROPWATCHER_CAMERA=deck against a stand-in
+  deck source    a real agent with DRONEDECK_CAMERA=deck against a stand-in
                  deck on localhost: live, 324x244, frames change; stand-in
                  killed -> "Cannot reach the AI deck..." within seconds
   real deck      whole frames, recorded since 2026-09-24 (8 748 on the lab

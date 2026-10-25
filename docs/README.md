@@ -41,7 +41,7 @@ Feature docs are plain `.txt`, grouped by the surface they describe.
 | [features/desktop/auto-control.txt](features/desktop/auto-control.txt) | Control in Auto: ① Mission (plan, edit, pick) → ② Check → ③ Fly, the monitor on the right |
 | [features/desktop/mission-playback.txt](features/desktop/mission-playback.txt) | Playback (its own sidebar page) — every flight, then Play back: anyone's recorded flight watched again on the room map (2-D/3-D, full screen) with its readings, events and report — this laptop's files first, Supabase for the rest; recorded, never simulated |
 
-## Missions — autonomous flight (`backend/agent/cropwatcher/mission/`)
+## Missions — autonomous flight (`backend/agent/dronedeck/mission/`)
 
 | Doc | What it covers |
 |---|---|
@@ -50,11 +50,11 @@ Feature docs are plain `.txt`, grouped by the surface they describe.
 | [features/missions/floor-plans.txt](features/missions/floor-plans.txt) | Rooms (closed geofence, obstacles, the room's map), missions, inspection points, the agent's checks, saving |
 | [features/missions/mission-controller.txt](features/missions/mission-controller.txt) | How a mission flies: fly_to in the manual system, run_mission, point_id stamping; the controller body is Hannah's, its proof (simulated drone, mission report, lab flights) Yordi's |
 
-## Pipeline — the data pipeline (`backend/agent/cropwatcher/pipeline/`)
+## Pipeline — the data pipeline (`backend/agent/dronedeck/pipeline/`)
 
 | Doc | What it covers |
 |---|---|
-| [features/pipeline/data-pipeline.txt](features/pipeline/data-pipeline.txt) | **The index**: `cropwatcher process` — clean → enhance → classify → interpret once over the flight, laptop-first, resumed when the app restarts; the DPP switch (top of Control, on by default); `process --all` |
+| [features/pipeline/data-pipeline.txt](features/pipeline/data-pipeline.txt) | **The index**: `dronedeck process` — clean → enhance → classify → interpret once over the flight, laptop-first, resumed when the app restarts; the DPP switch (top of Control, on by default); `process --all` |
 | [features/pipeline/clean.txt](features/pipeline/clean.txt) | robust@1: sensor faults flagged, never edited — scored against hampel@1 on 66 real flights |
 | [features/pipeline/enhance.txt](features/pipeline/enhance.txt) | clahe@1: clearer copies of dark frames, and each frame's quality |
 | [features/pipeline/classify.txt](features/pipeline/classify.txt) | blocks@1: stretches where temperature or pressure departs from what was expected |
@@ -62,7 +62,7 @@ Feature docs are plain `.txt`, grouped by the surface they describe.
 | [features/pipeline/scene.txt](features/pipeline/scene.txt) | scene@1: whether the camera's view changed during a finding — supports it, never contradicts |
 | [features/pipeline/session.txt](features/pipeline/session.txt) | The session itself processed — its 1 Hz samples around the flights, judged on the ground (ground@1), Auto and Manual |
 | [features/pipeline/live.txt](features/pipeline/live.txt) | Live verdicts (story 4.9): each inspection point judged as its hold ends, shown in Progress |
-| [features/pipeline/calibrate.txt](features/pipeline/calibrate.txt) | `cropwatcher calibrate`: the hand-warmer flights measured, thresholds recommended — the lab procedure |
+| [features/pipeline/calibrate.txt](features/pipeline/calibrate.txt) | `dronedeck calibrate`: the hand-warmer flights measured, thresholds recommended — the lab procedure |
 | [features/pipeline/results.txt](features/pipeline/results.txt) | Results on the web: the Processed data page (`/app/processed`), anomalies highlighted in the readings and on the frames with their meaning, the session and flight pages, notified until read |
 
 ## Frontend — the web app (`web/`)
@@ -137,7 +137,7 @@ are the only thing that survives a session.
 backend doc above), `platform/temperature-correction.md` and
 `platform/data-model.md` do not exist. CLAUDE.md names the temperature
 constants' source; the engine itself is
-`backend/agent/cropwatcher/telemetry/correction.py`.
+`backend/agent/dronedeck/telemetry/correction.py`.
 
 ## Hardware
 

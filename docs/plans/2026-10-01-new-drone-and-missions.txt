@@ -79,7 +79,7 @@ PHASE A — THE NEW DRONE, BROUGHT UP TO THE OLD ONE'S SOFTWARE  (no motors)
       deck-memory query (fw_upgrade_required per deck). Into the flight log.
   3   Verify the bundle's cf2.bin against manifest.json (sha256).
   4   Flash MAIN (cf2.bin: crazyflie-firmware 2025.12.1 + drone_wifi v2)
-      with cropwatcher.flash_firmware. Reconnect; firmware.revision0 must
+      with dronedeck.flash_firmware. Reconnect; firmware.revision0 must
       read 0x252b4134 (2025.12.1) and the cwsetup.fw param must exist.
   5   Re-query the deck memory: the Lighthouse deck's REQUIRED hash is now
       the one 2025.12.1 asks for.
@@ -92,7 +92,7 @@ PHASE A — THE NEW DRONE, BROUGHT UP TO THE OLD ONE'S SOFTWARE  (no motors)
       refuses anything but a cf2 image, by design).
   9   Restart the drone over the radio; re-query: fw_upgrade_required =
       False, bootloader_active = False, is_started = True.
-  10  `cropwatcher stations --seconds 12`: lighthouse.status > 0 and
+  10  `dronedeck stations --seconds 12`: lighthouse.status > 0 and
       bsReceive shows the stations. If none: stations' channels (1 and 2),
       power LED, line of sight.
   11  Flash CAMERA (aideck_gap8.bin) then WIFI (aideck_esp.bin) — the
@@ -102,11 +102,11 @@ PHASE A — THE NEW DRONE, BROUGHT UP TO THE OLD ONE'S SOFTWARE  (no motors)
       setup.txt, Bitcraze #1305).
   13  Verify the camera starts (console "GAP8 running" seen AFTER the
       reconnect) and write cwsetup.deck, as Set up does.
-  14  `cropwatcher check`: every row ok except geometry-dependent ones.
+  14  `dronedeck check`: every row ok except geometry-dependent ones.
   15  Base stations: channels 1 and 2, raised, tilted down, opposite
       corners, facing the flying area. Re-read reception: both received.
-  16  `cropwatcher geometry --distance 1.0` — Samuel carries the drone.
-  17  `cropwatcher check`: settles under 2 cm. `pytest -m hardware` passes.
+  16  `dronedeck geometry --distance 1.0` — Samuel carries the drone.
+  17  `dronedeck check`: settles under 2 cm. `pytest -m hardware` passes.
   18  DroneDeck → Drone Wi-Fi page: join the network; frames arrive.
   19  Flight-log entry: the new drone, every firmware written (with
       sources and hashes), the deck states before/after, the readings.
@@ -143,7 +143,7 @@ PHASE C — THE MISSION EXPERIMENT, IN THE LAB  (samuel/mission-controller → e
   33  If PR #90 has merged: `git merge main` into both branches (never
       rebase). Otherwise merge it first (owner-only, --admin) — it is a
       docs-only PR Samuel asked for.
-  34  mission-controller.txt §6: correct "cropwatcher mission has NO BUILT
+  34  mission-controller.txt §6: correct "dronedeck mission has NO BUILT
       check" — cli.py checks MissionController.BUILT since 0ca26ba
       (2026-09-28). What is still true: it writes no trace and no plan flown.
   35  Stage announcements (mission_controller.py, wording only — event

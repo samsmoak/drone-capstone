@@ -13,8 +13,8 @@ name on it is not an audit trail.
 
 WHERE IT LIVES
 
-  backend/agent/cropwatcher/audit.py        the events and their shape
-  backend/agent/cropwatcher/session.py      where they are raised
+  backend/agent/dronedeck/audit.py        the events and their shape
+  backend/agent/dronedeck/session.py      where they are raised
   backend/supabase/migrations/…0006…sql     the append-only audit_events table
   backend/agent/tests/test_audit.py
 

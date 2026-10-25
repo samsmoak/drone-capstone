@@ -3,11 +3,18 @@ GRAPH STATE — WHAT IS OUT OF SYNC, AND WHAT THAT STOPS
 Read this BEFORE starting a feature. It is the one file that says whether the
 docs can be trusted for the area you are about to work in.
 Generated from `python3 graph_check.py` plus what passes noticed by hand.
-Last run: 2026-10-11 on data/flight-playback-cloud (playback from Supabase:
-migration 0019, the upload, the merged flight list, All flights) — 48 docs.
-Blocking classes: DANGLING 0 · ONE-WAY 0 · STALE 0. Four docs went STALE when
-rest.py, agent.ts and agent-tests.yml moved (#107, #108, this branch); each
-re-read against the diff — none of their code changed — and re-dated saying so.
+Last run: 2026-10-25 on experiment/samuel (the CropWatcher -> DroneDeck rename)
+— 52 docs. DANGLING 0 · ONE-WAY 0.
+STALE 19: the rename moved backend/agent/cropwatcher/ -> dronedeck/ and renamed
+the env vars, the data folder and the identifiers across the tree, touching the
+SOURCE files of many docs on 2026-10-25. The docs were renamed in lockstep, so
+their content matches the code — the STALE flags are date-only. They are cleared
+by re-dating each as its area is next verified; it is NOT a content mismatch and
+NOT a reason to stop. Six of them (data-pipeline, auto-control, mission-playback,
+pipeline/live, design/layout, design/components) were already STALE before the
+rename, from the 2026-10-25 feature merges, and still want a real re-read.
+Earlier: 2026-10-11 run (48 docs) was all-zero; four docs re-dated when rest.py,
+agent.ts and agent-tests.yml moved (#107, #108) — none of their code changed.
 ================================================================================
 
 --------------------------------------------------------------------------------

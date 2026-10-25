@@ -28,17 +28,17 @@ guessing — a guessed threshold has already cost this project flights.
 
 THE COMMANDS
 
-All from the repo root. NOTHING needs a virtualenv activated — `./cropwatcher`
+All from the repo root. NOTHING needs a virtualenv activated — `./dronedeck`
 and the build script both reach into it by path.
 
-    ./cropwatcher check                   every gate, never spins a motor
-    ./cropwatcher stations                what the drone receives, live
-    ./cropwatcher stations --seconds 20   for a fixed time, then stop
-    ./cropwatcher geometry --distance 1.0 measure where the stations are
-    ./cropwatcher geometry --dry-run      solve and print, write nothing
-    ./cropwatcher proptest                firmware motor test — PROPS SPIN
-    ./cropwatcher hover --height 0.3 --secs 10
-    ./cropwatcher serve                   the local API the desktop app uses
+    ./dronedeck check                   every gate, never spins a motor
+    ./dronedeck stations                what the drone receives, live
+    ./dronedeck stations --seconds 20   for a fixed time, then stop
+    ./dronedeck geometry --distance 1.0 measure where the stations are
+    ./dronedeck geometry --dry-run      solve and print, write nothing
+    ./dronedeck proptest                firmware motor test — PROPS SPIN
+    ./dronedeck hover --height 0.3 --secs 10
+    ./dronedeck serve                   the local API the desktop app uses
 
   cd desktop
 
@@ -48,8 +48,8 @@ and the build script both reach into it by path.
     pnpm build                            frontend only
 
 `source .venv/bin/activate` only ever did one thing: put the venv's bin
-directory on PATH so `cropwatcher` resolved as a bare word. It was never
-needed for a build. Use ./cropwatcher and it cannot be forgotten, left active
+directory on PATH so `dronedeck` resolved as a bare word. It was never
+needed for a build. Use ./dronedeck and it cannot be forgotten, left active
 in the wrong shell, or lost by opening a new tab.
 
 Nothing prompts except `geometry`, which asks the operator to move the drone
@@ -61,11 +61,11 @@ THE LADDER
 Nothing skips a rung. Each one is only run once the one above it passed, and
 each is a separate power cycle if the one above it ended badly.
 
-  0  cropwatcher check              every gate, no motors
-  1  cropwatcher stations           both stations RECEIVED, not just stored
-  2  cropwatcher geometry           re-measure; settle must then be < 2 cm
-  3  cropwatcher check              confirm the settle
-  4  cropwatcher proptest           motors spin, drone held down
+  0  dronedeck check              every gate, no motors
+  1  dronedeck stations           both stations RECEIVED, not just stored
+  2  dronedeck geometry           re-measure; settle must then be < 2 cm
+  3  dronedeck check              confirm the settle
+  4  dronedeck proptest           motors spin, drone held down
   5  armed idle                     props turn, no lift
   6  20 cm hover, 10 s              the smallest real flight
   7  W alone                        must climb STRAIGHT — x, y unchanged
@@ -179,7 +179,7 @@ THE QUESTION
                stays removed: it does not bring the camera back.
 
 BASE STATIONS (Samuel asked, same session)
-  DID          ./cropwatcher check ; ./cropwatcher stations --seconds 10
+  DID          ./dronedeck check ; ./dronedeck stations --seconds 10
   MEASURED     received: station 1 only; calibration stored for 0 and 1;
                geometry: none; estimate drifting ~1.5 m/s
                (+48.6 → +60.8 m in 10 s)
@@ -202,7 +202,7 @@ CONDITIONS
   code         main at bd123b9
 
 READING THE POSITIONING DECK
-  DID          ./cropwatcher stations --seconds 25 ; params and the
+  DID          ./dronedeck stations --seconds 25 ; params and the
                lighthouse log block read over the radio
   MEASURED     deck.bcLighthouse4 1, deck.bcAI 1, lighthouse.systemType 2
                (V2). width0..width3 all 0 — NO light on any of the four
@@ -231,7 +231,7 @@ CONDITIONS
                BUILT (its body is not on main; there it is still Hannah's ticket)
 
 LIGHTHOUSE DECK UNDER THE DRONE
-  DID          ./cropwatcher stations --seconds 12 ; ./cropwatcher check
+  DID          ./dronedeck stations --seconds 12 ; ./dronedeck check
   MEASURED     deck detected, deck image loaded (lighthouse_needs_fw False),
                received none, geometry none. Sitting still on the bench the
                estimate ran +2.51 → +14.86 m in 12 s. check: "uncertain by
@@ -252,7 +252,7 @@ detect it until a power cycle (decks are only detected at power-on).
                dark) was the deck underneath.
 
 GEOMETRY, FIRST TRY (terminal)
-  DID          ./cropwatcher geometry --distance 1.0
+  DID          ./dronedeck geometry --distance 1.0
   MEASURED     "disagree by 100 cm … 2.45 m away from the first, 2.45 m from
                the second", heading held to 0 degrees.
   MEANT        two records of the same place: the drone was not moved
@@ -329,7 +329,7 @@ GEOMETRY, FIRST TRY (terminal)
   MEASURED     base station 0: 2.64 m away, 1.49 m above the drone. Still drone
                over 15 s: x +0.006..+0.009, y -0.012..-0.008, z -0.010..-0.007
                m; Kalman spread 3.2 cm; bsGeoVal 1, bsActive 1, trusted.
-               ./cropwatcher check: every check ok, base stations ok, position
+               ./dronedeck check: every check ok, base stations ok, position
                settled 0.0 cm, ground z -0.009 m, READY. Battery 3.82 V.
   MEANT        the decoded angles became a position the moment the station's
                place was known. Nothing else was missing.
@@ -392,7 +392,7 @@ NEW DRONE, AS IT ARRIVED
                stations were never the problem.
 
 WHAT WAS WRITTEN TO IT (no motor spun at any point)
-  DID          python -m cropwatcher.flash_firmware cropwatcher/firmware_bundle/cf2.bin
+  DID          python -m dronedeck.flash_firmware dronedeck/firmware_bundle/cf2.bin
   MEASURED     firmware.revision0 0x252b4134 (2025.12.1), cwsetup.fw 2
   DID          lighthouse.bin from bitcraze/crazyflie-release 2025.12.1
                (firmware-cf2-2025.12.1.zip sha256 310d6985…db2d; lighthouse-fpga
@@ -425,7 +425,7 @@ THE SOFTWARE THE DAY PRODUCED (PRs #91–#94, the experiment branch)
   #93 mission speed presets — touches the locked manual.py, for Samuel's review
   #94 the flyable space (survey, prediction) and the plan that will fly
   experiment/samuel: the mission events say what comes next
-  RE-RUN IT    cd backend/agent && .venv/bin/cropwatcher stations --seconds 12
+  RE-RUN IT    cd backend/agent && .venv/bin/dronedeck stations --seconds 12
 
 
 =========================================================================
@@ -440,7 +440,7 @@ CONDITIONS
   code         PR #25 (commanded point, geometry tool) and PR #26 (axis lock)
                merged; NEITHER HAS EVER FLOWN
 
-RUNG 0 — cropwatcher check
+RUNG 0 — dronedeck check
   MEASURED     ok  drone identified, telemetry 10 Hz, motors unlocked
                ok  battery 4.04 V / 82%
                ok  Lighthouse deck fitted
@@ -451,7 +451,7 @@ RUNG 0 — cropwatcher check
                across the window never falls under the 2 cm threshold. One
                cause, two symptoms.
 
-RUNG 1 — cropwatcher stations --seconds 12
+RUNG 1 — dronedeck stations --seconds 12
   MEASURED     received   0
                calibrated 0, 1
                geometry   0, 1
@@ -499,7 +499,7 @@ RUNG 1 (again) — stations re-read while the cage was worked on
                every session coming back unassisted and geometry never running.
   CHANGED      reseated. deck.bcAI now YES, 1 memory enumerated.
                deck.bcLighthouse4 STILL 0 — not yet recovered.
-  RE-RUN IT    cd backend/agent && .venv/bin/python -m cropwatcher.camera.probe
+  RE-RUN IT    cd backend/agent && .venv/bin/python -m dronedeck.camera.probe
 
 2026-09-30 — THE LIGHTHOUSE DECK IS STILL NOT DETECTED, A WEEK ON
   MEASURED     read-only, app quit, drone on the floor at 3.80 V:
@@ -508,7 +508,7 @@ RUNG 1 (again) — stations re-read while the cage was worked on
                method 1, bsAvailable 0; bsReceive 0 and bsActive 0 over 2 s;
                supervisor.info 526 (can fly, not crashed or locked).
                Both base stations solid green (the operator, looking).
-               `cropwatcher stations`: nothing received, calibrated or with
+               `dronedeck stations`: nothing received, calibrated or with
                geometry; estimate walking +15 -> +37 m in 11 s, drone still.
                Reseated by the operator, power-cycled: bcLighthouse4 still 0.
                Every manual trace since 09-23 has bsReceive 0 throughout.
@@ -520,7 +520,7 @@ RUNG 1 (again) — stations re-read while the cage was worked on
   CHANGED      the reason now names the deck; the guard stops a flipped
                drone itself; Reset drone restarts it and checks again.
                See features/backend/flight-status.txt, UPDATE 6.
-  RE-RUN IT    cd backend/agent && .venv/bin/cropwatcher stations --seconds 12
+  RE-RUN IT    cd backend/agent && .venv/bin/dronedeck stations --seconds 12
 
 WHAT IS FITTED — asked the drone directly, read-only
   MEASURED     deck.bcLighthouse4   1   YES
@@ -602,7 +602,7 @@ CRASH RECOVERY — it worked, my success test did not
                other supervisor oddities.
 
 RUNG 0 PASSED — first full green of the session
-  DID          cropwatcher check
+  DID          dronedeck check
   MEASURED     ok  Motors unlocked     ready to arm
                ok  Battery             4.12 V, about 91%, ~219 s of hover
                ok  Positioning deck    Lighthouse fitted
@@ -616,7 +616,7 @@ RUNG 0 PASSED — first full green of the session
   CHANGED      nothing needed — this is the gate passing.
 
 STATUS       Rung 0 PASSED. Rung 1 passed with one station. Next is rung 2,
-             cropwatcher geometry, which needs the operator to carry the drone
+             dronedeck geometry, which needs the operator to carry the drone
              and has still never run against hardware.
 
 PREVIOUSLY   Blocked at rung 1. Nothing above it can run: rung 2 refuses a

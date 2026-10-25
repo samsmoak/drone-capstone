@@ -4,7 +4,7 @@ departs from what was expected
 Last verified: 2026-10-09 against docs/pipeline-v2 — tests/pipeline/
 test_classify.py, ml/anomaly-eval/evaluate.py on the lab's flights (cleaned by
 robust@1), PELT against ruptures on 500 series.
-SOURCE: backend/agent/cropwatcher/pipeline/stages/classify/blocks.py
+SOURCE: backend/agent/dronedeck/pipeline/stages/classify/blocks.py
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -29,9 +29,9 @@ EVENT, with where, when, how much and how sure.
 --------------------------------------------------------------------------------
 2. WHERE IT LIVES
 --------------------------------------------------------------------------------
-backend/agent/cropwatcher/pipeline/stages/classify/blocks.py   BlocksClassifier,
+backend/agent/dronedeck/pipeline/stages/classify/blocks.py   BlocksClassifier,
                                                                the two models
-backend/agent/cropwatcher/pipeline/stages/classify/pelt.py     PELT, numpy
+backend/agent/dronedeck/pipeline/stages/classify/pelt.py     PELT, numpy
 backend/agent/tests/pipeline/test_classify.py
 ml/anomaly-eval/evaluate.py, MEASUREMENTS.txt   the calibration and its table
 

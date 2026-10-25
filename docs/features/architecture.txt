@@ -3,7 +3,7 @@ ARCHITECTURE — the whole system, and why it is shaped this way
 
 WHAT IT IS
 
-CropWatcher is four programs and one database. A drone flies a greenhouse and
+DroneDeck is four programs and one database. A drone flies a greenhouse and
 records what it senses; a laptop commands it and keeps the record; a website
 turns that record into something a grower can read; a build pipeline puts the
 laptop software in people's hands.
@@ -117,7 +117,7 @@ THE AGENT, LAYER BY LAYER
 
 Entry point:
 
-  cropwatcher serve                 pyproject [project.scripts]
+  dronedeck serve                 pyproject [project.scripts]
     └─ cli.py main()                arguments, logging, the server
          └─ api/rest.py             app = FastAPI(...), agent = Agent()
               └─ session.py         the state machine everything calls

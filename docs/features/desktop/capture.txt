@@ -6,7 +6,7 @@ all 1 537 passing), the capture threshold measured on the lab laptop's 11
 recorded sessions, the desktop harness at 720 · 900 · 1024 · 1280 · 1600 px in
 both themes (10 PASS, self-test FAIL), screenshots of both Capture sections.
 NOT yet on the drone: a capture made in a real session.
-SOURCE: backend/agent/cropwatcher/camera/capture.py
+SOURCE: backend/agent/dronedeck/camera/capture.py
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -47,23 +47,23 @@ shown — instead of hundreds of copies of the same view (the rule, §3).
 --------------------------------------------------------------------------------
 2. WHERE IT LIVES
 --------------------------------------------------------------------------------
-agent    backend/agent/cropwatcher/camera/capture.py     the rule, small_grey
-         backend/agent/cropwatcher/flight/checks.py      run_capture_checks
+agent    backend/agent/dronedeck/camera/capture.py     the rule, small_grey
+         backend/agent/dronedeck/flight/checks.py      run_capture_checks
          backend/agent/tests/test_capture_session.py     the capture session
-         backend/agent/cropwatcher/camera/recording.py   add (auto), add_manual,
+         backend/agent/dronedeck/camera/recording.py   add (auto), add_manual,
                                                          read_index, frame_file
-         backend/agent/cropwatcher/session.py            capture_auto,
+         backend/agent/dronedeck/session.py            capture_auto,
                                                          set_capture_auto,
                                                          record_capture
-         backend/agent/cropwatcher/api/rest.py           POST /session/capture,
+         backend/agent/dronedeck/api/rest.py           POST /session/capture,
                                                          POST /camera/capture,
                                                          GET /camera/recording/
                                                          frames?source=, GET
                                                          /history/sessions/{id}/
                                                          frames[/{seq}]
-         backend/agent/cropwatcher/history.py            session_frames,
+         backend/agent/dronedeck/history.py            session_frames,
                                                          session_frame
-         backend/agent/cropwatcher/audit.py              CAPTURE_SET,
+         backend/agent/dronedeck/audit.py              CAPTURE_SET,
                                                          CAMERA_CAPTURE
          backend/agent/tests/test_camera_capture.py, test_capture_switch.py,
          test_recording.py

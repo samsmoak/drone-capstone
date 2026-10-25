@@ -8,16 +8,16 @@ real drone, so putting it on a network is a deliberate act — and even on
 localhost every command needs the local control token, because any page the
 operator has open can reach 127.0.0.1.
 
-Served by `cropwatcher serve`. `python -m cropwatcher.api.rest` does nothing —
+Served by `dronedeck serve`. `python -m dronedeck.api.rest` does nothing —
 the module has no entry point.
 
 
 WHERE IT LIVES
 
-  backend/agent/cropwatcher/api/rest.py     routes, auth, the live socket
-  backend/agent/cropwatcher/api/tokens.py   the control token
-  backend/agent/cropwatcher/api/events.py   EventHub, the in-process fan-out
-  backend/agent/cropwatcher/flight/manual.py  the 50 Hz loop
+  backend/agent/dronedeck/api/rest.py     routes, auth, the live socket
+  backend/agent/dronedeck/api/tokens.py   the control token
+  backend/agent/dronedeck/api/events.py   EventHub, the in-process fan-out
+  backend/agent/dronedeck/flight/manual.py  the 50 Hz loop
   backend/agent/tests/test_api.py
 
 
@@ -89,7 +89,7 @@ DECISIONS
   origins (tauri://localhost, http://tauri.localhost, the dev server) may GET
   and POST; website origins may GET only, so the dashboard can see whether the
   agent is running; anything else gets no CORS headers. Extend the website
-  list with CROPWATCHER_ALLOWED_ORIGINS; never with "*". (Until 2026-09-25
+  list with DRONEDECK_ALLOWED_ORIGINS; never with "*". (Until 2026-09-25
   this said "GET only" for everyone — it had drifted: GET-only broke every
   button in the window, and the code had long since split it.)
 - EVERY REFUSED PREFLIGHT IS LOGGED — origin, method, path, reason — once per
@@ -111,7 +111,7 @@ INVARIANTS
 - GET /camera's reason names the drone first. With no frames AND no radio link
   it says the drone is not connected (off, flat battery) rather than a network
   theory about an address the drone may no longer hold.
-- CROPWATCHER_STANDBY=0 stops the agent holding the drone between sessions. The
+- DRONEDECK_STANDBY=0 stops the agent holding the drone between sessions. The
   API tests set it: a background radio loop would race every test.
 
 - NOTHING THAT TALKS TO THE RADIO MAY WAIT FOR EVER. cflib's
@@ -214,7 +214,7 @@ LAST VERIFIED  2026-09-30, the bounded shutdown only: tests/
 test_parent_watchdog.py (a session.end that never returns still exits, via
 the watchdog and via the lifespan; a finished shutdown is not cut short;
 console logging dropped, file kept), each shown failing with its arm removed.
-The incident itself read from ~/Library/Application Support/CropWatcher/logs/
+The incident itself read from ~/Library/Application Support/DroneDeck/logs/
 agent.log. Not yet: a real app quit with a hung link on the frozen build.
 LAST VERIFIED  2026-09-25, against rest.py (LocalCORS, /health) and
 tests/test_api.py — TestCors and TestCorsRefusalLog pass.

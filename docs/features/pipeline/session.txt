@@ -2,11 +2,11 @@
 THE SESSION, PROCESSED — whatever a session records, not only its flights
 Last verified: 2026-10-11 — re-read after session.py changed for playback (#109); it only gained the playback queue at flight end and an outbox property; the session's own processing is unchanged. Before that:
 2026-10-09 against dpp/session … data/session-results — 179
-real sessions through `cropwatcher process --session` (14 s, slowest 2 s), the
+real sessions through `dronedeck process --session` (14 s, slowest 2 s), the
 ground classifier measured on them (ml/session-eval/MEASUREMENTS.txt), the
 upload through the real client to the local stack, session_results_check
 12/12, the web pages in a browser at 390 and 1440 px in both themes.
-SOURCE: backend/agent/cropwatcher/pipeline/stages/classify/ground.py
+SOURCE: backend/agent/dronedeck/pipeline/stages/classify/ground.py
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -38,24 +38,24 @@ ground judged for anomalies.
 --------------------------------------------------------------------------------
 2. WHERE IT LIVES
 --------------------------------------------------------------------------------
-backend/agent/cropwatcher/pipeline/sources.py      LocalSessionSource,
+backend/agent/dronedeck/pipeline/sources.py      LocalSessionSource,
                                                    session_values (the flight
                                                    CSV's names), phase
-backend/agent/cropwatcher/pipeline/runner.py       run_session (scope "session",
+backend/agent/dronedeck/pipeline/runner.py       run_session (scope "session",
                                                    period 1 s)
-backend/agent/cropwatcher/pipeline/compose.py      session_stages
-backend/agent/cropwatcher/pipeline/stages/classify/ground.py   ground@1
-backend/agent/cropwatcher/pipeline/stages/clean/robust.py      gap_limit_s,
+backend/agent/dronedeck/pipeline/compose.py      session_stages
+backend/agent/dronedeck/pipeline/stages/classify/ground.py   ground@1
+backend/agent/dronedeck/pipeline/stages/clean/robust.py      gap_limit_s,
                                                    plausible_horizon_s
-backend/agent/cropwatcher/cli.py                   process --session, --all,
+backend/agent/dronedeck/cli.py                   process --session, --all,
                                                    _queue_session_result_upload
-backend/agent/cropwatcher/session.py               queued at End session
-backend/agent/cropwatcher/history.py               processing on the session's
+backend/agent/dronedeck/session.py               queued at End session
+backend/agent/dronedeck/history.py               processing on the session's
                                                    meta; interrupted_sessions,
                                                    recorded_sessions
-backend/agent/cropwatcher/processing.py            kind "session"
-backend/agent/cropwatcher/sync/results.py          session_result_row
-backend/agent/cropwatcher/sync/syncer.py           _send_session_results
+backend/agent/dronedeck/processing.py            kind "session"
+backend/agent/dronedeck/sync/results.py          session_result_row
+backend/agent/dronedeck/sync/syncer.py           _send_session_results
 backend/supabase/migrations/20261009000018_session_results.sql
 backend/supabase/checks/session_results_check.py
 backend/agent/tests/pipeline/test_session.py

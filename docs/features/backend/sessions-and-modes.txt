@@ -11,9 +11,9 @@ and nothing else — it never decides what is allowed.
 
 WHERE IT LIVES
 
-  backend/agent/cropwatcher/session.py       the state machine
-  backend/agent/cropwatcher/flight/link.py   DroneLink: the only radio chokepoint
-  backend/agent/cropwatcher/api/rest.py      the commands that drive it
+  backend/agent/dronedeck/session.py       the state machine
+  backend/agent/dronedeck/flight/link.py   DroneLink: the only radio chokepoint
+  backend/agent/dronedeck/api/rest.py      the commands that drive it
   backend/agent/tests/test_session.py
 
 
@@ -152,7 +152,7 @@ page and the camera gets its Wi-Fi network (drone-wifi.txt), before any session.
 
 It looks at sign-in and 2 s after any link closes (a session ending, the drone
 dropping), then every 15 s while nothing is found. Home carries Connect /
-Disconnect; POST /drone/connect and /drone/disconnect. CROPWATCHER_STANDBY=0
+Disconnect; POST /drone/connect and /drone/disconnect. DRONEDECK_STANDBY=0
 turns it off.
 
 RESTART OVER THE RADIO (restart_drone). Between sessions only (in a capture

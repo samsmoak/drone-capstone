@@ -3,7 +3,7 @@ RELEASES — how a commit becomes an installed app
 
 WHAT IT IS
 
-CropWatcher is installed from a terminal, not downloaded. On any Mac (Apple
+DroneDeck is installed from a terminal, not downloaded. On any Mac (Apple
 silicon or Intel), Windows PC or Linux PC:
 
   git clone https://github.com/samsmoak/drone-capstone.git
@@ -105,7 +105,7 @@ KNOWN DIVERGENCE (2026-09-25)
   download step went first, and on 2026-09-28 /apps too — the desktop app's
   `platforms` list in web/lib/products.ts is empty, so its card leads to the
   setup guide and /apps/desktop-app is a 404. The bucket still holds CI's last
-  builds (macOS 2026-09-24, Windows 2026-09-21), under the old CropWatcher
+  builds (macOS 2026-09-24, Windows 2026-09-21), under the old DroneDeck
   name and older than every install fix; nothing links to them.
 - The GitHub Actions secrets SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are
   no longer used by anything, and the latter bypasses RLS. The owner should
@@ -128,6 +128,6 @@ s from warm caches, into a scratch folder); PR #60's CI: setup, the build and
 verify_sidecar green on windows-latest for the first time since 2026-09-21,
 with closing stdin freeing the port in 0.9 s. Then desktop-install.yml run
 36126865498, all three green: install.mjs installed the app on macos-latest
-and macos-15-intel (/Applications/CropWatcher.app) and on windows-latest
-(%LOCALAPPDATA%\CropWatcher\desktop.exe — the installed executable keeps the
+and macos-15-intel (/Applications/DroneDeck.app) and on windows-latest
+(%LOCALAPPDATA%\DroneDeck\desktop.exe — the installed executable keeps the
 Cargo name). Stdin freed the port in 0.0 / 0.1 / 0.9 s.

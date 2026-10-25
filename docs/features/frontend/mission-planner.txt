@@ -14,7 +14,7 @@ WHERE IT LIVES
   lib/mutations.ts                 queuePlannedMission, cancelMission
   components/mission-planner.tsx   the planning surface
   components/mission-queue.tsx     recent missions, cancel
-  (backend/agent/cropwatcher/flight/missions.py — the plan format it builds —
+  (backend/agent/dronedeck/flight/missions.py — the plan format it builds —
    was DELETED on 2026-09-28; see KNOWN DIVERGENCE below)
 
 

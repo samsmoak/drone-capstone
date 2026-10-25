@@ -7,7 +7,7 @@ api/rest.py moved (the processing resume in the lifespan): no room or mission
 route changed. Before that, 2026-09-29 against claude/awesome-carson-eqkt8w — tests/mission/
 (134 tests: plan, end point, from_start, heights, store, API, session,
 stamping) and the harness.
-SOURCE: backend/agent/cropwatcher/mission/plan/validate.py
+SOURCE: backend/agent/dronedeck/mission/plan/validate.py
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -38,24 +38,24 @@ is (Mission.from_start).
 --------------------------------------------------------------------------------
 2. WHERE IT LIVES
 --------------------------------------------------------------------------------
-backend/agent/cropwatcher/mission/plan/shapes.py      2-D geometry: point-in-
+backend/agent/dronedeck/mission/plan/shapes.py      2-D geometry: point-in-
                                                       polygon, segment distances
-backend/agent/cropwatcher/mission/plan/geofence.py    Geofence (closed polygon;
+backend/agent/dronedeck/mission/plan/geofence.py    Geofence (closed polygon;
                                                       rectangle, circle presets)
-backend/agent/cropwatcher/mission/plan/obstacles.py   line, rectangle, circle
-backend/agent/cropwatcher/mission/plan/floorplan.py   Room, clearance, ids
-backend/agent/cropwatcher/mission/plan/mission.py     Mission, InspectionPoint
-backend/agent/cropwatcher/mission/plan/validate.py    every check; outer_bound (the
+backend/agent/dronedeck/mission/plan/obstacles.py   line, rectangle, circle
+backend/agent/dronedeck/mission/plan/floorplan.py   Room, clearance, ids
+backend/agent/dronedeck/mission/plan/mission.py     Mission, InspectionPoint
+backend/agent/dronedeck/mission/plan/validate.py    every check; outer_bound (the
                                                       room's map), flyable_bound
                                                       (the green, for the fit)
-backend/agent/cropwatcher/mission/plan/store.py       rooms/, missions/ on disk
-backend/agent/cropwatcher/mission/plan/coverage.py    predicted + surveyed coverage
-backend/agent/cropwatcher/mission/plan/fit.py         THE PLAN THAT WILL FLY
-backend/agent/cropwatcher/api/rest.py                 /plan/limits, /rooms,
+backend/agent/dronedeck/mission/plan/store.py       rooms/, missions/ on disk
+backend/agent/dronedeck/mission/plan/coverage.py    predicted + surveyed coverage
+backend/agent/dronedeck/mission/plan/fit.py         THE PLAN THAT WILL FLY
+backend/agent/dronedeck/api/rest.py                 /plan/limits, /rooms,
                                                       /missions, /missions/validate,
                                                       /missions/fit, /rooms/{id}/
                                                       coverage, /survey
-backend/agent/cropwatcher/paths.py                    rooms_dir, missions_dir
+backend/agent/dronedeck/paths.py                    rooms_dir, missions_dir
 backend/agent/tests/mission/                          the tests
 desktop/src/pages/control/auto/plan/                  the editor; space.ts the
                                                       flyable-space layer
@@ -189,7 +189,7 @@ desktop/src/pages/control/auto/FlightPlanCheck.tsx    ② the two plans, the sur
 --------------------------------------------------------------------------------
 4. INVARIANTS
 --------------------------------------------------------------------------------
-• mission/plan NEVER imports cropwatcher.flight: a plan is drawn, checked and
+• mission/plan NEVER imports dronedeck.flight: a plan is drawn, checked and
   saved with no drone. tests/mission/test_boundaries.py holds it.
 • x and y are absolute Lighthouse metres; heights are above the floor captured
   at takeoff (CLAUDE.md invariant 4). The editor shows feet only as labels.

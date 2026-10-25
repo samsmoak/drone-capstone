@@ -25,9 +25,9 @@ adding radio traffic at the moment the link matters most.
 
 WHERE IT LIVES
 
-  backend/agent/cropwatcher/telemetry/stream.py   TelemetryStream, pack_blocks
-  backend/agent/cropwatcher/telemetry/row.py      frame -> CSV row
-  backend/agent/cropwatcher/telemetry/sinks.py    CSV and cloud sinks
+  backend/agent/dronedeck/telemetry/stream.py   TelemetryStream, pack_blocks
+  backend/agent/dronedeck/telemetry/row.py      frame -> CSV row
+  backend/agent/dronedeck/telemetry/sinks.py    CSV and cloud sinks
   backend/agent/tests/test_stream.py
 
 

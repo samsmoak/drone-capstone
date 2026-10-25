@@ -1,9 +1,9 @@
 ================================================================================
 COMMANDS — every command in the project, where to run it, and what it does
-Last verified: 2026-10-24 against experiment/samuel (lab) — backend/agent/cropwatcher/cli.py,
+Last verified: 2026-10-24 against experiment/samuel (lab) — backend/agent/dronedeck/cli.py,
 web/package.json, desktop/package.json, scripts/, backend/supabase/ (migrations
 + checks/), firmware/drone-wifi/build.sh, and the gates in CLAUDE.md "Commands".
-SOURCE: backend/agent/cropwatcher/cli.py
+SOURCE: backend/agent/dronedeck/cli.py
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -28,51 +28,51 @@ the source files in WHERE IT LIVES win.
 2. WHERE IT LIVES
 --------------------------------------------------------------------------------
 
-AGENT CLI — the `cropwatcher` command (motors only where noted)
+AGENT CLI — the `dronedeck` command (motors only where noted)
   cd backend/agent && source .venv/bin/activate
   (Windows PowerShell: .venv\Scripts\Activate.ps1)
 
-  cropwatcher check                 Run every gate; never spins a motor. The
+  dronedeck check                 Run every gate; never spins a motor. The
                                     "is this machine OK to fly" check.
-  cropwatcher setup                 Install the drone's software — the only way:
+  dronedeck setup                 Install the drone's software — the only way:
                                     the app has no install button or route.
                                     QUIT DroneDeck first (it holds the radio).
                                     --check (read only), --reinstall
                                     main|lighthouse|camera,wifi. Installed app:
                                     …/DroneDeck.app/Contents/MacOS/
-                                    cropwatcher-agent setup — Set up step 2 shows
+                                    dronedeck-agent setup — Set up step 2 shows
                                     this machine's exact line to copy.
-  cropwatcher selftest              Load every library the agent only loads on
+  dronedeck selftest              Load every library the agent only loads on
                                     demand — catches a broken bundled dependency.
-  cropwatcher serve                 Run the local API on 127.0.0.1:8765 that the
+  dronedeck serve                 Run the local API on 127.0.0.1:8765 that the
                                     desktop app talks to. --host, --port, and
                                     --exit-with-parent (land, cut motors and exit
                                     when stdin closes, so quitting the app cannot
                                     strand an agent holding the radio).
-  cropwatcher stations              Watch which Lighthouse base stations the
+  dronedeck stations              Watch which Lighthouse base stations the
                                     drone sees, live. --seconds N to auto-stop.
-  cropwatcher geometry              Measure where the base stations are; no
+  dronedeck geometry              Measure where the base stations are; no
                                     motors. --quick (one sample, restore hold
                                     now), --distance, --countdown, --dry-run.
-  cropwatcher proptest              The firmware's propeller test. MOTORS SPIN.
-  cropwatcher hover                 Take off, hold a steady height, land. MOTORS
+  dronedeck proptest              The firmware's propeller test. MOTORS SPIN.
+  dronedeck hover                 Take off, hold a steady height, land. MOTORS
                                     SPIN. --height (m), --secs, --ambient (e.g.
                                     74F or 22C — the unit every temperature in
                                     the flight is stored in), --fence, --no-log.
-  cropwatcher mission --id ID       Check, then fly, a mission saved on this
+  dronedeck mission --id ID       Check, then fly, a mission saved on this
                                     laptop (built in the app). MOTORS SPIN.
                                     --dry-run checks and describes it, no connect.
-  cropwatcher process --flight ID   Run the data pipeline over a recorded flight;
+  dronedeck process --flight ID   Run the data pipeline over a recorded flight;
                                     never connects. Also: --session ID (on-ground
                                     samples), --all (everything unprocessed),
                                     --fixture (the test fixture, source checkout
                                     only), --live-point POINT (with --flight).
-  cropwatcher mission-report --flight ID
+  dronedeck mission-report --flight ID
                                     Per inspection point: leg, transit, settle,
                                     hold, drift, flown-vs-estimate, and suggested
                                     controller constants. Reads files, no radio.
                                     Repeat --flight to combine flights; --json.
-  cropwatcher calibrate --flight ID --at POINT
+  dronedeck calibrate --flight ID --at POINT
                                     Measure what a KNOWN heat source did (the
                                     hand-warmer flights) and recommend anomaly
                                     thresholds. One --at per --flight, same order.
@@ -83,7 +83,7 @@ AGENT GATES — the definition of done for flight code
   cd backend/agent && source .venv/bin/activate
 
   ruff check .                      Lint.
-  mypy cropwatcher                  Type check.
+  mypy dronedeck                  Type check.
   pytest                            The tests; guards and checks need no drone.
   pytest -k guard                   Just the in-flight guards.
   pytest tests/mission/test_mission_sim.py
@@ -180,7 +180,7 @@ FIRMWARE — the Crazyflie app (drone_wifi) on the drone's STM32
                                     runs, so build.sh refuses that build.
 
   cd backend/agent && source .venv/bin/activate
-  python -m cropwatcher.flash_firmware ../../firmware/drone-wifi/build/cf2.bin
+  python -m dronedeck.flash_firmware ../../firmware/drone-wifi/build/cf2.bin
                                     Flash the built image to the STM32 by radio
                                     (once per drone, and after any firmware
                                     change). The bootloader is untouched — an
@@ -188,26 +188,26 @@ FIRMWARE — the Crazyflie app (drone_wifi) on the drone's STM32
                                     ~3 s and flashing again.
 
 DATA ON THIS MACHINE — getting at recorded flights and results (recipes, macOS)
-  (Plain shell, not cropwatcher subcommands. Paths come from paths.py; Windows
-  is %APPDATA%\CropWatcher, Linux $XDG_DATA_HOME/CropWatcher; CROPWATCHER_DATA_DIR
+  (Plain shell, not dronedeck subcommands. Paths come from paths.py; Windows
+  is %APPDATA%\DroneDeck, Linux $XDG_DATA_HOME/DroneDeck; DRONEDECK_DATA_DIR
   overrides it.)
 
-  open ~/Library/Application\ Support/CropWatcher
+  open ~/Library/Application\ Support/DroneDeck
                                     Open the data folder in Finder: flights/,
                                     results/, missions/, rooms/, outbox/, logs/.
-  find ~/Library/Application\ Support/CropWatcher/flights -name 'flight_*.csv' \
+  find ~/Library/Application\ Support/DroneDeck/flights -name 'flight_*.csv' \
     | sed -E 's|.*/flight_([0-9a-f]+)_.*|\1|' | sort -u
                                     List recorded flight IDs (the hex in each
                                     filename) — what --flight / mission-report want.
-  open ~/Library/Application\ Support/CropWatcher/logs/agent.log
+  open ~/Library/Application\ Support/DroneDeck/logs/agent.log
                                     The agent log — where a sidecar crash leaves
                                     its reason behind.
 
 HARDWARE / LAB PASS — ONLY with the radio plugged in and a charged battery
   cd backend/agent && source .venv/bin/activate
 
-  cropwatcher check                                       Pre-flight gates.
-  cropwatcher hover --height 0.3 --secs 30 --ambient 74F  A real 30 s hover.
+  dronedeck check                                       Pre-flight gates.
+  dronedeck hover --height 0.3 --secs 30 --ambient 74F  A real 30 s hover.
   pytest -m hardware                                      The real-drone tests.
   Report pass / fail / SKIPPED honestly. A cloud session has no radio, so these
   are skipped there and must be reported as skipped — never claimed done.
@@ -222,7 +222,7 @@ HARDWARE / LAB PASS — ONLY with the radio plugged in and a charged battery
 • RECORDED FLIGHTS GO TO THE APP DATA DIR, not a relative organized_flights/.
   CLAUDE.md's "Commands" still shows `# writes organized_flights/` beside hover;
   that comment is stale — the real location is the per-user data dir (macOS
-  ~/Library/Application Support/CropWatcher/flights, see paths.py).
+  ~/Library/Application Support/DroneDeck/flights, see paths.py).
 • SLASH COMMANDS ARE NOT SHELL COMMANDS. /feature and friends are Claude Code
   skills in .claude/commands/ (development/skills.txt), deliberately out of this
   index so it stays a reference of things you type in a terminal.

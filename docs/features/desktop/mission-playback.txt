@@ -53,14 +53,14 @@ them. The simulator's job is CI (../development/releases.txt, agent-tests.yml).
 --------------------------------------------------------------------------------
 2. WHERE IT LIVES
 --------------------------------------------------------------------------------
-agent    backend/agent/cropwatcher/playback.py   files_of, load (files),
+agent    backend/agent/dronedeck/playback.py   files_of, load (files),
                                                  load_cloud (Supabase), load_any,
                                                  list_flights — one builder
-         backend/agent/cropwatcher/api/rest.py   GET /history/flights,
+         backend/agent/dronedeck/api/rest.py   GET /history/flights,
                                                  GET /history/flights/{id}/playback
-         backend/agent/cropwatcher/sync/flight_playback.py  plan + trace upload
-         backend/agent/cropwatcher/sync/syncer.py           _send_playback (last)
-         backend/agent/cropwatcher/sync/cloud.py            insert_flight_plan,
+         backend/agent/dronedeck/sync/flight_playback.py  plan + trace upload
+         backend/agent/dronedeck/sync/syncer.py           _send_playback (last)
+         backend/agent/dronedeck/sync/cloud.py            insert_flight_plan,
                                                  insert_flight_traces, read_*,
                                                  list_flights (paged by 1 000)
          backend/agent/tests/test_playback.py, test_playback_cloud.py

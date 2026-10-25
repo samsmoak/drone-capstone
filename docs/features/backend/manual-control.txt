@@ -81,16 +81,16 @@ that. Land, an emergency stop and re-arming all clear it too.
 
 WHERE IT LIVES
 
-  backend/agent/cropwatcher/flight/manual.py  the loop and the control state
-  backend/agent/cropwatcher/flight/keyframe.py  which way the arrows move it
-  backend/agent/cropwatcher/flight/controls_store.py  the choice and the spot, saved
-  backend/agent/cropwatcher/session.py      set_key_frame, mark_operator, `controls`
+  backend/agent/dronedeck/flight/manual.py  the loop and the control state
+  backend/agent/dronedeck/flight/keyframe.py  which way the arrows move it
+  backend/agent/dronedeck/flight/controls_store.py  the choice and the spot, saved
+  backend/agent/dronedeck/session.py      set_key_frame, mark_operator, `controls`
   desktop/src/pages/control/ArrowFrame.tsx  From you / Room, I'm here, what they mean
   desktop/src/lib/arrows.ts                 the words for each frame
   backend/agent/tests/test_keyframe.py, tests/test_controls.py
-  backend/agent/cropwatcher/flight/link.py    reads the position the spot comes from
-  backend/agent/cropwatcher/flight/geometry.py  re-measures where the stations are
-  backend/agent/cropwatcher/api/rest.py     /ws/live carries the intent
+  backend/agent/dronedeck/flight/link.py    reads the position the spot comes from
+  backend/agent/dronedeck/flight/geometry.py  re-measures where the stations are
+  backend/agent/dronedeck/api/rest.py     /ws/live carries the intent
   desktop/src/App.tsx                       key state -> intent
   backend/agent/tests/test_manual.py
 
@@ -198,7 +198,7 @@ the frame flight/keyframe.py picks each tick:
                       drone. Stays right when the drone flies behind them and
                       they turn to face it. ArduPilot's Super Simple mode, DJI's
                       Home Lock; base stations stand in for their GPS.
-  ROOM                ↑ is the room's +x — the direction `cropwatcher geometry`
+  ROOM                ↑ is the room's +x — the direction `dronedeck geometry`
                       asked the operator to face the drone along ("the
                       direction you want to call forward").
 
@@ -376,7 +376,7 @@ INVARIANTS
 - Command a point only on geometry measured in THIS room. The point is
   exactly as good as the position estimate under it. Stale geometry does not
   fail loudly — the stations simply disagree — and the drone would then be
-  flown to a coordinate that is quietly wrong. Run `cropwatcher geometry`
+  flown to a coordinate that is quietly wrong. Run `dronedeck geometry`
   after any station is moved, nudged or re-aimed.
 
 - Read the estimator's OWN confidence, do not infer one. kalman.varPX/varPY

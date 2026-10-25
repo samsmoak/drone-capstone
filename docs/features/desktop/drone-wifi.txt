@@ -31,12 +31,12 @@ WHERE IT LIVES
   firmware/drone-wifi/src/wire.h             the bytes sent to the ESP32
   firmware/drone-wifi/test/test_wire.c       those bytes through the ESP32's code
   firmware/drone-wifi/build.sh               test, then stock 2025.12.1 + app
-  backend/agent/cropwatcher/flash_firmware.py  writes it to the STM32 by radio
-  backend/agent/cropwatcher/camera/wifi.py   protocol, validation, console read,
+  backend/agent/dronedeck/flash_firmware.py  writes it to the STM32 by radio
+  backend/agent/dronedeck/camera/wifi.py   protocol, validation, console read,
                                              the last join kept on disk
-  backend/agent/cropwatcher/camera/deck.py   DeckStream.set_host — follow the IP
-  backend/agent/cropwatcher/session.py       on_link_ready / on_link_down, standby
-  backend/agent/cropwatcher/api/rest.py      GET/PUT/DELETE /camera/wifi
+  backend/agent/dronedeck/camera/deck.py   DeckStream.set_host — follow the IP
+  backend/agent/dronedeck/session.py       on_link_ready / on_link_down, standby
+  backend/agent/dronedeck/api/rest.py      GET/PUT/DELETE /camera/wifi
   backend/agent/tests/test_camera_wifi.py    against a fake drone_wifi app
   backend/agent/tests/test_camera_wifi_recovery.py  ask, rejoin, reasons, the ladder
   firmware/aideck-esp/wifi-recovery.patch    the ESP32: rejoin, report, reasons
@@ -53,13 +53,13 @@ WHERE IT LIVES
 FLASHING THE DRONE (once per drone; again after any firmware change)
 
   firmware/drone-wifi/build.sh
-  quit CropWatcher (it holds the radio), then:
+  quit DroneDeck (it holds the radio), then:
   cd backend/agent && source .venv/bin/activate
-  python -m cropwatcher.flash_firmware ../../firmware/drone-wifi/build/cf2.bin
+  python -m dronedeck.flash_firmware ../../firmware/drone-wifi/build/cf2.bin
 
 build.sh first runs test_wire.c and refuses to build if the bytes would be
 mangled. It fetches the Arm GNU toolchain 13.3 and crazyflie-firmware into
-~/.cache/cropwatcher and builds there — Kbuild cannot build a path containing a
+~/.cache/dronedeck and builds there — Kbuild cannot build a path containing a
 space, and this repo lives under "current projects". Only the STM32 is written;
 the bootloader is never touched, so an interrupted flash is recovered by holding
 the power button ~3 s and flashing again.

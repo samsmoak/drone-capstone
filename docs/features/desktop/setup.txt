@@ -29,13 +29,13 @@ here until 2026-10-05, where the operator could not find it.
 WHERE IT LIVES
 
   desktop/src/pages/setup/SetupPage.tsx              the page
-  backend/agent/cropwatcher/drone_setup.py           check, install, unplug, verify
-  backend/agent/cropwatcher/setup_cli.py             `cropwatcher setup` — the install command
+  backend/agent/dronedeck/drone_setup.py           check, install, unplug, verify
+  backend/agent/dronedeck/setup_cli.py             `dronedeck setup` — the install command
   backend/agent/tests/test_setup_cli.py
-  backend/agent/cropwatcher/firmware_bundle/         the three files + manifest.json
-  backend/agent/cropwatcher/flash_firmware.py        STM32 flasher (progress added)
-  backend/agent/cropwatcher/camera/flash_gap8.py     AI-deck flasher, gap8 | esp
-  backend/agent/packaging/cropwatcher-agent.spec     bundles firmware_bundle/
+  backend/agent/dronedeck/firmware_bundle/         the three files + manifest.json
+  backend/agent/dronedeck/flash_firmware.py        STM32 flasher (progress added)
+  backend/agent/dronedeck/camera/flash_gap8.py     AI-deck flasher, gap8 | esp
+  backend/agent/packaging/dronedeck-agent.spec     bundles firmware_bundle/
   firmware/drone-wifi/src/drone_wifi.c               the cwsetup.fw / .deck / .deckid params
   desktop/src/harness.tsx                            "Set up · new AI deck", "… reinstall"
   GET /setup · POST /setup/check · GET /setup/command (this machine's line)
@@ -43,7 +43,7 @@ WHERE IT LIVES
   · event "setup" (facts.deck_unrecorded: the deck fitted is not the one on record)
 
   step 3:
-  backend/agent/cropwatcher/flight/basestation.py    find, set_channel (pyserial)
+  backend/agent/dronedeck/flight/basestation.py    find, set_channel (pyserial)
   GET /basestations · POST /basestations/channel
   backend/agent/tests/test_basestation.py
 
@@ -74,9 +74,9 @@ DECISIONS
   drone"). Step 2 checks and lists the parts, then shows the command with a
   Copy button; the ticks add `--reinstall <parts>`:
 
-      cropwatcher setup                          check, then install what is needed
-      cropwatcher setup --check                  check only; change nothing
-      cropwatcher setup --reinstall camera,wifi  write those parts again too
+      dronedeck setup                          check, then install what is needed
+      dronedeck setup --check                  check only; change nothing
+      dronedeck setup --reinstall camera,wifi  write those parts again too
 
   It is the same engine (DroneSetup) — same order, battery floor, unplug,
   verification and marker — printing each step and a boxed UNPLUG prompt.
@@ -88,8 +88,8 @@ DECISIONS
   ask it to let go: that token is the app's alone.
   WHICH COMMAND: an installed app has no Python on PATH — its own agent
   binary is the whole CLI (packaging/sidecar.py), so the line is
-  `…/DroneDeck.app/Contents/MacOS/cropwatcher-agent setup` (PowerShell form
-  `& "…" setup` on Windows; a developer's venv `cropwatcher setup`). The agent
+  `…/DroneDeck.app/Contents/MacOS/dronedeck-agent setup` (PowerShell form
+  `& "…" setup` on Windows; a developer's venv `dronedeck setup`). The agent
   computes it (setup_cli.command_line), never the page, so it is the real path.
 - WHAT A DRONE HAS IS READ, NOT ASSUMED. cwsetup.fw (present only in our
   firmware) says whether main is ours and which version; cwsetup.deck, stored
@@ -189,7 +189,7 @@ DECISIONS
   checking, installing, unplugging, failed, or with parts to install; its
   "Check" button opens it any time. Every step reopens by its button.
 - AN UNMOVED DRONE IS NAMED, NOT CALLED A DISAGREEMENT in the terminal's
-  two-record walk (`cropwatcher geometry`; NOT_MOVED_M 0.10 m, 2026-10-05): two records whose station positions match are the same place.
+  two-record walk (`dronedeck geometry`; NOT_MOVED_M 0.10 m, 2026-10-05): two records whose station positions match are the same place.
   That day's terminal run read "disagree by 100 cm … 2.45 m away from both" —
   an unmoved drone — and a still drone's 50-sweep averages agree to 1e-5 rad.
   The guard also exposed a test (test_geometry.py, the mirror test) that had

@@ -63,11 +63,11 @@ firmware/aideck-esp/wifi-recovery.patch         rejoin, report, reasons
 firmware/aideck-esp/wifi-link.patch             20 MHz, 20 dBm, 15 s; brownout
 firmware/aideck-gap8/build.sh                   Bitcraze's image, in Docker
 firmware/aideck-gap8/jpeg-streamer.patch        JPEG, a 30 KB buffer
-backend/agent/cropwatcher/firmware_bundle/manifest.json  what Set up installs
-backend/agent/cropwatcher/camera/flash_gap8.py  writes either chip, by radio
-backend/agent/cropwatcher/camera/deck.py        reads the stream
-backend/agent/cropwatcher/camera/rate.py        measures it
-backend/agent/cropwatcher/camera/diagnose.py    which chip is silent, from
+backend/agent/dronedeck/firmware_bundle/manifest.json  what Set up installs
+backend/agent/dronedeck/camera/flash_gap8.py  writes either chip, by radio
+backend/agent/dronedeck/camera/deck.py        reads the stream
+backend/agent/dronedeck/camera/rate.py        measures it
+backend/agent/dronedeck/camera/diagnose.py    which chip is silent, from
                                                 the drone's console
 
 --------------------------------------------------------------------------------

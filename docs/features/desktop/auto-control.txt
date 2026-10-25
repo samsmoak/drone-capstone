@@ -109,7 +109,7 @@ desktop/src/lib/agent.ts                           the calls and types
 • SIDE BY SIDE FROM 1280 px, STACKED BELOW (2026-09-29; it was 1024). At a
   1024 px window the monitor was 294 px wide: its tab list got 97 px for
   177 px of tabs and Camera ran into "10 Hz". The divider's own position
-  (cropwatcher.split.control.auto, 58/42) now stops at 45–70 %.
+  (dronedeck.split.control.auto, 58/42) now stops at 45–70 %.
 • FULL SCREEN IS THE SAME FLOW, RESTYLED IN PLACE (AutoControl
   FullScreenFrame), not a copy in an overlay: the same elements with other
   classes, so the step, the chosen mission and an unsaved plan survive going in
@@ -120,7 +120,7 @@ desktop/src/lib/agent.ts                           the calls and types
   room's flying space, obstacles at their height, the path at its heights, the
   drone at its height and heading — orbit, pan, zoom, camera presets (3/4, Top,
   Front, Side, Fit), double-click to swing round one object. The choice is
-  remembered (cropwatcher.auto.mapView) and V toggles it. Both views take the
+  remembered (dronedeck.auto.mapView) and V toggles it. Both views take the
   same editing callbacks, so every edit goes through the same clamping.
 • THREE.JS, REVERSED ON PURPOSE. SceneView.tsx avoided it (~170 KB gz) and said
   to reach for it "if this ever needs an orbitable camera" — orbiting, picking
@@ -173,7 +173,7 @@ desktop/src/lib/agent.ts                           the calls and types
   selected, 2 px --primary on all four sides (measured: 7.27 / 8.03 and
   6.07 / 3.95 : 1 on --surface-2, light / dark). The room, each obstacle, each
   point and the start are cards.
-• A DIVIDER BETWEEN THE MAP AND THE FORM (cropwatcher.split.editor), inline
+• A DIVIDER BETWEEN THE MAP AND THE FORM (dronedeck.split.editor), inline
   and in full screen, from 600 px of EDITOR width (its own, measured — not the
   window's); stacked below that. Its bounds are pixels (map ≥ 300, form ≥
   280) turned into fractions of the live width, and SplitPane now clamps to
@@ -293,7 +293,7 @@ desktop/src/lib/agent.ts                           the calls and types
   mirror images; the one whose STATION STANDS UPRIGHT wins (MIN_UPRIGHT
   0.5) — measured: (-1.33, +1.74, 1.49) up-z +0.89 against the mirror
   (+1.33, -1.74, 1.49) up-z -0.74. Neither upright is refused, never
-  guessed; the two-record walk stays in the terminal (`cropwatcher
+  guessed; the two-record walk stays in the terminal (`dronedeck
   geometry`) for that case. Done = the drone says positioning is ready
   (/station), never "a press happened". The camera watchdog never restarts
   the drone mid-measurement (Session.measuring_station).
@@ -314,7 +314,7 @@ desktop/src/lib/agent.ts                           the calls and types
   needs a measured x-axis step and floor samples to fix the frame
   (align_and_scale_solution); doing without them means new geometry maths
   that writes what the drone flies on, and it cannot be checked until the
-  deck sees light again. The full solver is `cropwatcher geometry` (a 1 m
+  deck sees light again. The full solver is `dronedeck geometry` (a 1 m
   step and a few positions) — the refine that exists today.
 • THE BASE STATIONS ARE ON THE MAP, 2-D AND 3-D (2026-10-24, Samuel: "so
   that we know where the base station is, both in the real world and in the

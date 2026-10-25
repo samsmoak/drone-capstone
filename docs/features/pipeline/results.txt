@@ -12,13 +12,13 @@ uploading a planted warm patch to the local Supabase stack; /app/processed and
 43 readings of the stretch tinted, the tooltip on hover of a row and on focus
 of a frame); the hosted database read for the owner's 2026-10-09 flight (its
 result uploaded, 0 findings).
-SOURCE: backend/agent/cropwatcher/sync/results.py
+SOURCE: backend/agent/dronedeck/sync/results.py
 ================================================================================
 
 --------------------------------------------------------------------------------
 STATUS  (Last verified: 2026-10-09)
 --------------------------------------------------------------------------------
-  agent     BUILT — queued by `cropwatcher process`, uploaded by the syncer
+  agent     BUILT — queued by `dronedeck process`, uploaded by the syncer
   database  BUILT — migrations 20261009000015 (owners), 0016 (results), 0017
             (notifications); proved on the local stack, APPLIED to the
             hosted database 2026-10-09 and checked there read-only (tables
@@ -26,7 +26,7 @@ STATUS  (Last verified: 2026-10-09)
             anonymous 401)
   web       BUILT — Processed data (/app/processed, per session), the session
             and flight pages, the bell, /app/notifications
-  backfill  BUILT — `cropwatcher process --all` (flights recorded before
+  backfill  BUILT — `dronedeck process --all` (flights recorded before
             processing, or by an older pipeline)
   session   BUILT — a session's own result (migration 20261009000018,
             Kind.SESSION_RESULTS); NOT YET applied to the hosted database
@@ -46,12 +46,12 @@ table and on the frames, the meaning on hover.
 --------------------------------------------------------------------------------
 2. WHERE IT LIVES
 --------------------------------------------------------------------------------
-backend/agent/cropwatcher/sync/results.py       result.json → rows; frame paths
-backend/agent/cropwatcher/sync/syncer.py        _send_results (LAST in a pass)
-backend/agent/cropwatcher/sync/cloud.py         upsert_result, upsert_findings,
+backend/agent/dronedeck/sync/results.py       result.json → rows; frame paths
+backend/agent/dronedeck/sync/syncer.py        _send_results (LAST in a pass)
+backend/agent/dronedeck/sync/cloud.py         upsert_result, upsert_findings,
                                                 delete_findings_except
 backend/agent/tests/test_results_upload.py
-backend/agent/cropwatcher/cli.py                `process --all` (_process_all)
+backend/agent/dronedeck/cli.py                `process --all` (_process_all)
 backend/supabase/migrations/20261009000016_pipeline_results.sql
 backend/supabase/migrations/20261009000017_notifications.sql
 backend/supabase/checks/results_check.py, notifications_check.py
@@ -175,7 +175,7 @@ web/app/app/sessions/[id]/page.tsx, web/app/app/flights/[id]/page.tsx
 5. RELATED
 --------------------------------------------------------------------------------
 depends-on        data-pipeline.txt
-                  result.json, written by `cropwatcher process`
+                  result.json, written by `dronedeck process`
 depends-on        interpret.txt
                   the findings uploaded and notified
 depends-on        enhance.txt

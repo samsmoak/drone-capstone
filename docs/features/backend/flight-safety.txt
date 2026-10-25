@@ -14,13 +14,13 @@ and hit a wall. It had no position at all. See INVARIANTS below.
 
 WHERE IT LIVES
 
-  backend/agent/cropwatcher/flight/checks.py      the pre-flight steps, the tests
-  backend/agent/cropwatcher/flight/supervisor.py  motors held after a crash
-  backend/agent/cropwatcher/safety/flight_guard.py the in-flight guards
-  backend/agent/cropwatcher/flight/control.py     GuardedFlight, FlightAborted
-  backend/agent/cropwatcher/flight/programs.py    HoverTest
-  backend/agent/cropwatcher/flight/geometry.py    measuring the station poses
-  backend/agent/cropwatcher/cli.py                stations, geometry
+  backend/agent/dronedeck/flight/checks.py      the pre-flight steps, the tests
+  backend/agent/dronedeck/flight/supervisor.py  motors held after a crash
+  backend/agent/dronedeck/safety/flight_guard.py the in-flight guards
+  backend/agent/dronedeck/flight/control.py     GuardedFlight, FlightAborted
+  backend/agent/dronedeck/flight/programs.py    HoverTest
+  backend/agent/dronedeck/flight/geometry.py    measuring the station poses
+  backend/agent/dronedeck/cli.py                stations, geometry
   backend/agent/tests/test_checks.py, test_flight_guard.py, test_geometry.py
 
 
@@ -39,7 +39,7 @@ THE CHECKS (in order, each yields a CheckResult the UI renders live)
                "NO DECK IS NOT NO STATIONS" below
   positioning  base stations RECEIVED and calibrated and with geometry.
                ONE is enough to fly (MIN_USABLE_STATIONS = 1); a room with two
-               insists on both with CROPWATCHER_MIN_STATIONS=2. Zero is not a
+               insists on both with DRONEDECK_MIN_STATIONS=2. Zero is not a
                looser setting — it is unassisted flight, offered by name.
   still        the Kalman estimate has settled in x, y AND z
 
@@ -86,7 +86,7 @@ An abort raises FlightAborted(verdict); the reason is stored on the flight row
 
 WATCHING THE BASE STATIONS FROM THE LAB
 
-  cropwatcher stations          live, once a second, until Ctrl-C
+  dronedeck stations          live, once a second, until Ctrl-C
 
 Prints what the DRONE reports — received, calibrated, geometry, its estimate
 and the verdict — while someone powers or re-aims a station. A station's own
@@ -103,9 +103,9 @@ MEASURING WHERE THE STATIONS ARE
 
   Set up › Measure the base station     the one-station walk, in the app
                                         (../desktop/setup.txt, step 3)
-  cropwatcher geometry                  walks the steps and writes the result
-  cropwatcher geometry --distance 1.25  the measured distance that sets scale
-  cropwatcher geometry --dry-run        solve and print, write nothing
+  dronedeck geometry                  walks the steps and writes the result
+  dronedeck geometry --distance 1.25  the measured distance that sets scale
+  dronedeck geometry --dry-run        solve and print, write nothing
 
 The drone finds its position by crossing the beams of two stations, so it has
 to know where each station IS. That is the geometry, and it is stored ON THE
@@ -141,7 +141,7 @@ station and the drone at rest: position held to sub-millimetre, varPX 0.0001 m²
 (1 cm). So a room with one station is not a room with none.
 
 The solver above cannot do it: it works by crossing the views of station PAIRS,
-and one station is not a pair. `cropwatcher geometry` notices what is actually
+and one station is not a pair. `dronedeck geometry` notices what is actually
 being RECEIVED and switches to IPPE instead — the four photodiodes are a known
 planar target, and the angles fix where the station must be.
 
@@ -157,7 +157,7 @@ deck has no second opinion, and this drone carries NO flow deck and NO
 rangefinder to coast on (measured: deck.bcFlow2 = 0, deck.bcZRanger2 = 0).
 Lose the one station and x and y are the accelerometer integrating — measured
 diverging at about 1 m/s the same day. So the checks still want two, and one
-is accepted only by asking, per room: CROPWATCHER_MIN_STATIONS=1.
+is accepted only by asking, per room: DRONEDECK_MIN_STATIONS=1.
 
 
 DECISIONS
@@ -294,7 +294,7 @@ square stays the default, so nothing Manual flies changed.
 
 LAST VERIFIED  2026-09-30, the crash cut-off, the thrust ceiling and the deck
 reason only: tests/test_flight_guard.py TestCrashCutoff and test_checks.py;
-the new guard replayed over all 97 traces on the lab laptop; `cropwatcher
+the new guard replayed over all 97 traces on the lab laptop; `dronedeck
 check` run against the lab drone (battery passes, deck named).
 
 RELATED
