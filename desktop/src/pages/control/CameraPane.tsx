@@ -333,7 +333,7 @@ function DeckLine({ fitted, lost }: { fitted: boolean | null; lost: boolean }) {
   // restart over the radio unpowered the decks and this read "no camera").
   const text = fitted === null ? "AI deck: not asked yet"
     : fitted ? "AI deck: fitted"
-    : lost ? "AI deck: not detected now — switch the drone off and on with its button"
+    : lost ? "AI deck: not detected now — unplug the battery for 10 seconds"
     : "AI deck: not fitted — no camera on this drone";
   return (
     <p className="mono text-[10px] uppercase tracking-[0.08em] text-[var(--console-dim)]">

@@ -110,14 +110,14 @@ Auto program's worker wind down, close the flight, restart the drone over the
 radio, reconnect as soon as it answers, run every check — and stand in
 awaiting_confirmation in the SAME session, retry_required cleared. A restart is
 the one thing that clears what a crash can leave inside the drone: a latched
-motor lock. NOT THE DECKS — this said "and decks" until 2026-10-24, and it was
-wrong: cflib's stm_power_cycle cuts the decks' power and they do not come
-back. Every restart over the radio that day was followed by fewer deck
-memories (8 → 5 → 0), "AI deck: not fitted" and no base stations, until the
-drone was switched off and on by hand. The session's `decks_lost` (the AI deck
-seen on this drone, then not) makes the app say "switch the drone off and on"
-instead of "not fitted"; nothing else restarts the drone any more — the camera
-recovery does not (drone-wifi.txt). Measured on the lab
+motor lock, and the AI deck's two chips (the aideck driver pulls their shared
+reset line at every boot). On the morning of 2026-10-24 restarts were followed
+by fewer deck memories (8 → 5 → 0) and this was read as the restart unpowering
+the decks; that evening 6 radio restarts on a charged battery kept all 8 each
+time — the morning's losses fit a deck stack that also lost contact on hand
+power-ons. The session's `decks_lost` (the AI deck seen on this drone, then
+not) makes the app say to unplug the battery instead of "not fitted". The
+camera recovery uses this reset in a CAPTURE session (drone-wifi.txt). Measured on the lab
 drone: 9.4 s from press to checked. No session open, it is restart_drone.
 Refused while checks run or the session ends. A restart the radio cannot do,
 or a drone that does not answer within RESET_RECONNECT_S (12 s) after the
@@ -155,7 +155,8 @@ dropping), then every 15 s while nothing is found. Home carries Connect /
 Disconnect; POST /drone/connect and /drone/disconnect. CROPWATCHER_STANDBY=0
 turns it off.
 
-RESTART OVER THE RADIO (restart_drone). Between sessions only, the agent can
+RESTART OVER THE RADIO (restart_drone). Between sessions only (in a capture
+session the camera uses reset_drone instead — above), the agent can
 power-cycle the drone's electronics through its radio chip; standby waits 4 s
 (RESTART_SETTLE_S — a connect while it boots blocks for its full timeout) and
 reconnects. radio.state reads "restarting" meanwhile. It exists for the camera
@@ -231,7 +232,10 @@ mission controller (../missions/mission-controller.txt). The snapshot's
 `mission` carries its progress to the app.
 
 
-LAST VERIFIED  2026-09-30, Reset drone only: tests/test_session.py
+LAST VERIFIED  2026-10-24 late, the restart and the decks: 6 radio restarts on
+the lab drone kept all 8 deck memories (flight-log.txt); reset_drone as the
+camera's restart in a capture session, test_camera_wifi_recovery.py.
+2026-09-30, Reset drone only: tests/test_session.py
 TestResetDrone (7, the guard race pinned by a test that fails without
 _finish_lock), and Session.reset_drone run against the lab drone — 9.4 s to
 awaiting_confirmation, same session.

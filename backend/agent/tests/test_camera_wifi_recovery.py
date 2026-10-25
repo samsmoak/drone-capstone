@@ -140,7 +140,7 @@ class TestRecover:
         # Never left on "Asking…": what it can do, and the fix.
         state = deck.state()
         assert state.phase is Phase.FAILED and state.needs_restart
-        assert "Set up" in (state.message or "") and "Asking" not in (state.message or "")
+        assert "restarted" in (state.message or "") and "Asking" not in (state.message or "")
 
     def test_an_old_deck_on_a_v4_drone_cannot_be_asked(self):
         deck, _, _ = configured()
@@ -207,20 +207,35 @@ class TestReasons:
 
 
 class TestTheLadder:
-    """Agent.recover_camera: ask, then rejoin — and NEVER restart the drone.
-    A restart over the radio (stm_power_cycle) unpowered the decks and they
-    did not come back until a real power-off (2026-10-24)."""
+    """Agent.recover_camera: ask and rejoin first; restart the drone only when
+    the deck cannot — idle or in a capture session, never in a flight session,
+    never more than once a minute (restored 2026-10-24 evening: 6 radio
+    restarts kept all 8 deck memories on a charged battery)."""
 
-    def agent(self, outcome: str):
+    def agent(self, outcome: str, *, session_id=None, capturing=False,
+              refuse: bool = False, measuring: bool = False):
         from types import SimpleNamespace
 
         from cropwatcher.api import rest
+        from cropwatcher.session import SessionError
 
         restarts: list[str] = []
+
+        def restart_drone(*, reason):
+            if refuse:
+                raise SessionError("A session is using the drone. End it first.")
+            restarts.append(reason)
+
         fake = SimpleNamespace(
-            _cf=object(), _last_recover=0.0,
+            _cf=object(), _last_recover=0.0, _last_rejoin=0.0,
             deck_wifi=SimpleNamespace(recover=lambda cf, why: outcome),
-            session=SimpleNamespace(restart_drone=lambda *, reason: restarts.append(reason)))
+            session=SimpleNamespace(
+                measuring_station=measuring, capturing_only=capturing,
+                snapshot=lambda: SimpleNamespace(session_id=session_id),
+                restart_drone=restart_drone,
+                reset_drone=lambda: restarts.append("reset")))
+        fake.restart_for_camera = (
+            lambda *, reason: rest.Agent.restart_for_camera(fake, reason=reason))
         fake.recover_camera = lambda why: rest.Agent.recover_camera(fake, why)
         return fake, restarts
 
@@ -234,14 +249,33 @@ class TestTheLadder:
         assert fake.recover_camera("No answer.") == "rejoined" and restarts == []
 
     @pytest.mark.parametrize("outcome", ["unsupported", "needs_restart"])
-    def test_old_camera_software_is_told_about_not_restarted(self, outcome):
+    def test_old_camera_software_falls_back_to_a_restart(self, outcome):
         fake, restarts = self.agent(outcome)
-        assert fake.recover_camera("No answer.") == outcome
+        assert fake.recover_camera("No answer.") == "restarted"
+        assert restarts == ["No answer."]
+
+    def test_in_a_capture_session_it_is_the_reset_that_rechecks(self):
+        fake, restarts = self.agent("unsupported", session_id="s1", capturing=True)
+        assert fake.recover_camera("No answer.") == "restarted"
+        assert restarts == ["reset"]
+
+    def test_a_flight_session_is_never_restarted(self):
+        fake, restarts = self.agent("unsupported", session_id="s1", refuse=True)
+        assert fake.recover_camera("No answer.") == "unsupported"
         assert restarts == []
 
-    def test_the_agent_has_no_restart_path_for_the_camera(self):
-        from cropwatcher.api import rest
-        assert not hasattr(rest.Agent, "rejoin")
+    def test_never_while_a_base_station_is_measured(self):
+        fake, restarts = self.agent("unsupported", measuring=True)
+        assert fake.recover_camera("No answer.") == "unsupported"
+        assert restarts == []
+
+    def test_never_more_than_one_restart_a_minute(self):
+        import time
+
+        fake, restarts = self.agent("needs_restart")
+        fake._last_rejoin = time.monotonic()          # restarted a moment ago
+        assert fake.recover_camera("No answer.") == "needs_restart"
+        assert restarts == []
 
     def test_no_drone_no_recovery(self):
         fake, _ = self.agent("answered")
@@ -278,9 +312,26 @@ class TestTheRoute:
         assert response.status_code == 200
         assert asked.wait(2)
 
-    def test_with_no_ai_deck_detected_it_says_to_power_cycle(self, monkeypatch, tmp_path):
-        """Pressing Reconnect with no deck detected used to end in a restart over
-        the radio, which is what had unpowered the decks. Now it says the fix."""
+    def test_with_no_ai_deck_detected_it_restarts_the_drone(self, monkeypatch, tmp_path):
+        """Nothing to ask with no deck detected — the decks are detected when
+        the drone boots, so Reconnect restarts it straight away."""
+        from fastapi.testclient import TestClient
+
+        from cropwatcher.api import rest
+        from cropwatcher.api.tokens import HEADER
+
+        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+        restarted: list[str] = []
+        monkeypatch.setattr(rest.agent, "_cf", None)
+        monkeypatch.setattr(rest.agent.session._snapshot, "ai_deck", False)
+        monkeypatch.setattr(rest.agent, "restart_for_camera",
+                            lambda *, reason: restarted.append(reason) or True)
+        response = TestClient(rest.app).post("/camera/wifi/rejoin",
+                                             headers={HEADER: rest.agent.token})
+        assert response.status_code == 200 and len(restarted) == 1
+
+    def test_with_no_ai_deck_in_a_flight_session_it_says_the_fix(self, monkeypatch, tmp_path):
+        """A flight session refuses the restart: the fix is said instead."""
         from fastapi.testclient import TestClient
 
         from cropwatcher.api import rest
@@ -291,10 +342,11 @@ class TestTheRoute:
         monkeypatch.setattr(rest.agent.session._snapshot, "ai_deck", False)
         monkeypatch.setattr(rest.agent, "recover_camera",
                             lambda why: pytest.fail("must not try to recover"))
+        monkeypatch.setattr(rest.agent, "restart_for_camera", lambda *, reason: False)
         response = TestClient(rest.app).post("/camera/wifi/rejoin",
                                              headers={HEADER: rest.agent.token})
         assert response.status_code == 409
-        assert "off and on" in response.json()["detail"]
+        assert "unplug the battery" in response.json()["detail"]
 
     def test_no_deck_is_said_even_though_the_camera_was_never_handed_over(
             self, monkeypatch, tmp_path):
@@ -308,10 +360,11 @@ class TestTheRoute:
         monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
         monkeypatch.setattr(rest.agent, "_cf", None)
         monkeypatch.setattr(rest.agent.session._snapshot, "ai_deck", False)
+        monkeypatch.setattr(rest.agent, "restart_for_camera", lambda *, reason: False)
         response = TestClient(rest.app).post("/camera/wifi/rejoin",
                                              headers={HEADER: rest.agent.token})
         detail = response.json()["detail"]
-        assert response.status_code == 409 and "off and on" in detail
+        assert response.status_code == 409 and "unplug the battery" in detail
         assert "Connect the drone first" not in detail
 
     def test_a_link_with_no_deck_says_so_on_the_wifi_state(self, monkeypatch, tmp_path):
@@ -322,4 +375,4 @@ class TestTheRoute:
         rest.agent.deck_wifi.configure("Lab", "password1")
         rest.agent._link_no_deck()
         state = rest.agent.deck_wifi.state()
-        assert state.phase is Phase.FAILED and "off and on" in (state.message or "")
+        assert state.phase is Phase.FAILED and "unplug the battery" in (state.message or "")

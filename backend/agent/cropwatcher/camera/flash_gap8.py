@@ -93,7 +93,14 @@ def flash(path: Path, uri: str = "radio://0/80/2M", *, chip: str = "gap8",
             if on_progress is not None:
                 on_progress(max(0.0, min(1.0, progress / 100)))
 
-        deck.write_sync(0, data, written)
+        # write_sync REPORTS a refused write, it does not raise: unchecked, a
+        # write the drone refused at its first chunk ("ESP_FLASHER: Write
+        # failed - cannot sync with bootloader", 2026-10-24) printed "written"
+        # and returned success to Set up.
+        if not deck.write_sync(0, data, written):
+            print("The drone refused the write — see its console for why. The chip "
+                  "was left in its bootloader; restart the drone before trying again.")
+            return 1
         print("written; resetting to firmware", flush=True)
         deck.reset_to_fw()
         print("\nDone. Power-cycle the drone so both deck chips start clean.")

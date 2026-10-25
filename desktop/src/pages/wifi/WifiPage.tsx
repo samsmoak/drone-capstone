@@ -149,8 +149,9 @@ export function WifiPage({ wifi, session, onSaved }: {
                 Reconnect camera
               </Button>
               <span className="text-xs text-[var(--muted)]">
-                Asks the drone where its camera is, then rejoins it — in a session too; the
-                flight is not touched. Older camera software cannot: switch the drone off and on.
+                Asks the drone where its camera is and rejoins it; when its camera software
+                cannot, restarts the drone — between sessions or in a capture session, never
+                while a flight session is open.
               </span>
             </div>
           )}

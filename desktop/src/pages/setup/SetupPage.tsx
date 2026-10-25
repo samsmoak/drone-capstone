@@ -176,7 +176,7 @@ function Connect({ session }: { session: Session | null }) {
         <div className="grid gap-2 border-l-2 border-[var(--status-warning)] pl-3">
           <p className="text-sm"><StatusDot tone="warning">{radio?.message}</StatusDot></p>
           <ol className="grid gap-1 text-sm">
-            <li><strong>1.</strong> Switch the drone off and on — the button by its battery.</li>
+            <li><strong>1.</strong> Switch the drone off and on: unplug the battery for 10 seconds, then plug it back in.</li>
             <li><strong>2.</strong> Unplug the Crazyradio and plug it back in.</li>
             <li><strong>3.</strong> If it was just flown, charge the battery.</li>
           </ol>

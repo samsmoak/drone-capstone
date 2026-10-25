@@ -443,9 +443,9 @@ class DeckWifi:
         return f"On {state.ssid} at {state.ip}{signal}.{held}"
 
     def needs_power_cycle(self, message: str) -> WifiState:
-        """Only switching the drone off and on helps now — say so, in words.
-        The agent never restarts the drone over the radio for the camera
-        (api/rest.py recover_camera): that leaves the decks unpowered."""
+        """Only a restart helps now, and the agent cannot do it (a flight
+        session holds the drone, or it restarted it under a minute ago) — say
+        so, in words (api/rest.py recover_camera)."""
         with self._lock:
             state = self._state
         return self._set(Phase.FAILED, state.ssid, drops=state.drops, needs_restart=True,
@@ -554,10 +554,9 @@ class DeckWifi:
                     # and what fixes it for good (2026-10-24, it stayed on screen).
                     self._set(Phase.FAILED, creds.ssid, drops=drops, needs_restart=True,
                               message=f"{why} This drone's camera software cannot be asked "
-                                      "where it is, or rejoin by itself. Switch the drone off "
-                                      "and on with its button to reconnect it — and install the "
-                                      "update in Set up, after which it does both by itself, "
-                                      "even mid-session.")
+                                      "where it is, or rejoin by itself, so the drone is "
+                                      "restarted to reconnect it — not during a flight session: "
+                                      "end it, or unplug the battery for 10 seconds.")
                     return "unsupported"
                 self._set(Phase.RECONNECTING, creds.ssid, drops=drops,
                           message=f"The camera is not on {creds.ssid}. Rejoining it — the "
@@ -668,14 +667,14 @@ class DeckWifi:
                                      message=f"Joined {creds.ssid} earlier, at {known} — "
                                              "checking it is still there.")
                 # An older deck (no wifi-recovery.patch) cannot rejoin, and
-                # nothing remembered says where it is: only a power-off makes it
-                # join afresh and say so. The agent does NOT restart it over
-                # the radio — that leaves the decks unpowered (rest.py).
+                # nothing remembered says where it is: only a restart makes it
+                # join afresh and say so — the watchdog's (rest.py), or the
+                # operator's battery.
                 return self._set(
                     Phase.FAILED, creds.ssid, needs_restart=True,
                     message="The drone joined a network earlier and its address is not "
-                            "known. Switch the drone off and on with its button to rejoin "
-                            "(its camera software predates rejoining — Set up updates it).")
+                            "known. Restarting the drone rejoins it — Reconnect camera "
+                            "does that, or unplug the battery for 10 seconds.")
             return self._set(Phase.FAILED, creds.ssid,
                              message="The drone refused the network's name or password.")
 

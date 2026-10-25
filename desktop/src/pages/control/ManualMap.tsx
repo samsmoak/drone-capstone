@@ -282,7 +282,7 @@ function NotMeasured({ session, station, outcome, working, canMeasure, measure }
       {session.decks_lost ? (
         // Not "not measured": the drone had its decks a moment ago (2026-10-24
         // — a restart over the radio unpowered them). Measuring cannot help.
-        <Message tone="warning" text="The drone does not detect its decks now — the positioning deck and the camera. Switch the drone off and on with its button (or unplug the battery for 10 seconds): decks are only detected at power-on." />
+        <Message tone="warning" text="The drone does not detect its decks now — the positioning deck and the camera. Unplug the battery for 10 seconds and plug it back in: decks are detected when the drone starts." />
       ) : (
         <Message tone="warning" text="The base stations are not measured from this drone yet, so the room cannot be drawn. Put the drone flat on the floor in view of both stations and press Measure — that spot becomes 0, 0." />
       )}

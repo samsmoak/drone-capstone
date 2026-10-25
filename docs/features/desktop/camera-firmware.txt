@@ -1,6 +1,7 @@
 ================================================================================
 CAMERA FIRMWARE — what runs on the AI deck's two chips, and how fast it sends
-Last verified: 2026-10-24 against camera/deck-diagnosis — the diagnosis's tests
+Last verified: 2026-10-24 late against the lab drone (ESP32 unreachable: "cannot
+sync with bootloader") and tests/test_flash_gap8.py; before that against camera/deck-diagnosis — the diagnosis's tests
 (test_camera_diagnose.py 16). Before, against desktop/camera-capture — both builds run
 (ESP32 714 192 bytes; GAP8 JPEG 73 760 bytes; GAP8 stock 61 472 bytes, the
 size of Bitcraze's release, 467 bytes differing), the patches read against
@@ -16,7 +17,9 @@ STATUS  (Last verified: 2026-10-24)
              close-client-once.patch + wifi-throughput.patch (no modem sleep,
              TCP_NODELAY) + wifi-recovery.patch (rejoin, report, reasons) +
              wifi-link.patch (20 MHz, 20 dBm, 15 s beacon timeout, brownout
-             said — drone-wifi.txt). NOT yet flashed on a drone.
+             said — drone-wifi.txt). NEVER COMPLETED on a drone: on the lab
+             drone (cf-002d…3639) its write stopped at 60% (07:50,
+             2026-10-24) — see THE LAB DRONE'S DECK below.
   gap8       UNCHANGED in bundle 3 — Bitcraze's own release, raw frames, so a
              change in the feed is the Wi-Fi's and nothing else's. BUILT, NOT
              BUNDLED — the JPEG streamer (jpeg-streamer.patch), next.
@@ -26,6 +29,21 @@ STATUS  (Last verified: 2026-10-24)
              main until it is proven on the drone.
   measure    BUILT — the window shows what arrives and what the GAP8 says each
              frame cost (camera.txt, "HOW FAST")
+
+THE LAB DRONE'S DECK (2026-10-24 evening) — NO CAMERA UNTIL IT IS REACHED
+  The camera last worked 05:32-05:34 that day (153 distinct raw frames,
+  ~5 fps, session 035d5eec). At 07:47 Set up began writing bundle 3; the
+  ESP32 write stopped at 60% at 07:50 when the process watching it died (the
+  Claude session driving it hit its usage limit), and a GAP8 write at 21:18
+  stalled at 0% — it goes THROUGH the ESP32. Since then the ESP32 never
+  answers: no join, no GAP8 line ("GAP8:"), no deck access point, and the
+  drone's own flasher reports "ESP_FLASHER: Write failed - cannot sync with
+  bootloader" — the ESP32's ROM loader, which no flash write can erase, does
+  not answer over UART2. The deck's 1-wire ID still reads (bcAI), and the
+  1-wire memory needs only its signal pin. So: the deck's power or UART/IO
+  pins are not reaching the ESP32, or the ESP32 itself has failed. Owed: the
+  AI deck's own LEDs read, the deck reseated with the battery out, then
+  bundle 1's ESP32 image (f75675f0…) and GAP8 image (13348d93…) written.
 
 --------------------------------------------------------------------------------
 1. WHAT IT IS
@@ -127,6 +145,16 @@ unknown until it runs.
 • --stock builds the same source unpatched, to check the build against
   Bitcraze's release: same size, 467 of 61 472 bytes differ (build paths and
   stamps).
+• A DECK FLASH IS NEVER CUT, AND NEVER WATCHED BY WHAT CAN DIE. A deck write
+  runs as its own detached process; whatever watches it only reads its log.
+  On 2026-10-24 the install ran under a watcher that was killed mid-write and
+  took the install with it — the ESP32 was left 60% written. A cut write of
+  the MAIN chip is recovered by its bootloader; a cut ESP32 write needs the
+  ESP32's ROM loader, reached over UART2 through the deck connector.
+• A REFUSED WRITE IS A FAILURE. cflib's write_sync REPORTS a refusal (False),
+  it does not raise; flash_gap8 now checks it. Before that, a write refused at
+  its first chunk printed "written" and returned success to Set up
+  (tests/test_flash_gap8.py).
 • THE BUNDLE IS RAISED ONLY AFTER THE LAB. Raising it is how Set up offers
   the update (a drone whose cwsetup.deck is lower reads "needed"); doing it
   before the pair is measured faster would push unproven firmware onto every
