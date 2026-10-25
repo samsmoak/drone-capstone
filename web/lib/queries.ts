@@ -215,7 +215,7 @@ async function signAll(bucket: Bucket, paths: string[], what: string): Promise<(
  *
  * The desktop agent writes every frame to disk and uploads the CAPTURED ones —
  * those that changed, at most two a second, and every frame captured by hand
- * (backend/agent/cropwatcher/camera/capture.py) — with a frames.csv index
+ * (backend/agent/dronedeck/camera/capture.py) — with a frames.csv index
  * (camera/recording.py). The index gives each frame its time, position and
  * source; a frame whose index row has not arrived yet still shows, without
  * them. Empty when the session recorded none.

@@ -1,7 +1,7 @@
 ENHANCE EVAL — the settings the pipeline's stage 2 runs, and why
 ==============================================================
 
-The numbers behind backend/agent/cropwatcher/pipeline/stages/enhance/clahe.py
+The numbers behind backend/agent/dronedeck/pipeline/stages/enhance/clahe.py
 (clahe@1). Measured 2026-10-09 on the development Mac, on 600 frames sampled
 (seed 0) from the 8 748 the AI deck recorded on the lab laptop — real frames,
 324×244 8-bit grayscale. The frames are not committed: the repository is

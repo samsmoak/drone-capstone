@@ -17,7 +17,7 @@ import { MarkShape } from "@/components/ui/mark-legend";
  * The frames are the drone's AI-deck camera, recorded to disk on the laptop
  * during the session; the CAPTURED ones — those that changed, at most two a
  * second, and every one captured by hand — are uploaded to the private
- * flight-frames bucket (backend/agent/cropwatcher/camera/capture.py). Each
+ * flight-frames bucket (backend/agent/dronedeck/camera/capture.py). Each
  * carries its time in the session, the drone's position, and whether it was
  * captured by hand (labelled "Captured manually").
  *

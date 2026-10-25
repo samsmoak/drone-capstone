@@ -124,7 +124,7 @@ HOW THE STAGE WAS CHECKED
     order, 8-bit gray at twice the size; originals byte-identical; a corrupt
     or missing frame gets a note while the rest are enhanced; a missing or
     altered model stops the stage; MODELS.json complete and matching.
-  - `cropwatcher process --fixture`: enhance espcn-clahe@1, no failures.
+  - `dronedeck process --fixture`: enhance espcn-clahe@1, no failures.
   - The frozen desktop agent loads the model from inside its bundle
     (selftest, run by verify_sidecar.py on every build).
 

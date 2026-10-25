@@ -23,7 +23,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * Scoped per record: `key` should include the entity and its id.
  * Drafts older than a week are dropped on read — stale enough to be noise.
  */
-const PREFIX = "cropwatcher-draft:";
+const PREFIX = "dronedeck-draft:";
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 type Stored<T> = { value: T; savedAt: number };

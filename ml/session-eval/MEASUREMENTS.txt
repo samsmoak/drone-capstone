@@ -1,17 +1,17 @@
 SESSION MEASUREMENTS — where every 1 Hz number in the session pipeline comes from
 ==================================================================================
 
-The session run (`cropwatcher process --session <id>`, pipeline/runner.py
+The session run (`dronedeck process --session <id>`, pipeline/runner.py
 run_session) cleans a session's one-a-second samples with robust@1 and judges
 the stretches when the drone sat on the ground with ground@1
-(backend/agent/cropwatcher/pipeline/stages/classify/ground.py). Each constant
+(backend/agent/dronedeck/pipeline/stages/classify/ground.py). Each constant
 there cites a section here. Change a constant → change its line here, with the
 measurement that justifies it.
 
 STATUS (2026-10-09): measured on the lab laptop's sessions — 179 sessions with
 samples.csv, 141 with at least 30 samples. PROVISIONAL like the flight
 classifier until a real heat source is measured (the hand-warmer flights,
-`cropwatcher calibrate`). The sessions stay on that laptop — the repository is
+`dronedeck calibrate`). The sessions stay on that laptop — the repository is
 public.
 
     cd backend/agent && .venv/bin/python ../../ml/session-eval/evaluate.py \

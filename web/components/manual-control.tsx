@@ -7,7 +7,7 @@ import { EMPTY_INTENT, useManualStore, type Intent } from "@/lib/store";
  * Manual control from the browser, over the agent's WebSocket.
  *
  * A platform port of `desktop/src/main.ts`. The contract is the agent's, from
- * `backend/agent/cropwatcher/api/rest.py::manual_socket`, and is identical in
+ * `backend/agent/dronedeck/api/rest.py::manual_socket`, and is identical in
  * both clients:
  *
  *   → {type:"intent", keys:{up,down,forward,back,left,right,yaw_left,yaw_right}}

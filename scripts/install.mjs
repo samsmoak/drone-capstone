@@ -195,7 +195,7 @@ if (MAC) {
   // ditto keeps what cp -R can lose: symlinks, extended attributes and the
   // code signature inside the bundle.
   step(`copy ${APP}.app`, "ditto", [source, target]);
-  for (const part of ["desktop", "cropwatcher-agent"]) {
+  for (const part of ["desktop", "dronedeck-agent"]) {
     if (!existsSync(join(target, "Contents", "MacOS", part))) {
       fail(`Installed, but ${part} is missing from ${target}. Run this again.`);
     }
@@ -216,7 +216,7 @@ if (MAC) {
   const home = join(process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"), APP);
   const exe = existsSync(home)
     ? readdirSync(home).find((f) => f.toLowerCase().endsWith(".exe") && !f.toLowerCase().startsWith("uninstall")
-      && !f.toLowerCase().startsWith("cropwatcher-agent"))
+      && !f.toLowerCase().startsWith("dronedeck-agent"))
     : undefined;
   if (!exe) fail(`The installer ran, but ${APP} is not in ${home}. Run the installer by hand: ${setups[0]}`);
   installed = join(home, exe);
@@ -262,7 +262,7 @@ function installOnLinux() {
   const { dir, menu, icon, link } = linuxPaths();
   // tauri-build copies the sidecar beside the binary, without its triple;
   // the running app looks for it there.
-  const parts = ["desktop", "cropwatcher-agent"];
+  const parts = ["desktop", "dronedeck-agent"];
   for (const part of parts) {
     if (!existsSync(join(RELEASE, part))) fail(`The build finished but ${join(RELEASE, part)} is missing.`);
   }

@@ -3,7 +3,7 @@
 // Shared by scripts/setup.mjs and scripts/install.mjs so the words exist once.
 // Both steps need an administrator, so these scripts never do them: they check
 // and say exactly what to run. The agent names the same problems when it meets
-// them (backend/agent/cropwatcher/flight/radio.py).
+// them (backend/agent/dronedeck/flight/radio.py).
 //
 //   macOS    nothing to do
 //   Windows  the libusb-win32 driver, installed with Zadig — cflib opens the

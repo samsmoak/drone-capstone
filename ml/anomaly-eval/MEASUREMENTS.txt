@@ -1,7 +1,7 @@
 ANOMALY MEASUREMENTS — where every number in the classifier comes from
 ======================================================================
 
-The classifier (backend/agent/cropwatcher/pipeline/stages/classify/blocks.py,
+The classifier (backend/agent/dronedeck/pipeline/stages/classify/blocks.py,
 blocks@1) and the finding interpreter (stages/interpret/findings.py) cite this
 file for each constant. Change a constant → change its line here, with the
 measurement that justifies it.

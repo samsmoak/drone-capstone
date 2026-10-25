@@ -3,7 +3,7 @@
  * action that queues them. Pure: no I/O, so both sides run the same checks.
  *
  * The plan is the agent's own format, `Mission.to_dict()` in
- * `backend/agent/cropwatcher/flight/missions.py`. The agent re-validates every
+ * `backend/agent/dronedeck/flight/missions.py`. The agent re-validates every
  * plan against its geofence and occupancy map before arming; these checks exist
  * so an operator hears "altitude too high" while planning instead of reading
  * "failed" on a mission minutes later. They are never the safety gate.

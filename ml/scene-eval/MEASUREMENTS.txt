@@ -1,7 +1,7 @@
 SCENE MEASUREMENTS — where scene@1's numbers come from
 ======================================================
 
-scene@1 (backend/agent/cropwatcher/pipeline/stages/classify/scene.py) says
+scene@1 (backend/agent/dronedeck/pipeline/stages/classify/scene.py) says
 whether the camera's VIEW CHANGED while a reading departed. The camera cannot
 see heat; this is the honest thing it can add. Change a constant → change its
 line here, with the measurement that justifies it.
