@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from cropwatcher.pipeline.contracts import (
+from dronedeck.pipeline.contracts import (
     ClassifyResult,
     CleanResult,
     EnhancedFrame,
@@ -26,7 +26,7 @@ from cropwatcher.pipeline.contracts import (
     Reading,
     Track,
 )
-from cropwatcher.pipeline.stages.interpret.findings import (
+from dronedeck.pipeline.stages.interpret.findings import (
     CRITICAL_FACTOR,
     WARNING_FACTOR,
     FindingInterpreter,

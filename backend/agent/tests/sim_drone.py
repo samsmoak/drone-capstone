@@ -41,9 +41,9 @@ import math
 import random
 from collections.abc import Callable
 
-from cropwatcher.flight.manual import TICK_S, ControlState, Fix, Intent, ManualController
-from cropwatcher.mission.controller.mission_controller import TICK_S as CONTROLLER_TICK_S
-from cropwatcher.telemetry.stream import PERIOD_MS
+from dronedeck.flight.manual import TICK_S, ControlState, Fix, Intent, ManualController
+from dronedeck.mission.controller.mission_controller import TICK_S as CONTROLLER_TICK_S
+from dronedeck.telemetry.stream import PERIOD_MS
 from tests.fakes import FakeClock, FakeCommander
 
 #: The manual flight system's 50 Hz loop.

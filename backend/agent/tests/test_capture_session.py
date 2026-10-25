@@ -10,8 +10,8 @@ from types import MappingProxyType, SimpleNamespace
 
 import pytest
 
-from cropwatcher.audit import Action
-from cropwatcher.flight.checks import (
+from dronedeck.audit import Action
+from dronedeck.flight.checks import (
     CheckKey,
     CheckResult,
     ChecksFailed,
@@ -19,9 +19,9 @@ from cropwatcher.flight.checks import (
     collect,
     run_capture_checks,
 )
-from cropwatcher.session import CAPTURE_NO_FLIGHT, SessionError, State
-from cropwatcher.sync.outbox import Kind
-from cropwatcher.telemetry.stream import Snapshot
+from dronedeck.session import CAPTURE_NO_FLIGHT, SessionError, State
+from dronedeck.sync.outbox import Kind
+from dronedeck.telemetry.stream import Snapshot
 from tests.test_session import rig, sign_in  # noqa: F401
 
 WILL_NOT_ARM = CheckResult(CheckKey.BATTERY, CheckStatus.FAILED,
@@ -115,8 +115,8 @@ class TestTheRoute:
     def test_start_with_a_purpose(self, monkeypatch, tmp_path):
         from fastapi.testclient import TestClient
 
-        from cropwatcher.api import rest
-        from cropwatcher.api.tokens import HEADER
+        from dronedeck.api import rest
+        from dronedeck.api.tokens import HEADER
 
         monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
         asked: list[str] = []
@@ -151,7 +151,7 @@ def snap(**values) -> Snapshot:
 
 class TestRunCaptureChecks:
     def run(self, cf, values, monkeypatch):
-        from cropwatcher.flight import checks
+        from dronedeck.flight import checks
         monkeypatch.setattr(checks, "read_hardware_id", lambda _cf: "cf-lab")
         steps: list[CheckResult] = []
         report = collect(run_capture_checks(cf, lambda: snap(**values), clock=lambda: 1.0,

@@ -7,14 +7,14 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from cropwatcher.api import rest
-from cropwatcher.api.tokens import HEADER
-from cropwatcher.audit import Action
-from cropwatcher.camera import TestPattern
-from cropwatcher.camera.recording import Recorder
-from cropwatcher.session import Mode, Session
-from cropwatcher.sync.cloud import Operator
-from cropwatcher.sync.outbox import Kind, Outbox
+from dronedeck.api import rest
+from dronedeck.api.tokens import HEADER
+from dronedeck.audit import Action
+from dronedeck.camera import TestPattern
+from dronedeck.camera.recording import Recorder
+from dronedeck.session import Mode, Session
+from dronedeck.sync.cloud import Operator
+from dronedeck.sync.outbox import Kind, Outbox
 from tests.test_session import FakeLink, rig, sign_in, start_and_confirm  # noqa: F401
 from tests.test_sync import FakeCloud
 
@@ -43,7 +43,7 @@ class TestTheSwitch:
         assert str(Action.CAPTURE_SET) in actions
 
     def test_it_needs_someone_signed_in(self, rig):  # noqa: F811
-        from cropwatcher.session import SessionError
+        from dronedeck.session import SessionError
         with pytest.raises(SessionError):
             rig.session.set_capture_auto(False)
 
@@ -86,7 +86,7 @@ class TestTheRoutes:
         assert "Start a session first" in response.json()["detail"]
 
     def test_a_capture_with_no_fresh_frame_is_refused(self, api, monkeypatch):
-        from cropwatcher.camera import NoCamera
+        from dronedeck.camera import NoCamera
         monkeypatch.setattr(rest.agent, "camera", NoCamera())
         api.recorder.start("s1", api.root / "s1")
         response = api.client.post("/camera/capture", headers=self.headers())
@@ -120,8 +120,8 @@ class TestHistory:
     """A session's captures stay findable after it ends — from its files."""
 
     def test_manual_captures_of_an_ended_session(self, tmp_path):
-        from cropwatcher import history
-        from cropwatcher.camera.recording import FrameRecording
+        from dronedeck import history
+        from dronedeck.camera.recording import FrameRecording
         rec = FrameRecording("s9", tmp_path / "s9")
         rec.add(b"auto", "image/png", 2, 1)
         rec.add_manual(b"by-hand", "image/jpeg", 2, 1)
@@ -134,12 +134,12 @@ class TestHistory:
         assert history.session_frame("s9", 7, root=tmp_path) is None
 
     def test_a_path_in_the_id_is_refused(self, tmp_path):
-        from cropwatcher import history
+        from dronedeck import history
         with pytest.raises(ValueError):
             history.session_frames("../etc", root=tmp_path)
 
     def test_an_index_from_before_source_existed_reads_as_auto(self, tmp_path):
-        from cropwatcher.camera.recording import read_index
+        from dronedeck.camera.recording import read_index
         folder = tmp_path / "old"
         folder.mkdir()
         (folder / "frames.csv").write_text(
@@ -149,9 +149,9 @@ class TestHistory:
         assert read_index(folder, "manual") == []
 
     def test_the_routes(self, tmp_path, monkeypatch):
-        from cropwatcher.camera.recording import FrameRecording
+        from dronedeck.camera.recording import FrameRecording
         monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
-        from cropwatcher.history import sessions_dir
+        from dronedeck.history import sessions_dir
         rec = FrameRecording("s9", sessions_dir() / "s9")
         rec.add_manual(b"by-hand", "image/png", 2, 1)
         client = TestClient(rest.app)

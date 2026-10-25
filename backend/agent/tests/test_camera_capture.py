@@ -5,7 +5,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-from cropwatcher.camera.capture import (
+from dronedeck.camera.capture import (
     CHANGE,
     CHANGE_THRESHOLD,
     FIRST,

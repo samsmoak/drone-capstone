@@ -13,7 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from cropwatcher.flight import geometry
+from dronedeck.flight import geometry
 
 
 class FakeReader:

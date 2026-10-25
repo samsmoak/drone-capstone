@@ -37,7 +37,7 @@ def drone(monkeypatch, tmp_path):
     import cflib.crazyflie.syncCrazyflie as sync
     import cflib.crtp
 
-    from cropwatcher.camera import flash_gap8
+    from dronedeck.camera import flash_gap8
 
     holder: dict[str, FakeDeck] = {}
 
@@ -60,7 +60,7 @@ def drone(monkeypatch, tmp_path):
 
 
 def test_a_refused_write_is_a_failure(drone, tmp_path: Path):
-    from cropwatcher.camera import flash_gap8
+    from dronedeck.camera import flash_gap8
 
     drone["deck"] = FakeDeck(write_ok=False)
     image = tmp_path / "aideck_esp.bin"
@@ -70,7 +70,7 @@ def test_a_refused_write_is_a_failure(drone, tmp_path: Path):
 
 
 def test_a_completed_write_resets_to_firmware(drone, tmp_path: Path):
-    from cropwatcher.camera import flash_gap8
+    from dronedeck.camera import flash_gap8
 
     drone["deck"] = FakeDeck(write_ok=True)
     image = tmp_path / "aideck_esp.bin"

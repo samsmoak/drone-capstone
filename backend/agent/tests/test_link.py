@@ -9,10 +9,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from cropwatcher.flight import link as link_module
-from cropwatcher.flight.checks import ReadyReport
-from cropwatcher.flight.link import DroneLink, LinkError
-from cropwatcher.safety.flight_guard import PositioningStatus
+from dronedeck.flight import link as link_module
+from dronedeck.flight.checks import ReadyReport
+from dronedeck.flight.link import DroneLink, LinkError
+from dronedeck.safety.flight_guard import PositioningStatus
 
 
 class FakeScf:
@@ -106,7 +106,7 @@ class TestOpen:
         "no such device", which read as a flat battery and sent an operator to
         re-plug a working dongle four times on 2026-09-22 while the desktop
         app quietly held it."""
-        from cropwatcher.flight import radio
+        from dronedeck.flight import radio
         monkeypatch.setattr(radio, "radio_seen", lambda: True)
         monkeypatch.setattr(radio, "windows_driver_problem", lambda: None)
         reason = link_module._nothing_found_reason()
@@ -246,7 +246,7 @@ class TestCrashRecovery:
 
 class TestHealthTest:
     def test_a_failing_battery_half_still_returns_the_motor_result(self, monkeypatch):
-        from cropwatcher.flight.checks import PropTestResult
+        from dronedeck.flight.checks import PropTestResult
 
         link, _, _ = make_link()
         motors = PropTestResult((1, 2, 3, 4), ())

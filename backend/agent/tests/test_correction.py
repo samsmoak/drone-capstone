@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from cropwatcher.telemetry.correction import (
+from dronedeck.telemetry.correction import (
     Mode,
     ThermalEngine,
     ThermalState,

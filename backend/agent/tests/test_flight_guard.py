@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from types import MappingProxyType
 
-from cropwatcher.safety.flight_guard import (
+from dronedeck.safety.flight_guard import (
     CRITICAL_VBAT,
     MAX_DRIFT_M,
     PM_LOW_POWER,
@@ -21,7 +21,7 @@ from cropwatcher.safety.flight_guard import (
     assess_positioning,
     station_ids,
 )
-from cropwatcher.telemetry.stream import Snapshot
+from dronedeck.telemetry.stream import Snapshot
 
 GROUND = 1.0
 

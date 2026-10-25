@@ -8,8 +8,8 @@ import threading
 
 import pytest
 
-from cropwatcher.camera import wifi
-from cropwatcher.camera.wifi import (
+from dronedeck.camera import wifi
+from dronedeck.camera.wifi import (
     CMD_APPLY,
     CMD_KEY,
     CMD_REPORT,
@@ -216,8 +216,8 @@ class TestTheLadder:
               refuse: bool = False, measuring: bool = False):
         from types import SimpleNamespace
 
-        from cropwatcher.api import rest
-        from cropwatcher.session import SessionError
+        from dronedeck.api import rest
+        from dronedeck.session import SessionError
 
         restarts: list[str] = []
 
@@ -287,8 +287,8 @@ class TestTheRoute:
     def test_it_needs_a_connected_drone(self, monkeypatch, tmp_path):
         from fastapi.testclient import TestClient
 
-        from cropwatcher.api import rest
-        from cropwatcher.api.tokens import HEADER
+        from dronedeck.api import rest
+        from dronedeck.api.tokens import HEADER
 
         monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
         monkeypatch.setattr(rest.agent, "_cf", None)
@@ -299,8 +299,8 @@ class TestTheRoute:
     def test_it_recovers_in_the_background_and_answers_at_once(self, monkeypatch, tmp_path):
         from fastapi.testclient import TestClient
 
-        from cropwatcher.api import rest
-        from cropwatcher.api.tokens import HEADER
+        from dronedeck.api import rest
+        from dronedeck.api.tokens import HEADER
 
         monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
         asked = threading.Event()
@@ -317,8 +317,8 @@ class TestTheRoute:
         the drone boots, so Reconnect restarts it straight away."""
         from fastapi.testclient import TestClient
 
-        from cropwatcher.api import rest
-        from cropwatcher.api.tokens import HEADER
+        from dronedeck.api import rest
+        from dronedeck.api.tokens import HEADER
 
         monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
         restarted: list[str] = []
@@ -334,8 +334,8 @@ class TestTheRoute:
         """A flight session refuses the restart: the fix is said instead."""
         from fastapi.testclient import TestClient
 
-        from cropwatcher.api import rest
-        from cropwatcher.api.tokens import HEADER
+        from dronedeck.api import rest
+        from dronedeck.api.tokens import HEADER
 
         monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
         monkeypatch.setattr(rest.agent, "_cf", object())
@@ -354,8 +354,8 @@ class TestTheRoute:
         button said "Connect the drone first" beside a connected radio."""
         from fastapi.testclient import TestClient
 
-        from cropwatcher.api import rest
-        from cropwatcher.api.tokens import HEADER
+        from dronedeck.api import rest
+        from dronedeck.api.tokens import HEADER
 
         monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
         monkeypatch.setattr(rest.agent, "_cf", None)
@@ -368,8 +368,8 @@ class TestTheRoute:
         assert "Connect the drone first" not in detail
 
     def test_a_link_with_no_deck_says_so_on_the_wifi_state(self, monkeypatch, tmp_path):
-        from cropwatcher.api import rest
-        from cropwatcher.camera.wifi import Phase
+        from dronedeck.api import rest
+        from dronedeck.camera.wifi import Phase
 
         monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
         rest.agent.deck_wifi.configure("Lab", "password1")

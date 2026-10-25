@@ -5,11 +5,11 @@ from __future__ import annotations
 
 import pytest
 
-from cropwatcher.mission.plan.floorplan import PlanError, Room
-from cropwatcher.mission.plan.geofence import Geofence
-from cropwatcher.mission.plan.mission import MIN_HOLD_S, InspectionPoint, Mission
-from cropwatcher.mission.plan.obstacles import Obstacle, ObstacleError, ObstacleKind
-from cropwatcher.mission.plan.validate import (
+from dronedeck.mission.plan.floorplan import PlanError, Room
+from dronedeck.mission.plan.geofence import Geofence
+from dronedeck.mission.plan.mission import MIN_HOLD_S, InspectionPoint, Mission
+from dronedeck.mission.plan.obstacles import Obstacle, ObstacleError, ObstacleKind
+from dronedeck.mission.plan.validate import (
     Severity,
     errors,
     flyable_bound,

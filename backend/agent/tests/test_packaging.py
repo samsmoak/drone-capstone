@@ -48,7 +48,7 @@ class TestNoDroneWording:
         """`check` reports these when no drone is reachable. If the verifier
         missed one, a radio-less build would claim "a drone answered" — which
         every CI run did until 2026-09-25."""
-        from cropwatcher.flight import radio
+        from dronedeck.flight import radio
 
         reasons = [radio.NOT_FOUND, radio.NOT_ANSWERING, radio.NO_DRIVER,
                    radio.WRONG_DRIVER, radio.NO_PERMISSION,
@@ -161,13 +161,13 @@ class TestImportsCheck:
 
 class TestSelftest:
     def test_every_lazily_loaded_library_loads_here(self, capsys):
-        from cropwatcher.cli import cmd_selftest
+        from dronedeck.cli import cmd_selftest
 
         assert cmd_selftest(None) == 0                     # type: ignore[arg-type]
         assert "imports ok" in capsys.readouterr().out
 
     def test_a_broken_one_is_named(self, monkeypatch, capsys):
-        from cropwatcher import cli
+        from dronedeck import cli
 
         monkeypatch.setattr(cli, "SELFTEST_MODULES", ("no_such_module_anywhere",))
         assert cli.cmd_selftest(None) == 1                 # type: ignore[arg-type]

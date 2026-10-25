@@ -12,19 +12,19 @@ from pathlib import Path
 
 import pytest
 
-from cropwatcher.pipeline.contracts import (
+from dronedeck.pipeline.contracts import (
     CleanResult,
     FlightContext,
     InspectionPoint,
     PointData,
 )
-from cropwatcher.pipeline.sources import LocalFlightSource
-from cropwatcher.pipeline.stages.enhance.stub import StubEnhancer
+from dronedeck.pipeline.sources import LocalFlightSource
+from dronedeck.pipeline.stages.enhance.stub import StubEnhancer
 from tests.pipeline.conformance import CLASSIFIERS, CLEANERS, ENHANCERS
 
 FIXTURE = Path(__file__).parent / "fixtures" / "data"
-FORBIDDEN = ("cropwatcher.flight", "cropwatcher.session", "cropwatcher.api",
-             "cropwatcher.sync", "cropwatcher.camera")
+FORBIDDEN = ("dronedeck.flight", "dronedeck.session", "dronedeck.api",
+             "dronedeck.sync", "dronedeck.camera")
 
 
 @pytest.fixture(scope="module")
@@ -55,7 +55,7 @@ def imports_of(cls) -> set[str]:
     module = inspect.getmodule(cls)
     assert module is not None
     code = (f"import sys, {module.__name__}; "
-            f"print('\\n'.join(m for m in sys.modules if m.startswith('cropwatcher')))")
+            f"print('\\n'.join(m for m in sys.modules if m.startswith('dronedeck')))")
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
                          check=True)
     return set(out.stdout.split())

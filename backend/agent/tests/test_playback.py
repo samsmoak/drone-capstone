@@ -1,4 +1,4 @@
-"""Mission playback (cropwatcher/playback.py, GET /history/flights/{id}/playback):
+"""Mission playback (dronedeck/playback.py, GET /history/flights/{id}/playback):
 a flight's files read back exactly, on the mission report's clock, with its
 gaps and events in words — and the edges: no trace, no plan, too long, a bad
 id, no token."""
@@ -12,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from cropwatcher import playback
-from cropwatcher.mission.review import load as load_report
+from dronedeck import playback
+from dronedeck.mission.review import load as load_report
 from tests.mission.plans import mission, room
 from tests.test_api import auth, client  # noqa: F401  (the fixture)
 

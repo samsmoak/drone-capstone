@@ -8,7 +8,7 @@ import math
 
 import pytest
 
-from cropwatcher.flight.manual import (
+from dronedeck.flight.manual import (
     GOAL_REACHED_M,
     HEARTBEAT_TIMEOUT_S,
     LAND_S,
@@ -17,7 +17,7 @@ from cropwatcher.flight.manual import (
     Fix,
     Intent,
 )
-from cropwatcher.mission.controller.mission_controller import ARRIVE_M
+from dronedeck.mission.controller.mission_controller import ARRIVE_M
 from tests.sim_drone import MANUAL_TICK_S, MISSION_TICK_S, SimDrone, follow
 
 START = Fix(1.0, -0.5, 0.0)

@@ -11,7 +11,7 @@ import cv2
 import numpy as np
 import pytest
 
-from cropwatcher.pipeline.contracts import (
+from dronedeck.pipeline.contracts import (
     ClassifyResult,
     EnhancedFrame,
     EnhanceResult,
@@ -19,8 +19,8 @@ from cropwatcher.pipeline.contracts import (
     Frame,
     Label,
 )
-from cropwatcher.pipeline.stages.classify import scene
-from cropwatcher.pipeline.stages.interpret.findings import _frames
+from dronedeck.pipeline.stages.classify import scene
+from dronedeck.pipeline.stages.interpret.findings import _frames
 
 T0 = datetime(2026, 10, 9, 18, 0, tzinfo=UTC)
 
@@ -97,7 +97,7 @@ def event(t0: float, t1: float) -> Event:
 
 
 def classified(views) -> ClassifyResult:
-    from cropwatcher.pipeline.contracts import ImageVerdict
+    from dronedeck.pipeline.contracts import ImageVerdict
 
     unknown = Label("unknown", None, "blocks@1", "no image model yet")
     return ClassifyResult(tuple(ImageVerdict(v.seq, "original", unknown) for v in views),

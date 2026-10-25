@@ -9,7 +9,7 @@ Windows, which cannot run a bash script, so every Windows build failed at
 already required to build the agent, so the build step is Python too.
 
 Tauri resolves an `externalBin` by appending the Rust target triple to the
-configured name, so the file MUST land as `cropwatcher-agent-<triple>` or the
+configured name, so the file MUST land as `dronedeck-agent-<triple>` or the
 bundler fails with a "binary not found" that names the path it wanted and not
 the reason. The triple is read from rustc rather than hardcoded, because an
 Intel Mac and an Apple-silicon Mac need different files and the mistake is
@@ -104,15 +104,15 @@ def build() -> Path:
     print(f"==> freezing agent for {triple}", flush=True)
     subprocess.run(
         [sys.executable, "-m", "PyInstaller", "--clean", "--noconfirm",
-         "--distpath", "dist", "--workpath", "build", "cropwatcher-agent.spec"],
+         "--distpath", "dist", "--workpath", "build", "dronedeck-agent.spec"],
         cwd=HERE, check=True,
     )
 
     # Tauri appends the triple *before* the extension on Windows:
-    # cropwatcher-agent-x86_64-pc-windows-msvc.exe
-    target = BIN_DIR / f"cropwatcher-agent-{triple}{EXE}"
+    # dronedeck-agent-x86_64-pc-windows-msvc.exe
+    target = BIN_DIR / f"dronedeck-agent-{triple}{EXE}"
     BIN_DIR.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(HERE / "dist" / f"cropwatcher-agent{EXE}", target)
+    shutil.copy2(HERE / "dist" / f"dronedeck-agent{EXE}", target)
     target.chmod(target.stat().st_mode | 0o111)
 
     print("==> verifying the frozen binary before it ships", flush=True)

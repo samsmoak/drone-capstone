@@ -6,8 +6,8 @@ from types import MappingProxyType, SimpleNamespace
 
 import pytest
 
-from cropwatcher.flight import checks, supervisor
-from cropwatcher.flight.checks import (
+from dronedeck.flight import checks, supervisor
+from dronedeck.flight.checks import (
     BATTERY_TEST_WAIT_S,
     BatteryTestResult,
     CheckKey,
@@ -22,7 +22,7 @@ from cropwatcher.flight.checks import (
     run_checks,
     run_prop_test,
 )
-from cropwatcher.telemetry.stream import Snapshot
+from dronedeck.telemetry.stream import Snapshot
 
 # The lab drone's real MCU id, read 2026-09-16.
 LAB_CPU_ID = {"cpu.id0": "3080234", "cpu.id1": "859064082", "cpu.id2": "959656757"}

@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from cropwatcher.audit import Action, AuditLog, Result
-from cropwatcher.sync.cloud import CloudError
-from cropwatcher.sync.outbox import Kind, Outbox
-from cropwatcher.sync.syncer import Syncer, close_orphaned_flights, parse_csv_row, read_rows_after
+from dronedeck.audit import Action, AuditLog, Result
+from dronedeck.sync.cloud import CloudError
+from dronedeck.sync.outbox import Kind, Outbox
+from dronedeck.sync.syncer import Syncer, close_orphaned_flights, parse_csv_row, read_rows_after
 
 COLUMNS = ["index", "recorded_at", "flight_id", "temp_unit", "raw_temp", "z_m", "motor_m1", "event"]
 
@@ -105,7 +105,7 @@ class FakeCloud:
             self.traces.setdefault(row["flight_id"], {}).setdefault(row["seq"], row)
 
     def _refuse_if(self, flight_id):
-        from cropwatcher.sync.cloud import CloudRefused
+        from dronedeck.sync.cloud import CloudRefused
         if flight_id in getattr(self, "refuse", set()):
             raise CloudRefused("Supabase refused it: not this account's flight")
 

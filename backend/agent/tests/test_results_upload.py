@@ -11,11 +11,11 @@ from pathlib import Path
 
 import pytest
 
-from cropwatcher.cli import main
-from cropwatcher.sync import results
-from cropwatcher.sync.cloud import CloudError
-from cropwatcher.sync.outbox import Kind, Outbox
-from cropwatcher.sync.syncer import Syncer
+from dronedeck.cli import main
+from dronedeck.sync import results
+from dronedeck.sync.cloud import CloudError
+from dronedeck.sync.outbox import Kind, Outbox
+from dronedeck.sync.syncer import Syncer
 from tests.test_sync import FakeCloud
 
 FIXTURE = Path(__file__).parent / "pipeline" / "fixtures" / "data"

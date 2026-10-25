@@ -10,11 +10,11 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from cropwatcher.api import rest
-from cropwatcher.api.tokens import HEADER
-from cropwatcher.session import Session, State
-from cropwatcher.sync.cloud import Operator
-from cropwatcher.sync.outbox import Outbox
+from dronedeck.api import rest
+from dronedeck.api.tokens import HEADER
+from dronedeck.session import Session, State
+from dronedeck.sync.cloud import Operator
+from dronedeck.sync.outbox import Outbox
 from tests.test_session import FakeLink
 from tests.test_sync import FakeCloud
 
@@ -96,11 +96,11 @@ class TestControlToken:
 
 class TestSessionFlow:
     def test_sign_in_then_checks_then_confirm_then_fly(self, client, monkeypatch):
-        from cropwatcher.flight.programs import Outcome, ProgramResult
-        from cropwatcher.safety.flight_guard import Reason
+        from dronedeck.flight.programs import Outcome, ProgramResult
+        from dronedeck.safety.flight_guard import Reason
 
         monkeypatch.setattr(
-            "cropwatcher.session.run_hover_test",
+            "dronedeck.session.run_hover_test",
             lambda flight, program: ProgramResult(Outcome.COMPLETED, Reason.NONE, "done"),
         )
         headers = auth(client)
@@ -316,7 +316,7 @@ class TestHistoryApi:
         assert client.get("/history/sessions").status_code == 401
 
     def test_lists_sessions_and_reads_samples(self, client):
-        from cropwatcher.history import SessionLog, SessionMeta
+        from dronedeck.history import SessionLog, SessionMeta
 
         log_ = SessionLog(SessionMeta(
             id="3f1c2a", operator_id="u", operator_email="ada@example.com", operator_name="Ada",
@@ -427,7 +427,7 @@ class TestStationSpace:
         assert body["fence_half_extent_m"] > 0
 
     def test_a_prediction_is_sent_whole(self, client, monkeypatch):
-        from cropwatcher.mission.plan.coverage import Prediction
+        from dronedeck.mission.plan.coverage import Prediction
         monkeypatch.setattr(rest.agent.session, "manual_space",
                             lambda: Prediction(0.1, 1.0, ((0.5, ((0, 0), (1, 0), (0, 1))),), None))
         body = client.get("/station/space", headers=auth(client)).json()

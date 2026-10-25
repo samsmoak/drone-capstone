@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import struct
 
-from cropwatcher.camera.source import (
+from dronedeck.camera.source import (
     FRAME_H,
     FRAME_W,
     CameraStatus,
@@ -19,7 +19,7 @@ from cropwatcher.camera.source import (
 
 # Aliased: pytest tries to COLLECT anything named Test*, and warns that it
 # cannot because the class takes constructor arguments.
-from cropwatcher.camera.source import TestPattern as PatternSource
+from dronedeck.camera.source import TestPattern as PatternSource
 
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 

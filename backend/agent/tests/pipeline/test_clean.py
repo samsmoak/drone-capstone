@@ -18,14 +18,14 @@ from pathlib import Path
 
 import pytest
 
-from cropwatcher.pipeline.contracts import (
+from dronedeck.pipeline.contracts import (
     FlightContext,
     InspectionPoint,
     PointData,
     Reading,
 )
-from cropwatcher.pipeline.sources import LocalFlightSource
-from cropwatcher.pipeline.stages.clean.robust import (
+from dronedeck.pipeline.sources import LocalFlightSource
+from dronedeck.pipeline.stages.clean.robust import (
     BATTERY_STEP_V,
     STUCK_SAMPLES,
     RobustCleaner,

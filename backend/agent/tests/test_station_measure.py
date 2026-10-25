@@ -11,10 +11,10 @@ from types import MappingProxyType, SimpleNamespace
 
 import pytest
 
-from cropwatcher import session as session_module
-from cropwatcher.flight import geometry
-from cropwatcher.session import SessionError, State
-from cropwatcher.telemetry.stream import Snapshot
+from dronedeck import session as session_module
+from dronedeck.flight import geometry
+from dronedeck.session import SessionError, State
+from dronedeck.telemetry.stream import Snapshot
 from tests.mission.test_session_missions import make_rig
 from tests.test_geometry import FakePose, FakeSample
 
@@ -352,7 +352,7 @@ class TestTripods:
     way it faces — the drone's own stored geometry, by channel."""
 
     def test_axes_are_the_rotations_columns(self):
-        from cropwatcher.mission.plan.coverage import StationPose
+        from dronedeck.mission.plan.coverage import StationPose
         # The lab's station, 2026-10-05 (test_geometry: standing upright).
         rows = ((0.24, 0.95, 0.19), (-0.86, 0.30, -0.41), (-0.45, -0.06, 0.89))
         axes = StationPose((-1.33, 1.74, 1.49), rows, station=0).axes()
@@ -361,7 +361,7 @@ class TestTripods:
         assert axes["up"] == (0.19, -0.41, 0.89)           # mostly up: upright
 
     def test_markers_carry_the_channel_place_and_facing(self, rig):
-        from cropwatcher.mission.plan.coverage import StationPose
+        from dronedeck.mission.plan.coverage import StationPose
         eye = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
         rig.link.station_poses = lambda: [StationPose((2.0, -1.0, 1.8), eye, station=1)]
         (marker,) = rig.session.station_markers()

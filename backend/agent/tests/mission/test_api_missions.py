@@ -6,12 +6,12 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from cropwatcher.api import rest
-from cropwatcher.api.tokens import HEADER
-from cropwatcher.mission.plan.geofence import Geofence
-from cropwatcher.session import Session
-from cropwatcher.sync.cloud import Operator
-from cropwatcher.sync.outbox import Outbox
+from dronedeck.api import rest
+from dronedeck.api.tokens import HEADER
+from dronedeck.mission.plan.geofence import Geofence
+from dronedeck.session import Session
+from dronedeck.sync.cloud import Operator
+from dronedeck.sync.outbox import Outbox
 from tests.mission.plans import mission, room
 from tests.test_session import FakeLink
 from tests.test_sync import FakeCloud

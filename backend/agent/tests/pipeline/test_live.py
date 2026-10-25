@@ -11,10 +11,10 @@ from pathlib import Path
 
 import pytest
 
-from cropwatcher.pipeline.compose import default_stages
-from cropwatcher.pipeline.runner import live_path, run_live_point
-from cropwatcher.pipeline.sources import LocalFlightSource
-from cropwatcher.processing import JobState, ProcessingQueue, job_key
+from dronedeck.pipeline.compose import default_stages
+from dronedeck.pipeline.runner import live_path, run_live_point
+from dronedeck.pipeline.sources import LocalFlightSource
+from dronedeck.processing import JobState, ProcessingQueue, job_key
 
 FIXTURE = Path(__file__).parent / "fixtures" / "data"
 FLIGHT = "372bbdc4-d323-42bb-9e6c-29ef02e3794c"
@@ -52,7 +52,7 @@ class TestTheLivePoint:
                            results_root=tmp_path / "results", stages=default_stages())
 
     def test_the_command(self, data, monkeypatch, capsys):
-        from cropwatcher import cli, paths
+        from dronedeck import cli, paths
 
         monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(data))
         assert cli.main(["process", "--flight", FLIGHT, "--live-point", "P2"]) == 0

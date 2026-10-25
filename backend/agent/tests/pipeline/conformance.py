@@ -15,13 +15,13 @@ These are the rules marked [checked] in docs/handoffs/sprint-1/done/dpp-contract
 
 from __future__ import annotations
 
-from cropwatcher.pipeline.stages.classify.blocks import BlocksClassifier
-from cropwatcher.pipeline.stages.classify.ground import GroundClassifier
-from cropwatcher.pipeline.stages.classify.stub import StubClassifier
-from cropwatcher.pipeline.stages.clean.robust import RobustCleaner
-from cropwatcher.pipeline.stages.clean.stub import StubCleaner
-from cropwatcher.pipeline.stages.enhance.clahe import ClaheEnhancer
-from cropwatcher.pipeline.stages.enhance.stub import StubEnhancer
+from dronedeck.pipeline.stages.classify.blocks import BlocksClassifier
+from dronedeck.pipeline.stages.classify.ground import GroundClassifier
+from dronedeck.pipeline.stages.classify.stub import StubClassifier
+from dronedeck.pipeline.stages.clean.robust import RobustCleaner
+from dronedeck.pipeline.stages.clean.stub import StubCleaner
+from dronedeck.pipeline.stages.enhance.clahe import ClaheEnhancer
+from dronedeck.pipeline.stages.enhance.stub import StubEnhancer
 
 #: Every cleaner, checked against the contract.
 CLEANERS = [StubCleaner, RobustCleaner]

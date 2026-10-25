@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from cropwatcher.telemetry.reader import (
+from dronedeck.telemetry.reader import (
     BarometerNotFound,
     detect_baro_vars,
     has_log_variable,

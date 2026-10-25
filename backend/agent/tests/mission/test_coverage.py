@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from cropwatcher.mission.plan.coverage import (
+from dronedeck.mission.plan.coverage import (
     MAX_RANGE_M,
     StationPose,
     Survey,
@@ -15,8 +15,8 @@ from cropwatcher.mission.plan.coverage import (
     predict,
     simplify,
 )
-from cropwatcher.mission.plan.geofence import Geofence
-from cropwatcher.mission.plan.shapes import point_in_polygon, signed_area
+from dronedeck.mission.plan.geofence import Geofence
+from dronedeck.mission.plan.shapes import point_in_polygon, signed_area
 
 
 def facing(origin, yaw_deg: float, pitch_down_deg: float) -> StationPose:

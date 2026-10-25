@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from cropwatcher.mission.plan.fit import flying_space, plan_to_fly
-from cropwatcher.mission.plan.floorplan import PlanError
-from cropwatcher.mission.plan.geofence import Geofence
-from cropwatcher.mission.plan.mission import InspectionPoint
-from cropwatcher.mission.plan.obstacles import Obstacle, ObstacleKind
-from cropwatcher.mission.plan.validate import errors
+from dronedeck.mission.plan.fit import flying_space, plan_to_fly
+from dronedeck.mission.plan.floorplan import PlanError
+from dronedeck.mission.plan.geofence import Geofence
+from dronedeck.mission.plan.mission import InspectionPoint
+from dronedeck.mission.plan.obstacles import Obstacle, ObstacleKind
+from dronedeck.mission.plan.validate import errors
 from tests.mission.plans import OUTER, mission, room
 
 #: Coverage reaching only x ≤ 1.0 — the room's right-hand strip is not covered.

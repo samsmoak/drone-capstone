@@ -25,7 +25,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from cropwatcher.api import rest
+from dronedeck.api import rest
 
 STARTUP_TIMEOUT_S = 20.0
 
@@ -54,7 +54,7 @@ def _start(port: int, data_dir: Path, *extra: str) -> subprocess.Popen:
     # opened the radio under a running app (seen 2026-09-30 in a real log).
     env = os.environ | {"CROPWATCHER_DATA_DIR": str(data_dir), "CROPWATCHER_STANDBY": "0"}
     process = subprocess.Popen(
-        [sys.executable, "-m", "cropwatcher.cli", "serve", "--port", str(port), *extra],
+        [sys.executable, "-m", "dronedeck.cli", "serve", "--port", str(port), *extra],
         stdin=subprocess.PIPE,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -77,7 +77,7 @@ class TestExitWithParent:
                 process.kill()
 
     def test_keeps_running_without_the_flag(self, tmp_path):
-        """Opt-in: `cropwatcher serve` from a shell must not die on stdin EOF."""
+        """Opt-in: `dronedeck serve` from a shell must not die on stdin EOF."""
         port = _free_port()
         process = _start(port, tmp_path)
         try:
@@ -184,7 +184,7 @@ class TestShutdownIsBounded:
 class TestConsoleLoggingIsDropped:
     def test_stderr_goes_and_the_log_file_stays(self, tmp_path):
         """Nothing reads stderr once the parent is gone; a write can block there."""
-        logger = logging.getLogger("cropwatcher.test.console")
+        logger = logging.getLogger("dronedeck.test.console")
         console = logging.StreamHandler(sys.stderr)
         log_file = logging.FileHandler(tmp_path / "agent.log")
         logger.addHandler(console)

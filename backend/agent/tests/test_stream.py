@@ -9,7 +9,7 @@ from __future__ import annotations
 import contextlib
 import threading
 
-from cropwatcher.telemetry.stream import (
+from dronedeck.telemetry.stream import (
     ALL_VARIABLES,
     CTYPE_BYTES,
     MAX_BLOCK_BYTES,

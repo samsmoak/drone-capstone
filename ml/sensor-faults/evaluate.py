@@ -45,9 +45,9 @@ from plant_faults import (  # noqa: E402
     write,
 )
 
-from cropwatcher.pipeline.contracts import Cleaner, FlightContext, ReadingFlag  # noqa: E402
-from cropwatcher.pipeline.sources import LocalFlightSource  # noqa: E402
-from cropwatcher.pipeline.stages.clean.robust import SENSOR_COLUMNS, RobustCleaner  # noqa: E402
+from dronedeck.pipeline.contracts import Cleaner, FlightContext, ReadingFlag  # noqa: E402
+from dronedeck.pipeline.sources import LocalFlightSource  # noqa: E402
+from dronedeck.pipeline.stages.clean.robust import SENSOR_COLUMNS, RobustCleaner  # noqa: E402
 
 #: The planting needs this many rows (plant_faults.plant raises below it).
 MIN_ROWS = 287

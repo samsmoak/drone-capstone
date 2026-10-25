@@ -1,13 +1,13 @@
-"""One line per repeating message (cropwatcher/logfilter.py)."""
+"""One line per repeating message (dronedeck/logfilter.py)."""
 
 from __future__ import annotations
 
 import logging
 
-from cropwatcher.logfilter import RepeatFilter
+from dronedeck.logfilter import RepeatFilter
 
 
-def record(msg, *args, level=logging.WARNING, name="cropwatcher.flight.manual"):
+def record(msg, *args, level=logging.WARNING, name="dronedeck.flight.manual"):
     return logging.LogRecord(name, level, __file__, 1, msg, args, None)
 
 
@@ -45,4 +45,4 @@ def test_different_messages_are_never_held_back():
     f = RepeatFilter(window_s=10, clock=Clock())
     assert f.filter(record("manual control: armed"))
     assert f.filter(record("manual control: landing"))
-    assert f.filter(record("manual control: armed", name="cropwatcher.session"))
+    assert f.filter(record("manual control: armed", name="dronedeck.session"))

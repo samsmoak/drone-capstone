@@ -15,8 +15,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from cropwatcher.sync import cloud as cloud_module
-from cropwatcher.sync.cloud import AuthError, CloudTimeout, SupabaseCloud
+from dronedeck.sync import cloud as cloud_module
+from dronedeck.sync.cloud import AuthError, CloudTimeout, SupabaseCloud
 
 DEADLINE = 0.3
 

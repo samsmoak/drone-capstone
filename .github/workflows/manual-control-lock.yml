@@ -9,9 +9,9 @@ on:
   push:
     branches: [main]
     paths:
-      - "backend/agent/cropwatcher/flight/manual.py"
-      - "backend/agent/cropwatcher/flight/keyframe.py"
-      - "backend/agent/cropwatcher/flight/tuning.py"
+      - "backend/agent/dronedeck/flight/manual.py"
+      - "backend/agent/dronedeck/flight/keyframe.py"
+      - "backend/agent/dronedeck/flight/tuning.py"
       - "backend/agent/tests/test_manual_control_lock.py"
       - "desktop/src/lib/keys.ts"
       - "CLAUDE.md"
@@ -19,9 +19,9 @@ on:
       - ".github/workflows/manual-control-lock.yml"
   pull_request:
     paths:
-      - "backend/agent/cropwatcher/flight/manual.py"
-      - "backend/agent/cropwatcher/flight/keyframe.py"
-      - "backend/agent/cropwatcher/flight/tuning.py"
+      - "backend/agent/dronedeck/flight/manual.py"
+      - "backend/agent/dronedeck/flight/keyframe.py"
+      - "backend/agent/dronedeck/flight/tuning.py"
       - "backend/agent/tests/test_manual_control_lock.py"
       - "desktop/src/lib/keys.ts"
       - "CLAUDE.md"

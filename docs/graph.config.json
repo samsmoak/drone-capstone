@@ -37,7 +37,7 @@
     ".github"
   ],
   "marker_dirs": [
-    "backend/agent/cropwatcher",
+    "backend/agent/dronedeck",
     "backend/agent/tests",
     "backend/supabase",
     "web/app",

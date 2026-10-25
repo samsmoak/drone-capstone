@@ -6,12 +6,12 @@ from __future__ import annotations
 
 import csv
 
-from cropwatcher.camera.recording import COLUMNS, FrameRecording
-from cropwatcher.mission.plan.geofence import Geofence
-from cropwatcher.safety.flight_guard import FlightGuard, GuardContext, Reason
-from cropwatcher.sync.cloud import SupabaseCloud, without_empty_point_id
-from cropwatcher.telemetry.correction import ThermalEngine
-from cropwatcher.telemetry.row import TelemetryRow, TempUnit, build_row
+from dronedeck.camera.recording import COLUMNS, FrameRecording
+from dronedeck.mission.plan.geofence import Geofence
+from dronedeck.safety.flight_guard import FlightGuard, GuardContext, Reason
+from dronedeck.sync.cloud import SupabaseCloud, without_empty_point_id
+from dronedeck.telemetry.correction import ThermalEngine
+from dronedeck.telemetry.row import TelemetryRow, TempUnit, build_row
 from tests.test_flight_guard import GROUND, snap
 
 

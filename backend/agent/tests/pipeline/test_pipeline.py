@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from cropwatcher.cli import main
-from cropwatcher.pipeline.compose import default_stages
-from cropwatcher.pipeline.contracts import (
+from dronedeck.cli import main
+from dronedeck.pipeline.compose import default_stages
+from dronedeck.pipeline.contracts import (
     ClassifyResult,
     CleanResult,
     ImageVerdict,
@@ -22,9 +22,9 @@ from cropwatcher.pipeline.contracts import (
     ReadingFlag,
     StageError,
 )
-from cropwatcher.pipeline.runner import run_flight
-from cropwatcher.pipeline.sinks import LocalResultSink
-from cropwatcher.pipeline.sources import FlightNotFound, LocalFlightSource
+from dronedeck.pipeline.runner import run_flight
+from dronedeck.pipeline.sinks import LocalResultSink
+from dronedeck.pipeline.sources import FlightNotFound, LocalFlightSource
 
 FIXTURE = Path(__file__).parent / "fixtures" / "data"
 FLIGHT = "372bbdc4-d323-42bb-9e6c-29ef02e3794c"

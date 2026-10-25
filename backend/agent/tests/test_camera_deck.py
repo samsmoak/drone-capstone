@@ -9,7 +9,7 @@ import time
 
 import pytest
 
-from cropwatcher.camera.deck import (
+from dronedeck.camera.deck import (
     FORMAT_JPEG,
     FORMAT_RAW,
     STALE_S,

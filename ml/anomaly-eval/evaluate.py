@@ -41,19 +41,19 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend" / "agent"))
 
-from cropwatcher.pipeline.contracts import (
+from dronedeck.pipeline.contracts import (
     CleanResult,
     FlightContext,
     PointData,
 )
-from cropwatcher.pipeline.sources import LocalFlightSource
-from cropwatcher.pipeline.stages.classify import blocks
-from cropwatcher.pipeline.stages.classify.pelt import pelt
+from dronedeck.pipeline.sources import LocalFlightSource
+from dronedeck.pipeline.stages.classify import blocks
+from dronedeck.pipeline.stages.classify.pelt import pelt
 
 try:                                    # the agent's own cleaner, where it has one
-    from cropwatcher.pipeline.stages.clean.robust import RobustCleaner as Cleaner
+    from dronedeck.pipeline.stages.clean.robust import RobustCleaner as Cleaner
 except ImportError:                     # pragma: no cover — a branch without it
-    from cropwatcher.pipeline.stages.clean.stub import StubCleaner as Cleaner
+    from dronedeck.pipeline.stages.clean.stub import StubCleaner as Cleaner
 
 BUMPS_C = (1.0, 2.0, 3.0, 5.0)
 STEPS_HPA = (0.3, 0.5)

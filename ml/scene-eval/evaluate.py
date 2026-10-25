@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend" / "agent"
 
 import cv2  # noqa: E402
 
-from cropwatcher.pipeline.stages.classify import scene  # noqa: E402
+from dronedeck.pipeline.stages.classify import scene  # noqa: E402
 
 THRESHOLDS = (0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.60)
 

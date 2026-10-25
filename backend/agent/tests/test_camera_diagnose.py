@@ -7,9 +7,9 @@ import socket
 import threading
 import time
 
-from cropwatcher.camera import deck
-from cropwatcher.camera.deck import DeckStream
-from cropwatcher.camera.diagnose import (
+from dronedeck.camera import deck
+from dronedeck.camera.deck import DeckStream
+from dronedeck.camera.diagnose import (
     GAP8_SILENT,
     KEEP_LINES,
     NO_CAPTURE,
@@ -165,7 +165,7 @@ class TestTheCameraRoute:
 
         from fastapi.testclient import TestClient
 
-        from cropwatcher.api import rest
+        from dronedeck.api import rest
 
         monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
         stream = DeckStream(start=False)

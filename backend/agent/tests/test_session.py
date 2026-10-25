@@ -10,15 +10,15 @@ from typing import Any
 
 import pytest
 
-from cropwatcher.flight.checks import CheckKey, CheckResult, ChecksFailed, CheckStatus, ReadyReport
-from cropwatcher.flight.link import LinkError
-from cropwatcher.flight.programs import Outcome, ProgramResult
-from cropwatcher.safety.flight_guard import Action as GuardAction
-from cropwatcher.safety.flight_guard import PositioningStatus, Reason, Verdict
-from cropwatcher.session import Mode, Session, SessionError, State
-from cropwatcher.sync.cloud import AuthError, Operator
-from cropwatcher.sync.outbox import Kind, Outbox
-from cropwatcher.telemetry.stream import Snapshot
+from dronedeck.flight.checks import CheckKey, CheckResult, ChecksFailed, CheckStatus, ReadyReport
+from dronedeck.flight.link import LinkError
+from dronedeck.flight.programs import Outcome, ProgramResult
+from dronedeck.safety.flight_guard import Action as GuardAction
+from dronedeck.safety.flight_guard import PositioningStatus, Reason, Verdict
+from dronedeck.session import Mode, Session, SessionError, State
+from dronedeck.sync.cloud import AuthError, Operator
+from dronedeck.sync.outbox import Kind, Outbox
+from dronedeck.telemetry.stream import Snapshot
 from tests.test_sync import FakeCloud
 
 REPORT = ReadyReport(
@@ -359,7 +359,7 @@ class TestHealthTest:
 class TestProgram:
     def test_a_completed_hover_test_records_the_flight(self, rig, monkeypatch):
         monkeypatch.setattr(
-            "cropwatcher.session.run_hover_test",
+            "dronedeck.session.run_hover_test",
             lambda flight, program: ProgramResult(Outcome.COMPLETED, Reason.NONE, "done"),
         )
         start_and_confirm(rig, Mode.AUTO)
@@ -374,7 +374,7 @@ class TestProgram:
 
     def test_a_guard_abort_is_recorded_as_aborted(self, rig, monkeypatch):
         monkeypatch.setattr(
-            "cropwatcher.session.run_hover_test",
+            "dronedeck.session.run_hover_test",
             lambda flight, program: ProgramResult(
                 Outcome.LANDED_BY_GUARD, Reason.BATTERY_LOW, "Battery low — landing."),
         )
@@ -406,7 +406,7 @@ class TestProgram:
         def explode(flight, program):
             raise RuntimeError("radio died")
 
-        monkeypatch.setattr("cropwatcher.session.run_hover_test", explode)
+        monkeypatch.setattr("dronedeck.session.run_hover_test", explode)
         start_and_confirm(rig, Mode.AUTO)
         run_program(rig)
         flight = next(rig.outbox.pending(Kind.FLIGHT)).payload
@@ -869,7 +869,7 @@ class TestRetry:
 
     def test_an_aborted_program_requires_a_retry(self, rig, monkeypatch):
         monkeypatch.setattr(
-            "cropwatcher.session.run_hover_test",
+            "dronedeck.session.run_hover_test",
             lambda flight, program: ProgramResult(Outcome.ABORTED, Reason.TUMBLED, "Tumbled."),
         )
         start_and_confirm(rig, Mode.AUTO)
@@ -884,7 +884,7 @@ class TestRetry:
 
 class TestHistory:
     def test_a_session_leaves_a_record_with_its_operator_and_times(self, rig):
-        from cropwatcher import history
+        from dronedeck import history
 
         start_and_confirm(rig)
         session_id = rig.session.snapshot().session_id
@@ -901,7 +901,7 @@ class TestHistory:
         assert record["summary"]["max_height_m"] == pytest.approx(0.4)
 
     def test_samples_are_readable_by_variable(self, rig):
-        from cropwatcher import history
+        from dronedeck import history
 
         start_and_confirm(rig)
         session_id = rig.session.snapshot().session_id
@@ -912,7 +912,7 @@ class TestHistory:
         assert rows[0]["not.a.variable"] is None
 
     def test_a_session_id_cannot_walk_out_of_the_folder(self):
-        from cropwatcher import history
+        from dronedeck import history
 
         with pytest.raises(ValueError):
             history.read_samples("../../etc", ["x"])
@@ -920,7 +920,7 @@ class TestHistory:
 
 class TestStaySignedIn:
     def test_signing_in_saves_the_token_and_signing_out_clears_it(self, rig, tmp_path):
-        from cropwatcher.sync import auth_store
+        from dronedeck.sync import auth_store
 
         rig.cloud.refresh_token = "refresh-abc"
         sign_in(rig)
@@ -932,7 +932,7 @@ class TestStaySignedIn:
         assert auth_store.load() is None
 
     def test_a_saved_token_signs_back_in_at_startup(self, rig):
-        from cropwatcher.sync import auth_store
+        from dronedeck.sync import auth_store
 
         auth_store.save("refresh-abc", "ada@example.com")
         rig.cloud.refresh_token = "refresh-rotated"
@@ -943,7 +943,7 @@ class TestStaySignedIn:
         assert auth_store.load() == ("refresh-rotated", "ada@example.com")
 
     def test_an_expired_token_is_forgotten(self, rig):
-        from cropwatcher.sync import auth_store
+        from dronedeck.sync import auth_store
 
         auth_store.save("stale", "ada@example.com")
 
@@ -958,8 +958,8 @@ class TestStaySignedIn:
     def test_a_slow_network_keeps_the_saved_sign_in(self, rig):
         """A timeout says nothing about the token. Treating it as "expired"
         deleted the saved sign-in because Supabase was slow to answer."""
-        from cropwatcher.sync import auth_store
-        from cropwatcher.sync.cloud import CloudTimeout
+        from dronedeck.sync import auth_store
+        from dronedeck.sync.cloud import CloudTimeout
 
         auth_store.save("refresh-abc", "ada@example.com")
 
@@ -980,7 +980,7 @@ class TestHistoryByMode:
     def test_a_session_recorded_in_two_modes_lists_under_both_and_splits_its_readings(self, rig):
         """Sessions from before 2026-10-01 could switch mode mid-session; the
         history still reads them. A session cannot switch now (TestOneMode)."""
-        from cropwatcher import history
+        from dronedeck import history
 
         start_and_confirm(rig, Mode.AUTO)
         session_id = rig.session.snapshot().session_id
@@ -1002,7 +1002,7 @@ class TestHistoryByMode:
         assert [r["pm.vbat"] for r in manual] == [4.00]
 
     def test_a_session_only_in_auto_is_not_listed_under_manual(self, rig):
-        from cropwatcher import history
+        from dronedeck import history
 
         start_and_confirm(rig, Mode.AUTO)
         rig.session.end()
@@ -1021,7 +1021,7 @@ class TestStartupState:
         assert rig.session.snapshot().restoring is False
 
     def test_restoring_clears_after_a_successful_restore(self, rig):
-        from cropwatcher.sync import auth_store
+        from dronedeck.sync import auth_store
 
         auth_store.save("refresh-abc", "ada@example.com")
         rig.cloud.restore = lambda token: Operator("user-1", "ada@example.com", "Ada", "operator")
@@ -1030,7 +1030,7 @@ class TestStartupState:
         assert snapshot.restoring is False and snapshot.state is State.IDLE
 
     def test_restoring_clears_when_the_saved_sign_in_expired(self, rig):
-        from cropwatcher.sync import auth_store
+        from dronedeck.sync import auth_store
 
         auth_store.save("stale", "ada@example.com")
 

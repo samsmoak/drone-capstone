@@ -1,4 +1,4 @@
-"""The mission report (cropwatcher/mission/review.py): every figure exact on a
+"""The mission report (dronedeck/mission/review.py): every figure exact on a
 hand-built flight, the imperfect flights reported in words, the command line,
 and a simulated mission written through the REAL FlightTrace whose report
 agrees with what the simulator did (mission-verification.txt, PART 2)."""
@@ -16,17 +16,17 @@ from pathlib import Path
 
 import pytest
 
-from cropwatcher import cli
-from cropwatcher.flight.manual import CLIMB_RATE_M_S, MOVE_SPEED_M_S, Fix
-from cropwatcher.mission.controller import MissionController, MissionState
-from cropwatcher.mission.controller.mission_controller import (
+from dronedeck import cli
+from dronedeck.flight.manual import CLIMB_RATE_M_S, MOVE_SPEED_M_S, Fix
+from dronedeck.mission.controller import MissionController, MissionState
+from dronedeck.mission.controller.mission_controller import (
     ARRIVE_M,
     SETTLE_S,
     SETTLE_TIMEOUT_S,
     TRANSIT_MARGIN_S,
 )
-from cropwatcher.mission.plan.mission import SPEED_PRESETS_M_S, InspectionPoint, Mission
-from cropwatcher.mission.review import (
+from dronedeck.mission.plan.mission import SPEED_PRESETS_M_S, InspectionPoint, Mission
+from dronedeck.mission.review import (
     StampRow,
     TraceRow,
     as_json,
@@ -36,7 +36,7 @@ from cropwatcher.mission.review import (
     review,
     suggest,
 )
-from cropwatcher.telemetry import trace as flight_trace
+from dronedeck.telemetry import trace as flight_trace
 from tests.mission.plans import mission
 from tests.sim_drone import SimDrone
 
@@ -425,7 +425,7 @@ def test_mission_report_on_a_flight_with_no_plan_flown_says_why(tmp_path, monkey
     monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
     write_flight(tmp_path, keep_plan=False)
     assert cli.main(["mission-report", "--flight", FLIGHT]) != 0
-    assert "cropwatcher mission" in capsys.readouterr().out
+    assert "dronedeck mission" in capsys.readouterr().out
 
 
 def test_mission_report_without_a_trace_still_reports(tmp_path, monkeypatch, capsys):
@@ -493,7 +493,7 @@ def test_a_simulated_mission_reports_what_the_simulator_did(tmp_path, monkeypatc
     trace.close()
     assert mc.state is MissionState.DONE
 
-    from cropwatcher.mission.review import trace_rows
+    from dronedeck.mission.review import trace_rows
     rows = trace_rows(tmp_path / "trace.csv")
     origin = BASE.timestamp()
     rows = [replace(r, t_s=r.t_s - origin) for r in rows]

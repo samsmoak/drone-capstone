@@ -7,10 +7,10 @@ from types import MappingProxyType, SimpleNamespace
 
 import pytest
 
-from cropwatcher.flight.controls_store import Controls, ControlsStore
-from cropwatcher.flight.keyframe import ActiveFrame, FrameStatus, KeyFrame
-from cropwatcher.session import Mode, SessionError
-from cropwatcher.telemetry.stream import Snapshot
+from dronedeck.flight.controls_store import Controls, ControlsStore
+from dronedeck.flight.keyframe import ActiveFrame, FrameStatus, KeyFrame
+from dronedeck.session import Mode, SessionError
+from dronedeck.telemetry.stream import Snapshot
 from tests.mission.test_session_missions import POSITIONED
 from tests.test_session import rig, start_and_confirm  # noqa: F401 — the fixture
 

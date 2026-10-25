@@ -7,8 +7,8 @@ import threading
 
 import pytest
 
-from cropwatcher.camera import wifi
-from cropwatcher.camera.wifi import (
+from dronedeck.camera import wifi
+from dronedeck.camera.wifi import (
     CMD_APPLY,
     CMD_KEY,
     CMD_SSID,

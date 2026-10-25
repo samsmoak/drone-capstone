@@ -8,10 +8,10 @@ from types import MappingProxyType
 
 import pytest
 
-from cropwatcher.mission.controller import MissionState
-from cropwatcher.mission.plan.geofence import Geofence
-from cropwatcher.session import SessionError
-from cropwatcher.telemetry.stream import Snapshot
+from dronedeck.mission.controller import MissionState
+from dronedeck.mission.plan.geofence import Geofence
+from dronedeck.session import SessionError
+from dronedeck.telemetry.stream import Snapshot
 from tests.mission.test_coverage import CORNERS
 from tests.mission.test_session_missions import STARTED, make_rig
 from tests.test_session import wait_for
@@ -144,7 +144,7 @@ class TestThePlanThatWillFly:
         assert {m["point_id"] for m in kept["moves"]} == {"P2", "P3"}
 
     def test_a_point_that_cannot_be_fitted_refuses_start_by_name(self, rig):
-        from cropwatcher.mission.plan.mission import InspectionPoint
+        from dronedeck.mission.plan.mission import InspectionPoint
         from tests.mission.plans import mission
         rig.plans.save_mission(mission(id="far", points=(
             InspectionPoint("P1", -1.0, 0.9, 0.4, 5.0),

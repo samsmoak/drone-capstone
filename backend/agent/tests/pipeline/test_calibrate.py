@@ -1,4 +1,4 @@
-"""`cropwatcher calibrate` — the hand-warmer flights measured (story 4.6).
+"""`dronedeck calibrate` — the hand-warmer flights measured (story 4.6).
 
 The fixture flight, with a heat source planted at P1 while the drone holds
 there: what the sensor saw, whether today's settings find it, and what the
@@ -13,9 +13,9 @@ from pathlib import Path
 
 import pytest
 
-from cropwatcher.pipeline.calibrate import Marked, measure
-from cropwatcher.pipeline.sources import LocalFlightSource
-from cropwatcher.pipeline.stages.classify import blocks
+from dronedeck.pipeline.calibrate import Marked, measure
+from dronedeck.pipeline.sources import LocalFlightSource
+from dronedeck.pipeline.stages.classify import blocks
 
 FIXTURE = Path(__file__).parent / "fixtures" / "data"
 FLIGHT = "372bbdc4-d323-42bb-9e6c-29ef02e3794c"
@@ -69,7 +69,7 @@ def test_a_point_the_flight_did_not_fly_is_refused(data, tmp_path):
 
 
 def test_the_command_prints_and_saves_the_report(data, monkeypatch, capsys):
-    from cropwatcher import cli
+    from dronedeck import cli
 
     warm_at(data, "P1", 3.0)
     monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(data))

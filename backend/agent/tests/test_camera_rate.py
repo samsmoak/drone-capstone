@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from cropwatcher.camera.rate import (
+from dronedeck.camera.rate import (
     TIMING_STALE_S,
     WINDOW_S,
     DeckTiming,

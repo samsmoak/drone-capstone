@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from cropwatcher.camera.deck import DeckStream
-from cropwatcher.camera.recording import (
+from dronedeck.camera.deck import DeckStream
+from dronedeck.camera.recording import (
     COLUMNS,
     INDEX_NAME,
     FrameRecording,
@@ -17,9 +17,9 @@ from cropwatcher.camera.recording import (
     Recorder,
     frames_to_upload,
 )
-from cropwatcher.sync.cloud import CloudError
-from cropwatcher.sync.outbox import Kind, Outbox
-from cropwatcher.sync.syncer import Syncer
+from dronedeck.sync.cloud import CloudError
+from dronedeck.sync.outbox import Kind, Outbox
+from dronedeck.sync.syncer import Syncer
 from tests.test_camera_deck import image, reader
 from tests.test_sync import FakeCloud
 

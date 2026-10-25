@@ -7,9 +7,9 @@ import json
 
 import pytest
 
-from cropwatcher.mission.plan.floorplan import PlanError
-from cropwatcher.mission.plan.mission import InspectionPoint
-from cropwatcher.mission.plan.store import InUse, NotFound, PlanStore
+from dronedeck.mission.plan.floorplan import PlanError
+from dronedeck.mission.plan.mission import InspectionPoint
+from dronedeck.mission.plan.store import InUse, NotFound, PlanStore
 from tests.mission.plans import mission, room
 
 

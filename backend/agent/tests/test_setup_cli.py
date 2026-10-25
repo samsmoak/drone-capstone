@@ -1,11 +1,11 @@
-"""`cropwatcher setup` — the Set up engine from a terminal, against the fake drone."""
+"""`dronedeck setup` — the Set up engine from a terminal, against the fake drone."""
 
 from __future__ import annotations
 
 import pytest
 
-from cropwatcher import setup_cli
-from cropwatcher.cli import build_parser
+from dronedeck import setup_cli
+from dronedeck.cli import build_parser
 from tests.test_drone_setup import DONE, FRESH, Rig
 
 
@@ -78,29 +78,29 @@ class TestCommandLine:
     def test_the_installed_app_runs_its_own_agent(self):
         line = setup_cli.command_line(
             platform="darwin", frozen=True,
-            executable="/Applications/DroneDeck.app/Contents/MacOS/cropwatcher-agent")
-        assert line == "/Applications/DroneDeck.app/Contents/MacOS/cropwatcher-agent setup"
+            executable="/Applications/DroneDeck.app/Contents/MacOS/dronedeck-agent")
+        assert line == "/Applications/DroneDeck.app/Contents/MacOS/dronedeck-agent setup"
 
     def test_a_path_with_spaces_is_quoted_for_the_shell(self):
         line = setup_cli.command_line(platform="linux", frozen=True,
-                                      executable="/opt/Drone Deck/cropwatcher-agent")
-        assert line == "'/opt/Drone Deck/cropwatcher-agent' setup"
+                                      executable="/opt/Drone Deck/dronedeck-agent")
+        assert line == "'/opt/Drone Deck/dronedeck-agent' setup"
 
     def test_windows_gets_the_powershell_form(self):
         line = setup_cli.command_line(
             platform="win32", frozen=True,
-            executable=r"C:\Program Files\DroneDeck\cropwatcher-agent.exe")
-        assert line == r'& "C:\Program Files\DroneDeck\cropwatcher-agent.exe" setup'
+            executable=r"C:\Program Files\DroneDeck\dronedeck-agent.exe")
+        assert line == r'& "C:\Program Files\DroneDeck\dronedeck-agent.exe" setup'
 
     def test_a_developer_runs_the_venv_script(self):
         line = setup_cli.command_line(platform="darwin", frozen=False,
-                                      argv0="/repo/backend/agent/.venv/bin/cropwatcher")
-        assert line == "/repo/backend/agent/.venv/bin/cropwatcher setup"
+                                      argv0="/repo/backend/agent/.venv/bin/dronedeck")
+        assert line == "/repo/backend/agent/.venv/bin/dronedeck setup"
 
     def test_an_agent_started_another_way_falls_back_to_the_module(self):
         line = setup_cli.command_line(platform="darwin", frozen=False,
                                       executable="/usr/bin/python3", argv0="uvicorn")
-        assert line == "/usr/bin/python3 -m cropwatcher.cli setup"
+        assert line == "/usr/bin/python3 -m dronedeck.cli setup"
 
 
 def test_nothing_answers_means_droneDeck_is_closed():

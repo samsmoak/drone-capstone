@@ -10,11 +10,11 @@ import json
 
 import pytest
 
-from cropwatcher import playback
-from cropwatcher.api import rest
-from cropwatcher.sync import flight_playback
-from cropwatcher.sync.outbox import Kind, Outbox
-from cropwatcher.sync.syncer import Syncer, read_rows_after
+from dronedeck import playback
+from dronedeck.api import rest
+from dronedeck.sync import flight_playback
+from dronedeck.sync.outbox import Kind, Outbox
+from dronedeck.sync.syncer import Syncer, read_rows_after
 from tests.test_api import auth, client  # noqa: F401  (the fixture)
 from tests.test_playback import FLIGHT, LAST, write_flight
 from tests.test_sync import FakeCloud
@@ -88,7 +88,7 @@ def test_an_interrupted_trace_resumes_from_its_cursor(rig, monkeypatch):
     def flaky(rows):
         calls["n"] += 1
         if calls["n"] == 2:
-            from cropwatcher.sync.cloud import CloudError
+            from dronedeck.sync.cloud import CloudError
             raise CloudError("the network dropped")
         original(rows)
 
@@ -238,7 +238,7 @@ class TestApi:
 
     def test_supabase_unreachable_is_a_503_in_words(self, client, monkeypatch):  # noqa: F811
         cloud = FakeCloud()
-        from cropwatcher.sync.cloud import CloudError
+        from dronedeck.sync.cloud import CloudError
         cloud.fail_with = CloudError("could not read the flight's readings: ConnectError")
         monkeypatch.setattr(rest, "_signed_in_cloud", lambda: cloud)
         response = client.get(f"/history/flights/{OTHER}/playback", headers=auth(client))

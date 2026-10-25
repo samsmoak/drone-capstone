@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-from cropwatcher.flight.position_stages import first_blocker
-from cropwatcher.safety.flight_guard import PositioningStatus
+from dronedeck.flight.position_stages import first_blocker
+from dronedeck.safety.flight_guard import PositioningStatus
 
 SETTLED = (0.0004, 0.0004, 0.0004)
 
