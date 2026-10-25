@@ -1,4 +1,4 @@
-CROPWATCHER ON LINUX — the 40 stages
+DRONEDECK ON LINUX — the 40 stages
 ====================================
 
 The terminal install (`node scripts/install.mjs`) works on macOS (Apple silicon
