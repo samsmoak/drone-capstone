@@ -93,6 +93,11 @@ class TestPoints:
         m = mission(points=(InspectionPoint("P1", -1.0, 0.9, 0.4, MIN_HOLD_S - 1),))
         assert "hold" in codes(validate_mission(m, room(), outer=OUTER))
 
+    def test_a_two_second_hold_is_allowed(self):
+        """2 s since 2026-10-25 — the owner relaxed story 3.4's 5 s."""
+        m = mission(points=(InspectionPoint("P1", -1.0, 0.9, 0.4, 2.0),))
+        assert "hold" not in codes(validate_mission(m, room(), outer=OUTER))
+
     def test_a_cruise_height_outside_the_band(self):
         assert "cruise_height" in codes(validate_mission(
             mission(cruise_height_m=0.05), room(), outer=OUTER))

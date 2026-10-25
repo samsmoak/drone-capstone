@@ -1,6 +1,7 @@
 ================================================================================
 CONTROL IN AUTO — plan a mission, check the drone, fly it
-Last verified: 2026-10-24 for the tripods on the map (harness, both views and
+Last verified: 2026-10-25 for the number boxes and edit → save → reopen (real
+editor on the agent, headless Chrome, 17 checks). 2026-10-24 for the tripods on the map (harness, both views and
 themes, screenshots; the layout at five widths 10 PASS) and ② Position's two stations only (every station from
 one press, per-station rows), against agent/two-base-stations — test_geometry.py,
 test_station_measure.py (53), pnpm build; NOT on the drone (its deck saw no light).
@@ -155,6 +156,19 @@ desktop/src/lib/agent.ts                           the calls and types
   (dashed); touching a card selects it, and that first click does only that —
   a checkbox does not toggle, Remove does not remove (ObjectCard). A field
   clicked or tabbed into selects its object and is editable at once.
+• A NUMBER BOX SAYS WHAT IT KEPT (2026-10-25). A value outside a box's limits
+  is kept to them, and the box says so in place of its hint — "▲ Kept to
+  2–300 s"; a non-number says it left the value unchanged (fields.tsx). Before,
+  2 typed into a 5 s Hold quietly became 5.00, and the owner read it as "it
+  doesn't save the values".
+• EDIT → SAVE → REOPEN IS PROVEN ON THE AGENT. harness.html?agent=<token>&
+  port=<p>&edit=<mission id> opens the real editor on a running agent ("Plan ·
+  editor on the agent"). Driven in headless Chrome on 2026-10-25 against a copy
+  of the lab's missions: first click on a saved mission's box edits it, every
+  value typed (holds, a height, the name, the speed) is in the agent's copy
+  after Save and in the boxes after reopening. A point's boxes appear twice
+  while it is selected — its card and the panel under the map — so address a
+  box through its card ([data-object-card][aria-label^="Inspection point P1"]).
 • EACH OBJECT IS A CARD (ObjectCard): framed on all four sides, 1 px --muted;
   selected, 2 px --primary on all four sides (measured: 7.27 / 8.03 and
   6.07 / 3.95 : 1 on --surface-2, light / dark). The room, each obstacle, each

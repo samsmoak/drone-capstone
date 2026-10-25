@@ -159,10 +159,11 @@ class TestDeckStream:
         try:
             assert attempts.wait(2)
             deadline = time.monotonic() + 2
-            while "Cannot reach" not in (source.status().reason or ""):
+            while "not on this laptop's network" not in (source.status().reason or ""):
                 assert time.monotonic() < deadline
                 time.sleep(0.01)
-            assert "WiFi streaming example" in (source.status().reason or "")
+            reason = source.status().reason or ""
+            assert "Drone Wi-Fi" in reason and "WiFi streaming example" in reason
         finally:
             source.close()
 

@@ -138,9 +138,14 @@ def encode(frame: Frame) -> tuple[bytes, str]:
 def _unreachable(host: str, port: int, e: OSError) -> str:
     detail = e.strerror or str(e)
     if (host, port) == DEFAULT_ADDR:
-        return (f"Cannot reach the AI deck at {host}:{port}, its own access point. "
-                "Set the drone's Wi-Fi network in Drone Wi-Fi, or join this laptop to "
-                f"\"WiFi streaming example\". ({detail})")
+        # The address the camera falls back to when the drone is on no network
+        # this laptop knows. Said as that, first: "cannot reach 192.168.4.1"
+        # read as a camera fault while the drone had simply not joined a
+        # network (2026-10-24).
+        return ("The camera is not on this laptop's network yet, so there is no picture. "
+                "Drone Wi-Fi says why the drone has not joined — or join this laptop to "
+                f"the deck's own network, \"WiFi streaming example\". (Tried {host}:{port}: "
+                f"{detail})")
     # Not "is this laptop on the same network?" first: on 2026-09-24 it was, and
     # the deck had dropped off the network. The Wi-Fi state says which.
     return (f"No answer from the camera at {host} ({detail}). The drone's Wi-Fi may "
