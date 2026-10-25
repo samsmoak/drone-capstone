@@ -49,8 +49,12 @@ def flash(path: Path, uri: str = "radio://0/80/2M", *, chip: str = "gap8",
     data = path.read_bytes()
     print(f"firmware {path.name}: {len(data)} bytes", flush=True)
 
+    from cropwatcher.paths import cflib_cache_dir
+
     cflib.crtp.init_drivers()
-    with SyncCrazyflie(uri, cf=Crazyflie(rw_cache="./cache")) as scf:
+    # The app's own cache, not the working directory: "./cache" left a cflib
+    # file in whatever folder the flasher ran from (a repo, 2026-10-24).
+    with SyncCrazyflie(uri, cf=Crazyflie(rw_cache=str(cflib_cache_dir()))) as scf:
         mgr = SyncDeckMemoryManager(
             scf.cf.mem.get_mems(MemoryElement.TYPE_DECK_MEMORY)[0]
         )

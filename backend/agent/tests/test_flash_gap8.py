@@ -31,7 +31,8 @@ class FakeDeck:
 
 
 @pytest.fixture
-def drone(monkeypatch):
+def drone(monkeypatch, tmp_path):
+    monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path / "data"))
     import cflib.crazyflie.mem.deck_memory as deck_memory
     import cflib.crazyflie.syncCrazyflie as sync
     import cflib.crtp
