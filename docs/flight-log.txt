@@ -77,6 +77,47 @@ Rungs 7-10 are what PR #26 changed. They are the test of it.
 
 
 =========================================================================
+2026-10-24 (late) — WHAT BROKE THE CAMERA: AN ESP32 WRITE CUT AT 60%
+=========================================================================
+
+CONDITIONS
+  battery      3.89 V; DroneDeck closed; decks detected (8 memories)
+
+THE TIMELINE (agent log, saved frames, the earlier Claude session's record)
+  05:32-05:34  camera working: 153 distinct raw frames, ~5 fps (035d5eec)
+  07:47        Set up starts writing bundle 3: main, positioning deck, camera,
+               then the ESP32
+  07:50        the ESP32 write stops at 60% — the process watching the install
+               died when that Claude session hit its usage limit, and the
+               install died with it
+  21:18-21:24  rerun: the GAP8 write stalls at 0% (it goes through the ESP32)
+  since        no join, no "GAP8:" line, no deck access point
+
+REACHING THE ESP32
+  DID          bundle 1's ESP32 image (f75675f0…) through flash_gap8, then
+               the same steps instrumented, each after a radio restart
+  MEASURED     every attempt refused at its first chunk after 1.4 s: memory
+               status 5, and the drone's console: "ESP_FLASHER: Write failed -
+               cannot sync with bootloader". Nothing was written
+  MEASURED     the first attempt PRINTED "written" — flash_gap8 never checked
+               write_sync's result (fixed, tests/test_flash_gap8.py)
+  MEASURED     after a radio restart the ESP32 left the bootloader it had been
+               put in: the restart resets the deck (aideck.c pulls the shared
+               GAP8/ESP32 reset line at every boot)
+  MEANT        the ESP32's ROM loader cannot be erased by any write, and it
+               does not answer over UART2. The deck's 1-wire ID (signal pin
+               only) still reads. Either the deck's power/UART/IO pins do not
+               reach the ESP32, or the ESP32 has failed — hardware either way.
+               An earlier reading here was wrong: "CPX External router
+               initialized" does not mean the ESP32 answered; it means the
+               STM32's own router tasks started (cpx_external_router.c).
+  CHANGED      Reconnect camera and the watchdog restart the drone again
+               (idle, or reset_drone in a capture session; never in a flight
+               session) — drone-wifi.txt. Owed: the AI deck's own LEDs, a
+               reseat with the battery out, then the bundle 1 deck images.
+
+
+=========================================================================
 2026-10-24 (evening) — THE RADIO RESTART IS NOT WHAT BROKE THE CAMERA
 =========================================================================
 

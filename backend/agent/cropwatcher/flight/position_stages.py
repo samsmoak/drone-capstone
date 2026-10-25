@@ -44,8 +44,8 @@ def first_blocker(status: PositioningStatus, *, deck_detected: bool | None,
     if deck_detected is False:
         return Blocker(
             "deck", "The drone does not detect its positioning deck.",
-            "Switch the drone off and on with its button — decks are only detected at "
-            "power-on. If it stays missing, reseat the positioning deck.")
+            "Unplug the battery for 10 seconds and plug it back in — decks are detected "
+            "when the drone starts. If it stays missing, reseat the positioning deck.")
     if deck_needs_fw:
         return Blocker(
             "firmware", "The positioning deck's firmware is not running — the drone "

@@ -158,11 +158,13 @@ INVARIANTS
        2026-10-24): ASK the deck where it is (report) and follow it; not on
        the network → REJOIN it (apply again — the patched ESP32 rejoins in
        place); only a deck that can do neither (bundle < 2) gets the old
-       cure, RESTARTING THE DRONE OVER THE RADIO (Session.restart_drone),
-       at most once a minute and never in a session. Asking and rejoining
-       touch only the deck's Wi-Fi, so they run IN A SESSION too, mid-flight.
-       Joining or rejoining for 45 s without an address starts the ladder
-       too. "Reconnect camera" on the page runs it by hand, in a session too.
+       cure, RESTARTING THE DRONE OVER THE RADIO (Agent.restart_for_camera),
+       at most once a minute: Session.restart_drone between sessions,
+       Session.reset_drone in a CAPTURE session (nothing flies; it re-checks
+       as for a new capture session), NEVER in a flight session. Asking and
+       rejoining touch only the deck's Wi-Fi, so they run IN A SESSION too,
+       mid-flight. Joining or rejoining for 45 s without an address starts the
+       ladder too. "Reconnect camera" on the page runs it by hand.
   Measured on the drone (the restart): restart → radio back 4.6 s → joined
   11.9 s → first frame 12.1 s; "Reconnect camera" → live in 14 s. The ladder's
   ask and rejoin are NOT yet measured on the drone (bundle 2, lab pending).
@@ -183,25 +185,23 @@ INVARIANTS
   when the drone's cwsetup.deck says the deck carries bundle 2 — the drone
   checks, not the ground, so a ground that guesses wrong cannot crash an old
   deck. On an old deck: ALREADY_APPLIED, and changing network means a restart.
-- THE AGENT NEVER RESTARTS THE DRONE FOR THE CAMERA (2026-10-24). The
-  recovery asks, then rejoins; a deck too old to do either (no bundle 2) is
-  TOLD ABOUT — "switch the drone off and on with its button" — never restarted
-  over the radio. That restart (cflib stm_power_cycle) cut the decks' power
-  and they did not come back: 06:39 that day, 8 deck memories before it, 0
-  after, "AI deck: not fitted" and no base stations until a hand power-off.
-  CORRECTED 2026-10-24 evening: the restart itself does not lose the decks —
-  6 radio restarts on a 4.1 V battery kept all 8 deck memories each time.
-  The one lost AI deck that evening followed an STM32 assert (radiolink.c:166,
-  radio queue overflow) during a join to a deck whose ESP32 never answered.
-  The rule stands for a different reason: on that drone 0 of 6 restarts
-  brought the camera back, on drone_wifi v3 and v4 alike (flight-log.txt).
-  The watchdog's "answers but sends nothing" case says the same, and stops
-  trying while no AI deck is detected. Reconnect camera is refused with the
-  fix when no AI deck is detected (409), and says so when it starts — a press
-  with no answer read as "nothing happens". A link that opens with no AI deck
-  calls the session's on_link_no_deck: the Wi-Fi state says to switch the
-  drone off and on, instead of "waiting for the drone to connect" beside a
-  connected radio.
+- THE RESTART IS THE CAMERA'S CURE AGAIN (restored 2026-10-24 evening,
+  Samuel: "when I press on reconnect camera … it does switch off and on the
+  drone"). It was removed that morning on the belief that a radio restart
+  (cflib stm_power_cycle) unpowered the decks — 06:39, 8 deck memories before,
+  0 after. Measured that evening on a 4.1 V battery: 6 radio restarts, all 8
+  deck memories kept each time, and each restart reset the AI deck (its ESP32
+  left the bootloader it had been put in). The 06:39 loss fits the deck stack
+  that kept losing contact that day (0 decks on several hand power-ons too).
+  The aideck driver pulls the shared GAP8/ESP32 reset line at every boot
+  (aideck.c, aideckInit), so a radio restart restarts both deck chips.
+  With NO AI deck detected, Reconnect camera restarts straight away — the
+  decks are detected when the drone boots; refused with the fix (409) only
+  when a flight session holds the drone. The watchdog's "answers but sends
+  nothing" case restarts too; in a flight session it says the fix instead,
+  and it stays quiet while no AI deck is detected. A link that opens with no
+  AI deck calls on_link_no_deck: the Wi-Fi state says to unplug the battery,
+  instead of "waiting for the drone to connect" beside a connected radio.
 - ASK BEFORE REJOINING. When a link opens on a drone that already applied
   THIS network, the deck is asked first and only rejoined if it does not
   answer: a rejoin costs the camera seconds of picture. A DIFFERENT network is
@@ -312,7 +312,11 @@ shares-data-with  ../development/commands.txt
                   the build.sh + flash_firmware commands, indexed there
 
 
-LAST VERIFIED  2026-10-24 evening on the drone (deck bundle 0): joins 0 of 7
+LAST VERIFIED  2026-10-24 late, the restored restart: Agent.restart_for_camera
+and the route, tests/test_camera_wifi_recovery.py TestTheLadder (9) and
+TestTheRoute; agent gates (ruff, mypy, 1,658 tests). NOT yet pressed on the
+drone — its ESP32 does not answer (flight-log.txt).
+2026-10-24 evening on the drone (deck bundle 0): joins 0 of 7
 on drone_wifi v4 and v3, with and without a radio restart; decks kept 6 of 6
 restarts; the ESP32 and GAP8 started, not in bootloader, the GAP8 silent —
 flight-log.txt. Open: does a radio restart power-cycle the AI deck.
