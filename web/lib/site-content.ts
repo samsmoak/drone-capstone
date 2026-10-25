@@ -666,7 +666,7 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
           "two is steadier, because a single station leaves nothing to fall back on when the " +
           "drone blocks its own view.",
           "Then measure where the stations are, once: quit the app, and from the drone-capstone " +
-          "folder run ./cropwatcher geometry --distance 1.0 — it asks you to move the drone " +
+          "folder run ./dronedeck geometry --distance 1.0 — it asks you to move the drone " +
           "between samples. Repeat it any time a base station is moved or knocked.",
         ],
         bullets: [],
@@ -732,25 +732,26 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
         command: "rm -r ~/.local/lib/dronedeck ~/.local/share/applications/dronedeck.desktop " +
                  "~/.local/share/icons/hicolor/128x128/apps/dronedeck.png ~/.local/bin/dronedeck",
         what: "Linux: remove the app. The install command prints this line with your exact paths." },
-      { group: "Logs", command: "open ~/Library/Application\\ Support/CropWatcher/logs",
+      { group: "Logs", command: "open ~/Library/Application\\ Support/DroneDeck/logs",
         what: "Mac: the folder with agent.log — send it to us when the app reports a problem. " +
-              "It keeps the app's first name, CropWatcher, so older sessions are still found." },
-      { group: "Logs", command: "explorer \"$env:APPDATA\\CropWatcher\\logs\"",
+              "When the app was renamed from CropWatcher it moved this folder across, so " +
+              "older sessions are still found." },
+      { group: "Logs", command: "explorer \"$env:APPDATA\\DroneDeck\\logs\"",
         what: "Windows, in PowerShell: the same folder." },
-      { group: "Logs", command: "ls ~/.local/share/CropWatcher/logs",
+      { group: "Logs", command: "ls ~/.local/share/DroneDeck/logs",
         what: "Linux: the same folder." },
-      { group: "Flight lab (developers)", command: "./cropwatcher check",
+      { group: "Flight lab (developers)", command: "./dronedeck check",
         what: "Every pre-flight check, from the terminal. Never spins a motor. Quit the app " +
               "first — only one program can use the radio at a time. The ./ matters: it runs the " +
               "flight agent from the repo folder. On Windows, run these in Git Bash." },
-      { group: "Flight lab (developers)", command: "./cropwatcher stations --seconds 20",
+      { group: "Flight lab (developers)", command: "./dronedeck stations --seconds 20",
         what: "Which base stations the drone is receiving, live, for 20 seconds." },
-      { group: "Flight lab (developers)", command: "./cropwatcher geometry --distance 1.0",
+      { group: "Flight lab (developers)", command: "./dronedeck geometry --distance 1.0",
         what: "Measure where the base stations are. It asks you to move the drone between " +
               "samples. Run it again whenever a station is moved." },
-      { group: "Flight lab (developers)", command: "./cropwatcher hover --height 0.3 --secs 10",
+      { group: "Flight lab (developers)", command: "./dronedeck hover --height 0.3 --secs 10",
         what: "Take off to 30 cm above the floor, hold for 10 seconds, land. Clear space first." },
-      { group: "Flight lab (developers)", command: "./cropwatcher proptest",
+      { group: "Flight lab (developers)", command: "./dronedeck proptest",
         what: "The firmware's propeller test. The propellers spin — keep hands clear." },
     ],
     troubleTitle: "When it will not fly",
@@ -820,8 +821,8 @@ export const PAGE_DEFAULTS: Record<PageKey, ContentObject> = {
         fix:
           "The message says which. Quit every copy of DroneDeck (and any agent started from a " +
           "terminal), then reopen it. If it stops again, its log is in ~/Library/Application " +
-          "Support/CropWatcher/logs on a Mac, %APPDATA%\\CropWatcher\\logs on Windows and " +
-          "~/.local/share/CropWatcher/logs on Linux — send us agent.log.",
+          "Support/DroneDeck/logs on a Mac, %APPDATA%\\DroneDeck\\logs on Windows and " +
+          "~/.local/share/DroneDeck/logs on Linux — send us agent.log.",
       },
       {
         symptom: "It lifts a few centimetres and will not go higher",

@@ -4,8 +4,8 @@
 -- password user so you can sign in immediately without configuring Google
 -- OAuth redirect URLs — that can be switched on later with no schema change.
 --
---   email:    operator@cropwatcher.local
---   password: cropwatcher
+--   email:    operator@dronedeck.local
+--   password: dronedeck
 --
 -- Never run this against production: the password is public in this file.
 
@@ -30,8 +30,8 @@ insert into auth.users (
 values (
   '00000000-0000-0000-0000-000000000000',
   '11111111-1111-1111-1111-111111111111',
-  'authenticated', 'authenticated', 'operator@cropwatcher.local',
-  crypt('cropwatcher', gen_salt('bf')),
+  'authenticated', 'authenticated', 'operator@dronedeck.local',
+  crypt('dronedeck', gen_salt('bf')),
   now(),
   '{"provider":"email","providers":["email"]}',
   '{"full_name":"Demo Operator"}',
@@ -47,7 +47,7 @@ values (
   '11111111-1111-1111-1111-111111111111',
   '11111111-1111-1111-1111-111111111111',
   '11111111-1111-1111-1111-111111111111',
-  '{"sub":"11111111-1111-1111-1111-111111111111","email":"operator@cropwatcher.local"}',
+  '{"sub":"11111111-1111-1111-1111-111111111111","email":"operator@dronedeck.local"}',
   'email', now(), now()
 )
 on conflict (provider, provider_id) do nothing;
@@ -56,7 +56,7 @@ on conflict (provider, provider_id) do nothing;
 insert into public.profiles (id, email, full_name, role)
 values (
   '11111111-1111-1111-1111-111111111111',
-  'operator@cropwatcher.local',
+  'operator@dronedeck.local',
   'Demo Operator',
   'operator'
 )
@@ -68,7 +68,7 @@ on conflict (id) do nothing;
 insert into public.drones (id, name, uri, notes)
 values (
   '22222222-2222-2222-2222-222222222222',
-  'CropWatcher 1',
+  'DroneDeck 1',
   'radio://0/80/2M',
   'Crazyflie 2.1 with Lighthouse deck and AI deck. Camera unused.'
 )
