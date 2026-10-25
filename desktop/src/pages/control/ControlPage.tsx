@@ -135,7 +135,7 @@ export function ControlPage({
         // the controls are mostly buttons at a fixed size.
         <SplitPane
           orientation="vertical"
-          storageKey="cropwatcher.split.control"
+          storageKey="dronedeck.split.control"
           defaultFraction={0.60}
           label="Console and controls"
           // A FLOOR, not a cap (2026-09-24): both columns grow with their

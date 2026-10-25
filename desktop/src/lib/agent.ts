@@ -1,7 +1,7 @@
 /**
  * Talking to the flight agent running on this computer.
  *
- * The contract is the agent's own, from `backend/agent/cropwatcher/api/rest.py`:
+ * The contract is the agent's own, from `backend/agent/dronedeck/api/rest.py`:
  * REST for commands, one WebSocket for everything live. Every command carries
  * the control token, which the Tauri shell hands us — a page on the internet
  * cannot know it, so it cannot fly the drone.
@@ -60,7 +60,7 @@ export type Session = {
   /** The mission being flown, or the last one flown this session; null when
    *  none has run. From the agent's session snapshot (session.py). */
   mission: MissionProgress | null;
-  /** The DPP switch (cropwatcher/processing.py): whether the next flight is
+  /** The DPP switch (dronedeck/processing.py): whether the next flight is
    *  processed when it lands, whether that is the operator's choice or still
    *  the mode's default (on in Auto, off in Manual), and recent jobs. */
   processing: Processing;
@@ -71,7 +71,7 @@ export type Session = {
   /** What the session is for: "flight" (Control) or "capture" (the Capture
    *  page, which never flies). Absent from older agents: "flight". */
   purpose?: "flight" | "capture";
-  /** Which way the arrow keys move the drone (cropwatcher/flight/keyframe.py):
+  /** Which way the arrow keys move the drone (dronedeck/flight/keyframe.py):
    *  the operator's choice, their marked spot, and — while flying — what the
    *  arrows mean right now. */
   controls: Controls;
@@ -192,7 +192,7 @@ export type MissionProgress = {
   last_event: { kind: string; at_s: number; point_id: string | null; detail: string } | null;
 };
 
-// ── rooms and missions (backend/agent/cropwatcher/mission/plan) ─────────
+// ── rooms and missions (backend/agent/dronedeck/mission/plan) ─────────
 //
 // Metres, in the Lighthouse room frame: x and y absolute, heights above the
 // floor captured at takeoff. Feet appear only in labels (format.ts).
@@ -643,7 +643,7 @@ export const api = {
   setupState: () => command<SetupState>("/setup", undefined, "GET"),
   setupCheck: () => command<SetupState>("/setup/check"),
   /** The terminal command that installs the drone's software on this machine
-   *  (`cropwatcher setup`). Set up shows it to copy: the install runs in a
+   *  (`dronedeck setup`). Set up shows it to copy: the install runs in a
    *  terminal, with DroneDeck quit, not from a button (setup.txt). */
   setupCommand: () => command<SetupCommand>("/setup/command", undefined, "GET"),
   recordedFrames: (after: number, limit: number) =>

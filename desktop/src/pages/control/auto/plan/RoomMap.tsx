@@ -31,7 +31,7 @@ import type { KeyArrows } from "./keyArrows";
 const Room3D = lazy(() => import("./Room3D"));
 
 export type MapView = "2d" | "3d";
-const VIEW_KEY = "cropwatcher.auto.mapView";
+const VIEW_KEY = "dronedeck.auto.mapView";
 
 function rememberedView(): MapView {
   try { return localStorage.getItem(VIEW_KEY) === "2d" ? "2d" : "3d"; } catch { return "3d"; }

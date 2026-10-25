@@ -123,7 +123,7 @@ const theme = query.get("theme");
 // `?map=2d|3d` pins the room map's view (RoomMap remembers it per machine).
 const mapView = query.get("map");
 if (mapView === "2d" || mapView === "3d") {
-  try { localStorage.setItem("cropwatcher.auto.mapView", mapView); } catch { /* private window */ }
+  try { localStorage.setItem("dronedeck.auto.mapView", mapView); } catch { /* private window */ }
 }
 if (theme === "dark" || theme === "light") document.documentElement.dataset.theme = theme;
 if (agentToken) {
@@ -388,8 +388,8 @@ if (!agentToken) {
                    fix: "Check both base stations' front LEDs are solid green and can see the top of the drone. Still 0 with the drone 1 m in front of a station: switch the drone off and on; then reseat the positioning deck." } });
     }
     if (path === "/setup/command") {
-      return json({ command: "/Applications/DroneDeck.app/Contents/MacOS/cropwatcher-agent setup",
-                    check: "/Applications/DroneDeck.app/Contents/MacOS/cropwatcher-agent setup --check" });
+      return json({ command: "/Applications/DroneDeck.app/Contents/MacOS/dronedeck-agent setup",
+                    check: "/Applications/DroneDeck.app/Contents/MacOS/dronedeck-agent setup --check" });
     }
     // Manual's room: where the two stations above reach (agent /station/space).
     if (path === "/station/space") {
@@ -531,8 +531,8 @@ const setupDone: SetupState = {
   parts: { main: "installed", lighthouse: "installed", camera: "installed", wifi: "installed" },
 };
 const setupCommand = {
-  command: "/Applications/DroneDeck.app/Contents/MacOS/cropwatcher-agent setup",
-  check: "/Applications/DroneDeck.app/Contents/MacOS/cropwatcher-agent setup --check",
+  command: "/Applications/DroneDeck.app/Contents/MacOS/dronedeck-agent setup",
+  check: "/Applications/DroneDeck.app/Contents/MacOS/dronedeck-agent setup --check",
 };
 /** Drone Wi-Fi: a deck joined at the lab's weak signal, its radio held at
  *  reduced power after a brownout (wifi-link.patch). */

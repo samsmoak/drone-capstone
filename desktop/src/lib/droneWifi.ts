@@ -83,7 +83,7 @@ export const PASSWORD_MAX = 47;
  * by App, and the Camera tab and the account menu sit several components away —
  * an event keeps them from threading a callback through every page in between.
  */
-export const SHOW_DRONE_WIFI = "cropwatcher:show-drone-wifi";
+export const SHOW_DRONE_WIFI = "dronedeck:show-drone-wifi";
 export const showDroneWifi = () => window.dispatchEvent(new Event(SHOW_DRONE_WIFI));
 
 export const PHASE_TONE: Record<CameraWifi["phase"], Tone> = {

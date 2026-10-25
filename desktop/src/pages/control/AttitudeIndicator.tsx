@@ -7,7 +7,7 @@
  *
  * WHERE THE DATA COMES FROM: `stabilizer.roll`, `stabilizer.pitch`,
  * `stabilizer.yaw` and `gyro.x/y/z` — all of them already arriving at 10 Hz in
- * the one shared subscription (backend/agent/cropwatcher/telemetry/stream.py).
+ * the one shared subscription (backend/agent/dronedeck/telemetry/stream.py).
  * Nothing new is subscribed and no extra radio traffic is generated: the
  * stream's own docstring explains why that matters during a hover.
  *

@@ -5,7 +5,7 @@
  * THE SWITCH sits at the top of the page, in Auto and in Manual alike (the
  * owner, 2026-10-09), and is ON by default in both. It can be turned off
  * before a session starts or during one; the choice lasts until the session
- * ends (backend/agent/cropwatcher/processing.py). It is read as a flight
+ * ends (backend/agent/dronedeck/processing.py). It is read as a flight
  * BEGINS, so flipping it mid-flight is for the next one, and the switch says
  * so. The agent keeps the choice; this page only shows it
  * (Session.processing) and asks to change it.

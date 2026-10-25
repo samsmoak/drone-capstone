@@ -3,7 +3,7 @@
  * the lists beside them, so all three agree on what flies.
  *
  * It mirrors the agent's own Mission.legs() and flown_points
- * (backend/agent/cropwatcher/mission/plan/mission.py), including the leg
+ * (backend/agent/dronedeck/mission/plan/mission.py), including the leg
  * names ("home → P1"), because the agent's problems name legs that way and a
  * leg the agent flags must be the leg drawn red. This is drawing, not
  * checking: whether a leg is safe is still only ever the agent's answer.

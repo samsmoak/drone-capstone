@@ -146,7 +146,7 @@ fn agent_data_dir() -> Option<std::path::PathBuf> {
         }
     };
     // Still "CropWatcher": the app was renamed DroneDeck on 2026-09-28, but its
-    // data folder (sign-in, sessions, logs — backend/agent/cropwatcher/paths.py)
+    // data folder (sign-in, sessions, logs — backend/agent/dronedeck/paths.py)
     // kept the old name so nobody's record moved.
     Some(root.join("CropWatcher"))
 }
@@ -378,7 +378,7 @@ fn spawn_agent(app: &tauri::AppHandle) -> Result<(), String> {
     let token = app.state::<ControlToken>().0.clone();
     let (mut rx, child) = app
         .shell()
-        .sidecar("cropwatcher-agent")
+        .sidecar("dronedeck-agent")
         .map_err(|e| format!("the bundled agent is missing: {e}"))?
         .env("DRONEDECK_AGENT_TOKEN", token)
         .env("SUPABASE_URL", configured("SUPABASE_URL", SUPABASE_URL))
@@ -510,9 +510,9 @@ mod tests {
 
     #[test]
     fn error_lines_are_recognised() {
-        assert!(looks_like_error("2026-09-25 10:00:00 ERROR cropwatcher: boom"));
+        assert!(looks_like_error("2026-09-25 10:00:00 ERROR dronedeck: boom"));
         assert!(looks_like_error("ERROR:    [Errno 48] error while attempting to bind"));
-        assert!(looks_like_error("2026-09-25 CRITICAL cropwatcher: unhandled exception"));
+        assert!(looks_like_error("2026-09-25 CRITICAL dronedeck: unhandled exception"));
         assert!(looks_like_error("[PYI-4242:ERROR] Failed to execute script 'sidecar'"));
         assert!(looks_like_error("ModuleNotFoundError: No module named 'usb'"));
         assert!(looks_like_error("  OSError: [Errno 30] Read-only file system"));
@@ -520,7 +520,7 @@ mod tests {
 
     #[test]
     fn ordinary_lines_are_not_errors() {
-        assert!(!looks_like_error("2026-09-25 INFO cropwatcher: agent API on 127.0.0.1:8765"));
+        assert!(!looks_like_error("2026-09-25 INFO dronedeck: agent API on 127.0.0.1:8765"));
         assert!(!looks_like_error("INFO:     Uvicorn running on http://127.0.0.1:8765"));
         assert!(!looks_like_error("Looking for devices...."));
         assert!(!looks_like_error("the camera: no picture yet"));

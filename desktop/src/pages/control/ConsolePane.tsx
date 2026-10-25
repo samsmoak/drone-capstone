@@ -98,7 +98,7 @@ export function ConsolePane({
           // once the console stopped growing (2026-09-24). A saved position
           // still wins. With Manual's room below it, a smaller share: the
           // room is what is flown from (its own key, so Auto's is kept).
-          storageKey={map ? "cropwatcher.split.console.manual" : "cropwatcher.split.console"}
+          storageKey={map ? "dronedeck.split.console.manual" : "dronedeck.split.console"}
           defaultFraction={map ? 0.34 : 0.42}
           // Folds almost away: dragging this up to read the log is the point,
           // and the shared 20 % floor made it stop a fifth of the way down with
@@ -118,7 +118,7 @@ export function ConsolePane({
             // is what the operator flies from.
             <SplitPane
               orientation="horizontal"
-              storageKey="cropwatcher.split.maplog"
+              storageKey="dronedeck.split.maplog"
               defaultFraction={0.72}
               min={0.15}
               max={0.94}
@@ -145,7 +145,7 @@ export function ConsolePane({
             // down and the log takes the room (2026-09-24).
             <SplitPane
               orientation="horizontal"
-              storageKey="cropwatcher.split.logtail"
+              storageKey="dronedeck.split.logtail"
               defaultFraction={0.67}
               min={0.06}
               max={0.94}

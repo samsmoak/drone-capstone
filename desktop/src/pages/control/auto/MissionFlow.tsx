@@ -32,7 +32,7 @@ import { PositionStep } from "./PositionStep";
 import { FlightPlanCheck } from "./FlightPlanCheck";
 import { useStation } from "@/components/StationStages";
 
-const CHOSEN_KEY = "cropwatcher.auto.mission";
+const CHOSEN_KEY = "dronedeck.auto.mission";
 
 function remembered(): string | null {
   try { return localStorage.getItem(CHOSEN_KEY); } catch { return null; }

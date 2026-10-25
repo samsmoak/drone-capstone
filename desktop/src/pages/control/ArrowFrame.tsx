@@ -5,7 +5,7 @@
  * are: the frame can be switched in the air, and what the arrows mean right
  * now (a fallback near you, or with no position) is read with the same glance
  * as the keys themselves. The words come from lib/arrows.ts; the decision is
- * the agent's (cropwatcher/flight/keyframe.py).
+ * the agent's (dronedeck/flight/keyframe.py).
  *
  * I'M HERE takes the DRONE's position as yours: carry it to your feet, or fly
  * it over your head, and press it. Without a mark, "away" is measured from

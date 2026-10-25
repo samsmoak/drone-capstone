@@ -44,7 +44,7 @@ import { openDashboard } from "@/lib/web";
 
 type Locked = "expanded" | "collapsed";
 
-const STORE_KEY = "cropwatcher.sidebar";
+const STORE_KEY = "dronedeck.sidebar";
 
 /**
  * The pinned state, remembered per machine.
