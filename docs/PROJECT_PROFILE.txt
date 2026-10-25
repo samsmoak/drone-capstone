@@ -106,8 +106,12 @@ SHIP
                needs the Claude GitHub app granted the lab repo.
                One implementation, never two: an experiment that replaces a
                teammate's ticket rewrites that ticket in the PR that lands it.
-  deploy       web: Vercel on push to main, Root Directory = web (never give
-               the agent a FastAPI entrypoint). desktop: nothing is published —
+  deploy       web: Vercel, Root Directory = web (never give the agent a FastAPI
+               entrypoint). SINCE 2026-10-25 https://drone-capstone.vercel.app
+               is served by the LAB project (dronedeck-lab: private repo,
+               experiment/samuel), at the owner's ask, with nothing merged to
+               main; the public project (drone-capstone, main) has no friendly
+               domain until the address is moved back. desktop: nothing is published —
                every machine builds its own from main with
                `node scripts/install.mjs`; CI only proves it builds
                (features/development/releases.txt).
