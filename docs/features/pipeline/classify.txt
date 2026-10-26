@@ -39,6 +39,16 @@ backend/agent/cropwatcher/pipeline/stages/classify/blocks.py   BlocksClassifier,
 backend/agent/cropwatcher/pipeline/stages/classify/pelt.py     PELT, numpy
 backend/agent/cropwatcher/pipeline/stages/classify/image.py    ImageModel, the ONNX
                                                                image classifier
+backend/agent/cropwatcher/pipeline/stages/classify/reticle.py  remove_reticle: the
+                                                               viewer's crosshair
+                                                               inpainted away
+backend/agent/cropwatcher/pipeline/stages/classify/pressure_gauge.py
+                                                               the pressure dial read
+                                                               geometrically: kPa,
+                                                               DANGER 400-600
+backend/agent/cropwatcher/pipeline/stages/classify/status_gauge.py
+                                                               the SYSTEM STATUS dial,
+                                                               0-100, DANGER 70-100
 ml/image-classifier/                                           the dataset manifest,
                                                                preprocess.py
 backend/agent/tests/pipeline/test_classify.py
@@ -80,6 +90,16 @@ ml/anomaly-eval/evaluate.py, MEASUREMENTS.txt   the calibration and its table
   dataset (story 4.1) is labelled to match. If the definition changes,
   relabel — a model trained on the old meaning is wrong, not merely stale.
   defect_type in ml/image-classifier/manifests/images.csv names which kind.
+• THE GAUGE READERS (reticle.py, pressure_gauge.py, status_gauge.py; added
+  2026-10-25, Reagan) are a GEOMETRIC baseline, no training: remove the
+  reticle, find the dial, find the arrow-shaped needle, turn its angle into a
+  reading and compare it with the fault band. They are NOT yet called by
+  blocks@1, ground@1 or compose.py — a frame still gets its label from the
+  ONNX model alone — and their bands (400-600 kPa, 70-100) are PROVISIONAL
+  like the definition above. remove_reticle is a copy of
+  ml/image-classifier/preprocess.py's; keep the two in step. Each module runs
+  alone: python -m cropwatcher.pipeline.stages.classify.pressure_gauge <png|dir>
+  [--sheet out.png]. Tests: tests/pipeline/test_gauges.py.
 • THE IMAGE MODEL IS AN ONNX FILE, LISTED IN pipeline/models/MODELS.json WITH
   "stage": "classify.image" ("frames": "enhanced" if trained on clahe@1's
   copy; "threshold" for p_faulty). Input: the camera's 324 × 244 gray frame,
