@@ -17,6 +17,7 @@ flights on a specific disk.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 from pathlib import Path
@@ -56,10 +57,8 @@ def _migrate_legacy(base: Path) -> None:
     for entry in legacy.iterdir():
         target = new / entry.name
         if not target.exists():
-            try:
+            with contextlib.suppress(OSError):
                 entry.rename(target)
-            except OSError:
-                pass
 
 
 def data_dir() -> Path:

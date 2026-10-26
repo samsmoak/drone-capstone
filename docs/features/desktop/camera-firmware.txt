@@ -24,9 +24,10 @@ STATUS  (Last verified: 2026-10-24)
              change in the feed is the Wi-Fi's and nothing else's. BUILT, NOT
              BUNDLED — the JPEG streamer (jpeg-streamer.patch), next.
   main       BUNDLE 2 and 3 need drone_wifi v4 (rejoin and report) on the STM32.
-  bundle     3, on the private lab branch only (experiment/samuel) — Set up
-             there offers the update to any drone on bundle 1 or 2. Not on public
-             main until it is proven on the drone.
+  bundle     3, on main since 2026-10-26 (the lab build landed whole, at the
+             owner's ask) — Set up offers the update to any drone on bundle 1
+             or 2. STILL UNPROVEN on a drone: its only write stopped at 60%
+             (THE LAB DRONE'S DECK below).
   measure    BUILT — the window shows what arrives and what the GAP8 says each
              frame cost (camera.txt, "HOW FAST")
 

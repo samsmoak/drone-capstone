@@ -109,8 +109,8 @@ SHIP
   deploy       web: Vercel, Root Directory = web (never give the agent a FastAPI
                entrypoint). SINCE 2026-10-25 https://drone-capstone.vercel.app
                is served by the LAB project (dronedeck-lab: private repo,
-               experiment/samuel), at the owner's ask, with nothing merged to
-               main; the public project (drone-capstone, main) has no friendly
+               experiment/samuel), at the owner's ask (main caught up with
+               the lab whole on 2026-10-26, integrate/lab-2026-10-26); the public project (drone-capstone, main) has no friendly
                domain until the address is moved back. desktop: nothing is published —
                every machine builds its own from main with
                `node scripts/install.mjs`; CI only proves it builds
