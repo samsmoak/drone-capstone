@@ -293,8 +293,11 @@ def _check_server(binary: Path, env: dict[str, str], work: Path) -> list[str]:
         # RFC 6455 requires the key to be exactly 16 bytes before encoding.
         # A 17-byte one is rejected with a 400 that looks identical to "the
         # websockets implementation is missing" — which cost a build to tell
-        # apart, hence the explicit length.
-        key = base64.b64encode(b"dronedeck1probe"[:16]).decode()
+        # apart, hence the explicit length. A short one fails the same way: the
+        # rename's b"dronedeck1probe" was 15 bytes and failed every build.
+        probe = b"dronedeck-1probe"
+        assert len(probe) == 16, "RFC 6455: the key is exactly 16 bytes"
+        key = base64.b64encode(probe).decode()
         connection = http.client.HTTPConnection("127.0.0.1", PROBE_PORT, timeout=10)
         try:
             connection.request(
