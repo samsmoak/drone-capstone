@@ -10,7 +10,7 @@
  *           mission it now draws lives.
  *
  * The divider is the same draggable, keyboard-operable window splitter as
- * Manual's, with ITS OWN saved position (cropwatcher.split.control.auto):
+ * Manual's, with ITS OWN saved position (dronedeck.split.control.auto):
  * dragging in one mode must not move the other.
  *
  * BELOW 1280 px THE COLUMNS STACK — the vitals and actions first, then the
@@ -96,7 +96,7 @@ export function AutoControl({
   return (
     <SplitPane
       orientation="vertical"
-      storageKey="cropwatcher.split.control.auto"
+      storageKey="dronedeck.split.control.auto"
       defaultFraction={0.58}
       min={0.45}
       max={0.7}

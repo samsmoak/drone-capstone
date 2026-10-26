@@ -13,16 +13,16 @@ the same constraint as the radio.
 
 WHERE IT LIVES
 
-  backend/agent/cropwatcher/sync/outbox.py   records waiting, one file each
-  backend/agent/cropwatcher/sync/cloud.py    every call made to Supabase
-  backend/agent/cropwatcher/sync/syncer.py   when and in what order
-  backend/agent/cropwatcher/sync/samples.py  a session's samples.csv as rows
-  backend/agent/cropwatcher/sync/results.py  a flight's result.json as rows
-  backend/agent/cropwatcher/sync/flight_playback.py  a flight's plan as flown and
+  backend/agent/dronedeck/sync/outbox.py   records waiting, one file each
+  backend/agent/dronedeck/sync/cloud.py    every call made to Supabase
+  backend/agent/dronedeck/sync/syncer.py   when and in what order
+  backend/agent/dronedeck/sync/samples.py  a session's samples.csv as rows
+  backend/agent/dronedeck/sync/results.py  a flight's result.json as rows
+  backend/agent/dronedeck/sync/flight_playback.py  a flight's plan as flown and
                                              control trace, for playback
   backend/agent/tests/test_results_upload.py
-  backend/agent/cropwatcher/paths.py         where the data dir is
-  backend/agent/cropwatcher/telemetry/sinks.py  CSV first, then cloud
+  backend/agent/dronedeck/paths.py         where the data dir is
+  backend/agent/dronedeck/telemetry/sinks.py  CSV first, then cloud
   backend/agent/tests/test_outbox.py, test_syncer.py
 
 
@@ -41,7 +41,7 @@ per session, a cursor through samples.csv moved after each 500-row batch, sent
 once the session has ended and every row is up.
 
 Pipeline results go after them for the same reason (migration
-20261009000016). `cropwatcher process --flight` queues one record per flight
+20261009000016). `dronedeck process --flight` queues one record per flight
 once result.json is written (the agent wakes the syncer when a processing job
 finishes); the syncer waits while the flight's own record is still pending,
 then uploads the enhanced frames from a cursor (to flight-frames/<session>/
@@ -119,7 +119,7 @@ INVARIANTS
   uploaded, its pipeline result held behind it (eight flights from the
   2026-09-22 bring-up, found 2026-10-09). Ended at the CSV's last row, aborted,
   outcome "interrupted", with the rows the CSV holds. Off in tests with
-  CROPWATCHER_RESUME=0, like resuming processing.
+  DRONEDECK_RESUME=0, like resuming processing.
 - Write to the APPLICATION DATA DIRECTORY, never a relative path. Inside a
   bundled .app the working directory is "/", where the write fails — paths.py
   exists for exactly this.

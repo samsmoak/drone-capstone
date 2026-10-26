@@ -3,7 +3,7 @@ DATA PIPELINE — the contract every stage builds against
 
 STATUS: VERSION 2 (2026-10-09, branch dpp/contract-v2; version 1 was built
 2026-09-28 on feat/missions-and-pipeline). The authority is
-backend/agent/cropwatcher/pipeline/contracts.py; this page describes it. If the
+backend/agent/dronedeck/pipeline/contracts.py; this page describes it. If the
 two ever disagree, the CODE wins — tell Samuel so this page is corrected.
 
 WHAT VERSION 2 CHANGED, AND WHY (read this if you built against version 1)
@@ -46,8 +46,8 @@ records temperature, pressure and camera frames at each.
 Planning story 4.5: "A single command turns a recorded flight into a result
 with a verdict for each inspection point." That command exists:
 
-  cropwatcher process --flight <flight id>     a flight on this laptop
-  cropwatcher process --fixture                the test fixture (source checkout)
+  dronedeck process --flight <flight id>     a flight on this laptop
+  dronedeck process --fixture                the test fixture (source checkout)
 
 THE UNIT OF WORK IS THE FLIGHT (version 2), not one row, one frame or one
 point. The runner hands every stage the whole flight as one PointData whose
@@ -89,9 +89,9 @@ HOW THE AGENT RUNS THE PIPELINE (built 2026-09-29)
 
 Nobody has to type the command any more. The operator has a DPP switch per
 session — on by default in Auto, off in Manual — and every flight that began
-with it on is processed WHEN IT LANDS (backend/agent/cropwatcher/processing.py):
+with it on is processed WHEN IT LANDS (backend/agent/dronedeck/processing.py):
 
-  - the agent starts `cropwatcher process --flight <id>` as a CHILD PROCESS,
+  - the agent starts `dronedeck process --flight <id>` as a CHILD PROCESS,
     at lower priority, after the flight's CSV is closed;
   - ONE FLIGHT AT A TIME; 15 MINUTES for the whole flight, every point and
     every stage — then it is stopped and marked failed. Rule 12's per-point
@@ -119,7 +119,7 @@ WHAT A FLIGHT LOOKS LIKE NOW (also 2026-09-29):
 WHERE THE FILES ARE
 ───────────────────
 
-  backend/agent/cropwatcher/pipeline/
+  backend/agent/dronedeck/pipeline/
     contracts.py          the types and interfaces below — THE authority
     sources.py            LocalFlightSource: the CSV, the session's frames in
                           the flight's time window, the plan flown
@@ -165,7 +165,7 @@ Shared input
                        empty). The whole flight is one, with point "flight".
 
 The names in Reading.values are TelemetryRow's field names
-(cropwatcher/telemetry/row.py — the authority). The ones that matter:
+(dronedeck/telemetry/row.py — the authority). The ones that matter:
 
   raw_temp, corrected_temp           temp_unit    the sensor; after correction
   deviation, thermal_offset,         temp_unit    the correction engine's working
@@ -276,7 +276,7 @@ RULES EVERY STAGE FOLLOWS
 [checked] = test_conformance.py verifies it on every pull request.
 
  1. SELF-CONTAINED. Output depends only on the input and your model file. No
-    network, no Supabase, no other flights. Never import cropwatcher.flight,
+    network, no Supabase, no other flights. Never import dronedeck.flight,
     .session, .api, .sync or .camera.                                 [checked]
  2. ONE OUTPUT PER INPUT, IN ORDER.                                   [checked]
  3. NEVER CHANGE OR DELETE THE INPUT. Cleaning FLAGS; the next stage skips
@@ -303,7 +303,7 @@ RULES EVERY STAGE FOLLOWS
 MODEL FILES
 ───────────
 
-Runtime model files go in cropwatcher/pipeline/models/ with an entry in
+Runtime model files go in dronedeck/pipeline/models/ with an entry in
 MODELS.json (a JSON list; empty today):
 
   {"name": "mobilenetv3-small-faulty", "version": "2026-10-05",
@@ -330,8 +330,8 @@ HOW YOU PLUG IN
 2. Add it to the list in tests/pipeline/conformance.py. Every check in
    test_conformance.py now runs against it.
 3. Change the one line in compose.py from the stub to your class.
-4. Run it: `cropwatcher process --fixture` (writes to tests/pipeline/fixtures/
+4. Run it: `dronedeck process --fixture` (writes to tests/pipeline/fixtures/
    results/, which git ignores), then on a real flight with --flight. Open
    result.json and read your stage's output.
-5. Gates, from backend/agent/: ruff check . && mypy cropwatcher && pytest.
+5. Gates, from backend/agent/: ruff check . && mypy dronedeck && pytest.
    Open the pull request.

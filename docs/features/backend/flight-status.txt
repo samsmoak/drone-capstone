@@ -59,7 +59,7 @@ HEADLINE
 Every manual flight since 2026-09-23 has been BAROMETER-ONLY, because the
 drone does not detect its Lighthouse deck: deck.bcLighthouse4 = 0, and the
 1-wire bus enumerates ONE board, bcAI rev C1. Both base stations are solid
-green; `cropwatcher stations` shows nothing received, calibrated or with
+green; `dronedeck stations` shows nothing received, calibrated or with
 geometry, and the estimate running away at ~2 m/s on a still drone. Reseated
 and power-cycled today: still 0. The flight-log recorded it on 09-23 as "not
 yet recovered" and nothing surfaced it since — every session's reason said
@@ -210,8 +210,8 @@ WHAT NEEDS REDIRECTION
 
 THE ORDER TO DO IT IN
 
-  1  ./cropwatcher geometry --distance 1.0   the precondition for everything
-  2  ./cropwatcher check                     expect settle under 2 cm
+  1  ./dronedeck geometry --distance 1.0   the precondition for everything
+  2  ./dronedeck check                     expect settle under 2 cm
   3  Fly ASSISTED. Confirm the app does NOT offer the barometer.
   4  Re-test directions, then a climb-and-release, then side steps.
 
@@ -287,7 +287,7 @@ WHAT IS NOT FIXED
    WHY: the world frame is defined by the stored base-station geometry, and
    that geometry has never been measured. It is left over from a previous
    session with the stations somewhere else. A rotated frame rotates yaw.
-   FIX: run `cropwatcher geometry`. NOT a sign flip in code — inverting the
+   FIX: run `dronedeck geometry`. NOT a sign flip in code — inverting the
    keys would be a compensation for a wrong frame, and it would invert again
    the moment geometry is measured properly. See the note on masks below.
 
@@ -351,8 +351,8 @@ bar for the system.
 
 THE ORDER TO DO IT IN
 
-  1  cropwatcher geometry --distance 1.0    fixes the rotated frame
-  2  cropwatcher check                      expect settle under 2 cm
+  1  dronedeck geometry --distance 1.0    fixes the rotated frame
+  2  dronedeck check                      expect settle under 2 cm
   3  Re-test directions. Since 2026-09-30 the arrows ignore the nose
        (manual-control.txt, "THE ARROWS FOLLOW YOU"): in Room mode ↑ should
        go along the room's +x whatever the heading; From you, away from you.
@@ -608,8 +608,8 @@ THE ORDER TO DO IT IN
   1  DONE 2026-09-22. cd desktop && pnpm tauri build now builds BOTH
        halves, so a stale sidecar cannot ship again. Verified: the bundled
        agent talks to the drone and carries today's code.
-  2  cropwatcher geometry --distance 1.0       makes directions true
-  3  cropwatcher check                         expect settle under 2 cm
+  2  dronedeck geometry --distance 1.0       makes directions true
+  3  dronedeck check                         expect settle under 2 cm
   4  Fly ASSISTED. Confirm the app does NOT offer the barometer.
   5  20 cm hover, hands off, 10 s              height should now hold
   6  W alone                                   must climb straight

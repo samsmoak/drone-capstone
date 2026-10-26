@@ -4,7 +4,7 @@
  *
  * WHAT THIS IS NOT: the safety rules. Whether a point is too near an obstacle,
  * whether a leg leaves the fence, whether a hold is long enough — all of that is
- * the AGENT's (backend/agent/cropwatcher/mission/plan/validate.py), and the
+ * the AGENT's (backend/agent/dronedeck/mission/plan/validate.py), and the
  * editor asks it (api.validateMission) rather than keeping a second copy that
  * could disagree. This file only draws and clamps.
  *

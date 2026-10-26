@@ -6,14 +6,16 @@ WHAT IT IS
 Four buckets:
 
   installers    PUBLIC. The .dmg and .exe CI publishes, at stable paths
-                (latest/CropWatcher-macos.dmg). The /setup download buttons HEAD
+                (latest/DroneDeck-macos.dmg). The /setup download buttons HEAD
                 the object, so a new build needs no redeploy.
   flight-logs   PRIVATE. The gzipped CSV of a flight, uploaded when rows are
                 still unsent, so the server can finish the job from one file.
   portfolio-images  PUBLIC read, operator write (migration 0007). Project
                 covers, team photos and images inside write-ups.
   flight-frames PRIVATE (migration 0011, applied 2026-09-24). A session's
-                recorded camera frames — two a second — and its frames.csv:
+                CAPTURED camera frames — those that changed, at most two a
+                second, and every manual capture (desktop/capture.txt) — and
+                its frames.csv:
                 <session id>/frames/000001.png, <session id>/frames.csv.
                 Operators insert, read, and update (frames.csv is replaced
                 once at the session's end). See desktop/camera.txt.
@@ -23,7 +25,7 @@ WHERE IT LIVES
 
   backend/supabase/migrations/…0005_installers_bucket.sql
   backend/supabase/migrations/…0006_sessions_audit_identity.sql   flight-logs
-  backend/agent/cropwatcher/sync/cloud.py                         the upload
+  backend/agent/dronedeck/sync/cloud.py                         the upload
   web/components/ui/download-buttons.tsx                          the buttons
 
 

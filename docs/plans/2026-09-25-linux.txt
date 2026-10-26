@@ -1,4 +1,4 @@
-CROPWATCHER ON LINUX — the 40 stages
+DRONEDECK ON LINUX — the 40 stages
 ====================================
 
 The terminal install (`node scripts/install.mjs`) works on macOS (Apple silicon
@@ -32,8 +32,8 @@ PRIMARY SOURCES
   freedesktop Desktop Entry Specification 1.5; XDG Base Directory Specification
 
 DECISIONS
-  - Per-user install, no sudo: the program in ~/.local/lib/cropwatcher, a menu
-    entry in ~/.local/share/applications, the icon in hicolor, a `cropwatcher`
+  - Per-user install, no sudo: the program in ~/.local/lib/dronedeck, a menu
+    entry in ~/.local/share/applications, the icon in hicolor, a `dronedeck`
     link in ~/.local/bin. Not an AppImage (needs FUSE 2, missing on current
     Ubuntu by default) and not a .deb (needs sudo). Same shape as the Windows
     per-user install.
@@ -67,7 +67,7 @@ PHASE 1 — THE DESKTOP SHELL BUILDS AND WORKS ON LINUX           stages 4–8
   6  refuse-if-running.mjs: on Linux, look for the build folder's `desktop`
      by its exact path (pgrep -f with an escaped, anchored pattern).
   7  Confirm the sidecar sits beside the built binary (tauri-build copies
-     externalBin to target/release/cropwatcher-agent) — the per-user install
+     externalBin to target/release/dronedeck-agent) — the per-user install
      depends on it.
   8  Confirm nothing else in lib.rs is macOS/Windows-only without a fallback
      (Reopen is cfg(macos); wifi has a fallback).
@@ -83,25 +83,25 @@ PHASE 2 — setup.mjs CHECKS A LINUX MACHINE                     stages 9–15
      lists plus dbus — or Tauri's page for anything else.
  13  Python on Debian/Ubuntu: a Python without ensurepip cannot make a venv.
      Probe it, and name python3.X-venv.
- 14  Linux in the header and the summary; no "not a platform CropWatcher
+ 14  Linux in the header and the summary; no "not a platform DroneDeck
      publishes" note any more.
  15  Next steps on Linux: install.mjs, then the radio permission.
 
 PHASE 3 — install.mjs INSTALLS ON LINUX                        stages 16–24
 ─────────────────────────────────────────────────────────────────────────
  16  INSTALL covers Linux; the build stays --no-bundle.
- 17  Install folder ~/.local/lib/cropwatcher (CROPWATCHER_INSTALL_DIR
+ 17  Install folder ~/.local/lib/dronedeck (DRONEDECK_INSTALL_DIR
      overrides, as on macOS); replaced, never merged.
- 18  Copy `desktop` and `cropwatcher-agent` side by side, executable; fail if
+ 18  Copy `desktop` and `dronedeck-agent` side by side, executable; fail if
      either is missing after the copy.
  19  Refuse while the installed copy runs (pgrep on its exact path) — before
      building and again before copying.
  20  Icon: src-tauri/icons/128x128.png → ~/.local/share/icons/hicolor/128x128/
-     apps/cropwatcher.png.
- 21  Menu entry ~/.local/share/applications/cropwatcher.desktop (Desktop Entry
+     apps/dronedeck.png.
+ 21  Menu entry ~/.local/share/applications/dronedeck.desktop (Desktop Entry
      Spec 1.5; Exec quoted; StartupWMClass so the window groups under it);
      update-desktop-database when present.
- 22  `cropwatcher` link in ~/.local/bin; say so when that is not on PATH.
+ 22  `dronedeck` link in ~/.local/bin; say so when that is not on PATH.
  23  Radio permission: find a udev rule naming 1915:7777 and check membership
      of its group; if either is missing, print Bitcraze's exact rule and
      commands. Never sudo.

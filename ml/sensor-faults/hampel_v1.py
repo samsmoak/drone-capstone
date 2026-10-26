@@ -11,7 +11,7 @@ from pathlib import Path
 
 #: origin/main when hampel@1 was the agent's cleaner (PR #97).
 COMMIT = "a68af86"
-PATH = "backend/agent/cropwatcher/pipeline/stages/clean/hampel.py"
+PATH = "backend/agent/dronedeck/pipeline/stages/clean/hampel.py"
 
 _source = subprocess.run(
     ["git", "show", f"{COMMIT}:{PATH}"], capture_output=True, text=True, check=True,

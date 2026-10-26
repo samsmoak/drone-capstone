@@ -6,9 +6,9 @@ from types import MappingProxyType
 
 import pytest
 
-from cropwatcher.telemetry.reader import FlightRecorder, RecorderError, stream_variables_for
-from cropwatcher.telemetry.row import TempUnit
-from cropwatcher.telemetry.stream import ALL_VARIABLES, Snapshot
+from dronedeck.telemetry.reader import FlightRecorder, RecorderError, stream_variables_for
+from dronedeck.telemetry.row import TempUnit
+from dronedeck.telemetry.stream import ALL_VARIABLES, Snapshot
 from tests.fakes import fake_scf
 
 

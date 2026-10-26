@@ -5,7 +5,7 @@ its pointer to ml/upscaling-eval/. Before that, 2026-10-09 against
 docs/pipeline-v2 — tests/pipeline/test_enhance.py, ml/enhance-eval/evaluate.py
 on 600 real frames, the frozen agent's self-test (cv2), frames compared side
 by side in the web app.
-SOURCE: backend/agent/cropwatcher/pipeline/stages/enhance/clahe.py
+SOURCE: backend/agent/dronedeck/pipeline/stages/enhance/clahe.py
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -30,7 +30,7 @@ brightness, black and white clipping — measured on the ORIGINAL.
 --------------------------------------------------------------------------------
 2. WHERE IT LIVES
 --------------------------------------------------------------------------------
-backend/agent/cropwatcher/pipeline/stages/enhance/clahe.py   ClaheEnhancer,
+backend/agent/dronedeck/pipeline/stages/enhance/clahe.py   ClaheEnhancer,
                                                              measure_quality
 backend/agent/tests/pipeline/test_enhance.py
 ml/enhance-eval/evaluate.py, RESULTS.txt     the settings and limits, measured

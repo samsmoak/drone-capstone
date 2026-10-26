@@ -16,7 +16,7 @@ read. Both need to know who is asking.
 WHERE IT LIVES
 
   backend/supabase/migrations/…0001_init.sql     profiles, handle_new_user
-  backend/agent/cropwatcher/sync/cloud.py        the agent's sign-in
+  backend/agent/dronedeck/sync/cloud.py        the agent's sign-in
   desktop/src/ControlPage.tsx                    the desktop sign-in form
   web/components/ui/login-form.tsx               the web sign-in form
   desktop/src-tauri/src/lib.rs                   which project the app points at

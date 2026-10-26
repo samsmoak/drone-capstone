@@ -8,16 +8,16 @@ real drone, so putting it on a network is a deliberate act — and even on
 localhost every command needs the local control token, because any page the
 operator has open can reach 127.0.0.1.
 
-Served by `cropwatcher serve`. `python -m cropwatcher.api.rest` does nothing —
+Served by `dronedeck serve`. `python -m dronedeck.api.rest` does nothing —
 the module has no entry point.
 
 
 WHERE IT LIVES
 
-  backend/agent/cropwatcher/api/rest.py     routes, auth, the live socket
-  backend/agent/cropwatcher/api/tokens.py   the control token
-  backend/agent/cropwatcher/api/events.py   EventHub, the in-process fan-out
-  backend/agent/cropwatcher/flight/manual.py  the 50 Hz loop
+  backend/agent/dronedeck/api/rest.py     routes, auth, the live socket
+  backend/agent/dronedeck/api/tokens.py   the control token
+  backend/agent/dronedeck/api/events.py   EventHub, the in-process fan-out
+  backend/agent/dronedeck/flight/manual.py  the 50 Hz loop
   backend/agent/tests/test_api.py
 
 
@@ -54,11 +54,21 @@ ENDPOINTS
     POST /drone/connect             hold the drone on standby now — never arms
     POST /drone/disconnect          free the radio until Connect (409 mid-session)
     GET  /camera/recording          the session's recording: count, latest frame
-    GET  /camera/recording/frames   ?after=&limit= — frame list for the backlog
+    GET  /camera/recording/frames   ?after=&limit=&source=auto|manual — frame
+                                    list for the backlog, or the manual captures
+    POST /camera/capture            save the newest frame into the session, by
+                                    hand (409: no session, or no fresh frame)
+    POST /session/capture           the auto-capture switch {auto}
+    GET  /history/sessions/{id}/frames      an ended session's frames ?source=
+    GET  /history/sessions/{id}/frames/{n}  one of them, from disk
     GET  /camera/recording/frame/N  one recorded frame, or "latest", FROM DISK;
                                     204 when none. Token required: session data
-    POST /camera/wifi/rejoin        restart the drone over the radio so the camera
-                                    rejoins (409 in a session)
+    POST /camera/wifi/rejoin        ask the deck where it is, then rejoin it — never
+                                    a restart; 409 with no AI deck detected
+                                    ("switch it off and on" — checked FIRST: with
+                                    no deck the camera hand-off never runs, and
+                                    "connect the drone first" was said beside a
+                                    connected radio), or with no drone
     GET  /camera/wifi               the deck's network and join progress; no password
     PUT  /camera/wifi               {ssid, password} — see desktop/drone-wifi.txt
     DELETE /camera/wifi             forget it
@@ -79,7 +89,7 @@ DECISIONS
   origins (tauri://localhost, http://tauri.localhost, the dev server) may GET
   and POST; website origins may GET only, so the dashboard can see whether the
   agent is running; anything else gets no CORS headers. Extend the website
-  list with CROPWATCHER_ALLOWED_ORIGINS; never with "*". (Until 2026-09-25
+  list with DRONEDECK_ALLOWED_ORIGINS; never with "*". (Until 2026-09-25
   this said "GET only" for everyone — it had drifted: GET-only broke every
   button in the window, and the code had long since split it.)
 - EVERY REFUSED PREFLIGHT IS LOGGED — origin, method, path, reason — once per
@@ -101,7 +111,7 @@ INVARIANTS
 - GET /camera's reason names the drone first. With no frames AND no radio link
   it says the drone is not connected (off, flat battery) rather than a network
   theory about an address the drone may no longer hold.
-- CROPWATCHER_STANDBY=0 stops the agent holding the drone between sessions. The
+- DRONEDECK_STANDBY=0 stops the agent holding the drone between sessions. The
   API tests set it: a background radio loop would race every test.
 
 - NOTHING THAT TALKS TO THE RADIO MAY WAIT FOR EVER. cflib's
@@ -112,6 +122,14 @@ INVARIANTS
   measured 0.7 s to scan and about 2 s for the TOCs. On 2026-09-22 the
   un-timed version wedged the desktop app: the checks worker never returned
   and every later action refused with "Something is already running".
+  A TIMED-OUT HANDSHAKE IS CLOSED, NOT ONLY ABANDONED (DroneLink._abandon,
+  2026-10-24). SyncCrazyflie.close_link does nothing until the handshake has
+  finished (it checks is_link_open), so the Crazyflie's own close_link is
+  called. Left open, the stalled link's radio thread kept polling the
+  Crazyradio and every later standby attempt shared the dongle with it:
+  measured that day, ten minutes of "Connected" at the radio and no setup,
+  the agent at 32 % CPU, drone on and dongle in. The message now says what
+  works first — switch the drone off and on.
 
 - A BUSY MESSAGE MUST NAME WHAT IS BUSY. The session records the running
   worker and when it started, so the refusal says which step is stuck, for how
@@ -196,7 +214,7 @@ LAST VERIFIED  2026-09-30, the bounded shutdown only: tests/
 test_parent_watchdog.py (a session.end that never returns still exits, via
 the watchdog and via the lifespan; a finished shutdown is not cut short;
 console logging dropped, file kept), each shown failing with its arm removed.
-The incident itself read from ~/Library/Application Support/CropWatcher/logs/
+The incident itself read from ~/Library/Application Support/DroneDeck/logs/
 agent.log. Not yet: a real app quit with a hung link on the frozen build.
 LAST VERIFIED  2026-09-25, against rest.py (LocalCORS, /health) and
 tests/test_api.py — TestCors and TestCorsRefusalLog pass.

@@ -6,12 +6,12 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from cropwatcher.api import rest
-from cropwatcher.api.tokens import HEADER
-from cropwatcher.mission.plan.geofence import Geofence
-from cropwatcher.session import Session
-from cropwatcher.sync.cloud import Operator
-from cropwatcher.sync.outbox import Outbox
+from dronedeck.api import rest
+from dronedeck.api.tokens import HEADER
+from dronedeck.mission.plan.geofence import Geofence
+from dronedeck.session import Session
+from dronedeck.sync.cloud import Operator
+from dronedeck.sync.outbox import Outbox
 from tests.mission.plans import mission, room
 from tests.test_session import FakeLink
 from tests.test_sync import FakeCloud
@@ -19,8 +19,8 @@ from tests.test_sync import FakeCloud
 
 @pytest.fixture
 def api(tmp_path, monkeypatch):
-    monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("CROPWATCHER_STANDBY", "0")
+    monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("DRONEDECK_STANDBY", "0")
     cloud = FakeCloud()
     cloud.sign_in = lambda email, password: Operator("user-1", email, "Ada", "operator")
     session = Session(cloud=cloud, outbox=Outbox(tmp_path / "outbox"),
@@ -101,7 +101,7 @@ def test_flying_a_mission_before_the_checks_is_refused_in_words(api):
 
 def test_the_limits_the_editor_clamps_to(api):
     limits = api.get("/plan/limits", headers=token()).json()
-    assert limits["min_hold_s"] == 5.0
+    assert limits["min_hold_s"] == 2.0
     assert limits["z_max_m"] == 1.0
     assert limits["default_clearance_m"] == 0.25
 

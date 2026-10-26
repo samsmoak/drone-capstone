@@ -13,8 +13,8 @@ name on it is not an audit trail.
 
 WHERE IT LIVES
 
-  backend/agent/cropwatcher/audit.py        the events and their shape
-  backend/agent/cropwatcher/session.py      where they are raised
+  backend/agent/dronedeck/audit.py        the events and their shape
+  backend/agent/dronedeck/session.py      where they are raised
   backend/supabase/migrations/…0006…sql     the append-only audit_events table
   backend/agent/tests/test_audit.py
 
@@ -32,6 +32,8 @@ THE EVENTS
   manual_arm, manual_flight
   processing_set        the DPP switch, on or off, and the mode it was set in
   processing_run        a recorded flight processed by hand
+  capture_set           the auto-capture switch, on or off, and the mode
+  camera_capture        a frame captured by hand, with its number
   land
   emergency_stop
   guard_abort           with the guard's reason (see flight-safety.txt)
@@ -74,3 +76,9 @@ INVARIANTS
   (mission id, revision, name, room, points, tuning) when it arms, and "end"
   (state, the points completed, the last event's words) with result ok for a
   finished mission and aborted otherwise.
+
+RELATED
+
+shares-data-with  ../desktop/capture.txt
+                  capture_set (the auto-capture switch) and camera_capture (a frame
+                  captured by hand), recorded against the session

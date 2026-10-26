@@ -4,7 +4,7 @@ TICKET — Data pipeline stage 1: clean the sensor readings
 STATUS: DONE (2026-10-09, branch dpp/clean). REWRITTEN — robust@1 (Samuel)
 replaced hampel@1 (Kevin, 2026-10-03) on the owner's call, after both were
 scored on the same 66 real flights. What is left for Kevin is under FOLLOW-UPS.
-The code is the authority: backend/agent/cropwatcher/pipeline/stages/clean/
+The code is the authority: backend/agent/dronedeck/pipeline/stages/clean/
 robust.py.
 
   Owner           Kevin (hampel@1, the planter, the evaluator); Samuel
@@ -35,7 +35,7 @@ Every number: ml/sensor-faults/MEASUREMENTS.txt.
 
 WHAT IS BUILT
 
-  backend/agent/cropwatcher/pipeline/stages/clean/robust.py   robust@1
+  backend/agent/dronedeck/pipeline/stages/clean/robust.py   robust@1
   backend/agent/tests/pipeline/test_clean.py                  every rule
   ml/sensor-faults/plant_faults.py      plant() for the sensors; plant_extras()
                                         for position and battery; real_gaps()

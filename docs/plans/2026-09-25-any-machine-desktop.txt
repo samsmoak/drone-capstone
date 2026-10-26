@@ -7,7 +7,7 @@ and nowhere else had been proven. On an Intel Mac, two things went wrong:
   - the sidecar check timed out (its 20 s startup limit was too short there),
     and
   - sign-in said "Could not reach the flight agent on this computer. Restart
-    CropWatcher."
+    DroneDeck."
 
 Neither is a credentials problem. The Supabase URL and publishable key are
 already compiled into desktop/src-tauri/src/lib.rs. The error fires before any
@@ -104,7 +104,7 @@ PHASE 1 — THE SIDECAR CHECK TOLERATES SLOW MACHINES             stages 4–10
 PHASE 2 — ONE BUILD PATH FOR EVERY OS                          stages 11–18
 ─────────────────────────────────────────────────────────────────────────
  11  backend/agent/packaging/build_sidecar.py replaces build_sidecar.sh:
-     PyInstaller, copy to desktop/src-tauri/bin/cropwatcher-agent-<triple>,
+     PyInstaller, copy to desktop/src-tauri/bin/dronedeck-agent-<triple>,
      then verify. Standard library only.
  12  Read the triple from rustc. Fall back to ~/.cargo/bin/rustc when rustc is
      not on PATH (a login shell often lacks it).
@@ -122,7 +122,7 @@ PHASE 2 — ONE BUILD PATH FOR EVERY OS                          stages 11–18
  17  desktop/scripts/open-app.mjs: `pnpm app` opens the built app on macOS,
      Windows and Linux; it was macOS `open` only.
  18  Delete build_sidecar.sh, and repoint every reference: the spec,
-     verify_sidecar, ./cropwatcher, desktop/README.md, the workflow and the
+     verify_sidecar, ./dronedeck, desktop/README.md, the workflow and the
      site.
 
 
@@ -132,7 +132,7 @@ PHASE 3 — ONE SETUP COMMAND                                    stages 19–27
      is already required (pnpm), so one script serves every OS. There are no
      per-OS copies to drift.
  20  Check Node against Vite's own floor (^20.19 || >=22.12).
- 21  Find Python 3.11 or newer: CROPWATCHER_PYTHON, then python3.11–3.13, then
+ 21  Find Python 3.11 or newer: DRONEDECK_PYTHON, then python3.11–3.13, then
      python3 or python. On Windows, the py launcher first, then python.
      Candidates are run, not trusted, because Windows' `python` can be a
      Microsoft Store alias that runs nothing.
@@ -162,7 +162,7 @@ PHASE 4 — THE AGENT EXPLAINS ITSELF                            stages 28–33
      "wrong driver". Each gets its own Zadig instruction.
  31  _nothing_found_reason() puts the driver problem ahead of "switch it on".
      Other operating systems keep the current wording.
- 32  flight/core.py: `cropwatcher check` gives the same reason after "no drone
+ 32  flight/core.py: `dronedeck check` gives the same reason after "no drone
      found", which verify_sidecar still matches on.
  33  Tests for every branch: driver missing, wrong driver, driver fine, not
      Windows, dongle absent, USB unreadable. Plus the CORS log line, logged
@@ -180,11 +180,11 @@ PHASE 5 — THE WINDOW SAYS WHY                                  stages 34–40
      `agent_exit` command, because an exit before the window's listener exists
      would otherwise be lost. That includes a failure to spawn at all.
  37  lib.rs: an `agent_log_path` command, mirroring paths.py (the data dir,
-     honouring CROPWATCHER_DATA_DIR), so the window can say where the log is.
+     honouring DRONEDECK_DATA_DIR), so the window can say where the log is.
  38  agent.ts: when a command's fetch throws, ask /health (no-cors, 2 s) whether
      anything is listening. If not: "not running", with the exit reason. If so:
      "running, but this request did not reach it", naming the request. The
-     blanket "Restart CropWatcher" goes.
+     blanket "Restart DroneDeck" goes.
  39  App.tsx: listen for `agent-exit` (listener first, then ask once), and add
      the reason and the log path to the existing "Not connected" message. Text
      only; no layout change.
@@ -220,7 +220,7 @@ PHASE 7 — PROVE AND SHIP PR 1                                  stages 46–47
 
 PHASE 8 — PR 2: DOWNLOAD ON ANY MAC                            stages 48–50
 ─────────────────────────────────────────────────────────────────────────
- 48  Matrix: add macos-15-intel → latest/CropWatcher-macos-intel.dmg. The
+ 48  Matrix: add macos-15-intel → latest/DroneDeck-macos-intel.dmg. The
      Apple-silicon object keeps its path, so existing links still work. Print
      each sidecar's minimum macOS (vtool) in CI, so the site's "macOS N or
      newer" is measured, not guessed.

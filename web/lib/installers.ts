@@ -4,7 +4,7 @@ import "server-only";
  * What CI publishes, and what the site can say about it.
  *
  * The files live in the public `installers` bucket (migration 0005) at stable
- * paths — `latest/CropWatcher-macos.dmg`. CI NO LONGER WRITES THEM (2026-09-25):
+ * paths — `latest/DroneDeck-macos.dmg`. CI NO LONGER WRITES THEM (2026-09-25):
  * the app is installed from a terminal (`node scripts/install.mjs`), and the
  * Windows installer had outgrown the bucket's 50 MB upload limit. What is here
  * is the last build published (macOS 2026-09-24, Windows 2026-09-21).

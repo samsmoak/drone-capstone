@@ -12,16 +12,16 @@ from types import MappingProxyType, SimpleNamespace
 
 import pytest
 
-from cropwatcher.flight.checks import ReadyReport
-from cropwatcher.flight.control import FlightAborted, GuardedFlight, Phase
-from cropwatcher.flight.programs import HoverTest, Outcome, run_hover_test
-from cropwatcher.safety.flight_guard import (
+from dronedeck.flight.checks import ReadyReport
+from dronedeck.flight.control import FlightAborted, GuardedFlight, Phase
+from dronedeck.flight.programs import HoverTest, Outcome, run_hover_test
+from dronedeck.safety.flight_guard import (
     FlightGuard,
     GuardContext,
     PositioningStatus,
     Reason,
 )
-from cropwatcher.telemetry.stream import Snapshot
+from dronedeck.telemetry.stream import Snapshot
 
 GROUND = 0.012
 

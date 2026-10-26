@@ -14,9 +14,9 @@ from __future__ import annotations
 import subprocess
 import sys
 
-from cropwatcher.flight.manual import ControlState, ManualController
-from cropwatcher.mission.controller import MissionController, MissionFlight, MissionState
-from cropwatcher.session import State
+from dronedeck.flight.manual import ControlState, ManualController
+from dronedeck.mission.controller import MissionController, MissionFlight, MissionState
+from dronedeck.session import State
 from tests.fakes import FakeClock, FakeCommander
 from tests.mission.plans import mission
 from tests.mission.test_session_missions import make_rig
@@ -25,16 +25,16 @@ from tests.test_session import FakeManual, wait_for
 
 def _imported_by(module: str) -> set[str]:
     code = (f"import sys, {module}; "
-            f"print('\\n'.join(m for m in sys.modules if m.startswith('cropwatcher')))")
+            f"print('\\n'.join(m for m in sys.modules if m.startswith('dronedeck')))")
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
                          check=True)
     return set(out.stdout.split())
 
 
 def test_the_plan_package_never_imports_the_flight_code():
-    loaded = _imported_by("cropwatcher.mission.plan.validate, cropwatcher.mission.plan.store")
-    assert not {m for m in loaded if m.startswith("cropwatcher.flight")}
-    assert "cropwatcher.session" not in loaded
+    loaded = _imported_by("dronedeck.mission.plan.validate, dronedeck.mission.plan.store")
+    assert not {m for m in loaded if m.startswith("dronedeck.flight")}
+    assert "dronedeck.session" not in loaded
 
 
 def test_the_manual_flight_system_is_a_mission_flight():

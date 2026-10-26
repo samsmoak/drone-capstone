@@ -16,6 +16,7 @@
  */
 
 import { lazy, Suspense, useState, type ReactNode } from "react";
+import { useStationMarkers } from "./stations";
 import type { Geofence, InspectionPoint, Obstacle, OuterBound, Problem, XY } from "@/lib/agent";
 import { Spinner } from "@/components/ui";
 import { SmallButton } from "./fields";
@@ -25,11 +26,12 @@ import { webglAvailable } from "./webgl";
 import type { PathSource } from "./path";
 import { SPACE_LABEL, type SpaceLayer } from "./space";
 import type { Trail } from "./trail";
+import type { KeyArrows } from "./keyArrows";
 
 const Room3D = lazy(() => import("./Room3D"));
 
 export type MapView = "2d" | "3d";
-const VIEW_KEY = "cropwatcher.auto.mapView";
+const VIEW_KEY = "dronedeck.auto.mapView";
 
 function rememberedView(): MapView {
   try { return localStorage.getItem(VIEW_KEY) === "2d" ? "2d" : "3d"; } catch { return "3d"; }
@@ -41,8 +43,28 @@ export type MapEditing = Editing & Omit<Edit3D, keyof Editing | "onSelect" | "se
 export function RoomMap({
   outer, fence, obstacles, path, takeoffHeight = 0.4, problems = [], drone = null, droneHeight, droneYaw,
   progress, editing, label, below, heightClass = "h-[clamp(18rem,52vh,34rem)]", space = null,
-  trail = null,
+  trail = null, liveStations = true, keyArrows = null, droneScale = 1, toolbar, fill = false,
+  droneLost = false, overlay,
 }: {
+  /** Said INSIDE the map, over its top-left corner — Manual's "not placed"
+   *  notice. Read-only: it never takes the map's clicks. */
+  overlay?: ReactNode;
+  /** The position is lost: the drone stays at its last place, in the warning colour. */
+  droneLost?: boolean;
+  /** Take the height the parent gives it (a flex column), instead of
+   *  `heightClass`: Manual's map grows and shrinks with the console's
+   *  dividers — up/down between the panes, sideways between the columns. */
+  fill?: boolean;
+  /** Manual: where each arrow key moves the drone now, drawn round it, and
+   *  the nose as its own tick (keyArrows.ts). Auto passes none. */
+  keyArrows?: KeyArrows | null;
+  /** Manual draws the drone larger, to be read while flying. */
+  droneScale?: number;
+  /** Extra controls at the right of the 2D/3D bar (Manual's Full screen). */
+  toolbar?: ReactNode;
+  /** Draw the base stations where the drone has them stored now. Off for a
+   *  recorded flight: today's places would mislead about that day's. */
+  liveStations?: boolean;
   /** Playback: the path a recorded flight flew, up to the moment shown. */
   trail?: Trail | null;
   /** The flyable space (space.ts): shaded in 2-D, a see-through volume in 3-D. */
@@ -67,6 +89,7 @@ export function RoomMap({
   heightClass?: string;
 }) {
   const canDraw3d = webglAvailable();
+  const stations = useStationMarkers(liveStations);
   const [view, setView] = useState<MapView>(() => (canDraw3d ? rememberedView() : "2d"));
   const [camera, setCamera] = useState<{ preset: CameraPreset; n: number }>({ preset: "three-quarter", n: 0 });
   // Not editing, a click still picks a thing to look at.
@@ -90,7 +113,7 @@ export function RoomMap({
     // the form (2026-09-29). overflow-hidden on the frame for the frame between
     // a resize and the renderer catching up.
     <div
-      className="grid min-w-0 gap-0"
+      className={fill ? "flex min-h-0 min-w-0 flex-1 flex-col" : "grid min-w-0 gap-0"}
       onKeyDown={(e) => {
         const typing = (e.target as HTMLElement).closest("input, textarea, select");
         if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -115,15 +138,21 @@ export function RoomMap({
             ))}
           </div>
         )}
+        {toolbar}
       </div>
 
-      <div className={`relative min-h-0 min-w-0 overflow-hidden border border-[var(--border)] ${heightClass}`}>
+      <div className={`relative min-h-0 min-w-0 overflow-hidden border border-[var(--border)] ${fill ? "min-h-[12rem] flex-1" : heightClass}`}>
+        {overlay && (
+          <div className="pointer-events-none absolute left-2 top-2 z-10 max-w-[calc(100%-1rem)]">{overlay}</div>
+        )}
         {shown === "2d" ? (
           <PlanCanvas
             outer={outer} fence={fence} obstacles={obstacles} path={path} takeoffHeight={takeoffHeight}
             problems={problems} drone={drone} progress={progress} label={label}
             editing={editing} selected={editing ? undefined : looking} space={space} sliceZ={shownZ}
-            trail={trail}
+            trail={trail} stations={stations}
+            droneYaw={keyArrows ? droneYaw ?? null : null} keyArrows={keyArrows} droneScale={droneScale}
+            droneLost={droneLost}
             className="block h-full w-full touch-none select-none bg-[var(--surface-2)]"
           />
         ) : (
@@ -131,7 +160,8 @@ export function RoomMap({
             <Room3D
               outer={outer} fence={fence} obstacles={obstacles} path={path} takeoffHeight={takeoffHeight}
               problems={problems} drone={drone} droneHeight={droneHeight} droneYaw={droneYaw}
-              progress={progress} camera={camera} label={label} space={space} trail={trail}
+              progress={progress} camera={camera} label={label} space={space} trail={trail} stations={stations}
+              keyArrows={keyArrows} droneScale={droneScale} droneLost={droneLost}
               editing={editing ? {
                 selected: editing.selected, onSelect: editing.onSelect, onFence: editing.onFence,
                 onObstacle: editing.onObstacle, onPoint: editing.onPoint, onHome: editing.onHome,
@@ -163,6 +193,13 @@ export function RoomMap({
             </label>
           )}
         </div>
+      )}
+      {stations.length > 0 && (
+        <p className="border border-t-0 border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs">
+          {stations.length === 1 ? "The base station stands" : `The ${stations.length} base stations stand`} where
+          the drone last measured {stations.length === 1 ? "it" : "them"} (② Position), named by channel; L and R
+          as seen standing behind each. The red ring is 0, 0 — where the drone sat to measure — and its arrow is forward.
+        </p>
       )}
       {below && <div className="border border-t-0 border-[var(--border)] bg-[var(--surface)]">{below}</div>}
 

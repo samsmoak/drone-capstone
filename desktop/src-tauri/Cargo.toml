@@ -1,7 +1,7 @@
 [package]
 name = "desktop"
 version = "0.1.0"
-description = "CropWatcher desktop app — bundles the flight agent"
+description = "DroneDeck desktop app — bundles the flight agent"
 authors = []
 edition = "2021"
 

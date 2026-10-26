@@ -14,7 +14,10 @@ stop.
                left (vitals, camera, scene), the controls on the right (the
                action rail and the step's own controls). IN AUTO the page is
                the mission flow instead — auto-control.txt.
-  Sessions     every session (who, when, how it ended) and one session's detail
+  Capture      the camera, Capture, and this session's pictures taken by hand;
+               starts and ends its own session (capture.txt)
+  Sessions     every session (who, when, how it ended) and one session's detail,
+               with its manual captures
   Playback     every flight — this computer's and everyone's in Supabase — and
                any one played back on the room map (mission-playback.txt)
   (standby)    signed in with no session, Home shows the drone on standby
@@ -53,7 +56,6 @@ WHERE IT LIVES
                                            CommandLog       what we asked for
                                            VitalsTail       what it reports
                                            CameraPane       what it can see
-                                           SceneView        where it is
   desktop/src/pages/windows/             the five live sensor windows, LiveChart
   desktop/src/pages/sessions/            RecentSessions, SessionsPage, WindowLog,
                                          and the parts they share
@@ -184,9 +186,14 @@ arrived, which meant the operator relearned the layout at every stage.
 The left column is three tabs:
 
   Vitals   the attitude indicator, then the command log, then the vitals tail
-           (the current VALUES moved up into the strip — see below)
+           (the current VALUES moved up into the strip — see below). IN
+           MANUAL (2026-10-24): the attitude indicator, then the ROOM drawn
+           from the base stations, then the command log — no vitals tail
+           (manual-room-map.txt)
   Camera   the real frame path, on a test pattern — see camera.txt
-  Scene    the drone drawn in the room, from its own position and attitude
+  (Scene)  DELETED 2026-10-24 (Samuel: "it's of no use"): the drone in a
+           declared 4 m box. Auto never showed it; Manual's room, drawn
+           from the base stations, answers the same question
 
 THE CONSOLE OPENS FULL SCREEN from its tab strip, and so does the command log
 from its own footer — a camera frame or a 3D scene in part of a split column is a
@@ -446,7 +453,7 @@ THE RAIL FOLDS ITSELF IN A NARROW WINDOW (Sidebar.tsx, since 2026-09-28)
 
 Below 960 px the rail is icons only — at 720 the expanded rail took a third of
 the window. Hover still opens it over the page, and the pin opens it for now.
-The saved choice (localStorage cropwatcher.sidebar) is untouched and comes back
+The saved choice (localStorage dronedeck.sidebar) is untouched and comes back
 when the window widens.
 
   RUN THE SELF-TEST BESIDE IT. `?selftest=1` plants one 3000 px element and must
@@ -465,7 +472,7 @@ when the window widens.
 - The session views need real sessions, so the harness can stand in for the
   Tauri bridge: `harness.html?agent=<token>[&mode=][&session=<id>]` points them
   at the agent already running on this machine. The token is the running
-  agent's — `CROPWATCHER_AGENT_TOKEN` in its environment, or ~/.../agent-token —
+  agent's — `DRONEDECK_AGENT_TOKEN` in its environment, or ~/.../agent-token —
   and is never stored in the repo.
 - Tailwind v4 does not give buttons a hand cursor. styles.css sets it for
   button, summary and [role=link] rather than each component remembering.
@@ -521,6 +528,9 @@ should stay that way.
 
 RELATED
 
+shares-data-with  manual-room-map.txt
+                  Manual's Vitals tab hosts the room (ConsolePane `map`); the
+                  strip's VitalsNow gains Base stations
 depends-on        ../backend/manual-control.txt
                   the Arrows row shows and sets which way the arrow keys move
                   the drone (keyframe.py), from the session's `controls`
@@ -533,13 +543,12 @@ depends-on        ../backend/sessions-and-modes.txt
                   keeps — the sidebar switch and the lock page
 consumed-by       mission-playback.txt
                   the Playback page is a sidebar page like the others
+consumed-by       capture.txt
+                  the Capture page is a sidebar page like the others; the
+                  camera feed is the window's (lib/cameraFeed.ts), not a tab's
 consumed-by       auto-control.txt
                   Auto reuses FlightDeck, Checklist, RetryPanel, HealthTestPanel,
-                  Field, Tabs and the ConsolePane (`views`). SceneView's `plan`
-                  is no longer used by anyone (Fly draws the room with
-                  RoomMap since 2026-09-29) — dead code, left so Manual's
-                  Scene tab was not touched; remove when SceneView is next
-                  edited
+                  Field, Tabs and the ConsolePane (`views`)
 
 
 LAST VERIFIED  2026-09-29, against desktop/src and a headless measurement pass

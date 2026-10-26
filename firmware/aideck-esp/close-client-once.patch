@@ -6,7 +6,7 @@ index 8ca00c7..e5b79c0 100644
    }
  }
  
-+/* CropWatcher patch (firmware/aideck-esp): close each client ONCE.
++/* DroneDeck patch (firmware/aideck-esp): close each client ONCE.
 + *
 + * The sending task (on a send error) and the receiving task (on a 0-byte
 + * read) can both close the same connection. Each close set
@@ -36,7 +36,7 @@ index 8ca00c7..e5b79c0 100644
    xEventGroupSetBits(startUpEventGroup, START_UP_MAIN_TASK);
    while (1) {
      //blink_period_ms = 500;
-+    /* CropWatcher patch: a disconnect belongs to the client it happened to.
++    /* DroneDeck patch: a disconnect belongs to the client it happened to.
 +     * Clear any bit left over before accepting the next one. */
 +    xEventGroupClearBits(s_wifi_event_group, WIFI_SOCKET_DISCONNECTED);
      wifi_wait_for_socket_connected();

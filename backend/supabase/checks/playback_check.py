@@ -12,7 +12,7 @@ only checks denial proves nothing):
   nobody updates or deletes a row; the flight list's embed says which flights
   have a plan; deleting the flight takes its plan and trace with it.
 
-Then the agent's REAL client (cropwatcher.sync.cloud.SupabaseCloud) as A, over
+Then the agent's REAL client (dronedeck.sync.cloud.SupabaseCloud) as A, over
 2 500 telemetry and 2 500 trace rows — past PostgREST's 1 000-row page — and
 playback.load_cloud on what it reads back.
 
@@ -144,8 +144,8 @@ def main():
 def real_client(a_id, email, session):
     """The agent's own client, signed in as A: upload, page past 1 000 rows,
     list, and play back what it reads."""
-    from cropwatcher import playback
-    from cropwatcher.sync.cloud import SupabaseCloud
+    from dronedeck import playback
+    from dronedeck.sync.cloud import SupabaseCloud
 
     cloud = SupabaseCloud(API, ANON)
     cloud.sign_in(email, "check-pipeline-1")

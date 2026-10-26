@@ -31,13 +31,16 @@ WHERE IT LIVES
   firmware/drone-wifi/src/wire.h             the bytes sent to the ESP32
   firmware/drone-wifi/test/test_wire.c       those bytes through the ESP32's code
   firmware/drone-wifi/build.sh               test, then stock 2025.12.1 + app
-  backend/agent/cropwatcher/flash_firmware.py  writes it to the STM32 by radio
-  backend/agent/cropwatcher/camera/wifi.py   protocol, validation, console read,
+  backend/agent/dronedeck/flash_firmware.py  writes it to the STM32 by radio
+  backend/agent/dronedeck/camera/wifi.py   protocol, validation, console read,
                                              the last join kept on disk
-  backend/agent/cropwatcher/camera/deck.py   DeckStream.set_host — follow the IP
-  backend/agent/cropwatcher/session.py       on_link_ready / on_link_down, standby
-  backend/agent/cropwatcher/api/rest.py      GET/PUT/DELETE /camera/wifi
+  backend/agent/dronedeck/camera/deck.py   DeckStream.set_host — follow the IP
+  backend/agent/dronedeck/session.py       on_link_ready / on_link_down, standby
+  backend/agent/dronedeck/api/rest.py      GET/PUT/DELETE /camera/wifi
   backend/agent/tests/test_camera_wifi.py    against a fake drone_wifi app
+  backend/agent/tests/test_camera_wifi_recovery.py  ask, rejoin, reasons, the ladder
+  firmware/aideck-esp/wifi-recovery.patch    the ESP32: rejoin, report, reasons
+  firmware/aideck-esp/wifi-link.patch        the ESP32: hold a weak link (below)
   desktop/src-tauri/src/wifi/                scan (macOS, Windows), secure store
   desktop/src-tauri/src/lib.rs               wifi_* / drone_wifi_* commands
   desktop/src-tauri/Info.plist               the Location prompt's wording
@@ -50,13 +53,13 @@ WHERE IT LIVES
 FLASHING THE DRONE (once per drone; again after any firmware change)
 
   firmware/drone-wifi/build.sh
-  quit CropWatcher (it holds the radio), then:
+  quit DroneDeck (it holds the radio), then:
   cd backend/agent && source .venv/bin/activate
-  python -m cropwatcher.flash_firmware ../../firmware/drone-wifi/build/cf2.bin
+  python -m dronedeck.flash_firmware ../../firmware/drone-wifi/build/cf2.bin
 
 build.sh first runs test_wire.c and refuses to build if the bytes would be
 mangled. It fetches the Arm GNU toolchain 13.3 and crazyflie-firmware into
-~/.cache/cropwatcher and builds there — Kbuild cannot build a path containing a
+~/.cache/dronedeck and builds there — Kbuild cannot build a path containing a
 space, and this repo lives under "current projects". Only the STM32 is written;
 the bootloader is never touched, so an interrupted flash is recovered by holding
 the power button ~3 s and flashing again.
@@ -66,7 +69,13 @@ THE PROTOCOL (CRTP app channel, port 13, 30-byte packets)
 
   0x01 off bytes…   SSID chunk        0x03 ssid_len key_len   apply
   0x02 off bytes…   key chunk         0x04                     status
+                                      0x05                     report (v4)
   reply  [0x80|cmd, code, applied]    code 0 OK · 1 BAD · 2 ALREADY · 3 TOO_EARLY
+                                           · 4 UNSUPPORTED (v4: deck bundle < 2)
+
+  report  drone_wifi sends CPX WIFI_CTRL 0x2E; a deck with wifi-recovery.patch
+          (bundle 2) says its address again — "WiFi connected to ip: …" on the
+          console, as when it joined — or "not connected, last reason N".
 
 To the ESP32, each value goes as CPX WIFI_CTRL [cmd, value…, NUL] — WITH its
 NUL (see the first invariant). The IP is not on the app channel: stock firmware
@@ -145,12 +154,20 @@ INVARIANTS
        documented way; the deck firmware has no discovery (mDNS never finished)
     2. the console is followed for the life of the link (DeckWifi.watch)
     3. an address remembered on disk is a first guess, marked unverified
-    4. no answer at it for 15 s = stale → on standby the agent RESTARTS THE
-       DRONE OVER THE RADIO (Session.restart_drone, cflib PowerSwitch), and it
-       rejoins and says its current address. At most once a minute; never in a
-       session. "Reconnect camera" on the page does the same by hand.
-  Measured on the drone: restart → radio back 4.6 s → joined 11.9 s → first
-  frame 12.1 s; through the real agent, "Reconnect camera" → live in 14 s.
+    4. no answer at it for 15 s = stale → THE LADDER (Agent.recover_camera,
+       2026-10-24): ASK the deck where it is (report) and follow it; not on
+       the network → REJOIN it (apply again — the patched ESP32 rejoins in
+       place); only a deck that can do neither (bundle < 2) gets the old
+       cure, RESTARTING THE DRONE OVER THE RADIO (Agent.restart_for_camera),
+       at most once a minute: Session.restart_drone between sessions,
+       Session.reset_drone in a CAPTURE session (nothing flies; it re-checks
+       as for a new capture session), NEVER in a flight session. Asking and
+       rejoining touch only the deck's Wi-Fi, so they run IN A SESSION too,
+       mid-flight. Joining or rejoining for 45 s without an address starts the
+       ladder too. "Reconnect camera" on the page runs it by hand.
+  Measured on the drone (the restart): restart → radio back 4.6 s → joined
+  11.9 s → first frame 12.1 s; "Reconnect camera" → live in 14 s. The ladder's
+  ask and rejoin are NOT yet measured on the drone (bundle 2, lab pending).
   NOT a static address (a campus network assigns them; a clash is someone
   else's outage) and NOT a DNS name (campus DNS: NXDOMAIN for aideck-*). On a
   router the operator controls, a DHCP reservation for the deck's MAC
@@ -160,10 +177,66 @@ INVARIANTS
   "There's no support for re-initializing the UART transport"
   (cpx_uart_transport.c). After a deck-only reset the ESP32 never spoke again.
   That is why a restart is the whole drone, over the radio.
-- ONE APPLY PER POWER-ON. The ESP32 creates its station interface every time it
-  is told to connect (aideck-esp-firmware main/wifi.c, wifi_init_sta); a second
-  creation fails an assert and reboots the ESP32. The firmware refuses a second
-  apply (ALREADY_APPLIED); changing network means restarting the drone.
+- ONE APPLY PER POWER-ON — ON AN OLD DECK ONLY. Stock ESP32 firmware creates its
+  station interface every time it is told to connect (aideck-esp-firmware
+  main/wifi.c, wifi_init_sta); a second creation fails an assert and reboots
+  the ESP32. firmware/aideck-esp/wifi-recovery.patch (bundle 2) creates it once
+  and REJOINS on a second connect, and drone_wifi v4 allows a re-apply exactly
+  when the drone's cwsetup.deck says the deck carries bundle 2 — the drone
+  checks, not the ground, so a ground that guesses wrong cannot crash an old
+  deck. On an old deck: ALREADY_APPLIED, and changing network means a restart.
+- THE RESTART IS THE CAMERA'S CURE AGAIN (restored 2026-10-24 evening,
+  Samuel: "when I press on reconnect camera … it does switch off and on the
+  drone"). It was removed that morning on the belief that a radio restart
+  (cflib stm_power_cycle) unpowered the decks — 06:39, 8 deck memories before,
+  0 after. Measured that evening on a 4.1 V battery: 6 radio restarts, all 8
+  deck memories kept each time, and each restart reset the AI deck (its ESP32
+  left the bootloader it had been put in). The 06:39 loss fits the deck stack
+  that kept losing contact that day (0 decks on several hand power-ons too).
+  The aideck driver pulls the shared GAP8/ESP32 reset line at every boot
+  (aideck.c, aideckInit), so a radio restart restarts both deck chips.
+  With NO AI deck detected, Reconnect camera restarts straight away — the
+  decks are detected when the drone boots; refused with the fix (409) only
+  when a flight session holds the drone. The watchdog's "answers but sends
+  nothing" case restarts too; in a flight session it says the fix instead,
+  and it stays quiet while no AI deck is detected. A link that opens with no
+  AI deck calls on_link_no_deck: the Wi-Fi state says to unplug the battery,
+  instead of "waiting for the drone to connect" beside a connected radio.
+- ASK BEFORE REJOINING. When a link opens on a drone that already applied
+  THIS network, the deck is asked first and only rejoined if it does not
+  answer: a rejoin costs the camera seconds of picture. A DIFFERENT network is
+  never asked about — the deck would answer from the old one and stay there.
+- EVERY DISCONNECT SAYS WHY (bundle 2): "Disconnected from access point, reason
+  N" (ESP-IDF wifi_err_reason_t). The agent turns it into words —
+  wifi.REASON_WORDS: 15/204 the password, 201 out of range or not 2.4 GHz,
+  200 the signal lost, 202 refused (wrong password or WPA3-only) — and the
+  Drone Wi-Fi page and the join messages show it. The stock "connect"
+  ESP_ERROR_CHECKs that rebooted the chip on a harmless "busy" are logged
+  instead (sta_connect).
+- A WEAK LINK IS HELD, NOT DROPPED (bundle 3, wifi-link.patch, 2026-10-24).
+  The lab reads the deck at -86 dBm; Wi-Fi itself lasts to about -97 dBm, at
+  its slowest rate. Three stock settings gave that margin away:
+    20 MHz, not 40   ESP-IDF's default is 40 MHz when the router offers it:
+                     twice the noise, ~3 dB less sensitivity, and the first
+                     thing a busy 2.4 GHz band breaks. Set before start, so
+                     the join negotiates 20.
+    power 20 dBm     set explicitly (esp_wifi_set_max_tx_power 80) and read
+                     back, not left to the PHY data.
+    15 s, not 6      without a beacon before the station drops. A turning
+                     drone fades for seconds; a real loss still rejoins at
+                     once (the disconnect handler reconnects).
+  NOT A FIXED RATE — this was proposed and is wrong: rate control already
+  falls to 11b 1 Mbps, the most sensitive rate, when frames fail (11b stays in
+  the protocol set); ESP-IDF refuses a fixed rate while TX AMPDU is on
+  (esp_private/wifi.h); and 1 Mbps would cap raw frames near one a second.
+  BROWNOUT HOLDS THE POWER AT 13 dBm. After a brownout reset ESP-IDF runs the
+  PHY at its lowest power for that whole boot (CONFIG_ESP32_REDUCE_PHY_TX_POWER,
+  Bitcraze's setting, kept — full power right after a brownout can brown it
+  out again) and the maximum set above cannot lift it; only a power-off
+  clears it. The deck says so in one line, at start and on every ask
+  ("WIFI: link: 20 MHz, power 80, beacon timeout 15 s, brownout 0"); the agent
+  reads it (wifi.DeckLink) and the Drone Wi-Fi page shows "Deck radio",
+  amber with the fix in words when a brownout holds it low.
 - THE LAST JOIN IS KEPT ON DISK (app data, deck-wifi.json: name and address,
   never the password). ALREADY_APPLIED means the drone has not restarted since
   it joined, so that address is still its address — an agent that restarted in
@@ -173,8 +246,9 @@ INVARIANTS
   before that is overridden. The firmware answers TOO_EARLY; the agent retries.
 - THE DECK FORGETS AT POWER-OFF. Nothing is saved on the ESP32 ("// Save to
   NVS?" in its source). Hence re-sending on every connection.
-- A FAILED JOIN LEAVES THE DECK UNREACHABLE UNTIL RESTART. In station mode it
-  retries the bad network forever and its own access point is gone.
+- A FAILED JOIN LEAVES THE DECK OFF THE NETWORK. In station mode it retries
+  the bad network forever and its own access point is gone; with bundle 2 the
+  agent can rejoin it with a corrected network without a restart.
 - NO REPLY TO STATUS = STOCK FIRMWARE. The agent says to flash drone_wifi rather
   than waiting out a join that cannot happen.
 - THE PASSWORD IS NEVER LOGGED OR RETURNED. No route returns it; the firmware
@@ -234,9 +308,28 @@ shares-data-with  desktop-app.txt
                   the secure store and Tauri commands
 shares-data-with  pages-and-windows.txt
                   the Drone Wi-Fi page and badge
+shares-data-with  ../development/commands.txt
+                  the build.sh + flash_firmware commands, indexed there
 
 
-LAST VERIFIED  2026-09-24 (standby and link_down: tests only — the drone's
+LAST VERIFIED  2026-10-24 late, the restored restart: Agent.restart_for_camera
+and the route, tests/test_camera_wifi_recovery.py TestTheLadder (9) and
+TestTheRoute; agent gates (ruff, mypy, 1,658 tests). NOT yet pressed on the
+drone — its ESP32 does not answer (flight-log.txt).
+2026-10-24 evening on the drone (deck bundle 0): joins 0 of 7
+on drone_wifi v4 and v3, with and without a radio restart; decks kept 6 of 6
+restarts; the ESP32 and GAP8 started, not in bootloader, the GAP8 silent —
+flight-log.txt. Open: does a radio restart power-cycle the AI deck.
+2026-10-24 for the weak link (bundle 3): wifi-link.patch
+applied on the three before it and built clean (ESP-IDF 4.3.1, 716 352 bytes,
+the link line in the binary); every call checked against the 4.3.1 headers;
+test_camera_wifi.py TestDeckLink (7); harness "Drone Wi-Fi · deck radio"
+light and dark. NOT yet on the drone — its decks read 0 that day.
+2026-10-24 for asking, rejoining and the reasons: drone_wifi v4
+built (its wire test passed), the patched ESP32 built (ESP-IDF 4.3.1),
+tests/test_camera_wifi_recovery.py (24) and test_camera_wifi.py (41) against
+a fake drone_wifi v4; the agent suite. NOT yet on the drone (bundle 2).
+2026-09-24 (standby and link_down: tests only — the drone's
 battery was flat for that pass; the app reported it correctly as not connected).
   real drone     fixed firmware flashed; joined "VT Open WiFi" (12-char name —
                  the case that failed before) at 100.96.93.94; laptop reached

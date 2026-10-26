@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from cropwatcher.mission.plan.floorplan import Room
-from cropwatcher.mission.plan.geofence import Geofence
-from cropwatcher.mission.plan.mission import InspectionPoint, Mission
-from cropwatcher.mission.plan.obstacles import Obstacle, ObstacleKind
+from dronedeck.mission.plan.floorplan import Room
+from dronedeck.mission.plan.geofence import Geofence
+from dronedeck.mission.plan.mission import InspectionPoint, Mission
+from dronedeck.mission.plan.obstacles import Obstacle, ObstacleKind
 
 #: The agent's default flying area, the outer bound while coverage is unmeasured.
 OUTER = Geofence.square(2.0)

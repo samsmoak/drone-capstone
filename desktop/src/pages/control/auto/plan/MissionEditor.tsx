@@ -412,7 +412,7 @@ export function MissionEditor({ draft, limits, run, drone, missionsInRoom, onSav
         {sideBySide ? (
           <SplitPane
             orientation="vertical"
-            storageKey="cropwatcher.split.editor"
+            storageKey="dronedeck.split.editor"
             defaultFraction={0.6}
             min={Math.max(0.3, MAP_MIN_PX / width)}
             max={Math.min(0.78, 1 - FORM_MIN_PX / width)}

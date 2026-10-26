@@ -5,7 +5,7 @@ STATUS: DONE (2026-10-09, branch dpp/enhance). REWRITTEN — Samuel built the
 stage (clahe@1) on the owner's call. Kevin's evaluation of upscalers
 (ml/upscaling-eval/, #103 — on main since 2026-10-10) stays his and is the way an
 upscaler replaces CLAHE — see FOLLOW-UPS. The code is the authority:
-backend/agent/cropwatcher/pipeline/stages/enhance/clahe.py.
+backend/agent/dronedeck/pipeline/stages/enhance/clahe.py.
 
   Owner           Samuel (clahe@1); Kevin (the upscaler evaluation)
   Story           4.3: "As an inspector, I want clearer images, so that even

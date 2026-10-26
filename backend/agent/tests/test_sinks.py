@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import csv
 
-from cropwatcher.telemetry.sinks import CsvSink, FanOutSink, LiveUploadSink
+from dronedeck.telemetry.sinks import CsvSink, FanOutSink, LiveUploadSink
 
 
 def row(i: int) -> dict:

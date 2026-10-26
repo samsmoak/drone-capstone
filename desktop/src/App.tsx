@@ -40,7 +40,7 @@ import {
   type SyncStatus,
   type Telemetry,
 } from "@/lib/agent";
-import { useCommandLog, useSessionNarration } from "@/lib/commandLog";
+import { useCommandLog, useSessionNarration, useStationNarration } from "@/lib/commandLog";
 import { ControlPage } from "@/pages/control/ControlPage";
 import { ModeLock } from "@/pages/control/ModeLock";
 import { sessionOpen, shownMode } from "@/lib/sessionMode";
@@ -49,10 +49,12 @@ import { FlightStrip } from "@/components/FlightStrip";
 import { Sidebar } from "@/components/Sidebar";
 import { SessionsPage } from "@/pages/sessions/SessionsPage";
 import { PlaybackPage } from "@/pages/playback/PlaybackPage";
+import { CapturePage } from "@/pages/capture/CapturePage";
+import { CaptureLock } from "@/pages/control/CaptureLock";
 import { WindowLog } from "@/pages/sessions/WindowLog";
 import { StartupPage } from "@/pages/startup/StartupPage";
 import { SensorWindow, type WindowKey } from "@/pages/windows/SensorWindow";
-import { Message } from "@/components/ui";
+import { Message, Spinner } from "@/components/ui";
 import { DroneWifiDialog } from "@/components/DroneWifiDialog";
 import { PHASE_LABEL, PHASE_TONE, SHOW_DRONE_WIFI, droneWifi } from "@/lib/droneWifi";
 import { WifiPage } from "@/pages/wifi/WifiPage";
@@ -66,7 +68,7 @@ const HISTORY_LIMIT = HISTORY_S * 10;      // 10 Hz
 
 export type History = { t: number; values: Record<string, number>; height_m: number | null }[];
 
-export type Page = "home" | "setup" | "control" | "sessions" | "playback" | "wifi" | WindowKey;
+export type Page = "home" | "setup" | "control" | "capture" | "sessions" | "playback" | "wifi" | WindowKey;
 
 /** A command, and what to call it in the log. */
 export type Run = (action: () => Promise<unknown>, label?: string) => Promise<void>;
@@ -115,6 +117,8 @@ export default function App() {
   // lib/commandLog.ts. It is not the agent's audit trail.
   const { lines: logLines, push: pushLog, clear: clearLog } = useCommandLog();
   useSessionNarration(session, connected, pushLog);
+  // Stations heard or lost, as one line each (commandLog.ts).
+  useStationNarration(telemetry, pushLog);
 
   // ── connect to the agent ───────────────────────────────────────────
   useEffect(() => {
@@ -412,6 +416,8 @@ export default function App() {
                 run={run}
                 onGo={setPage}
               />
+            ) : page === "control" && open && session?.purpose === "capture" ? (
+              <CaptureLock session={session} onOpenCapture={() => setPage("capture")} />
             ) : page === "control" && open && session && viewMode !== session.mode ? (
               <ModeLock session={session} looking={viewMode} onBack={() => setLookingAt(null)} />
             ) : page === "control" ? (
@@ -425,7 +431,12 @@ export default function App() {
                 logLines={logLines}
                 onClearLog={clearLog}
                 onOpenSessions={() => setPage("sessions")}
+                onOpenCapture={() => setPage("capture")}
               />
+            ) : page === "capture" && session ? (
+              <CapturePage session={session} run={run} onOpenControl={() => setPage("control")} />
+            ) : page === "capture" ? (
+              <Spinner label="Connecting to the flight agent…" />
             ) : page === "setup" ? (
               <SetupPage session={session} setup={setupState} wifi={cameraWifi} run={run} onGo={setPage} />
             ) : page === "wifi" ? (

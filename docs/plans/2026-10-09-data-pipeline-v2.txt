@@ -434,7 +434,7 @@ PHASE 7 — RESULTS IN THE DATABASE (data/pipeline-results)           83–96
   84  RLS: signed-in read (as flights); operators insert/update/delete.
       Grants exactly those (a policy without a grant is a 403 —
       rls-and-grants.txt). anon nothing.
-  85  Outbox Kind.RESULTS; `cropwatcher process --flight` (not --fixture)
+  85  Outbox Kind.RESULTS; `dronedeck process --flight` (not --fixture)
       queues it after result.json is written.
   86  Syncer._send_results, after flights and frames: waits while the
       flight's own row is still pending; uploads enhanced frames to
@@ -450,7 +450,7 @@ PHASE 7 — RESULTS IN THE DATABASE (data/pipeline-results)           83–96
       deletes stale findings, an offline pass leaves everything queued.
   90  Proved on the local stack with the real client: a processed flight's
       result and findings land; re-processing replaces them.
-  91  `cropwatcher process --all-unprocessed` (optional, owner's call at
+  91  `dronedeck process --all-unprocessed` (optional, owner's call at
       step 91): backfill results for flights already on this laptop.
   92  types/database.ts: the two tables.
   93  offline-sync doc and data-model doc updated.

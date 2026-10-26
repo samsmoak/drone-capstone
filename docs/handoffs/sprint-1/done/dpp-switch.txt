@@ -13,11 +13,11 @@ run is in dpp-contract.txt, "HOW THE AGENT RUNS THE PIPELINE".
                   trigger and the results on screen.
   Where           the agent's session; ② Check and ③ Fly (Auto); the Data
                   processing panel (Manual)
-  Your files      backend/agent/cropwatcher/processing.py       the queue
-                  backend/agent/cropwatcher/session.py
+  Your files      backend/agent/dronedeck/processing.py       the queue
+                  backend/agent/dronedeck/session.py
                     (processing_on, set_processing, process_flight)
-                  backend/agent/cropwatcher/history.py  (per-flight state)
-                  backend/agent/cropwatcher/api/rest.py
+                  backend/agent/dronedeck/history.py  (per-flight state)
+                  backend/agent/dronedeck/api/rest.py
                     (POST /session/processing, GET /flights/{id}/result,
                      POST /flights/{id}/process)
                   desktop/src/pages/control/DataPipeline.tsx
@@ -46,7 +46,7 @@ THE SWITCH
       mid-flight is for the next one.
 
 THE QUEUE (processing.py)
-  [x] After the flight's CSV is closed: `cropwatcher process --flight <id>`
+  [x] After the flight's CSV is closed: `dronedeck process --flight <id>`
       in a CHILD PROCESS, at lower priority — never in the agent's process
       (the 50 Hz flight loop and Python's interpreter lock).
   [x] One flight at a time; 15 minutes at most; exit 0 is success, otherwise
@@ -76,7 +76,7 @@ ACCEPTANCE — VERIFIED 2026-09-29
     command that cannot start, order, bad ids), the switch (defaults, read
     at flight start, per session, audited, signed-out refused), processing
     by hand, the routes.
-  - `python -m cropwatcher.cli process --fixture` runs end to end.
+  - `python -m dronedeck.cli process --fixture` runs end to end.
   - desktop: pnpm build; the harness section "③ Fly, landed" shows the
     results; both themes, 720–1600 px.
 

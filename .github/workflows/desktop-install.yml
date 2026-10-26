@@ -98,7 +98,7 @@ jobs:
       - name: node scripts/install.mjs
         env:
           # The Python setup-python installed, not whichever one PATH finds first.
-          CROPWATCHER_PYTHON: ${{ steps.python.outputs.python-path }}
+          DRONEDECK_PYTHON: ${{ steps.python.outputs.python-path }}
         run: node scripts/install.mjs
 
       # The frozen agent must SIGN IN on this machine, not only start: an Intel
@@ -110,7 +110,7 @@ jobs:
         run: |
           PY=backend/agent/.venv/bin/python
           [ -x "$PY" ] || PY=backend/agent/.venv/Scripts/python.exe
-          "$PY" backend/agent/packaging/check_sign_in.py desktop/src-tauri/bin/cropwatcher-agent-*
+          "$PY" backend/agent/packaging/check_sign_in.py desktop/src-tauri/bin/dronedeck-agent-*
 
       # Linux only: the per-user install landed, and its menu entry is valid
       # under the Desktop Entry Specification.
@@ -118,7 +118,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           test -x ~/.local/lib/dronedeck/desktop
-          test -x ~/.local/lib/dronedeck/cropwatcher-agent
+          test -x ~/.local/lib/dronedeck/dronedeck-agent
           test -L ~/.local/bin/dronedeck
           test -f ~/.local/share/icons/hicolor/128x128/apps/dronedeck.png
           desktop-file-validate ~/.local/share/applications/dronedeck.desktop

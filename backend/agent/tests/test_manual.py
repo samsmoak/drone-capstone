@@ -12,14 +12,14 @@ import math
 
 import pytest
 
-from cropwatcher.flight.keyframe import (
+from dronedeck.flight.keyframe import (
     FAR_OPERATOR_M,
     NEAR_OPERATOR_M,
     ActiveFrame,
     KeyFrame,
     Reason,
 )
-from cropwatcher.flight.manual import (
+from dronedeck.flight.manual import (
     CLIMB_ACCEL_M_S2,
     CLIMB_RATE_M_S,
     HEARTBEAT_TIMEOUT_S,

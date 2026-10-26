@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from cropwatcher.flight.keyframe import (
+from dronedeck.flight.keyframe import (
     FAR_OPERATOR_M,
     NEAR_OPERATOR_M,
     ROOM_FORWARD_DEG,

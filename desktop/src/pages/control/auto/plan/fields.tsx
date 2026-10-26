@@ -34,6 +34,9 @@ export function NumberField({
 }) {
   const id = useId();
   const [text, setText] = useState(value.toFixed(2));
+  /** Said when the value kept is not the one typed — a box that quietly put
+   *  5 back where 2 was typed read as "my edit was not saved" (2026-10-25). */
+  const [kept, setKept] = useState<string | null>(null);
   // A drag on the canvas changes the value from outside: follow it.
   useEffect(() => setText(value.toFixed(2)), [value]);
 
@@ -41,11 +44,13 @@ export function NumberField({
     const parsed = Number.parseFloat(text);
     if (!Number.isFinite(parsed)) {
       setText(value.toFixed(2));
+      setKept("Not a number — the value is unchanged");
       return;
     }
-    const kept = Math.min(max ?? Infinity, Math.max(min ?? -Infinity, parsed));
-    onCommit(kept);
-    setText(kept.toFixed(2));
+    const keptValue = Math.min(max ?? Infinity, Math.max(min ?? -Infinity, parsed));
+    onCommit(keptValue);
+    setText(keptValue.toFixed(2));
+    setKept(keptValue === parsed ? null : `Kept to ${limitWords(min, max, unit)}`);
   };
 
   return (
@@ -68,11 +73,23 @@ export function NumberField({
         />
         <span className="text-[var(--muted)]">{unit}</span>
       </span>
-      {hint !== undefined
+      {kept !== null
+        ? <span role="status" className="text-[var(--foreground)]">
+            <span aria-hidden="true" className="text-[var(--status-warning)]">▲ </span>{kept}
+          </span>
+        : hint !== undefined
         ? <span className="text-[var(--muted)]">{hint}</span>
         : unit === "m" && <span className="text-[var(--muted)]">{formatMetres(value)}</span>}
     </label>
   );
+}
+
+/** "2–300 s", "at least 0.05 m", "at most 1.20 m" — the limits a value was kept to. */
+function limitWords(min: number | undefined, max: number | undefined, unit: "m" | "s"): string {
+  const n = (v: number) => String(Number(v.toFixed(2)));
+  if (min !== undefined && max !== undefined) return `${n(min)}–${n(max)} ${unit}`;
+  if (min !== undefined) return `at least ${n(min)} ${unit}`;
+  return `at most ${n(max ?? 0)} ${unit}`;
 }
 
 export function TextField({ label, value, onChange, placeholder, width = "w-full", readOnly = false }: {

@@ -15,8 +15,8 @@ import cv2
 import numpy as np
 import pytest
 
-from cropwatcher.pipeline.contracts import FlightContext, Frame, InspectionPoint, PointData
-from cropwatcher.pipeline.stages.enhance.clahe import (
+from dronedeck.pipeline.contracts import FlightContext, Frame, InspectionPoint, PointData
+from dronedeck.pipeline.stages.enhance.clahe import (
     MIN_BRIGHTNESS,
     MIN_SHARPNESS,
     ClaheEnhancer,

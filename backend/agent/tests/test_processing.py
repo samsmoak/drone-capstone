@@ -11,13 +11,13 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from cropwatcher import history
-from cropwatcher.api import rest
-from cropwatcher.api.tokens import HEADER
-from cropwatcher.processing import JobState, ProcessingQueue, default_command
-from cropwatcher.session import Mode, Session, SessionError, State
-from cropwatcher.sync.cloud import Operator
-from cropwatcher.sync.outbox import Kind, Outbox
+from dronedeck import history
+from dronedeck.api import rest
+from dronedeck.api.tokens import HEADER
+from dronedeck.processing import JobState, ProcessingQueue, default_command
+from dronedeck.session import Mode, Session, SessionError, State
+from dronedeck.sync.cloud import Operator
+from dronedeck.sync.outbox import Kind, Outbox
 from tests.test_session import FakeLink, sign_in, start_and_confirm, wait_for
 from tests.test_sync import FakeCloud
 
@@ -97,7 +97,7 @@ class TestTheQueue:
 
 @pytest.fixture
 def rig(tmp_path, monkeypatch):
-    monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
     cloud = FakeCloud()
     cloud.sign_in = lambda email, password: Operator("user-1", email, "Ada", "operator")
     cloud.sign_out = lambda: None
@@ -259,8 +259,8 @@ def test_a_closed_sessions_flight_is_recorded_in_its_file(tmp_path):
 class TestTheRoutes:
     @pytest.fixture
     def api(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
-        monkeypatch.setenv("CROPWATCHER_STANDBY", "0")
+        monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("DRONEDECK_STANDBY", "0")
         cloud = FakeCloud()
         cloud.sign_in = lambda email, password: Operator("user-1", email, "Ada", "operator")
         session = Session(cloud=cloud, outbox=Outbox(tmp_path / "outbox"),
@@ -349,9 +349,9 @@ class TestResumingAfterTheAppClosed:
 @pytest.mark.parametrize(("setting", "resumed"), [("1", True), ("0", False)])
 def test_the_agent_resumes_as_it_starts_unless_told_not_to(monkeypatch, tmp_path, setting,
                                                            resumed):
-    monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("CROPWATCHER_STANDBY", "0")
-    monkeypatch.setenv("CROPWATCHER_RESUME", setting)
+    monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("DRONEDECK_STANDBY", "0")
+    monkeypatch.setenv("DRONEDECK_RESUME", setting)
     called, closed = [], []
     monkeypatch.setattr(rest.agent.session, "resume_processing", lambda: called.append(1))
     # rest.agent's outbox is the LAPTOP'S OWN — built when the module was
@@ -366,7 +366,7 @@ def test_the_agent_resumes_as_it_starts_unless_told_not_to(monkeypatch, tmp_path
 
 
 class TestProcessAll:
-    """`cropwatcher process --all`: the flights recorded before processing
+    """`dronedeck process --all`: the flights recorded before processing
     existed, or by an older pipeline, get a current result and go to the web."""
 
     @pytest.fixture
@@ -382,11 +382,11 @@ class TestProcessAll:
         (empty / "meta.json").write_text(json.dumps({"id": "empty-session", "flights": [
             {"id": "00000000-0000-4000-8000-000000000000", "mode": "manual",
              "started_at": "2026-09-25T08:00:00+00:00"}]}))
-        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(root))
+        monkeypatch.setenv("DRONEDECK_DATA_DIR", str(root))
         return root
 
     def test_every_flight_is_processed_and_queued_and_an_empty_one_skipped(self, data, capsys):
-        from cropwatcher import cli, paths
+        from dronedeck import cli, paths
 
         assert cli.main(["process", "--all"]) == 0
         out = capsys.readouterr().out
@@ -399,7 +399,7 @@ class TestProcessAll:
         assert meta["flights"][0]["processing"] == "done"
 
     def test_running_it_again_only_does_what_is_left(self, data, capsys):
-        from cropwatcher import cli
+        from dronedeck import cli
 
         cli.main(["process", "--all"])
         capsys.readouterr()
@@ -476,7 +476,7 @@ class TestALivePointVerdict:
         return command
 
     def test_a_completed_point_is_judged_and_shown(self, rig, tmp_path):
-        from cropwatcher.mission.controller import EventKind, MissionEvent
+        from dronedeck.mission.controller import EventKind, MissionEvent
 
         rig.queue._live_command = self.writes_verdict(tmp_path)
         rig.session._flight_id, rig.session._flight_process = "f-air", True
@@ -490,7 +490,7 @@ class TestALivePointVerdict:
         assert live["flight_id"] == "f-air"
 
     def test_a_flight_not_being_processed_is_not_judged_in_flight(self, rig):
-        from cropwatcher.mission.controller import EventKind, MissionEvent
+        from dronedeck.mission.controller import EventKind, MissionEvent
 
         rig.session._flight_id, rig.session._flight_process = "f-air", False
         rig.session._on_mission_event(MissionEvent(EventKind.POINT_COMPLETE, 1.0, "P1",

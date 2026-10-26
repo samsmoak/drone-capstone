@@ -123,7 +123,7 @@ fn agent_data_dir() -> Option<std::path::PathBuf> {
     let home = || {
         std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(PathBuf::from)
     };
-    if let Ok(value) = std::env::var("CROPWATCHER_DATA_DIR") {
+    if let Ok(value) = std::env::var("DRONEDECK_DATA_DIR") {
         let value = value.trim();
         if !value.is_empty() {
             return match value.strip_prefix('~') {
@@ -145,10 +145,10 @@ fn agent_data_dir() -> Option<std::path::PathBuf> {
             None => home()?.join(".local").join("share"),
         }
     };
-    // Still "CropWatcher": the app was renamed DroneDeck on 2026-09-28, but its
-    // data folder (sign-in, sessions, logs — backend/agent/cropwatcher/paths.py)
-    // kept the old name so nobody's record moved.
-    Some(root.join("CropWatcher"))
+    // The agent's data folder (sign-in, sessions, logs — the DroneDeck rename
+    // moved it from CropWatcher to DroneDeck on 2026-10-25; the agent's
+    // dronedeck/paths.py carries an existing folder over on first run).
+    Some(root.join("DroneDeck"))
 }
 
 /// Append a line to the shell's own log, beside the agent's.
@@ -378,9 +378,9 @@ fn spawn_agent(app: &tauri::AppHandle) -> Result<(), String> {
     let token = app.state::<ControlToken>().0.clone();
     let (mut rx, child) = app
         .shell()
-        .sidecar("cropwatcher-agent")
+        .sidecar("dronedeck-agent")
         .map_err(|e| format!("the bundled agent is missing: {e}"))?
-        .env("CROPWATCHER_AGENT_TOKEN", token)
+        .env("DRONEDECK_AGENT_TOKEN", token)
         .env("SUPABASE_URL", configured("SUPABASE_URL", SUPABASE_URL))
         .env("SUPABASE_ANON_KEY", configured("SUPABASE_ANON_KEY", SUPABASE_ANON_KEY))
         // The app reads the AI deck's camera by default. An app opened from
@@ -388,7 +388,7 @@ fn spawn_agent(app: &tauri::AppHandle) -> Result<(), String> {
         // to the environment meant the bundled agent always had no camera.
         // With no deck in reach it retries quietly and the tab says to join
         // the deck's Wi-Fi.
-        .env("CROPWATCHER_CAMERA", configured("CROPWATCHER_CAMERA", "deck"))
+        .env("DRONEDECK_CAMERA", configured("DRONEDECK_CAMERA", "deck"))
         // `--exit-with-parent` is what actually stops the agent. Killing the
         // child below only reaches PyInstaller's bootloader; the real Python
         // process is its child and survives, orphaned onto launchd, still
@@ -510,9 +510,9 @@ mod tests {
 
     #[test]
     fn error_lines_are_recognised() {
-        assert!(looks_like_error("2026-09-25 10:00:00 ERROR cropwatcher: boom"));
+        assert!(looks_like_error("2026-09-25 10:00:00 ERROR dronedeck: boom"));
         assert!(looks_like_error("ERROR:    [Errno 48] error while attempting to bind"));
-        assert!(looks_like_error("2026-09-25 CRITICAL cropwatcher: unhandled exception"));
+        assert!(looks_like_error("2026-09-25 CRITICAL dronedeck: unhandled exception"));
         assert!(looks_like_error("[PYI-4242:ERROR] Failed to execute script 'sidecar'"));
         assert!(looks_like_error("ModuleNotFoundError: No module named 'usb'"));
         assert!(looks_like_error("  OSError: [Errno 30] Read-only file system"));
@@ -520,7 +520,7 @@ mod tests {
 
     #[test]
     fn ordinary_lines_are_not_errors() {
-        assert!(!looks_like_error("2026-09-25 INFO cropwatcher: agent API on 127.0.0.1:8765"));
+        assert!(!looks_like_error("2026-09-25 INFO dronedeck: agent API on 127.0.0.1:8765"));
         assert!(!looks_like_error("INFO:     Uvicorn running on http://127.0.0.1:8765"));
         assert!(!looks_like_error("Looking for devices...."));
         assert!(!looks_like_error("the camera: no picture yet"));
@@ -596,10 +596,10 @@ mod tests {
     #[test]
     fn the_log_path_honours_the_override_like_the_agent() {
         // One test owns this variable; nothing else in the suite reads it.
-        std::env::set_var("CROPWATCHER_DATA_DIR", "/tmp/cw-data");
+        std::env::set_var("DRONEDECK_DATA_DIR", "/tmp/cw-data");
         assert_eq!(agent_data_dir(), Some(std::path::PathBuf::from("/tmp/cw-data")));
-        std::env::remove_var("CROPWATCHER_DATA_DIR");
+        std::env::remove_var("DRONEDECK_DATA_DIR");
         let default = agent_data_dir().expect("a home directory");
-        assert!(default.ends_with("CropWatcher"), "{}", default.display());
+        assert!(default.ends_with("DroneDeck"), "{}", default.display());
     }
 }

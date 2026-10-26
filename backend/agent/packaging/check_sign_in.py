@@ -7,8 +7,8 @@ agent: verify_sidecar.py stays offline on purpose, so it can run on any build.
 This is its online companion, run by CI on every machine it installs on, and
 by hand on a machine where sign-in fails:
 
-    .venv/bin/python packaging/check_sign_in.py <path to cropwatcher-agent>
-    e.g. /Applications/CropWatcher.app/Contents/MacOS/cropwatcher-agent
+    .venv/bin/python packaging/check_sign_in.py <path to dronedeck-agent>
+    e.g. /Applications/DroneDeck.app/Contents/MacOS/dronedeck-agent
 
 It signs in with an account that does not exist. The correct answer is the
 agent's own refusal — HTTP 409, "Could not sign in as …" — because that means
@@ -48,7 +48,7 @@ PORT = 8793
 TOKEN = "check-sign-in"
 LIB_RS = HERE.parent.parent.parent / "desktop" / "src-tauri" / "src" / "lib.rs"
 # A domain reserved for examples (RFC 2606): this account can never exist.
-PROBE_EMAIL = "cropwatcher-sign-in-check@example.com"
+PROBE_EMAIL = "dronedeck-sign-in-check@example.com"
 REFUSED = "Could not sign in as"
 # The agent answers within its own deadline (SIGN_IN_DEADLINE_S, 25 s); this
 # only has to outlast it.
@@ -73,10 +73,10 @@ def check(binary: Path) -> str:
         raise VerificationError(f"port {PORT} is already in use; stop whatever holds it")
     url, key = project()
 
-    with tempfile.TemporaryDirectory(prefix="cropwatcher-sign-in-",
+    with tempfile.TemporaryDirectory(prefix="dronedeck-sign-in-",
                                      ignore_cleanup_errors=True) as work:
         env = _probe_env(str(Path(work) / "data"))
-        env.update(CROPWATCHER_AGENT_TOKEN=TOKEN, SUPABASE_URL=url, SUPABASE_ANON_KEY=key)
+        env.update(DRONEDECK_AGENT_TOKEN=TOKEN, SUPABASE_URL=url, SUPABASE_ANON_KEY=key)
         log_path = Path(work) / "agent.log"
         with open(log_path, "w") as log:
             process = subprocess.Popen(

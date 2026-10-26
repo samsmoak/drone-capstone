@@ -5,7 +5,7 @@ Last verified: 2026-10-11 — re-read after .github/workflows/agent-tests.yml ch
 #101, #102, #103 merged) — tests/mission/ and the whole agent suite: 1438
 passed; review.py's planned time and what_happened re-read against the code.
 No radio: the hardware gates were not run.
-SOURCE: backend/agent/cropwatcher/mission/controller/mission_controller.py
+SOURCE: backend/agent/dronedeck/mission/controller/mission_controller.py
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -43,18 +43,18 @@ stamped with its id. It decides where next and when; never how.
 --------------------------------------------------------------------------------
 2. WHERE IT LIVES
 --------------------------------------------------------------------------------
-backend/agent/cropwatcher/flight/manual.py            fly_to, goal_active,
+backend/agent/dronedeck/flight/manual.py            fly_to, goal_active,
                                                       operator_override
-backend/agent/cropwatcher/mission/controller/events.py       states, events
-backend/agent/cropwatcher/mission/controller/flight.py       MissionFlight
-backend/agent/cropwatcher/mission/controller/mission_controller.py
-backend/agent/cropwatcher/session.py                  run_mission, _do_mission,
+backend/agent/dronedeck/mission/controller/events.py       states, events
+backend/agent/dronedeck/mission/controller/flight.py       MissionFlight
+backend/agent/dronedeck/mission/controller/mission_controller.py
+backend/agent/dronedeck/session.py                  run_mission, _do_mission,
                                                       current_point_id
-backend/agent/cropwatcher/safety/flight_guard.py      GuardContext.fence
-backend/agent/cropwatcher/telemetry/row.py            TelemetryRow.point_id
-backend/agent/cropwatcher/camera/recording.py         frames.csv point_id
-backend/agent/cropwatcher/sync/cloud.py               without_empty_point_id
-backend/agent/cropwatcher/cli.py                      `cropwatcher mission`
+backend/agent/dronedeck/safety/flight_guard.py      GuardContext.fence
+backend/agent/dronedeck/telemetry/row.py            TelemetryRow.point_id
+backend/agent/dronedeck/camera/recording.py         frames.csv point_id
+backend/agent/dronedeck/sync/cloud.py               without_empty_point_id
+backend/agent/dronedeck/cli.py                      `dronedeck mission`
 backend/supabase/migrations/20260928000012_telemetry_point_id.sql
 
 --------------------------------------------------------------------------------
@@ -172,9 +172,9 @@ THE TEAM'S PRs FOR THESE TICKETS (2026-10-10, merged in #104)
                 speed) and what_happened (why a flight stopped).
 
 WHERE IT LIVES
-  backend/agent/cropwatcher/mission/controller/mission_controller.py  the body
-  backend/agent/cropwatcher/mission/review.py        the mission report
-  backend/agent/cropwatcher/cli.py                   `cropwatcher mission-report`
+  backend/agent/dronedeck/mission/controller/mission_controller.py  the body
+  backend/agent/dronedeck/mission/review.py        the mission report
+  backend/agent/dronedeck/cli.py                   `dronedeck mission-report`
   backend/agent/tests/sim_drone.py                   the simulated drone
   backend/agent/tests/test_sim_drone.py
   backend/agent/tests/mission/test_controller.py     one test or more per rule
@@ -206,7 +206,7 @@ DECISIONS
   drone at the point while it is stamped, and the report shows the height
   error beside the x-y drift (stateEstimate.z − posCtl.targetZ: no floor
   needed). ARRIVE_M is suggested from x-y only, as the controller uses it.
-• THE REPORT READS ONLY WHAT AN APP FLIGHT WRITES. `cropwatcher mission`
+• THE REPORT READS ONLY WHAT AN APP FLIGHT WRITES. `dronedeck mission`
   (the terminal) writes no trace and no plan flown, and records under the
   flight id "cli" — the report says so and exits non-zero. Fly the lab rungs
   from the app.
@@ -241,7 +241,7 @@ FOUND, NOT FIXED — outside both tickets; Samuel's call
   here, not changed: the mission path now refuses and names the lock instead
   of flying blind. Whether the cut-from-5 cm is what trips the lock is NOT
   YET MEASURED.
-• `cropwatcher mission` DOES check BUILT (cli.py, since 0ca26ba, 2026-09-28)
+• `dronedeck mission` DOES check BUILT (cli.py, since 0ca26ba, 2026-09-28)
   — so with BUILT = True it flies the drone, as designed.
   (This line said "no BUILT check" until 2026-10-01: wrong, corrected after
   reading the code.) What is still true: it writes no trace and no plan

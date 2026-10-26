@@ -1,4 +1,4 @@
-# CropWatcher desktop
+# DroneDeck desktop
 
 The Tauri app that bundles the flight agent. How it works, how to build it, and
 the rules that cost time to discover: [docs/features/desktop/desktop-app.txt](../docs/features/desktop/desktop-app.txt).

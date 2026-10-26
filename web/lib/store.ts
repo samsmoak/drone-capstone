@@ -70,7 +70,7 @@ export const useLiveStore = create<LiveState>((set) => ({
 
 /* ── manual control ───────────────────────────────────────────────────── */
 
-/** Held-key state. Mirrors `Intent` in `backend/agent/cropwatcher/api/manual.py` field for field. */
+/** Held-key state. Mirrors `Intent` in `backend/agent/dronedeck/api/manual.py` field for field. */
 export type Intent = {
   up: boolean;
   down: boolean;

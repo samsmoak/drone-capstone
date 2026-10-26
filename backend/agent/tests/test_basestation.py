@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from cropwatcher.flight import basestation as bs
+from dronedeck.flight import basestation as bs
 
 
 class FakeStation:

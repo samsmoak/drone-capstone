@@ -7,9 +7,9 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
-from cropwatcher.sync import samples
-from cropwatcher.sync.outbox import Kind, Outbox
-from cropwatcher.sync.syncer import Syncer
+from dronedeck.sync import samples
+from dronedeck.sync.outbox import Kind, Outbox
+from dronedeck.sync.syncer import Syncer
 from tests.test_sync import FakeCloud
 
 HEADER = ["recorded_at", "mode", "height_m", "baro.pressure", "baro.temp", "kalman.varPX",
@@ -89,7 +89,7 @@ class TestTheUpload:
         assert outbox.count_pending(Kind.SAMPLES) == 0
 
     def test_an_upload_that_fails_keeps_the_rows_for_next_time(self, tmp_path):
-        from cropwatcher.sync.cloud import CloudError
+        from dronedeck.sync.cloud import CloudError
         outbox, cloud, syncer = self.rig(tmp_path)
         folder = tmp_path / "sessions" / "s-1"
         write_samples(folder, 2)

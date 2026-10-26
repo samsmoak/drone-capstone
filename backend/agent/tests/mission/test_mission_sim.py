@@ -13,7 +13,7 @@ import math
 
 import pytest
 
-from cropwatcher.flight.manual import (
+from dronedeck.flight.manual import (
     CLIMB_RATE_M_S,
     HEARTBEAT_TIMEOUT_S,
     LAND_S,
@@ -23,17 +23,17 @@ from cropwatcher.flight.manual import (
     Intent,
     ManualController,
 )
-from cropwatcher.mission.controller import (
+from dronedeck.mission.controller import (
     TERMINAL_STATES,
     EventKind,
     MissionController,
     MissionEvent,
     MissionState,
 )
-from cropwatcher.mission.controller.events import TERMINAL_EVENTS
-from cropwatcher.mission.controller.mission_controller import ARRIVE_M, SETTLE_S
-from cropwatcher.mission.plan.mission import Mission
-from cropwatcher.mission.plan.validate import errors, validate_mission
+from dronedeck.mission.controller.events import TERMINAL_EVENTS
+from dronedeck.mission.controller.mission_controller import ARRIVE_M, SETTLE_S
+from dronedeck.mission.plan.mission import Mission
+from dronedeck.mission.plan.validate import errors, validate_mission
 from tests.mission.plans import OUTER, mission, room
 from tests.sim_drone import MANUAL_TICK_S, SimDrone
 

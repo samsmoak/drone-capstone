@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from cropwatcher.flight.tuning import (
+from dronedeck.flight.tuning import (
     BAROMETER_PROFILE,
     BASE_PROFILE,
     MEASURED_HOVER_THRUST,
@@ -92,7 +92,7 @@ def test_no_parameter_store_means_nothing_applied():
 
 
 def test_link_applies_both_profiles_on_the_barometer_and_restores_after(monkeypatch):
-    from cropwatcher.flight.link import DroneLink
+    from dronedeck.flight.link import DroneLink
     from tests.test_link import REPORT, FakeStream, make_link
 
     param = FakeParam(FIRMWARE | {"stabilizer.estimator": "2"})
@@ -240,7 +240,7 @@ class TestConfirmWaitsForTheDrone:
                 param.values[name] = "2"
         param.set_value = stuck
 
-        import cropwatcher.flight.tuning as tuning_module
+        import dronedeck.flight.tuning as tuning_module
         original = tuning_module.CONFIRM_TIMEOUT_S
         tuning_module.CONFIRM_TIMEOUT_S = 0.2            # do not wait 2 s in a test
         try:

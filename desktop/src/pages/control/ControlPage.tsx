@@ -39,11 +39,12 @@ import { Button, Message, PageHeader, Panel, Spinner, Stat, StatusDot, TONE_COLO
 import { SplitPane } from "@/components/SplitPane";
 import { useMediaQuery, WIDE } from "@/lib/useMediaQuery";
 import { AutoControl } from "./auto/AutoControl";
-import { DataPipelinePanel, ProcessingSwitch } from "./DataPipeline";
+import { CaptureSwitch, DataPipelinePanel, ProcessingSwitch } from "./DataPipeline";
 import { ArrowFrame } from "./ArrowFrame";
 import { arrowWords } from "@/lib/arrows";
 import type { FlowStart } from "./auto/MissionFlow";
 import { ConsolePane } from "./ConsolePane";
+import { ManualMap } from "./ManualMap";
 import { VitalsNow } from "./VitalsNow";
 
 type Props = {
@@ -59,10 +60,13 @@ type Props = {
   onClearLog: () => void;
   /** Recent sessions moved off this page; the header links to Sessions. */
   onOpenSessions: () => void;
+  /** The Capture page — offered here while a session runs. */
+  onOpenCapture?: () => void;
 };
 
 export function ControlPage({
-  session, telemetry, history, intent, run, logLines, onClearLog, onOpenSessions, autoStart,
+  session, telemetry, history, intent, run, logLines, onClearLog, onOpenSessions, onOpenCapture,
+  autoStart,
 }: Props) {
   // Below `lg` the two columns stack, so there is no divider to drag and the
   // split would be splitting nothing.
@@ -85,9 +89,16 @@ export function ControlPage({
           {/* The DPP switch: at the top, in both modes, on by default (the
               owner, 2026-10-09) — DataPipeline.tsx. */}
           <ProcessingSwitch session={session} run={run} />
+          {/* Auto-capture beside it, in both modes, on by default (2026-10-24). */}
+          <CaptureSwitch session={session} run={run} />
           {/* The recent-sessions list used to sit full-width at the foot of this
               page, duplicating the Sessions page and taking the width the console
               wanted. One link does the same job. */}
+          {/* Capturing by hand has its own page (2026-10-24); during a
+              session, this is the way there — the same session. */}
+          {onOpenCapture && session.session_id !== null && (
+            <Button onClick={onOpenCapture}>Capture images →</Button>
+          )}
           <Button onClick={onOpenSessions}>Recent sessions →</Button>
         </div>
       </div>
@@ -124,7 +135,7 @@ export function ControlPage({
         // the controls are mostly buttons at a fixed size.
         <SplitPane
           orientation="vertical"
-          storageKey="cropwatcher.split.control"
+          storageKey="dronedeck.split.control"
           defaultFraction={0.60}
           label="Console and controls"
           // A FLOOR, not a cap (2026-09-24): both columns grow with their
@@ -135,7 +146,8 @@ export function ControlPage({
             // A flex COLUMN, like the second: ConsolePane's `fill` is flex-1,
             // which only takes height from a flex parent. As a plain block the
             // console was content-tall — Vitals and Camera have content and
-            // hid it, but the Scene is only a canvas and collapsed to 0 px.
+            // hid it, but a canvas-only tab (the Scene, since deleted)
+            // collapsed to 0 px.
             //
             // A FIXED height, one window, and `self-start` so the row cannot
             // stretch it (2026-09-24): with the columns flowing, every new
@@ -148,6 +160,7 @@ export function ControlPage({
                 logLines={logLines}
                 onClearLog={onClearLog}
                 fill
+                map={<ManualMap session={session} telemetry={telemetry} history={history} run={run} />}
               />
             </div>
           }
@@ -195,6 +208,7 @@ export function ControlPage({
             history={history}
             logLines={logLines}
             onClearLog={onClearLog}
+            map={<ManualMap session={session} telemetry={telemetry} history={history} run={run} />}
           />
         </div>
       )}
@@ -556,22 +570,37 @@ export function Checklist({ session, run }: { session: Session; run: Run }) {
             </p>
           )}
           {unassisted && (
-            <p className="text-xs leading-relaxed">
-              <strong>It cannot catch itself.</strong> No base stations: height from the
-              barometer, drifting tens of centimetres. No position hold, no drift
-              landing. Manual only.
-            </p>
+            <>
+              {/* WHY, FIRST (2026-10-24): a manual flight went up on the
+                  barometer, bounced by over a metre, and nothing on screen had
+                  said the stations were not seen. The agent's own words. */}
+              {session.unassisted_reason && (
+                <p className="text-xs leading-relaxed"><strong>No base station position.</strong> {session.unassisted_reason}</p>
+              )}
+              <p className="text-xs leading-relaxed">
+                <strong>It cannot catch itself.</strong> No base stations: height from the
+                barometer, drifting tens of centimetres. No position hold, no drift
+                landing. Manual only.
+              </p>
+            </>
           )}
-          <div className="pt-1">
+          <div className="flex flex-wrap gap-2 pt-1">
+            {unassisted && (
+              // Looking again is the first choice: barometer flight is the
+              // deliberate one (Samuel, 2026-10-24).
+              <Button variant="primary" onClick={() => void run(api.retry, "Look for the base stations again")}>
+                Look again for the base stations
+              </Button>
+            )}
             <Button
-              variant="primary"
+              variant={unassisted ? "secondary" : "primary"}
               onClick={() => void run(
                 () => api.confirmArea(unassisted),
                 unassisted ? "Confirm the area — flying by eye" : "Confirm the area",
               )}
             >
               {unassisted
-                ? "Confirm — I am flying it by eye"
+                ? "Fly on the barometer — I am flying it by eye"
                 : "Confirm the area is clear"}
             </Button>
           </div>

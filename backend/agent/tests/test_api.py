@@ -10,11 +10,11 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from cropwatcher.api import rest
-from cropwatcher.api.tokens import HEADER
-from cropwatcher.session import Session, State
-from cropwatcher.sync.cloud import Operator
-from cropwatcher.sync.outbox import Outbox
+from dronedeck.api import rest
+from dronedeck.api.tokens import HEADER
+from dronedeck.session import Session, State
+from dronedeck.sync.cloud import Operator
+from dronedeck.sync.outbox import Outbox
 from tests.test_session import FakeLink
 from tests.test_sync import FakeCloud
 
@@ -42,10 +42,10 @@ COMMANDS = [
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
-    monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
     # Standby is exercised in test_session.py, driven step by step; a
     # background loop here would race every API test.
-    monkeypatch.setenv("CROPWATCHER_STANDBY", "0")
+    monkeypatch.setenv("DRONEDECK_STANDBY", "0")
     cloud = FakeCloud()
     cloud.sign_in = lambda email, password: Operator("user-1", email, "Ada", "operator")
     cloud.sign_out = lambda: None
@@ -96,11 +96,11 @@ class TestControlToken:
 
 class TestSessionFlow:
     def test_sign_in_then_checks_then_confirm_then_fly(self, client, monkeypatch):
-        from cropwatcher.flight.programs import Outcome, ProgramResult
-        from cropwatcher.safety.flight_guard import Reason
+        from dronedeck.flight.programs import Outcome, ProgramResult
+        from dronedeck.safety.flight_guard import Reason
 
         monkeypatch.setattr(
-            "cropwatcher.session.run_hover_test",
+            "dronedeck.session.run_hover_test",
             lambda flight, program: ProgramResult(Outcome.COMPLETED, Reason.NONE, "done"),
         )
         headers = auth(client)
@@ -316,7 +316,7 @@ class TestHistoryApi:
         assert client.get("/history/sessions").status_code == 401
 
     def test_lists_sessions_and_reads_samples(self, client):
-        from cropwatcher.history import SessionLog, SessionMeta
+        from dronedeck.history import SessionLog, SessionMeta
 
         log_ = SessionLog(SessionMeta(
             id="3f1c2a", operator_id="u", operator_email="ada@example.com", operator_name="Ada",
@@ -420,23 +420,37 @@ class TestArrowKeyControls:
         assert "not reporting a position" in response.json()["detail"]
 
 
-class TestSetupInstall:
-    @pytest.fixture(autouse=True)
-    def signed_in(self, client):
-        # Set up runs only from IDLE: signed in, no drone session.
-        client.post("/auth/sign-in", json={"email": "a@b.c", "password": "x"},
-                    headers=auth(client))
+class TestStationSpace:
+    def test_no_drone_is_no_room(self, client):
+        body = client.get("/station/space", headers=auth(client)).json()
+        assert body["predicted"] is None
+        assert body["fence_half_extent_m"] > 0
 
-    def test_install_takes_no_body_or_the_parts_to_reinstall(self, client, monkeypatch):
-        asked: list[tuple] = []
-        monkeypatch.setattr(rest.agent.setup, "install",
-                            lambda again=(): asked.append(tuple(again)))
-        assert client.post("/setup/install", headers=auth(client)).status_code == 200
+    def test_a_prediction_is_sent_whole(self, client, monkeypatch):
+        from dronedeck.mission.plan.coverage import Prediction
+        monkeypatch.setattr(rest.agent.session, "manual_space",
+                            lambda: Prediction(0.1, 1.0, ((0.5, ((0, 0), (1, 0), (0, 1))),), None))
+        body = client.get("/station/space", headers=auth(client)).json()
+        assert body["predicted"]["z_min_m"] == 0.1
+        assert body["predicted"]["slices"][0]["outline"] == [[0, 0], [1, 0], [0, 1]]
+
+    def test_it_needs_the_agent_token(self, client):
+        assert client.get("/station/space").status_code in (401, 403)
+
+
+class TestSetupCommand:
+    def test_the_page_gets_the_command_for_this_machine(self, client):
+        body = client.get("/setup/command", headers=auth(client)).json()
+        assert body["command"].endswith("setup")
+        assert body["check"] == body["command"] + " --check"
+
+    def test_it_needs_the_agent_token(self, client):
+        assert client.get("/setup/command").status_code in (401, 403)
+
+
+class TestSetupWritesNothing:
+    def test_there_is_no_install_route(self, client):
+        """Installing is a terminal command only: no route may flash the drone."""
+        assert client.post("/setup/install", headers=auth(client)).status_code in (404, 405)
         assert client.post("/setup/install", json={"reinstall": ["camera"]},
-                           headers=auth(client)).status_code == 200
-        assert asked == [(), ("camera",)]
-
-    def test_an_unknown_part_is_a_readable_refusal(self, client):
-        response = client.post("/setup/install", json={"reinstall": ["gap8"]},
-                               headers=auth(client))
-        assert response.status_code == 409 and "gap8" in response.json()["detail"]
+                           headers=auth(client)).status_code in (404, 405)

@@ -33,10 +33,11 @@ import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "
 import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
 import { Edges, GizmoHelper, GizmoViewport, Line, OrbitControls } from "@react-three/drei";
 import {
-  BufferGeometry, CanvasTexture, Color, DoubleSide, Float32BufferAttribute, FrontSide, Plane, Quaternion, Shape,
-  SRGBColorSpace, Vector3, type PerspectiveCamera,
+  BufferGeometry, CanvasTexture, Color, DoubleSide, Float32BufferAttribute, FrontSide, Matrix4, Plane, Quaternion,
+  Shape, SRGBColorSpace, Vector3, type PerspectiveCamera,
 } from "three";
-import type { Geofence, InspectionPoint, Obstacle, OuterBound, Problem, XY } from "@/lib/agent";
+import type { Geofence, InspectionPoint, Obstacle, OuterBound, Problem, StationMarker, XY } from "@/lib/agent";
+import { fovEdges, stationLabel } from "./stations";
 import {
   circleFence, circleOf, clamp, cm, dimensionsOf, mapBox, MIN_SIZE_M, moveObstacle, obstacleFrom,
   rectangleFence, rectangleOf, resizeRectangle, type Box,
@@ -44,6 +45,7 @@ import {
 import { landsAt, legsOf, unflownIds, type PathSource } from "./path";
 import { insideOutline, type SpaceLayer } from "./space";
 import type { Trail } from "./trail";
+import { KEY_DIRECTIONS, unit, type KeyArrows } from "./keyArrows";
 import { isRoomObject, sameHandle, type Handle, type PointState } from "./PlanCanvas";
 
 /** What of drei's OrbitControls this file uses — the orbit's centre, and
@@ -89,6 +91,15 @@ export type Room3DProps = {
   space?: SpaceLayer | null;
   /** Playback: the path a recorded flight flew, at its heights (trail.ts). */
   trail?: Trail | null;
+  /** The measured base stations, drawn as tripods (stations.ts). */
+  stations?: StationMarker[];
+  /** Manual: where each arrow key moves the drone now (keyArrows.ts). */
+  keyArrows?: KeyArrows | null;
+  /** Manual draws the drone larger, to be read while flying. */
+  droneScale?: number;
+  /** The position is lost: the drone stays where it was last placed, ringed
+   *  in the warning colour. */
+  droneLost?: boolean;
   label: string;
 };
 
@@ -126,7 +137,7 @@ function usePalette(el: HTMLElement | null): Palette {
 
 const FADED = 0.18;
 /** The drone is drawn 1.5× its 92 mm size so it can be found in a 4 m room. */
-const DRONE_SCALE = 1.5;
+const BASE_DRONE_SCALE = 1.5;
 
 export default function Room3D(props: Room3DProps) {
   const host = useRef<HTMLDivElement>(null);
@@ -172,7 +183,7 @@ export default function Room3D(props: Room3DProps) {
 function Scene({
   outer, fence, obstacles, path, takeoffHeight, problems, drone, droneHeight, droneYaw,
   progress, editing, selected: shownSelected, onSelect, camera, palette, box, moved, space = null,
-  trail = null,
+  trail = null, stations = [], keyArrows = null, droneScale = 1, droneLost = false,
 }: Room3DProps & { palette: Palette; box: Box; moved: (e: { clientX: number; clientY: number }) => boolean }) {
   const current = editing?.selected ?? shownSelected ?? null;
   const select = editing?.onSelect ?? onSelect;
@@ -200,7 +211,15 @@ function Scene({
     <>
       <ambientLight intensity={0.75} />
       <directionalLight position={[box.xMin - 2, box.yMin - 3, 6]} intensity={1.1} />
-      <CameraRig box={box} ceiling={ceiling} camera={camera} />
+      {/* The camera frames the stations too: they stand at the room's edges,
+          and "Fit room" cutting a tripod off hides where it is. */}
+      <CameraRig box={stations.length ? {
+        ...box,
+        xMin: Math.min(box.xMin, ...stations.map((st) => st.origin[0] - 0.3)),
+        xMax: Math.max(box.xMax, ...stations.map((st) => st.origin[0] + 0.3)),
+        yMin: Math.min(box.yMin, ...stations.map((st) => st.origin[1] - 0.3)),
+        yMax: Math.max(box.yMax, ...stations.map((st) => st.origin[1] + 0.3)),
+      } : box} ceiling={Math.max(ceiling, ...stations.map((st) => st.origin[2] + 0.3))} camera={camera} />
       <OrbitControls makeDefault enableDamping={false} maxPolarAngle={Math.PI / 2 - 0.01}
                      minDistance={0.3} maxDistance={40} />
 
@@ -264,7 +283,11 @@ function Scene({
         </group>
       ))}
 
-      {drone && <Drone at={drone} height={droneHeight ?? 0} yaw={droneYaw ?? 0} palette={palette} box={box} />}
+      {drone && <Drone at={drone} height={droneHeight ?? 0} yaw={droneYaw ?? 0} palette={palette} box={box}
+                       scale={droneScale} keyArrows={keyArrows} lost={droneLost} />}
+
+      <RoomOrigin palette={palette} />
+      {stations.map((st) => <BaseStation key={st.id ?? stationLabel(st)} station={st} palette={palette} />)}
 
       <GizmoHelper alignment="bottom-right" margin={[56, 56]}>
         <GizmoViewport labels={["L", "W", "H"]} axisColors={[palette.critical, palette.good, palette.primary]}
@@ -895,14 +918,19 @@ function StartPad({ at, palette, opacity, bad, selected, editing, box, select, m
 
 /** The Crazyflie, roughly to scale (1.5×): a body, four arms, four rotors, a
  *  green ring on the floor under it, and a "D" that always faces the camera. */
-function Drone({ at, height, yaw, palette }: { at: XY; height: number; yaw: number; palette: Palette; box: Box }) {
+function Drone({ at, height, yaw, palette, scale: bigger = 1, keyArrows = null, lost = false }: {
+  at: XY; height: number; yaw: number; palette: Palette; box: Box;
+  scale?: number; keyArrows?: KeyArrows | null; lost?: boolean;
+}) {
+  const ring = lost ? palette.warning : palette.good;
+  const DRONE_SCALE = BASE_DRONE_SCALE * bigger;
   const arm = 0.046 * DRONE_SCALE;
   const z = Math.max(0.02, height);
   return (
     <group>
       <mesh position={[at[0], at[1], 0.005]}>
         <ringGeometry args={[0.09, 0.12, 32]} />
-        <meshBasicMaterial color={palette.good} />
+        <meshBasicMaterial color={ring} />
       </mesh>
       {height > 0.03 && (
         <Line points={[[at[0], at[1], 0], [at[0], at[1], z]]} color={palette.good} lineWidth={1} dashed dashSize={0.03} gapSize={0.03} />
@@ -933,7 +961,40 @@ function Drone({ at, height, yaw, palette }: { at: XY; height: number; yaw: numb
           <meshBasicMaterial color={palette.critical} />
         </mesh>
       </group>
-      <TextLabel text="D" position={[at[0], at[1], z + 0.12]} palette={palette} ring={palette.good} />
+      <TextLabel text="D" position={[at[0], at[1], z + 0.12 * bigger]} palette={palette} ring={ring} />
+      {keyArrows && <KeyArrows3D at={at} z={z} arrows={keyArrows} scale={bigger} palette={palette} />}
+    </group>
+  );
+}
+
+/** The arrow keys round the drone, flat at its height: where ↑ ← ↓ → move it
+ *  now (keyArrows.ts). F in the primary colour and thicker; each letter faces
+ *  the camera. The nose is the red bead on the drone itself. */
+function KeyArrows3D({ at, z, arrows, scale, palette }: {
+  at: XY; z: number; arrows: KeyArrows; scale: number; palette: Palette;
+}) {
+  const from = 0.15 * scale;
+  const to = 0.42 * scale;
+  return (
+    <group>
+      {KEY_DIRECTIONS.map((d) => {
+        const deg = arrows.forwardDeg + d.offsetDeg;
+        const [ux, uy] = unit(deg);
+        const main = d.letter === "F";
+        const colour = main ? palette.primary : palette.foreground;
+        return (
+          <group key={d.letter}>
+            <Line points={[[at[0] + ux * from, at[1] + uy * from, z], [at[0] + ux * (to - 0.05 * scale), at[1] + uy * (to - 0.05 * scale), z]]}
+                  color={colour} lineWidth={main ? 4 : 2.5} />
+            <mesh position={[at[0] + ux * to, at[1] + uy * to, z]} rotation={[0, 0, ((deg - 90) * Math.PI) / 180]}>
+              <coneGeometry args={[0.035 * scale, 0.09 * scale, 16]} />
+              <meshBasicMaterial color={colour} />
+            </mesh>
+            <TextLabel text={d.letter} position={[at[0] + ux * (to + 0.11 * scale), at[1] + uy * (to + 0.11 * scale), z]}
+                       palette={palette} strong={main} />
+          </group>
+        );
+      })}
     </group>
   );
 }
@@ -947,6 +1008,82 @@ function Drone({ at, height, yaw, palette }: { at: XY; height: number; yaw: numb
  * warns about unmounting them mid-render — and not <Text>, which downloads
  * a font the window's content policy would refuse.
  */
+// ── the base stations and the room's own frame (2026-10-24) ──────────────
+
+/** How far each station's facing and its left/right are drawn, in metres. */
+const FACING_M = 0.7;
+const SIDE_M = 0.32;
+
+/**
+ * One base station as it stands: a tripod from the floor to its head, the
+ * head turned the way the drone measured it, the edges of what it sweeps
+ * (its 150° × 110° field of view, FACING_M long), L and R as seen standing
+ * behind it, and its channel. Where it stands is the drone's stored geometry:
+ * as right as the last measurement, not tracked.
+ */
+function BaseStation({ station: st, palette }: { station: StationMarker; palette: Palette }) {
+  const [x, y, z] = st.origin;
+  const head: [number, number, number] = [x, y, Math.max(0.05, z)];
+  const quaternion = useMemo(() => new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(
+    new Vector3(...st.forward), new Vector3(...st.left), new Vector3(...st.up))), [st.forward, st.left, st.up]);
+  const at = (dir: [number, number, number], m: number): [number, number, number] =>
+    [head[0] + dir[0] * m, head[1] + dir[1] * m, head[2] + dir[2] * m];
+  const right: [number, number, number] = [-st.left[0], -st.left[1], -st.left[2]];
+  const feet = [0, 120, 240].map((deg) => {
+    const r = (deg * Math.PI) / 180;
+    return [x + Math.cos(r) * 0.22, y + Math.sin(r) * 0.22, 0] as [number, number, number];
+  });
+  const edges = fovEdges(st);
+  return (
+    <group>
+      {feet.map((foot, i) => (
+        <Line key={i} points={[foot, [x, y, head[2] - 0.06]]} color={palette.foreground} lineWidth={2} />
+      ))}
+      <mesh position={head} quaternion={quaternion}>
+        <boxGeometry args={[0.08, 0.1, 0.1]} />
+        <meshStandardMaterial color={palette.foreground} />
+      </mesh>
+      {/* Its face, so the box reads as having a front. */}
+      <mesh position={at(st.forward, 0.045)} quaternion={quaternion}>
+        <boxGeometry args={[0.006, 0.08, 0.08]} />
+        <meshBasicMaterial color={palette.primary} />
+      </mesh>
+      {edges.map((dir, i) => (
+        <Line key={i} points={[head, at(dir, FACING_M)]} color={palette.primary} lineWidth={1} transparent opacity={0.55} />
+      ))}
+      <Line points={[...edges.map((dir) => at(dir, FACING_M)), at(edges[0], FACING_M)]}
+            color={palette.primary} lineWidth={1} transparent opacity={0.55} />
+      <Line points={[head, at(st.forward, FACING_M)]} color={palette.primary} lineWidth={2.5} />
+      <Line points={[head, at(st.left, SIDE_M)]} color={palette.muted} lineWidth={2} />
+      <Line points={[head, at(right, SIDE_M)]} color={palette.muted} lineWidth={2} />
+      <TextLabel text="L" position={at(st.left, SIDE_M + 0.05)} palette={palette} quiet />
+      <TextLabel text="R" position={at(right, SIDE_M + 0.05)} palette={palette} quiet />
+      <TextLabel text={`${stationLabel(st)} · ${z.toFixed(2)} m up`} position={[head[0], head[1], head[2] + 0.18]}
+                 palette={palette} strong />
+    </group>
+  );
+}
+
+/** (0, 0, 0) — where the drone sat when the stations were measured — and the
+ *  room's forward, +x: the way the drone flies when told forward. */
+function RoomOrigin({ palette }: { palette: Palette }) {
+  return (
+    <group>
+      <mesh position={[0, 0, 0.004]}>
+        <ringGeometry args={[0.05, 0.075, 32]} />
+        <meshBasicMaterial color={palette.critical} />
+      </mesh>
+      <Line points={[[0, 0, 0.006], [0.55, 0, 0.006]]} color={palette.critical} lineWidth={2.5} />
+      <mesh position={[0.58, 0, 0.006]} rotation={[0, 0, -Math.PI / 2]}>
+        <coneGeometry args={[0.035, 0.08, 16]} />
+        <meshBasicMaterial color={palette.critical} />
+      </mesh>
+      <TextLabel text="Forward" position={[0.7, 0, 0.06]} palette={palette} />
+      <TextLabel text="Origin 0, 0" position={[0, -0.14, 0.06]} palette={palette} quiet />
+    </group>
+  );
+}
+
 function TextLabel({ text, position, palette, strong = false, quiet = false, ring, opacity = 1 }: {
   text: string;
   position: [number, number, number];

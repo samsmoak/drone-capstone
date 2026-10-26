@@ -11,11 +11,11 @@ ticket and the code disagree, the code wins.
   Stories         Autonomous flight (the session's half); 3.4 (holds).
   Where           Auto › Control › ② Check and ③ Fly (the desktop app);
                   the session in the agent
-  Your files      backend/agent/cropwatcher/mission/plan/mission.py
+  Your files      backend/agent/dronedeck/mission/plan/mission.py
                     (from_start, flown_points, returns_home, end_point_id)
-                  backend/agent/cropwatcher/session.py
+                  backend/agent/dronedeck/session.py
                     (run_mission, mission_from_drone)
-                  backend/agent/cropwatcher/api/rest.py
+                  backend/agent/dronedeck/api/rest.py
                     (GET /missions/{id}/from-drone)
                   desktop/src/pages/control/auto/CheckStep.tsx   (StartCheck)
                   desktop/src/pages/control/auto/FlyStep.tsx

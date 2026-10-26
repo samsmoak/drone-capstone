@@ -24,7 +24,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend" / "agent"))
 
-from cropwatcher.pipeline.stages.enhance.clahe import (  # noqa: E402
+from dronedeck.pipeline.stages.enhance.clahe import (  # noqa: E402
     CLIP_LIMIT,
     TILE_GRID,
     measure_quality,

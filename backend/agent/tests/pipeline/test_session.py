@@ -4,7 +4,7 @@ data comes, not only data in flight").
 
 Synthetic sessions, built here, so each rule is checked on numbers we chose:
 the cleaner at 1 Hz, the ground stretches, the ground classifier, the source,
-the words, and `cropwatcher process --session` / `--all`.
+the words, and `dronedeck process --session` / `--all`.
 """
 
 from __future__ import annotations
@@ -18,20 +18,20 @@ from pathlib import Path
 
 import pytest
 
-from cropwatcher.pipeline import PIPELINE_VERSION
-from cropwatcher.pipeline.compose import session_stages
-from cropwatcher.pipeline.contracts import (
+from dronedeck.pipeline import PIPELINE_VERSION
+from dronedeck.pipeline.compose import session_stages
+from dronedeck.pipeline.contracts import (
     WHOLE_SESSION,
     FlightContext,
     InspectionPoint,
     PointData,
     Reading,
 )
-from cropwatcher.pipeline.runner import run_session
-from cropwatcher.pipeline.sinks import LocalResultSink
-from cropwatcher.pipeline.sources import LocalSessionSource, SessionNotFound
-from cropwatcher.pipeline.stages.classify import ground
-from cropwatcher.pipeline.stages.clean.robust import RobustCleaner
+from dronedeck.pipeline.runner import run_session
+from dronedeck.pipeline.sinks import LocalResultSink
+from dronedeck.pipeline.sources import LocalSessionSource, SessionNotFound
+from dronedeck.pipeline.stages.classify import ground
+from dronedeck.pipeline.stages.clean.robust import RobustCleaner
 
 T0 = datetime(2026, 10, 9, 18, 0, 0, tzinfo=UTC)
 SID = "5e550000-0000-4000-8000-000000000001"
@@ -230,11 +230,11 @@ class TestTheCommand:
     def data(self, tmp_path, monkeypatch):
         root = tmp_path / "data"
         write_session(root, seconds=200, frames=(10, 20))
-        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(root))
+        monkeypatch.setenv("DRONEDECK_DATA_DIR", str(root))
         return root
 
     def test_process_session_saves_a_session_result_and_records_it(self, data, capsys):
-        from cropwatcher import cli, paths
+        from dronedeck import cli, paths
 
         assert cli.main(["process", "--session", SID]) == 0
         out = json.loads((paths.results_dir() / "sessions" / SID / "result.json").read_text())
@@ -244,7 +244,7 @@ class TestTheCommand:
             == "done"
 
     def test_all_processes_sessions_too_and_only_once(self, data, capsys):
-        from cropwatcher import cli
+        from dronedeck import cli
 
         cli.main(["process", "--all"])
         assert "processed 1 session(s)" in capsys.readouterr().out
@@ -252,6 +252,6 @@ class TestTheCommand:
         assert "processed 0 session(s)" in capsys.readouterr().out
 
     def test_a_bad_id_is_refused(self, data, capsys):
-        from cropwatcher import cli
+        from dronedeck import cli
 
         assert cli.main(["process", "--session", "../etc"]) == 2

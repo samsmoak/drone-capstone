@@ -67,7 +67,7 @@ export default async function SettingsPage() {
             The agent enforces these before it arms; the planner checks the same numbers so a
             problem shows up while planning. To fly a larger area, start the agent with{" "}
             <code className="rounded bg-[var(--surface-2)] px-1.5 py-0.5 text-[var(--foreground)]">
-              cropwatcher poll --fence 2.5
+              dronedeck poll --fence 2.5
             </code>{" "}
             — the planner here still checks against ±{FENCE_HALF_EXTENT_M.toFixed(1)} m until it is
             updated to match.

@@ -11,11 +11,11 @@ from pathlib import Path
 
 import pytest
 
-from cropwatcher.cli import main
-from cropwatcher.sync import results
-from cropwatcher.sync.cloud import CloudError
-from cropwatcher.sync.outbox import Kind, Outbox
-from cropwatcher.sync.syncer import Syncer
+from dronedeck.cli import main
+from dronedeck.sync import results
+from dronedeck.sync.cloud import CloudError
+from dronedeck.sync.outbox import Kind, Outbox
+from dronedeck.sync.syncer import Syncer
 from tests.test_sync import FakeCloud
 
 FIXTURE = Path(__file__).parent / "pipeline" / "fixtures" / "data"
@@ -178,7 +178,7 @@ class TestTheUpload:
 def test_processing_a_flight_queues_its_result(tmp_path, monkeypatch, capsys):
     root = tmp_path / "data"
     shutil.copytree(FIXTURE, root)
-    monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(root))
+    monkeypatch.setenv("DRONEDECK_DATA_DIR", str(root))
     assert main(["process", "--flight", FLIGHT]) == 0
     assert "queued for upload" in capsys.readouterr().out
     record = Outbox(root / "outbox").get(Kind.RESULTS, FLIGHT)

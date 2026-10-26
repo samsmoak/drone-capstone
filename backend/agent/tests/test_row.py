@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-from cropwatcher.telemetry.correction import ThermalEngine
-from cropwatcher.telemetry.row import TempUnit, build_row, parse_ambient
+from dronedeck.telemetry.correction import ThermalEngine
+from dronedeck.telemetry.row import TempUnit, build_row, parse_ambient
 
 AMBIENT_C = 22.0
 RAW_C = 25.0
@@ -90,7 +90,7 @@ class TestPressure:
     def test_sea_level_exceeds_station_above_ground(self):
         """Higher up, station pressure is lower, so reducing it to sea level
         must increase it."""
-        from cropwatcher.telemetry.correction import sea_level_pressure
+        from dronedeck.telemetry.correction import sea_level_pressure
 
         assert sea_level_pressure(900.0, 15.0, 1000.0) > 900.0
 

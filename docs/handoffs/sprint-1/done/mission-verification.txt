@@ -5,7 +5,7 @@ report, the scenarios, the lab flights
 STATUS: BUILT IN SIMULATION (2026-10-10, #104). Yordi's #101 was merged
 alongside Samuel's implementation of the same ticket — one implementation,
 never two. On main: tests/sim_drone.py,
-tests/mission/test_mission_sim.py, mission/review.py and `cropwatcher
+tests/mission/test_mission_sim.py, mission/review.py and `dronedeck
 mission-report`. The code is the authority. OPEN: PART 3's lab rungs are
 NOT FLOWN, so the constants are still guesses — those are this ticket's
 follow-ups, and still Yordi's.
@@ -44,10 +44,10 @@ disagree with itself.
   Branch          feat/mission-verification, off main
   Your files      backend/agent/tests/sim_drone.py                    (new)
                   backend/agent/tests/test_sim_drone.py               (new)
-                  backend/agent/cropwatcher/mission/review.py         (new)
+                  backend/agent/dronedeck/mission/review.py         (new)
                   backend/agent/tests/mission/test_review.py          (new)
                   backend/agent/tests/mission/test_mission_sim.py     (new)
-                  backend/agent/cropwatcher/cli.py — ONE new subcommand,
+                  backend/agent/dronedeck/cli.py — ONE new subcommand,
                     `mission-report`, and nothing else in that file
                   docs/flight-log.txt — the rung entries
                   after the lab: the constants block in
@@ -230,7 +230,7 @@ simulator that is wrong makes every scenario lie:
       the state the real system reaches (landing, stopped, landing).
 
 
-PART 2 — THE MISSION REPORT  (cropwatcher/mission/review.py + CLI)
+PART 2 — THE MISSION REPORT  (dronedeck/mission/review.py + CLI)
 ──────────────────────────────────────────────────────────────────
 
 Production code, for the operator and for the lab: after a mission flight,
@@ -246,8 +246,8 @@ every row taken while holding) and the plan flown (session.py
 _keep_plan_flown — the mission exactly as flown). It never needs a drone,
 and never changes a file.
 
-  cropwatcher mission-report --flight <flight id>       prints the report
-  cropwatcher mission-report --flight <id> --json       the same, as JSON
+  dronedeck mission-report --flight <flight id>       prints the report
+  dronedeck mission-report --flight <id> --json       the same, as JSON
 
 FOR EACH INSPECTION POINT, IN FLYING ORDER
   leg          the straight 3-D distance flown to it, m
@@ -291,7 +291,7 @@ ITS TESTS (tests/mission/test_review.py):
   [ ] gaps, an unreached point, an aborted flight — each reported, none
       crashes;
   [ ] the estimate comparison flags a flight longer than its estimate;
-  [ ] `cropwatcher mission-report` on a missing flight says so and exits
+  [ ] `dronedeck mission-report` on a missing flight says so and exits
       non-zero; --json is valid JSON with the same numbers.
   [ ] Once Hannah's controller is on your branch (step c): a simulated
       mission (PART 1) writes a trace and CSV through the REAL FlightTrace,
@@ -334,11 +334,11 @@ seam, 5c). Each scenario names the rules it proves.
 PART 4 — THE LAB  (after d; both of you there, Samuel the first time)
 ─────────────────────────────────────────────────────────────────────
 
-Before any rung: `cropwatcher geometry --distance 1.0` has been run,
-`cropwatcher check` passes, the battery is charged, the area is clear, one
+Before any rung: `dronedeck geometry --distance 1.0` has been run,
+`dronedeck check` passes, the battery is charged, the area is clear, one
 hand is on Land. Make each mission in the app. Fly it from the app, or from a
-terminal with `cropwatcher mission --id <id>` (--dry-run checks it without
-connecting). After EVERY flight run `cropwatcher mission-report` on it.
+terminal with `dronedeck mission --id <id>` (--dry-run checks it without
+connecting). After EVERY flight run `dronedeck mission-report` on it.
 
   Rung  Mission                              Passes when
   ──────────────────────────────────────────────────────────────────────────────
@@ -365,9 +365,9 @@ ACCEPTANCE
 ──────────
 
   [ ] Parts 1–3: every listed test passes; gates pass from backend/agent/:
-      ruff check . && mypy cropwatcher && pytest
+      ruff check . && mypy dronedeck && pytest
   [ ] The scenarios pass on feat/mission-controller before it merges (seam 5).
-  [ ] `cropwatcher mission-report` runs on a real mission flight.
+  [ ] `dronedeck mission-report` runs on a real mission flight.
   [ ] Rungs 1–5 flown, each logged in docs/flight-log.txt with its report.
   [ ] The four constants measured and set, each citing its flights; the
       simulator's lag_s set from the same traces.

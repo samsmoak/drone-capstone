@@ -28,7 +28,7 @@ The same command on macOS and Windows. Then:
 
 Editable install: changes are live without reinstalling.
 
-  cropwatcher serve                starts the local API on 127.0.0.1:8765
+  dronedeck serve                starts the local API on 127.0.0.1:8765
   pytest                           the gate — guards and checks need no drone
   pytest -k guard                  just the in-flight guards
 
@@ -82,6 +82,9 @@ RELATED
 
 shares-data-with  ../desktop/desktop-app.txt
                   the same venv, created by scripts/setup.mjs
+shares-data-with  ../development/commands.txt
+                  the flat command index points here for the from-source setup
+                  and driver troubleshooting this doc owns
 
 
 LAST VERIFIED  2026-09-25: `node scripts/setup.mjs --check` and `--dev` on an

@@ -7,8 +7,8 @@ import math
 
 import pytest
 
-from cropwatcher.mission.plan import shapes
-from cropwatcher.mission.plan.geofence import (
+from dronedeck.mission.plan import shapes
+from dronedeck.mission.plan.geofence import (
     CIRCLE_SIDES,
     FenceShape,
     Geofence,

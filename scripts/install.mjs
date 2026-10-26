@@ -33,7 +33,7 @@
 // which is also what makes an Intel Mac and an Apple-silicon Mac each get the
 // right one (PyInstaller freezes for the CPU of the machine it runs on).
 //
-// CROPWATCHER_INSTALL_DIR (macOS: the folder for DroneDeck.app; Linux: the
+// DRONEDECK_INSTALL_DIR (macOS: the folder for DroneDeck.app; Linux: the
 // program folder) installs somewhere else — for testing.
 //
 // The Crazyradio needs a one-time administrator step on Windows (a driver)
@@ -91,7 +91,7 @@ function step(label, command, args, { cwd = ROOT, shell = false, env } = {}) {
 // ── where it installs, and whether a copy is running there ────────────────
 
 function macInstallDir() {
-  if (process.env.CROPWATCHER_INSTALL_DIR) return resolve(process.env.CROPWATCHER_INSTALL_DIR);
+  if (process.env.DRONEDECK_INSTALL_DIR) return resolve(process.env.DRONEDECK_INSTALL_DIR);
   try {
     accessSync("/Applications", constants.W_OK);
     return "/Applications";
@@ -111,7 +111,7 @@ const linuxPathsFor = (name) => ({
 });
 const linuxPaths = () => ({
   ...linuxPathsFor("dronedeck"),
-  ...(process.env.CROPWATCHER_INSTALL_DIR ? { dir: resolve(process.env.CROPWATCHER_INSTALL_DIR) } : {}),
+  ...(process.env.DRONEDECK_INSTALL_DIR ? { dir: resolve(process.env.DRONEDECK_INSTALL_DIR) } : {}),
 });
 /** Where a CropWatcher-era install lives: the same layout under the old name. */
 const legacyLinuxPaths = () => linuxPathsFor("cropwatcher");
@@ -135,7 +135,7 @@ function runningCopy(target) {
     return found.status === 0 && found.stdout.trim() !== "";
   }
   if (WINDOWS) {
-    for (const image of [`${APP}.exe`, `${LEGACY_APP}.exe`, "desktop.exe", "cropwatcher-agent.exe"]) {
+    for (const image of [`${APP}.exe`, `${LEGACY_APP}.exe`, "desktop.exe", "dronedeck-agent.exe", "cropwatcher-agent.exe"]) {
       const found = spawnSync("tasklist", ["/FI", `IMAGENAME eq ${image}`, "/NH"],
         { encoding: "utf8", windowsHide: true });
       if ((found.stdout ?? "").toLowerCase().includes(image.toLowerCase())) return true;
@@ -153,8 +153,8 @@ function refuseIfRunning(target, name = APP) {
 
 const target = MAC ? join(macInstallDir(), `${APP}.app`) : LINUX ? linuxPaths().dir : null;
 // The CropWatcher-era copy, removed after the install — so it must not be
-// running either. Skipped for a test install into CROPWATCHER_INSTALL_DIR.
-const MIGRATE = INSTALL && !process.env.CROPWATCHER_INSTALL_DIR;
+// running either. Skipped for a test install into DRONEDECK_INSTALL_DIR.
+const MIGRATE = INSTALL && !process.env.DRONEDECK_INSTALL_DIR;
 const legacyTarget = !MIGRATE ? null
   : MAC ? join(macInstallDir(), `${LEGACY_APP}.app`) : LINUX ? legacyLinuxPaths().dir : null;
 // Before minutes of building, not after.
@@ -165,7 +165,7 @@ if (legacyTarget && existsSync(legacyTarget)) refuseIfRunning(legacyTarget, LEGA
 
 step("check the toolchain and install what the build needs",
   process.execPath, [join(ROOT, "scripts", "setup.mjs"), ...(flags.includes("--dev") ? ["--dev"] : [])],
-  { env: { ...process.env, CROPWATCHER_SETUP_QUIET_NEXT: "1" } });
+  { env: { ...process.env, DRONEDECK_SETUP_QUIET_NEXT: "1" } });
 
 // ── 2. build ──────────────────────────────────────────────────────────────
 
@@ -195,7 +195,7 @@ if (MAC) {
   // ditto keeps what cp -R can lose: symlinks, extended attributes and the
   // code signature inside the bundle.
   step(`copy ${APP}.app`, "ditto", [source, target]);
-  for (const part of ["desktop", "cropwatcher-agent"]) {
+  for (const part of ["desktop", "dronedeck-agent"]) {
     if (!existsSync(join(target, "Contents", "MacOS", part))) {
       fail(`Installed, but ${part} is missing from ${target}. Run this again.`);
     }
@@ -216,7 +216,7 @@ if (MAC) {
   const home = join(process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"), APP);
   const exe = existsSync(home)
     ? readdirSync(home).find((f) => f.toLowerCase().endsWith(".exe") && !f.toLowerCase().startsWith("uninstall")
-      && !f.toLowerCase().startsWith("cropwatcher-agent"))
+      && !f.toLowerCase().startsWith("dronedeck-agent"))
     : undefined;
   if (!exe) fail(`The installer ran, but ${APP} is not in ${home}. Run the installer by hand: ${setups[0]}`);
   installed = join(home, exe);
@@ -262,7 +262,7 @@ function installOnLinux() {
   const { dir, menu, icon, link } = linuxPaths();
   // tauri-build copies the sidecar beside the binary, without its triple;
   // the running app looks for it there.
-  const parts = ["desktop", "cropwatcher-agent"];
+  const parts = ["desktop", "dronedeck-agent"];
   for (const part of parts) {
     if (!existsSync(join(RELEASE, part))) fail(`The build finished but ${join(RELEASE, part)} is missing.`);
   }

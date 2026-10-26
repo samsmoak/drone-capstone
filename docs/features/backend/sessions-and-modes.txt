@@ -11,9 +11,9 @@ and nothing else — it never decides what is allowed.
 
 WHERE IT LIVES
 
-  backend/agent/cropwatcher/session.py       the state machine
-  backend/agent/cropwatcher/flight/link.py   DroneLink: the only radio chokepoint
-  backend/agent/cropwatcher/api/rest.py      the commands that drive it
+  backend/agent/dronedeck/session.py       the state machine
+  backend/agent/dronedeck/flight/link.py   DroneLink: the only radio chokepoint
+  backend/agent/dronedeck/api/rest.py      the commands that drive it
   backend/agent/tests/test_session.py
 
 
@@ -110,7 +110,14 @@ Auto program's worker wind down, close the flight, restart the drone over the
 radio, reconnect as soon as it answers, run every check — and stand in
 awaiting_confirmation in the SAME session, retry_required cleared. A restart is
 the one thing that clears what a crash can leave inside the drone: a latched
-motor lock, and decks, which are only detected at power-on. Measured on the lab
+motor lock, and the AI deck's two chips (the aideck driver pulls their shared
+reset line at every boot). On the morning of 2026-10-24 restarts were followed
+by fewer deck memories (8 → 5 → 0) and this was read as the restart unpowering
+the decks; that evening 6 radio restarts on a charged battery kept all 8 each
+time — the morning's losses fit a deck stack that also lost contact on hand
+power-ons. The session's `decks_lost` (the AI deck seen on this drone, then
+not) makes the app say to unplug the battery instead of "not fitted". The
+camera recovery uses this reset in a CAPTURE session (drone-wifi.txt). Measured on the lab
 drone: 9.4 s from press to checked. No session open, it is restart_drone.
 Refused while checks run or the session ends. A restart the radio cannot do,
 or a drone that does not answer within RESET_RECONNECT_S (12 s) after the
@@ -145,10 +152,11 @@ page and the camera gets its Wi-Fi network (drone-wifi.txt), before any session.
 
 It looks at sign-in and 2 s after any link closes (a session ending, the drone
 dropping), then every 15 s while nothing is found. Home carries Connect /
-Disconnect; POST /drone/connect and /drone/disconnect. CROPWATCHER_STANDBY=0
+Disconnect; POST /drone/connect and /drone/disconnect. DRONEDECK_STANDBY=0
 turns it off.
 
-RESTART OVER THE RADIO (restart_drone). Between sessions only, the agent can
+RESTART OVER THE RADIO (restart_drone). Between sessions only (in a capture
+session the camera uses reset_drone instead — above), the agent can
 power-cycle the drone's electronics through its radio chip; standby waits 4 s
 (RESTART_SETTLE_S — a connect while it boots blocks for its full timeout) and
 reconnects. radio.state reads "restarting" meanwhile. It exists for the camera
@@ -170,6 +178,14 @@ DECISIONS
   battery that cannot fly again.
 - Endurance is reported at the start ("about N seconds of flying left") so the
   operator plans the flight instead of discovering the limit in the air.
+- A SESSION HAS A PURPOSE (2026-10-24): "flight" (Control — every check, area
+  confirmed, it can fly) or "capture" (the Capture page — the radio and the
+  camera's deck only, READY at once, never flies; ../desktop/capture.txt).
+  Still one session at a time. The purpose is in Snapshot.purpose, the
+  session's meta.json and the SESSION_START audit detail — NOT in Supabase's
+  sessions table (no migration): on the web it is a session like any other.
+  Every flight action refuses in a capture session (_require_ready,
+  confirm_area), so a page cannot fly one by mistake.
 
 
 INVARIANTS
@@ -216,7 +232,10 @@ mission controller (../missions/mission-controller.txt). The snapshot's
 `mission` carries its progress to the app.
 
 
-LAST VERIFIED  2026-09-30, Reset drone only: tests/test_session.py
+LAST VERIFIED  2026-10-24 late, the restart and the decks: 6 radio restarts on
+the lab drone kept all 8 deck memories (flight-log.txt); reset_drone as the
+camera's restart in a capture session, test_camera_wifi_recovery.py.
+2026-09-30, Reset drone only: tests/test_session.py
 TestResetDrone (7, the guard race pinned by a test that fails without
 _finish_lock), and Session.reset_drone run against the lab drone — 9.4 s to
 awaiting_confirmation, same session.
@@ -241,3 +260,6 @@ shares-data-with  ../desktop/setup.txt
                   pauses and resumes standby
 consumed-by       ../pipeline/session.txt
                   End session queues the session's own processing (DPP on)
+consumed-by       ../desktop/capture.txt
+                  the auto-capture switch (Session.capture), reset when a session
+                  ends; a capture needs a session

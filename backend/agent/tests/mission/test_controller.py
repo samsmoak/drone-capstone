@@ -20,8 +20,8 @@ from collections.abc import Callable
 
 import pytest
 
-from cropwatcher.flight.manual import CLIMB_RATE_M_S, MOVE_SPEED_M_S, ControlState, Fix
-from cropwatcher.mission.controller import (
+from dronedeck.flight.manual import CLIMB_RATE_M_S, MOVE_SPEED_M_S, ControlState, Fix
+from dronedeck.mission.controller import (
     TERMINAL_STATES,
     EventKind,
     MissionController,
@@ -30,15 +30,15 @@ from cropwatcher.mission.controller import (
     MissionFlight,
     MissionState,
 )
-from cropwatcher.mission.controller.events import TERMINAL_EVENTS
-from cropwatcher.mission.controller.mission_controller import (
+from dronedeck.mission.controller.events import TERMINAL_EVENTS
+from dronedeck.mission.controller.mission_controller import (
     ARRIVE_M,
     SETTLE_S,
     SETTLE_TIMEOUT_S,
     TICK_S,
     TRANSIT_MARGIN_S,
 )
-from cropwatcher.mission.plan.mission import InspectionPoint, Mission
+from dronedeck.mission.plan.mission import InspectionPoint, Mission
 from tests.fakes import FakeClock
 from tests.mission.plans import mission
 

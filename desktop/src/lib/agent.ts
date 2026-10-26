@@ -1,7 +1,7 @@
 /**
  * Talking to the flight agent running on this computer.
  *
- * The contract is the agent's own, from `backend/agent/cropwatcher/api/rest.py`:
+ * The contract is the agent's own, from `backend/agent/dronedeck/api/rest.py`:
  * REST for commands, one WebSocket for everything live. Every command carries
  * the control token, which the Tauri shell hands us — a page on the internet
  * cannot know it, so it cannot fly the drone.
@@ -48,6 +48,9 @@ export type Session = {
    *  programs, and the position guards cannot run. */
   assisted: boolean;
   unassisted_reason: string | null;
+  /** The drone reported its AI deck earlier and now does not: the decks lost
+   *  power or contact. Only switching it off and on brings them back. */
+  decks_lost?: boolean;
   /** The last flight ended abnormally. Nothing flies until Retry has run every
    *  check again in this session — after a tumble the drone holds its motors. */
   retry_required: boolean;
@@ -57,11 +60,18 @@ export type Session = {
   /** The mission being flown, or the last one flown this session; null when
    *  none has run. From the agent's session snapshot (session.py). */
   mission: MissionProgress | null;
-  /** The DPP switch (cropwatcher/processing.py): whether the next flight is
+  /** The DPP switch (dronedeck/processing.py): whether the next flight is
    *  processed when it lands, whether that is the operator's choice or still
    *  the mode's default (on in Auto, off in Manual), and recent jobs. */
   processing: Processing;
-  /** Which way the arrow keys move the drone (cropwatcher/flight/keyframe.py):
+  /** The auto-capture switch (agent camera/recording.py): `auto` — frames are
+   *  recorded automatically; off, only manual captures are saved. Absent from
+   *  older agents. */
+  capture?: { auto: boolean; chosen: boolean };
+  /** What the session is for: "flight" (Control) or "capture" (the Capture
+   *  page, which never flies). Absent from older agents: "flight". */
+  purpose?: "flight" | "capture";
+  /** Which way the arrow keys move the drone (dronedeck/flight/keyframe.py):
    *  the operator's choice, their marked spot, and — while flying — what the
    *  arrows mean right now. */
   controls: Controls;
@@ -182,7 +192,7 @@ export type MissionProgress = {
   last_event: { kind: string; at_s: number; point_id: string | null; detail: string } | null;
 };
 
-// ── rooms and missions (backend/agent/cropwatcher/mission/plan) ─────────
+// ── rooms and missions (backend/agent/dronedeck/mission/plan) ─────────
 //
 // Metres, in the Lighthouse room frame: x and y absolute, heights above the
 // floor captured at takeoff. Feet appear only in labels (format.ts).
@@ -245,6 +255,14 @@ export type SurveyStatus =
   | { active: true; room_id: string; seen: number; kept: number; spots: number; outline: XY[] };
 
 /** The base station as the drone sees it (Auto › ② Position, Set up step 3). */
+/** GET /station/space — where the measured stations' light reaches, with no
+ *  room: Manual's map. `predicted` null: no drone, or no station measured. */
+export type StationSpace = {
+  predicted: RoomCoverage["predicted"];
+  /** The agent's flying area: a square this far each way from the origin. */
+  fence_half_extent_m: number;
+};
+
 export type StationStatus =
   | { connected: false; measuring: boolean }
   | {
@@ -263,7 +281,44 @@ export type StationStatus =
       usable: number[];
       uncertainty_cm: number | null;
       ready: boolean;
+      /** The same chain per station, named by channel (station id + 1).
+       *  Absent from older agents. */
+      stations?: StationRow[];
+      /** The positioning deck itself: detected at power-on, and whether its
+       *  firmware needs writing. null = not known. Absent from older agents. */
+      deck?: { detected: boolean | null; needs_fw: boolean | null };
+      /** The FIRST stage from deck to position that is not done, with its fix
+       *  (agent flight/position_stages.py); null when the drone is placed. */
+      blocker?: PositionBlocker | null;
     };
+
+export type PositionBlocker = {
+  stage: "deck" | "firmware" | "light" | "decoded" | "stored" | "settled";
+  text: string;
+  fix: string;
+};
+
+/** A measured base station on the room map: its place in room metres and
+ *  its own axes in room terms — x forward out of its face, y to its left, z
+ *  up (agent mission/plan/coverage.py StationPose.axes). */
+export type StationMarker = {
+  id: number | null;
+  /** The channel it is set to: the firmware's station number + 1. */
+  channel: number | null;
+  origin: [number, number, number];
+  forward: [number, number, number];
+  left: [number, number, number];
+  up: [number, number, number];
+};
+
+export type StationRow = {
+  id: number;
+  channel: number;
+  calibrated: boolean;
+  received: boolean;
+  measured: boolean;
+  active: boolean;
+};
 
 /** One reason a mission cannot start now, and what to do about it. */
 export type MissionBlocker = { code: string; message: string; fix: string };
@@ -395,6 +450,8 @@ export type CameraStatus = {
   /** The DRONE's own answer (deck.bcAI). null until a drone has been asked,
    *  which is not the same as "not fitted". */
   deck_fitted: boolean | null;
+  /** The deck was detected earlier and is not now — power-cycle, not "not fitted". */
+  decks_lost?: boolean;
   /** The agent is actively working towards a picture (the drone is joining or
    *  rejoining Wi-Fi, or the camera is reconnecting): show progress, not "no
    *  signal". */
@@ -402,6 +459,40 @@ export type CameraStatus = {
   /** The size of the frames being served; null until one has arrived. */
   width: number | null;
   height: number | null;
+  /** What actually arrives at the agent, over the last few seconds
+   *  (camera/rate.py FrameRate). null without a deck camera. */
+  rate?: CameraRate | null;
+  /** What the GAP8 says each frame cost it, from the drone's console
+   *  (camera/rate.py DeckTiming). null when it has said nothing lately. */
+  deck_timing?: DeckTiming | null;
+  /** What the deck itself said on the drone's console, and — after a few
+   *  connections it accepted and sent nothing on — which chip is silent and
+   *  what to do (agent camera/diagnose.py). */
+  deck?: {
+    lines: string[];
+    silent_connects: number;
+    diagnosis: { code: "gap8_silent" | "no_capture" | "send_stuck" | "unknown"; message: string } | null;
+  };
+};
+
+export type CameraRate = {
+  window_s: number;
+  frames: number;
+  fps: number;
+  mean_bytes: number | null;
+  /** Includes the gap still open, so a feed that just stopped shows it. */
+  longest_gap_s: number | null;
+  format: "raw" | "jpeg" | null;
+};
+
+export type DeckTiming = {
+  lines: number;
+  capture_ms: number;
+  encoding_ms: number;
+  transfer_ms: number;
+  bytes: number;
+  /** What the GAP8 could deliver if nothing downstream held it up. */
+  deck_fps: number | null;
 };
 
 export type Intent = {
@@ -526,7 +617,10 @@ export const api = {
     command<Session>("/auth/sign-in", { email, password }),
   signOut: () => command<Session>("/auth/sign-out"),
   setMode: (mode: Mode) => command<Session>("/session/mode", { mode }),
-  start: () => command<Session>("/session/start"),
+  /** Start a session: "flight" (Control — every check, it can fly) or
+   *  "capture" (the Capture page — the radio and the camera deck only, it
+   *  never flies). Callers that pass nothing start a flight session. */
+  start: (purpose: "flight" | "capture" = "flight") => command<Session>("/session/start", { purpose }),
   confirmArea: (acceptUnassisted = false) =>
     command<Session>("/session/confirm", { accept_unassisted: acceptUnassisted }),
   healthTest: () => command<Session>("/session/health-test"),
@@ -548,9 +642,10 @@ export const api = {
   reconnectCamera: () => command<CameraWifi>("/camera/wifi/rejoin"),
   setupState: () => command<SetupState>("/setup", undefined, "GET"),
   setupCheck: () => command<SetupState>("/setup/check"),
-  /** Installs what is missing, plus `reinstall` — parts written again although
-   *  installed. "camera" and "wifi" always go together (the agent enforces it). */
-  setupInstall: (reinstall: SetupPart[] = []) => command<SetupState>("/setup/install", { reinstall }),
+  /** The terminal command that installs the drone's software on this machine
+   *  (`dronedeck setup`). Set up shows it to copy: the install runs in a
+   *  terminal, with DroneDeck quit, not from a button (setup.txt). */
+  setupCommand: () => command<SetupCommand>("/setup/command", undefined, "GET"),
   recordedFrames: (after: number, limit: number) =>
     command<{ frames: RecordedFrameInfo[] }>(
       `/camera/recording/frames?after=${after}&limit=${limit}`, undefined, "GET"),
@@ -601,13 +696,31 @@ export const api = {
   setBaseStationChannel: (port: string, channel: number) =>
     command<{ port: string; channel: number }>("/basestations/channel", { port, channel }),
   stationStatus: () => command<StationStatus>("/station", undefined, "GET"),
-  measureStation: () => command<{ message: string }>("/station/measure"),
+  /** Each measured station's place and facing, for the tripods on the map. */
+  stationPoses: () => command<{ stations: StationMarker[] }>("/station/poses", undefined, "GET"),
+  /** Manual's room, from the base stations alone (session.manual_space). */
+  stationSpace: () => command<StationSpace>("/station/space", undefined, "GET"),
+  /** Measure every station the drone receives, from where it sits. `cleared`:
+   *  stations stored before and not seen this time — their place is gone. */
+  measureStation: () => command<{ message: string; stations?: number[]; cleared?: number[] }>("/station/measure"),
   /** Every reason Start would refuse this mission now, with what to do —
    *  the same list Start refuses on (agent Session.mission_blockers). */
   missionBlockers: (missionId: string) =>
     command<{ blockers: MissionBlocker[] }>(`/missions/${encodeURIComponent(missionId)}/blockers`, undefined, "GET"),
   /** The DPP switch for this session. */
   setProcessing: (on: boolean) => command<Session>("/session/processing", { on }),
+  /** The auto-capture switch. Applies at once, in either mode. */
+  setCaptureAuto: (auto: boolean) => command<Session>("/session/capture", { auto }),
+  /** Save the camera's newest frame into the session, by hand. */
+  captureFrame: () => command<RecordedFrameInfo>("/camera/capture"),
+  /** A recorded session's frames — "manual": its captures made by hand. */
+  sessionFrames: (sessionId: string, source?: "auto" | "manual") =>
+    command<{ frames: RecordedFrameInfo[] }>(
+      `/history/sessions/${encodeURIComponent(sessionId)}/frames${source ? `?source=${source}` : ""}`,
+      undefined, "GET"),
+  /** The session's manual captures, oldest first. */
+  manualCaptures: () =>
+    command<{ frames: RecordedFrameInfo[] }>("/camera/recording/frames?source=manual&limit=2000", undefined, "GET"),
   /** Which way the arrow keys move the drone. Works in the air. */
   setKeyFrame: (frame: KeyFrameChoice) => command<Session>("/controls/frame", { frame }),
   /** "I'm here": the drone's position now becomes the operator's spot. */
@@ -792,6 +905,9 @@ export type FlightPlayback = {
 
 /** Set up: installing the drone's software (drone_setup.py). */
 export type SetupPart = "main" | "lighthouse" | "camera" | "wifi";
+/** GET /setup/command — the exact line for this machine, ready to paste. */
+export type SetupCommand = { command: string; check: string };
+
 export type SetupState = {
   phase: "idle" | "checking" | "ready" | "installing" | "unplug" | "verifying" | "done" | "failed";
   message: string | null;
@@ -820,9 +936,18 @@ export type Recording =
       latest_t_s: number | null;
       upload_fps: number;
       write_errors: number;
+      /** Frames are recorded automatically (auto-capture on). False: only
+       *  manual captures are saved. Absent from older agents: true. */
+      auto?: boolean;
     };
 
-export type RecordedFrameInfo = { seq: number; t_s: number; recorded_at: string; upload: boolean };
+export type RecordedFrameInfo = {
+  seq: number; t_s: number; recorded_at: string; upload: boolean;
+  /** "auto", or "manual" — captured by hand. Absent from older agents. */
+  source?: "auto" | "manual";
+  /** The inspection point being held when it was taken (history only). */
+  point_id?: string | null;
+};
 
 /**
  * One recorded frame read back from disk, by number or "latest". A fetch with
@@ -838,7 +963,29 @@ export async function recordedFrame(which: number | "latest"): Promise<Blob | nu
   return response.blob();
 }
 
+/** One frame of a session that has ended, read from this laptop's disk — a
+ *  fetch with the token, like recordedFrame. Null when it is not there. */
+export async function sessionFrame(sessionId: string, seq: number): Promise<Blob | null> {
+  const response = await fetch(
+    `${base()}/history/sessions/${encodeURIComponent(sessionId)}/frames/${seq}`, {
+      headers: { "X-Agent-Token": token },
+      cache: "no-store",
+    });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new AgentError("That frame could not be read.");
+  return response.blob();
+}
+
 /** Where the AI deck is in joining the operator's Wi-Fi. No password, ever. */
+/** What the deck's radio is set to. `brownout`: held at reduced power
+ *  until the battery is unplugged (camera/wifi.py DeckLink). */
+export type DeckLink = {
+  bandwidth_mhz: number;
+  power_dbm: number | null;
+  beacon_timeout_s: number;
+  brownout: boolean;
+};
+
 export type CameraWifi = {
   ssid: string | null;
   phase: "not-set" | "waiting" | "sending" | "joining" | "joined" | "reconnecting" | "failed";
@@ -853,6 +1000,12 @@ export type CameraWifi = {
   remembered?: boolean;
   /** Only a restart of the drone gets it onto this network now. */
   needs_restart?: boolean;
+  /** Why the deck last dropped off the network, in words, as it said
+   *  (wifi-recovery.patch); null when it has not said. */
+  reason?: string | null;
+  /** The deck radio's settings, read back by its ESP32 (wifi-link.patch);
+   *  null from a deck without it. */
+  link?: DeckLink | null;
 };
 
 // ── the live socket ───────────────────────────────────────────────────

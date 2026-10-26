@@ -21,7 +21,7 @@ import { PHASE_LABEL, PHASE_TONE, droneWifi } from "@/lib/droneWifi";
 import { useMediaQuery, WIDE } from "@/lib/useMediaQuery";
 import { DroneWifiForm } from "@/components/DroneWifiForm";
 import { CameraPane } from "@/pages/control/CameraPane";
-import { Button, PageHeader, Panel, StatusDot, TONE_COLOR, TONE_ICON, type Tone } from "@/components/ui";
+import { Button, Message, PageHeader, Panel, StatusDot, TONE_COLOR, TONE_ICON, type Tone } from "@/components/ui";
 
 /** How often the camera's reachability is re-read while this page is open. */
 const CAMERA_POLL_MS = 3000;
@@ -55,14 +55,17 @@ export function WifiPage({ wifi, session, onSaved }: {
   const phase = wifi?.phase ?? "not-set";
   const showForm = editing || !saved;
 
-  const [note, setNote] = useState<string | null>(null);
+  const [note, setNote] = useState<{ tone: Tone; text: string } | null>(null);
   const reconnect = async () => {
     setBusy(true);
     setNote(null);
     try {
       await api.reconnectCamera();
+      // It runs in the background; the network line above follows it. Say it
+      // started — a press with no visible answer read as "nothing happens".
+      setNote({ tone: "idle", text: "Asking the drone where its camera is — the network line above shows how it goes (up to half a minute)." });
     } catch (e) {
-      setNote(e instanceof Error ? e.message : "Could not restart the drone.");
+      setNote({ tone: "warning", text: e instanceof Error ? e.message : "Could not reconnect the camera." });
     } finally {
       setBusy(false);
     }
@@ -97,6 +100,18 @@ export function WifiPage({ wifi, session, onSaved }: {
             ? [wifi.ssid, wifi.ip, wifi.rssi != null ? `${wifi.rssi} dBm` : null].filter(Boolean).join(" · ")
             : wifi?.message && (phase === "reconnecting" || phase === "failed") ? wifi.message : PHASE_LABEL[phase]}
         />
+        {wifi?.link && (
+          <Line
+            tone={wifi.link.brownout ? "warning" : "good"}
+            label="Deck radio"
+            value={wifi.link.brownout
+              ? "Reduced power since a brownout — unplug the battery for 10 s"
+              : [`${wifi.link.bandwidth_mhz} MHz`,
+                 wifi.link.power_dbm != null ? `${wifi.link.power_dbm} dBm` : null,
+                 wifi.link.beacon_timeout_s ? `holds ${wifi.link.beacon_timeout_s} s` : null,
+                ].filter(Boolean).join(" · ")}
+          />
+        )}
         <Line
           tone={camera?.live ? "good" : "idle"}
           label="Camera"
@@ -130,24 +145,26 @@ export function WifiPage({ wifi, session, onSaved }: {
           <StatusDot tone={PHASE_TONE[phase]}>{wifi?.message ?? PHASE_LABEL[phase]}</StatusDot>
           {radio?.state === "connected" && !camera?.live && (
             <div className="flex flex-wrap items-center gap-2">
-              <Button
-                onClick={() => void reconnect()}
-                disabled={busy || session?.state !== "idle"}
-                title={session?.state !== "idle" ? "Between sessions only" : undefined}
-              >
+              <Button onClick={() => void reconnect()} disabled={busy}>
                 Reconnect camera
               </Button>
               <span className="text-xs text-[var(--muted)]">
-                Restarts the drone so it rejoins · about 15 s
+                Asks the drone where its camera is and rejoins it; when its camera software
+                cannot, restarts the drone — between sessions or in a capture session, never
+                while a flight session is open.
               </span>
             </div>
           )}
-          {note && <p className="text-xs text-[var(--muted)]">{note}</p>}
+          {wifi?.reason && phase !== "joined" && (
+            <p className="text-xs">Last dropped off because {wifi.reason}.</p>
+          )}
+          {note && <Message tone={note.tone} text={note.text} />}
         </div>
       )}
       {editing && phase === "joined" && (
         <p className="mt-3 text-xs text-[var(--muted)]">
-          The drone keeps its current network until it restarts.
+          A drone with up-to-date camera software moves to the new network at once; older
+          camera software moves when the drone next restarts (Set up updates it).
         </p>
       )}
     </Panel>

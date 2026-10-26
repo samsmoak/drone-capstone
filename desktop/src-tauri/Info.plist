@@ -3,10 +3,10 @@
 <plist version="1.0">
 <dict>
 	<!-- macOS hides Wi-Fi network names from apps without Location permission.
-	     CropWatcher reads them only to list networks for the drone's camera. -->
+	     DroneDeck reads them only to list networks for the drone's camera. -->
 	<key>NSLocationUsageDescription</key>
-	<string>CropWatcher lists nearby Wi-Fi networks so you can choose the one your drone's camera joins. Your location is not used or stored.</string>
+	<string>DroneDeck lists nearby Wi-Fi networks so you can choose the one your drone's camera joins. Your location is not used or stored.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>CropWatcher lists nearby Wi-Fi networks so you can choose the one your drone's camera joins. Your location is not used or stored.</string>
+	<string>DroneDeck lists nearby Wi-Fi networks so you can choose the one your drone's camera joins. Your location is not used or stored.</string>
 </dict>
 </plist>

@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from cropwatcher.pipeline.contracts import (
+from dronedeck.pipeline.contracts import (
     CleanResult,
     EnhancedFrame,
     EnhanceResult,
@@ -28,13 +28,13 @@ from cropwatcher.pipeline.contracts import (
     Reading,
     ReadingFlag,
 )
-from cropwatcher.pipeline.stages.classify.blocks import (
+from dronedeck.pipeline.stages.classify.blocks import (
     SETTLE_S,
     BlocksClassifier,
     G,
     fit_cooling,
 )
-from cropwatcher.pipeline.stages.classify.pelt import pelt
+from dronedeck.pipeline.stages.classify.pelt import pelt
 
 START = datetime(2026, 10, 9, 8, 0, tzinfo=UTC)
 RHO = 1.2

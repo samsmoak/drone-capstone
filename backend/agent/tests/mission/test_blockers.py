@@ -8,9 +8,9 @@ from types import MappingProxyType
 
 import pytest
 
-from cropwatcher import session as session_module
-from cropwatcher.session import Mode, SessionError, State
-from cropwatcher.telemetry.stream import Snapshot
+from dronedeck import session as session_module
+from dronedeck.session import Mode, SessionError, State
+from dronedeck.telemetry.stream import Snapshot
 from tests.mission.test_session_missions import POSITIONED, PositionedLink, make_rig
 
 #: supervisor.info as read on the lab drone: 542 flying, 580 LOCKED.

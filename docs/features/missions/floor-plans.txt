@@ -1,12 +1,13 @@
 ================================================================================
 FLOOR PLANS AND MISSIONS — what the drone flies, checked before it can fly
-Last verified: 2026-10-11 — re-read after rest.py changed for mission playback; its room and mission routes are unchanged. Before that:
+Last verified: 2026-10-25 for the 2 s hold: tests/mission (358) and a saved
+mission edited, saved and reopened in the real editor on the agent. 2026-10-11 — re-read after rest.py changed for mission playback; its room and mission routes are unchanged. Before that:
 2026-10-09 against docs/pipeline-v2 — re-checked after
 api/rest.py moved (the processing resume in the lifespan): no room or mission
 route changed. Before that, 2026-09-29 against claude/awesome-carson-eqkt8w — tests/mission/
 (134 tests: plan, end point, from_start, heights, store, API, session,
 stamping) and the harness.
-SOURCE: backend/agent/cropwatcher/mission/plan/validate.py
+SOURCE: backend/agent/dronedeck/mission/plan/validate.py
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -37,24 +38,24 @@ is (Mission.from_start).
 --------------------------------------------------------------------------------
 2. WHERE IT LIVES
 --------------------------------------------------------------------------------
-backend/agent/cropwatcher/mission/plan/shapes.py      2-D geometry: point-in-
+backend/agent/dronedeck/mission/plan/shapes.py      2-D geometry: point-in-
                                                       polygon, segment distances
-backend/agent/cropwatcher/mission/plan/geofence.py    Geofence (closed polygon;
+backend/agent/dronedeck/mission/plan/geofence.py    Geofence (closed polygon;
                                                       rectangle, circle presets)
-backend/agent/cropwatcher/mission/plan/obstacles.py   line, rectangle, circle
-backend/agent/cropwatcher/mission/plan/floorplan.py   Room, clearance, ids
-backend/agent/cropwatcher/mission/plan/mission.py     Mission, InspectionPoint
-backend/agent/cropwatcher/mission/plan/validate.py    every check; outer_bound (the
+backend/agent/dronedeck/mission/plan/obstacles.py   line, rectangle, circle
+backend/agent/dronedeck/mission/plan/floorplan.py   Room, clearance, ids
+backend/agent/dronedeck/mission/plan/mission.py     Mission, InspectionPoint
+backend/agent/dronedeck/mission/plan/validate.py    every check; outer_bound (the
                                                       room's map), flyable_bound
                                                       (the green, for the fit)
-backend/agent/cropwatcher/mission/plan/store.py       rooms/, missions/ on disk
-backend/agent/cropwatcher/mission/plan/coverage.py    predicted + surveyed coverage
-backend/agent/cropwatcher/mission/plan/fit.py         THE PLAN THAT WILL FLY
-backend/agent/cropwatcher/api/rest.py                 /plan/limits, /rooms,
+backend/agent/dronedeck/mission/plan/store.py       rooms/, missions/ on disk
+backend/agent/dronedeck/mission/plan/coverage.py    predicted + surveyed coverage
+backend/agent/dronedeck/mission/plan/fit.py         THE PLAN THAT WILL FLY
+backend/agent/dronedeck/api/rest.py                 /plan/limits, /rooms,
                                                       /missions, /missions/validate,
                                                       /missions/fit, /rooms/{id}/
                                                       coverage, /survey
-backend/agent/cropwatcher/paths.py                    rooms_dir, missions_dir
+backend/agent/dronedeck/paths.py                    rooms_dir, missions_dir
 backend/agent/tests/mission/                          the tests
 desktop/src/pages/control/auto/plan/                  the editor; space.ts the
                                                       flyable-space layer
@@ -164,7 +165,11 @@ desktop/src/pages/control/auto/FlightPlanCheck.tsx    ② the two plans, the sur
   matters: under the 1.00 m ceiling only obstacles up to 0.75 m can be passed
   over; a height entered by eye 10 cm wrong is a pass 10 cm closer; the drone
   has not been tuned or tested hovering over a surface (ground effect).
-• Holds are at least 5 s — story 3.4's "5 seconds of readings".
+• Holds are at least 2 s (MIN_HOLD_S), at most 300 s. 5 s until 2026-10-25 for
+  story 3.4 ("at least 10 frames and 5 seconds of readings … for every
+  inspection point"); the owner relaxed it — "the drone is spending too much
+  time at each point". At 2 s a point keeps ~20 readings and ~7 frames. New
+  points start at the minimum; saved missions keep their own holds.
 • VALIDATION RETURNS PROBLEMS, NOT AN EXCEPTION — every one, with where it is
   (a point id, "home", a leg "P1 → P2"). Errors block flying; warnings
   ("coverage not measured") are said and do not. The editor asks the agent
@@ -184,7 +189,7 @@ desktop/src/pages/control/auto/FlightPlanCheck.tsx    ② the two plans, the sur
 --------------------------------------------------------------------------------
 4. INVARIANTS
 --------------------------------------------------------------------------------
-• mission/plan NEVER imports cropwatcher.flight: a plan is drawn, checked and
+• mission/plan NEVER imports dronedeck.flight: a plan is drawn, checked and
   saved with no drone. tests/mission/test_boundaries.py holds it.
 • x and y are absolute Lighthouse metres; heights are above the floor captured
   at takeoff (CLAUDE.md invariant 4). The editor shows feet only as labels.

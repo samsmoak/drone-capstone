@@ -1,6 +1,6 @@
 # The flight agent's gates, on every pull request that can change it: ruff,
 # mypy and the whole pytest suite — CLAUDE.md's "ruff check . && mypy
-# cropwatcher && pytest", the same three a person runs before pushing.
+# dronedeck && pytest", the same three a person runs before pushing.
 #
 # The suite includes the mission simulator (tests/sim_drone.py): the real
 # mission controller and the real manual flight system fly a simulated drone
@@ -58,7 +58,7 @@ jobs:
       - name: ruff
         run: ruff check .
       - name: mypy
-        run: mypy cropwatcher
+        run: mypy dronedeck
       - name: pytest — the mission simulator's scenarios first, then everything
         run: |
           python -m pytest -p no:cacheprovider tests/mission/test_mission_sim.py tests/test_sim_drone.py -v

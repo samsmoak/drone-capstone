@@ -37,7 +37,7 @@ done. WE ARE IN SPRINT 1.
     folders are left as the record of what that sprint did.
   - Moving a ticket moves its path: grep the repo for its file name and fix
     every reference — the code's comments and messages name tickets too
-    (backend/agent/cropwatcher/, tests/). `python3 .claude/feature-kit/kit.py
+    (backend/agent/dronedeck/, tests/). `python3 .claude/feature-kit/kit.py
     check` finds the broken doc links; it cannot see Python strings.
 
 
@@ -92,7 +92,7 @@ controller ticket — and land in the order written there.
 
 WHAT IS ALREADY BUILT — the skeleton everyone plugs into
 
-Mission system (backend/agent/cropwatcher/mission/, docs/features/missions/)
+Mission system (backend/agent/dronedeck/mission/, docs/features/missions/)
   - plan/: rooms (closed geofence, obstacles, clearance), missions (home,
     inspection points), the agent's validation, saving on the laptop.
   - ManualController.fly_to(), goal_active, operator_override
@@ -114,11 +114,11 @@ Mission system (backend/agent/cropwatcher/mission/, docs/features/missions/)
     in 2-D or 3-D; obstacles may carry a height (drawn only — never flown
     over).
 
-Data pipeline (backend/agent/cropwatcher/pipeline/, docs/features/pipeline/)
+Data pipeline (backend/agent/dronedeck/pipeline/, docs/features/pipeline/)
   - contracts.py — every type in sprint-1/done/dpp-contract.txt.
   - A stub for clean, enhance and classify; interpret (labels → verdicts).
   - LocalFlightSource, LocalResultSink, the runner, compose.py.
-  - `cropwatcher process --flight <id>` and `--fixture`.
+  - `dronedeck process --flight <id>` and `--fixture`.
   - 2026-09-29: THE DPP SWITCH — with it on, the agent runs that command for
     every flight when it lands, in a child process, and the desktop shows the
     verdicts (sprint-1/done/dpp-contract.txt, "HOW THE AGENT RUNS THE
@@ -142,7 +142,7 @@ RULES THAT APPLY TO EVERY TICKET
     cd backend/agent && source .venv/bin/activate
 
 - GATES, ALL THREE, BEFORE EVERY PULL REQUEST, from backend/agent/:
-    ruff check . && mypy cropwatcher && pytest
+    ruff check . && mypy dronedeck && pytest
   Report pass or fail honestly in the PR, including failing output.
 
 - GIT: work on the branch named in your ticket, and open a pull request to

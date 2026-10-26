@@ -1,6 +1,7 @@
 ================================================================================
 MISSION PLAYBACK — watch any recorded flight again, on the room map, at any moment
-Last verified: 2026-10-11 against data/flight-playback-cloud — tests/test_playback.py
+Last verified: 2026-10-24 — the filters kept while the window is open
+(lib/windowState.ts), desktop build. 2026-10-11 against data/flight-playback-cloud — tests/test_playback.py
 (20) and test_playback_cloud.py (17); the local Supabase stack with the agent's
 real client (backend/supabase/checks/playback_check.py 20/20); a real lab
 flight (fdd57690) uploaded by the real syncer and played back from Supabase
@@ -52,14 +53,14 @@ them. The simulator's job is CI (../development/releases.txt, agent-tests.yml).
 --------------------------------------------------------------------------------
 2. WHERE IT LIVES
 --------------------------------------------------------------------------------
-agent    backend/agent/cropwatcher/playback.py   files_of, load (files),
+agent    backend/agent/dronedeck/playback.py   files_of, load (files),
                                                  load_cloud (Supabase), load_any,
                                                  list_flights — one builder
-         backend/agent/cropwatcher/api/rest.py   GET /history/flights,
+         backend/agent/dronedeck/api/rest.py   GET /history/flights,
                                                  GET /history/flights/{id}/playback
-         backend/agent/cropwatcher/sync/flight_playback.py  plan + trace upload
-         backend/agent/cropwatcher/sync/syncer.py           _send_playback (last)
-         backend/agent/cropwatcher/sync/cloud.py            insert_flight_plan,
+         backend/agent/dronedeck/sync/flight_playback.py  plan + trace upload
+         backend/agent/dronedeck/sync/syncer.py           _send_playback (last)
+         backend/agent/dronedeck/sync/cloud.py            insert_flight_plan,
                                                  insert_flight_traces, read_*,
                                                  list_flights (paged by 1 000)
          backend/agent/tests/test_playback.py, test_playback_cloud.py
@@ -72,6 +73,8 @@ desktop  desktop/src/pages/sessions/Playback.tsx       the player
          desktop/src/pages/sessions/AllFlights.tsx     the list (FlightRow is
                                                        copied from parts.tsx
                                                        SessionRow — PARITY marker)
+         desktop/src/lib/windowState.ts                its filters, kept while
+                                                       the window is open
          desktop/src/pages/sessions/SessionsPage.tsx   Play back on a session's
                                                        flights
          desktop/src/pages/control/auto/plan/trail.ts  the path flown, as runs
@@ -116,6 +119,14 @@ In Supabase: telemetry, flight_traces, flight_plans, flights (who, when).
 • ONE EVENT PER STRETCH WITHOUT BASE STATIONS, with its length: reception
   flickers on the lab's flights; d985c7a6 held P1 for 4.7 s with none.
 • Capped at an hour (playback.MAX_ROWS); the list at the newest 300.
+• THE FILTERS LAST AS LONG AS THE WINDOW (2026-10-24, Samuel: "what i select
+  there should be persistent, unless maybe i close and reopen the app"). Who
+  flew it and Both modes live in lib/windowState.ts, not in the list's own
+  state — every page is unmounted when the sidebar moves, which reset them on
+  every visit. Memory only, never localStorage: a filter remembered across
+  launches would hide flights on a fresh start without saying why. A
+  remembered person stays in the select even when this list has none of their
+  flights (a value with no option shows a blank).
 
 --------------------------------------------------------------------------------
 4. INVARIANTS

@@ -10,6 +10,23 @@
 # closes each client once and clears stale bits before accepting. See
 # docs/features/desktop/camera.txt.
 #
+# wifi-throughput.patch (2026-10-24) keeps the radio awake (no modem sleep,
+# the station default) and turns Nagle off on the camera's client socket —
+# both delay the laptop's ACKs, which is what paces a stream of 79 KB frames.
+# Applied after close-client-once.patch, which it is written against.
+#
+# wifi-recovery.patch (2026-10-24) makes joining repeatable: the station and
+# access-point interfaces are created once, so a second "connect" rejoins
+# instead of rebooting the chip (which is why the drone had to be restarted to
+# rejoin); WIFI_CTRL_REPORT (0x2E) re-announces the address on request; every
+# disconnect logs its reason. Written against the two patches above.
+#
+# wifi-link.patch (2026-10-24) holds the link at a weak signal: 20 MHz
+# channels (not 40), the transmit ceiling set to 20 dBm explicitly, and 15 s
+# without a beacon before the station drops (stock 6). It logs one line the
+# ground reads back — bandwidth, power, timeout, and whether a brownout has
+# cut the power. Written against the three patches above.
+#
 # Built with ESP-IDF v4.3.1 — the version Bitcraze builds with — installed
 # natively in the cache (no Docker: Docker Desktop is not part of this project
 # and was not working on the build Mac). First run installs it (~600 MB).
@@ -17,7 +34,7 @@ set -euo pipefail
 
 ESP_TAG=2025.02
 HERE="$(cd "$(dirname "$0")" && pwd)"
-CACHE="${CROPWATCHER_CACHE:-$HOME/.cache/cropwatcher}"
+CACHE="${DRONEDECK_CACHE:-$HOME/.cache/dronedeck}"
 SRC="$CACHE/aideck-esp-firmware"
 
 if [ ! -d "$SRC/.git" ]; then
@@ -27,6 +44,9 @@ git -C "$SRC" fetch --tags --quiet
 git -C "$SRC" checkout --quiet --force "$ESP_TAG"
 git -C "$SRC" clean -fdxq
 git -C "$SRC" apply "$HERE/close-client-once.patch"
+git -C "$SRC" apply "$HERE/wifi-throughput.patch"
+git -C "$SRC" apply "$HERE/wifi-recovery.patch"
+git -C "$SRC" apply "$HERE/wifi-link.patch"
 
 IDF="$CACHE/esp-idf"
 export IDF_TOOLS_PATH="$CACHE/espressif"

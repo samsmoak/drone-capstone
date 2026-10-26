@@ -3,10 +3,10 @@ THE DATA PIPELINE — a recorded flight in; findings, and a verdict per inspecti
 point, out — on the laptop, then on the web
 Last verified: 2026-10-11 — re-read after rest.py changed for mission playback; its result and processing routes are unchanged. Before that:
 2026-10-09 against docs/pipeline-v2 (= experiment/samuel without
-the mission-controller work) — agent pytest 1369, `cropwatcher process` on the
+the mission-controller work) — agent pytest 1369, `dronedeck process` on the
 fixture and on real lab flights, the local Supabase stack (owner 10/10,
 results 11/11, notifications 16/16, rls 15/15), the web pages in a browser.
-SOURCE: backend/agent/cropwatcher/pipeline/runner.py
+SOURCE: backend/agent/dronedeck/pipeline/runner.py
 ================================================================================
 
 THIS IS THE INDEX. One doc per stage, plus the results on the web:
@@ -18,7 +18,7 @@ THIS IS THE INDEX. One doc per stage, plus the results on the web:
   scene.txt       scene@1 — whether the camera's view changed during one
   session.txt     the session around its flights, processed too (ground@1)
   live.txt        each point's verdict while the mission flies (story 4.9)
-  calibrate.txt   the hand-warmer flights, measured (`cropwatcher calibrate`)
+  calibrate.txt   the hand-warmer flights, measured (`dronedeck calibrate`)
   results.txt     the result uploaded, shown on the web, notified
 
 DRIFT, SAID AS DRIFT (2026-10-09): until this pass this doc said the unit of
@@ -43,7 +43,7 @@ STATUS  (Last verified: 2026-10-09)
   results   BUILT — uploaded, on the session and flight pages, notified
             (results.txt). Migrations 0015–0017 live on the hosted database
             since 2026-10-09
-  calibrate BUILT — `cropwatcher calibrate` (calibrate.txt); the flights
+  calibrate BUILT — `dronedeck calibrate` (calibrate.txt); the flights
             themselves are OWED: every threshold stays PROVISIONAL until then
   NOT BUILT an image model that judges the equipment (story 4.4, Reagan — no
             labelled photos, and the camera cannot see heat)
@@ -52,7 +52,7 @@ STATUS  (Last verified: 2026-10-09)
 1. WHAT IT IS
 --------------------------------------------------------------------------------
 Story 4.5: "A single command turns a recorded flight into a result with a
-verdict for each inspection point." `cropwatcher process --flight <id>` loads
+verdict for each inspection point." `dronedeck process --flight <id>` loads
 the flight's readings, its session's frames and the plan it flew, runs
 clean → enhance → classify → interpret ONCE over the whole flight, and writes
 <data folder>/results/<flight id>/result.json and the enhanced frames. The
@@ -63,21 +63,21 @@ wiggle, with the readings as the evidence and the frames as support.
 --------------------------------------------------------------------------------
 2. WHERE IT LIVES
 --------------------------------------------------------------------------------
-backend/agent/cropwatcher/pipeline/contracts.py    the types — contract v2
-backend/agent/cropwatcher/pipeline/sources.py      LocalFlightSource
-backend/agent/cropwatcher/pipeline/sinks.py        LocalResultSink, to_jsonable
-backend/agent/cropwatcher/pipeline/runner.py       run_stages, run_flight
-backend/agent/cropwatcher/pipeline/compose.py      which implementation per stage
-backend/agent/cropwatcher/cli.py                   `cropwatcher process`; queues
+backend/agent/dronedeck/pipeline/contracts.py    the types — contract v2
+backend/agent/dronedeck/pipeline/sources.py      LocalFlightSource
+backend/agent/dronedeck/pipeline/sinks.py        LocalResultSink, to_jsonable
+backend/agent/dronedeck/pipeline/runner.py       run_stages, run_flight
+backend/agent/dronedeck/pipeline/compose.py      which implementation per stage
+backend/agent/dronedeck/cli.py                   `dronedeck process`; queues
                                                    the upload
-backend/agent/cropwatcher/processing.py            the queue: one flight at a
+backend/agent/dronedeck/processing.py            the queue: one flight at a
                                                    time, in a child process
-backend/agent/cropwatcher/history.py               interrupted_flights — what a
+backend/agent/dronedeck/history.py               interrupted_flights — what a
                                                    closed app left unfinished
-backend/agent/cropwatcher/session.py               processing_on, set_processing,
+backend/agent/dronedeck/session.py               processing_on, set_processing,
                                                    process_flight,
                                                    resume_processing
-backend/agent/cropwatcher/api/rest.py              POST /session/processing,
+backend/agent/dronedeck/api/rest.py              POST /session/processing,
                                                    GET /flights/{id}/result,
                                                    POST /flights/{id}/process;
                                                    the resume in the lifespan
@@ -91,7 +91,7 @@ backend/agent/tests/pipeline/                      fixture, conformance, tests
 --------------------------------------------------------------------------------
 • ON THE LAPTOP, IN THE AGENT — not Supabase. Edge Functions are Deno only with
   2 s of CPU a request; the laptop has every frame the moment the drone lands
-  (the cloud gets 2 a second); only the laptop can steer the drone, which
+  (the cloud gets the captured ones, at most 2 a second); only the laptop can steer the drone, which
   stories 4.9 and 4.10 need. PORTS AND ADAPTERS (FlightSource, ResultSink),
   stages chosen in one composition root: a cloud worker later is two adapters.
 • THE UNIT OF WORK IS THE FLIGHT (contract v2, 2026-10-09 — CHANGED from one
@@ -120,7 +120,7 @@ backend/agent/tests/pipeline/                      fixture, conformance, tests
   the Control page in Auto and Manual alike, ON BY DEFAULT IN BOTH (Manual was
   off until the owner asked). Settable before a session starts or during one;
   the choice lasts until the session ends; audited; read as a flight BEGINS.
-• `cropwatcher process --all` processes every recorded flight with no result
+• `dronedeck process --all` processes every recorded flight with no result
   or one from an older pipeline, and queues each for the web; a flight with no
   readings is skipped. Run again, it does only what is left.
 • A CHILD PROCESS, one flight at a time, lower priority, 15 minutes at most —
@@ -129,7 +129,7 @@ backend/agent/tests/pipeline/                      fixture, conformance, tests
 • PROCESSING RESUMES WHEN THE APP STARTS AGAIN (2026-10-09, the owner's ask):
   flights left pending, queued or running are queued again, in the
   background; a FAILED one is not retried unasked. Each laptop processes its
-  OWN flights — it holds every reading and frame. CROPWATCHER_RESUME=0 turns
+  OWN flights — it holds every reading and frame. DRONEDECK_RESUME=0 turns
   it off; the tests turn it off (tests/conftest.py).
 
 --------------------------------------------------------------------------------

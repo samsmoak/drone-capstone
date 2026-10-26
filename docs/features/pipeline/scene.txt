@@ -3,7 +3,7 @@ SCENE CHANGE — what the camera can honestly add to a finding
 Last verified: 2026-10-09 against dpp/scene — 8 760 real frames (1 542 pairs
 from the same place), planted changes, the tests (identical, shifted, occluded,
 exposure, moved).
-SOURCE: backend/agent/cropwatcher/pipeline/stages/classify/scene.py
+SOURCE: backend/agent/dronedeck/pipeline/stages/classify/scene.py
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -28,10 +28,10 @@ telemetry is the source of truth, an image only supports it).
 --------------------------------------------------------------------------------
 2. WHERE IT LIVES
 --------------------------------------------------------------------------------
-backend/agent/cropwatcher/pipeline/stages/classify/scene.py   measure, align
-backend/agent/cropwatcher/pipeline/contracts.py               ViewChange,
+backend/agent/dronedeck/pipeline/stages/classify/scene.py   measure, align
+backend/agent/dronedeck/pipeline/contracts.py               ViewChange,
                                                               ClassifyResult.views
-backend/agent/cropwatcher/pipeline/stages/interpret/findings.py   _frames
+backend/agent/dronedeck/pipeline/stages/interpret/findings.py   _frames
 backend/agent/tests/pipeline/test_scene.py
 ml/scene-eval/evaluate.py, MEASUREMENTS.txt
 
@@ -64,6 +64,9 @@ consumed-by       interpret.txt
                   a finding's image support and note
 depends-on        ../desktop/camera.txt
                   frames.csv: each frame's time and position
+shares-data-with  ../desktop/capture.txt
+                  frames.csv: every frame stays on disk with auto-capture on;
+                  none are written with it off — then there is nothing to compare
 depends-on        classify.txt
                   runs inside both classifiers (ClassifyResult.views)
 depends-on        data-pipeline.txt

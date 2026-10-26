@@ -235,7 +235,7 @@ def upload(api: Api, name: str, source: str) -> str:
     """Copy a placeholder into the bucket, once, and return its public URL."""
     object_path = f"team/placeholders/{name}.jpg"
     public = f"{api.base}/storage/v1/object/public/{BUCKET}/{object_path}"
-    request = urllib.request.Request(source, headers={"User-Agent": "cropwatcher-seed"})
+    request = urllib.request.Request(source, headers={"User-Agent": "dronedeck-seed"})
     with urllib.request.urlopen(request) as response:
         data = response.read()
     api.request("POST", f"/storage/v1/object/{BUCKET}/{object_path}", raw=data,

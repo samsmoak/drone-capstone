@@ -1,12 +1,12 @@
 /**
  * What the arrow keys do, in words — the one place the Control page gets
- * them from (cropwatcher/flight/keyframe.py decides; this only says it).
+ * them from (dronedeck/flight/keyframe.py decides; this only says it).
  *
  * The arrows never follow the drone's nose (the owner, 2026-09-30):
  *   From you   ↑ away from you, ↓ back, ← → round you — right even when the
  *              drone is behind you and you turn to face it.
  *   Room       the room's own directions; ↑ is the forward chosen when the
- *              base stations were set up (`cropwatcher geometry`).
+ *              base stations were set up (`dronedeck geometry`).
  * and they fall back, said here, when the drone is close to you (room
  * directions), when there is no position (the way the nose pointed at takeoff,
  * kept however it turns) or no heading at all (the nose). Holding Shift

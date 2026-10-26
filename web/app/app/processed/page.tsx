@@ -41,7 +41,7 @@ function Note({ children }: { children: React.ReactNode }) {
 }
 
 /** What counts as an anomaly — the classifier's own thresholds
- *  (backend/agent/cropwatcher/pipeline/stages/classify/blocks.py). */
+ *  (backend/agent/dronedeck/pipeline/stages/classify/blocks.py). */
 function WhatCounts() {
   return (
     <details className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 text-sm">

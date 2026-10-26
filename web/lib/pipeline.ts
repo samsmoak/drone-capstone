@@ -1,7 +1,7 @@
 /**
  * The data pipeline's result, as the web reads it from public.pipeline_results
  * and public.pipeline_findings (migration 20261009000016) — the shapes the
- * agent's result.json has (backend/agent/cropwatcher/pipeline/contracts.py).
+ * agent's result.json has (backend/agent/dronedeck/pipeline/contracts.py).
  *
  * The JSON columns come back as `Json`; every reader here checks the shape it
  * needs and drops what does not fit, so a result from an older pipeline

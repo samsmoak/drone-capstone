@@ -7,8 +7,8 @@ from dataclasses import replace
 
 import pytest
 
-from cropwatcher import drone_setup
-from cropwatcher.drone_setup import (
+from dronedeck import drone_setup
+from dronedeck.drone_setup import (
     BUNDLE_DIR,
     DroneSetup,
     Facts,

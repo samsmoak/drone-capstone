@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from cropwatcher.flight.preflight import (
+from dronedeck.flight.preflight import (
     CRITICAL_VBAT,
     ENDURANCE_AT_FULL_S,
     USABLE_FRACTION,
@@ -70,8 +70,8 @@ class TestAgainstRealDrone:
     """
 
     def test_the_checks_pass_on_a_ready_drone(self):
-        from cropwatcher.flight.checks import collect
-        from cropwatcher.flight.link import DroneLink
+        from dronedeck.flight.checks import collect
+        from dronedeck.flight.link import DroneLink
 
         with DroneLink() as link:
             report = collect(link.checks(), lambda step: print(step.to_dict()))

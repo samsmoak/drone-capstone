@@ -6,12 +6,12 @@ from __future__ import annotations
 
 import csv
 
-from cropwatcher.camera.recording import COLUMNS, FrameRecording
-from cropwatcher.mission.plan.geofence import Geofence
-from cropwatcher.safety.flight_guard import FlightGuard, GuardContext, Reason
-from cropwatcher.sync.cloud import SupabaseCloud, without_empty_point_id
-from cropwatcher.telemetry.correction import ThermalEngine
-from cropwatcher.telemetry.row import TelemetryRow, TempUnit, build_row
+from dronedeck.camera.recording import COLUMNS, FrameRecording
+from dronedeck.mission.plan.geofence import Geofence
+from dronedeck.safety.flight_guard import FlightGuard, GuardContext, Reason
+from dronedeck.sync.cloud import SupabaseCloud, without_empty_point_id
+from dronedeck.telemetry.correction import ThermalEngine
+from dronedeck.telemetry.row import TelemetryRow, TempUnit, build_row
 from tests.test_flight_guard import GROUND, snap
 
 
@@ -39,7 +39,8 @@ class TestFrames:
         holding["now"] = "P1"
         rec.add(b"b", "image/png", 324, 244)
         rows = list(csv.DictReader((tmp_path / "frames.csv").open()))
-        assert COLUMNS[-1] == "point_id"
+        # Columns are only ever appended, so older readers keep their places.
+        assert COLUMNS[-4:] == ["point_id", "source", "why", "change"]
         assert [r["point_id"] for r in rows] == ["", "P1"]
 
     def test_a_failing_point_source_never_costs_a_frame(self, tmp_path):

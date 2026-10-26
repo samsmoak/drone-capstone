@@ -1,5 +1,5 @@
 """Choose the GROUND classifier's settings on REAL sessions (ground@1,
-backend/agent/cropwatcher/pipeline/stages/classify/ground.py): how often a
+backend/agent/dronedeck/pipeline/stages/classify/ground.py): how often a
 normal session raises an event on the ground (want ~never), and whether a
 planted one is found.
 
@@ -41,11 +41,11 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend" / "agent"))
 
-from cropwatcher.pipeline.contracts import FlightContext  # noqa: E402
-from cropwatcher.pipeline.sources import LocalSessionSource, SessionNotFound  # noqa: E402
-from cropwatcher.pipeline.stages.classify import blocks, ground  # noqa: E402
-from cropwatcher.pipeline.stages.classify.pelt import pelt  # noqa: E402
-from cropwatcher.pipeline.stages.clean.robust import RobustCleaner  # noqa: E402
+from dronedeck.pipeline.contracts import FlightContext  # noqa: E402
+from dronedeck.pipeline.sources import LocalSessionSource, SessionNotFound  # noqa: E402
+from dronedeck.pipeline.stages.classify import blocks, ground  # noqa: E402
+from dronedeck.pipeline.stages.classify.pelt import pelt  # noqa: E402
+from dronedeck.pipeline.stages.clean.robust import RobustCleaner  # noqa: E402
 
 BUMPS_C = (1.0, 2.0, 3.0, 5.0)
 STEPS_HPA = (0.3, 0.5)

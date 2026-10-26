@@ -1,7 +1,7 @@
 SENSOR-FAULT MEASUREMENTS — where every number in the cleaner comes from
 =======================================================================
 
-The cleaner (backend/agent/cropwatcher/pipeline/stages/clean/robust.py) cites
+The cleaner (backend/agent/dronedeck/pipeline/stages/clean/robust.py) cites
 this file for each threshold. Change a threshold → change its line here, with
 the measurement that justifies it.
 

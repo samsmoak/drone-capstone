@@ -5,7 +5,7 @@ Last verified: 2026-10-11 — re-read after agent.ts changed for mission playbac
 fixture flight (a point's verdict from the flight so far, a half-written last
 row skipped), the queue's priority, the session hook, the desktop harness.
 NOT YET FLOWN: no real mission has been flown with it.
-SOURCE: backend/agent/cropwatcher/pipeline/runner.py
+SOURCE: backend/agent/dronedeck/pipeline/runner.py
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -31,12 +31,12 @@ Progress list, with any finding that touches it, while the drone flies on.
 --------------------------------------------------------------------------------
 2. WHERE IT LIVES
 --------------------------------------------------------------------------------
-backend/agent/cropwatcher/pipeline/runner.py     run_live_point, live_path
-backend/agent/cropwatcher/pipeline/sources.py    load(partial=True)
-backend/agent/cropwatcher/cli.py                 process --live-point
-backend/agent/cropwatcher/processing.py          kind "live", job_key, POINT_ID,
+backend/agent/dronedeck/pipeline/runner.py     run_live_point, live_path
+backend/agent/dronedeck/pipeline/sources.py    load(partial=True)
+backend/agent/dronedeck/cli.py                 process --live-point
+backend/agent/dronedeck/processing.py          kind "live", job_key, POINT_ID,
                                                  the priority queue
-backend/agent/cropwatcher/session.py             _queue_live, _live_changed;
+backend/agent/dronedeck/session.py             _queue_live, _live_changed;
                                                  Session.processing["live"]
 desktop/src/lib/agent.ts                         LivePoint, Processing.live
 desktop/src/pages/control/auto/FlyStep.tsx       LiveVerdict in Progress

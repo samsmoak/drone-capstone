@@ -47,7 +47,7 @@ Legend: `[x]` done · `[ ]` not started · **⚠** blocked on something external
 27. [x] Ambient temperature as a launch parameter, unit recorded in the row
 28. [x] Tests: reader assembles a full row from fake log data
 29. [x] Tests: unit selection round-trips through the row
-30. [x] `cropwatcher hover` writes a real CSV
+30. [x] `dronedeck hover` writes a real CSV
 
 ## Phase 4 — Safety  ✅
 
@@ -71,7 +71,7 @@ Legend: `[x]` done · `[ ]` not started · **⚠** blocked on something external
 45. [x] Mission progress events (`started`, `waypoint_reached`, `landed`, `aborted`)
 46. [x] Tests: lawnmower covers the area with no gaps
 47. [x] Tests: abort mid-mission still lands
-48. [x] `cropwatcher mission --file plan.json`
+48. [x] `dronedeck mission --file plan.json`
 
 ## Phase 6 — Supabase schema  ✅
 
@@ -250,7 +250,7 @@ Run before calling any phase done, and report pass/fail/skipped honestly:
 
 ```bash
 cd backend/agent && source .venv/bin/activate
-ruff check . && mypy cropwatcher && pytest      # agent
+ruff check . && mypy dronedeck && pytest      # agent
 
 cd web && pnpm typecheck && pnpm lint && pnpm build   # web
 ```
@@ -258,6 +258,6 @@ cd web && pnpm typecheck && pnpm lint && pnpm build   # web
 Hardware verification needs the Crazyradio plugged in:
 
 ```bash
-cropwatcher check                          # preflight only, no motors
-cropwatcher hover --height 0.3 --secs 30   # reproduce the 25 s held hover
+dronedeck check                          # preflight only, no motors
+dronedeck hover --height 0.3 --secs 30   # reproduce the 25 s held hover
 ```

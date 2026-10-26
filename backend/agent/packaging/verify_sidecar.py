@@ -36,7 +36,7 @@ reported as a timeout.
 
 Run through `build_sidecar.py`, which runs it on every build, or directly:
 
-    python verify_sidecar.py ../../desktop/src-tauri/bin/cropwatcher-agent-<triple>
+    python verify_sidecar.py ../../desktop/src-tauri/bin/dronedeck-agent-<triple>
 """
 
 from __future__ import annotations
@@ -68,7 +68,7 @@ EXIT_TIMEOUT_S = 30.0
 # What cflib prints once libusb is loaded and it has walked the bus.
 USB_REACHED = "Looking for devices"
 # The correct answers when no drone can be reached. `check` goes through
-# DroneLink, whose reasons come from cropwatcher/flight/radio.py; "no drone
+# DroneLink, whose reasons come from dronedeck/flight/radio.py; "no drone
 # found" is the older core.connect wording. Matching only that one made every
 # radio-less build — every CI run — report "a radio answered".
 NO_DRONE = (
@@ -96,9 +96,9 @@ def _probe_env(data_dir: str) -> dict[str, str]:
     the camera — a build step touching the radio.
     """
     env = dict(os.environ)
-    env["CROPWATCHER_DATA_DIR"] = data_dir
-    env["CROPWATCHER_STANDBY"] = "0"
-    env.pop("CROPWATCHER_CAMERA", None)
+    env["DRONEDECK_DATA_DIR"] = data_dir
+    env["DRONEDECK_STANDBY"] = "0"
+    env.pop("DRONEDECK_CAMERA", None)
     return env
 
 
@@ -293,8 +293,11 @@ def _check_server(binary: Path, env: dict[str, str], work: Path) -> list[str]:
         # RFC 6455 requires the key to be exactly 16 bytes before encoding.
         # A 17-byte one is rejected with a 400 that looks identical to "the
         # websockets implementation is missing" — which cost a build to tell
-        # apart, hence the explicit length.
-        key = base64.b64encode(b"cropwatcher1probe"[:16]).decode()
+        # apart, hence the explicit length. A short one fails the same way: the
+        # rename's b"dronedeck1probe" was 15 bytes and failed every build.
+        probe = b"dronedeck-1probe"
+        assert len(probe) == 16, "RFC 6455: the key is exactly 16 bytes"
+        key = base64.b64encode(probe).decode()
         connection = http.client.HTTPConnection("127.0.0.1", PROBE_PORT, timeout=10)
         try:
             connection.request(
@@ -331,7 +334,7 @@ def verify(binary: Path) -> None:
     if not binary.exists():
         raise VerificationError(f"no such binary: {binary}")
 
-    with tempfile.TemporaryDirectory(prefix="cropwatcher-verify-",
+    with tempfile.TemporaryDirectory(prefix="dronedeck-verify-",
                                      ignore_cleanup_errors=True) as work:
         env = _probe_env(str(Path(work) / "data"))
         checks = [

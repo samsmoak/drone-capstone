@@ -17,73 +17,36 @@ They are dark (median brightness 61 of 255), which is why the data pipeline
 enhances them (../pipeline/enhance.txt). Verified by reading the frames
 themselves, not the logs.
 
-THIS IS NOT VIDEO. The tab pulls one still every 200 ms — about 5 fps at best.
+THIS IS NOT VIDEO. The window pulls one still every 200 ms — about 5 fps at
+best — and the deck has delivered 0.7–4.9 (camera-firmware.txt).
 
 
 WHERE IT LIVES
 
-  backend/agent/cropwatcher/camera/source.py   FrameSource, NoCamera, TestPattern
-  backend/agent/cropwatcher/camera/deck.py     DeckStream — the deck's stream
-  backend/agent/cropwatcher/camera/flash_gap8.py  puts the streamer on the GAP8
-  backend/agent/cropwatcher/api/rest.py        GET /camera, GET /camera/frame
-  backend/agent/cropwatcher/flight/checks.py   _ai_deck_fitted — deck.bcAI
+  backend/agent/dronedeck/camera/source.py   FrameSource, NoCamera, TestPattern
+  backend/agent/dronedeck/camera/rate.py     FrameRate, DeckTiming — how fast
+  backend/agent/dronedeck/camera/deck.py     DeckStream — the deck's stream
+  backend/agent/dronedeck/camera/flash_gap8.py  puts the streamer on the GAP8
+  backend/agent/dronedeck/api/rest.py        GET /camera, GET /camera/frame
+  backend/agent/dronedeck/flight/checks.py   _ai_deck_fitted — deck.bcAI
   backend/agent/tests/test_camera.py, test_camera_deck.py
   desktop/src/pages/control/CameraPane.tsx     the tab and its four states
+  desktop/src/lib/cameraFeed.ts                the window's one feed
   desktop/src/lib/agent.ts                     cameraFrameUrl, api.cameraStatus
   desktop/src-tauri/tauri.conf.json            the img-src the frames need
-  desktop/src-tauri/src/lib.rs                 spawn_agent sets CROPWATCHER_CAMERA=deck
+  desktop/src-tauri/src/lib.rs                 spawn_agent sets DRONEDECK_CAMERA=deck
 
 
-MEASURED 2026-09-23, IN THE LAB, ON cf-002f002a3334471239333335
-
-  before reseating   every deck param 0 · 1-Wire memories enumerated: 0
-  after reseating    deck.bcAI YES    · 1-Wire memories enumerated: 1
-
-Deck detection reads an EEPROM on each deck over a SINGLE shared pin, at boot.
-Zero memories with the boards visibly attached was one contact fault, not
-several missing decks — reseating fixed it and the AI deck is now detected.
-
-deck.bcLighthouse4 IS STILL 0, and only one memory enumerates. Whatever was
-wrong for the AI deck is still wrong for that one, and it costs every flight
-its position (flight-safety.txt). Worth the same treatment.
-
-CPX OVER THE RADIO DOES NOT WORK, and the reason is cflib, not the firmware.
-cflib ships `cflib.cpx.transports.CRTPTransport`, which is why it first looked
-viable — but READ IT: every method is `pass` and its own comment says "This
-connection will not really work...". The only real transports are
-SocketTransport (TCP, i.e. the deck's Wi-Fi) and UARTTransport. So the deck's
-Wi-Fi IS required after all, and an earlier note here saying otherwise was
-wrong.
+THE RADIO CANNOT CARRY FRAMES — the 50 Hz setpoint stream shares it — so the
+deck has its own Wi-Fi; deck presence is read as a param (deck.bcAI). Why,
+measured: camera-firmware.txt, "THE RADIO".
 
 
-WHAT THE RADIO CAN AND CANNOT DO
-
-  ask whether the deck is fitted      YES — deck.bcAI, a param read
-  carry the frames                    NO
-
-`deck.bcAI` is read during the checks, beside `deck.bcLighthouse4`, and lands on
-the session snapshot as `ai_deck`. It gates nothing; it is recorded and shown.
-None rather than False when it cannot be read: firmware that does not publish
-the param has not said "no deck", and recording a guess as a measurement is what
-CLAUDE.md #5 exists to stop.
-
-The frames cannot come the same way. Usable CRTP throughput is a few KB/s and a
-single 320x320 frame is tens of KB — but the real objection is not bandwidth, it
-is that THE SAME LINK CARRIES THE 50 Hz SETPOINT STREAM. The Crazyflie stops
-accepting control below about 10 Hz of commands and drops; congesting the radio
-with image data risks the drone. That is why the deck carries its own Wi-Fi chip,
-and it is why this is a lab problem rather than a coding one.
-
-Bitcraze's CPX can route deck data over CRTP, so a still frame every few seconds
-is possible in principle. It still shares the link with control, it needs the
-deck flashed for it, and it is not video.
-
-
-THE SOURCES — chosen by CROPWATCHER_CAMERA
+THE SOURCES — chosen by DRONEDECK_CAMERA
 
   (unset)  NoCamera     the default. Frames are None; the route answers 204
   test     TestPattern  a generated 320x320 PNG
-  deck     DeckStream   the deck at CROPWATCHER_DECK_ADDR (192.168.4.1:5000)
+  deck     DeckStream   the deck at DRONEDECK_DECK_ADDR (192.168.4.1:5000)
 
 THE DESKTOP APP SETS `deck` for its bundled agent (lib.rs, spawn_agent), so
 `pnpm app` is the whole test: build, launch, join the deck's Wi-Fi, open the
@@ -95,43 +58,14 @@ switch is needed: the agent reads the deck's new address off the drone's console
 and DeckStream.set_host moves the stream there. The access point is what the
 deck falls back to when no network has been set.
 
-For a bare `cropwatcher serve`, `deck` stays opt-in because it needs the laptop JOINED to the deck's access point
+For a bare `dronedeck serve`, `deck` stays opt-in because it needs the laptop JOINED to the deck's access point
 ("WiFi streaming example"), and while it is, the laptop has no internet — the
 agent cannot sync, and a remote assistant driving the laptop loses its link.
 A second network adapter (USB Wi-Fi or ethernet for the internet) removes that.
 
 
-THE DECK'S WIRE FORMAT, MEASURED 2026-09-23 FROM THE REAL DECK
-
-  every packet   <HBB     length (counts the 2 routing bytes), routing 0x63 0x05
-  image header   <BHHBBI  magic 0xBC, width, height, depth, format, size
-  data           packets of 1020 payload bytes until `size` bytes arrive
-
-  measured       324 x 244, depth 1, format 0 (raw), size 79056 = 324*244
-  first capture  24,495 bytes in 8 s, then nothing — stalled mid-frame
-
-OVER THE OPERATOR'S WI-FI (2026-09-24, "VT Open WiFi", RSSI -84): 74 distinct
-frames in 20 s — about 3.7 a second — first at 0.3 s. One gap of 7.1 s: the
-stall below, recovered by the reconnect without a click. The weak signal is a
-likely contributor; a stronger one has not been tried.
-
-WHY A MOVING DRONE CUTS OUT, and what is left to do about it. The deck joined
-at RSSI -84 dBm — near the edge — through a chip antenna, so rotating the drone
-swings the signal through dead angles; and each raw frame is 79 KB, so one lost
-stretch holds up a whole frame. The app now rides that out (the invariants
-below), but cannot make the link stronger. What would:
-  - a stronger signal: a phone hotspot or router near the flight area
-  - JPEG frames, ~10x smaller: the streamer supports it (streamerMode =
-    JPEG_ENCODING) but it is fixed AT COMPILE TIME in wifi-img-streamer.c, so it
-    means rebuilding the GAP8 firmware with the GAP SDK. Not done yet. The
-    agent already passes JPEG frames through untouched.
-
-THE STALL IS ON THE DECK. Read over the radio from the drone's console
-(2026-09-24): "GAP8: capture=76ms ... (79056 bytes), transfer=1150948 ms" and
-"ESP32: Error occurred during sending: errno 113 / Client disconnected". The
-GAP8 sat blocked in one frame's send for 19 minutes and was released only when
-the laptop left the network. A healthy frame measured transfer=32 ms. The
-cause of the block is not yet known; the drone's console is where to look.
+WHAT RUNS ON THE DECK, ITS WIRE FORMAT, WHY THE FEED IS SLOW AND STALLS, and
+the firmware being built to fix it: camera-firmware.txt.
 
 Raw frames are re-encoded to greyscale PNG; JPEG (format 1) passes through. A
 colour sensor would show its Bayer pattern as fine texture — demosaicing is not
@@ -174,8 +108,13 @@ DECISIONS
 - `deck_fitted` has three states and they need different things done about them:
   fitted with no link is a lab problem, not fitted is a hardware one, and null
   means no session has run the checks yet.
-- The tab does not poll behind a hidden tab. A frame request every 200 ms for an
-  image nobody is looking at is waste on a laptop that is also flying a drone.
+- THE FEED IS THE WINDOW'S, NOT THE TAB'S (2026-10-24, changed). The tab used
+  to stop pulling frames when hidden, and to start from nothing when shown —
+  so leaving it and coming back looked like the camera switching off (Samuel:
+  "the camera feed should always be on"). lib/cameraFeed.ts now runs for as
+  long as the window is open: a frame every 200 ms while any camera view is
+  on screen, every 2 s while none is, and the agent's camera status every 2 s
+  always. Returning finds a current picture.
 - One dropped frame is a hiccup; five in a row is a stopped feed. Reporting the
   first would make a normal feed look broken.
 - A stopped feed is retried, not reported and abandoned. The agent reconnects
@@ -205,34 +144,37 @@ RECORDING (2026-09-24) — a session's frames, to disk first
   <session folder>/frames.csv           seq, recorded_at, t_s, file, width,
                                         height, bytes, x_m, y_m, z_m, upload
 
-Every frame of a session is kept on the laptop; two a second are marked
-upload=1 and go to the private flight-frames bucket through the outbox
-(offline-sync.txt). Position is the drone's estimate as the frame arrived;
+Every frame of a session is kept on the laptop — unless auto-capture is off
+(capture.txt). The CAPTURED ones are marked upload=1 and go to the private
+flight-frames bucket through the outbox (offline-sync.txt): since 2026-10-24
+the frames that differ from the last captured one, at most two a second
+(capture.txt, the rule); before, simply two a second. Position is the drone's estimate as the frame arrived;
 empty — not zero — when there is none. Standby records nothing.
 
-IN A SESSION THE TAB SHOWS THE RECORDING: the newest frame read back FROM
-DISK, and a backlog scrubber (◀, a slider, ▶, "n/N · m:ss", Live) to walk
+IN A SESSION THE TAB SHOWS THE RECORDING — while auto-capture is on: the
+newest frame read back FROM DISK, and a backlog scrubber (◀, a slider, ▶, "n/N · m:ss", Live) to walk
 back through the session. What is watched is what was saved and what uploads.
-Outside a session the tab shows the live feed as it comes, even when uneven.
+Outside a session, or with auto-capture off (the recording then grows only
+on a manual capture, and following it would freeze the picture), the tab
+shows the live feed as it comes, even when uneven.
+
+HOW FAST, MEASURED (2026-10-24, camera/rate.py). Under the picture, one line
+from both ends of the link: what ARRIVES (frames a second over the last 10 s,
+their size, raw or jpeg, the longest gap — the open one included) and what
+the GAP8 SAYS each frame cost it (capture, encode, send, read off the drone's
+console; its sum bounds what the deck can produce). Send dominating means the
+ESP32 / Wi-Fi is the slow part; the deck's ceiling far above the arriving
+rate means frames are held between the ESP32 and this laptop. In /camera as
+`rate` and `deck_timing`.
+
+A STALL IS SAID, NEVER SILENT: the last frame stays up, dimmed, with
+"Camera stalled · no new frame for N s" (or "Reconnecting" while the agent is
+working towards a picture).
 
 Verified: real upload as the operator to flight-frames (2 of 6 frames chosen
 at 10 fps, i.e. two a second, plus frames.csv), outbox emptied, test objects
 deleted. NOT yet: a real session on the drone.
 
-
-THE DECK'S WI-FI CHIP IS PATCHED (firmware/aideck-esp, flashed 2026-09-24).
-Its stock firmware (Bitcraze 2025.02 included) can close one client twice;
-the stale "disconnected" bit then drops EVERY later client in the same
-millisecond and the GAP8 never streams again ("Client connected / Client
-disconnected" at one timestamp, measured on official 2025.02 too). The patch
-closes each client once and clears stale bits before accept.
-  verified on the drone, patched: 0 of 11 clients dropped instantly (before:
-  all); steady 55 frames / 15 s at -59 dBm; 7 of 10 abrupt hang-ups got a
-  frame at once, the other 3 on the next connection (Bitcraze's open send-stall
-  issue, aideck-esp-firmware #12 — a weak or dipping signal).
-FLASHING THE ESP32 LEAVES THE GAP8 NOT STARTING until the battery is unplugged
-~10 s (Bitcraze Discussion #1305); a restart over the radio is not enough.
-The GAP8 BOOTLOADER needs a JTAG programmer to update — do not plan on it.
 
 INVARIANTS
 
@@ -252,6 +194,9 @@ INVARIANTS
   feed — the tab had been dropping to NO SIGNAL after 5 missed frames (1 s).
 - A READ SILENT FOR 2 S IS A STALL (was 5 s); the agent reconnects at once and
   doubles from 0.2 s. A healthy raw frame takes ~32 ms (the GAP8's count).
+  THREE CONNECTIONS IN A ROW WITH NOT ONE BYTE (2026-10-24) slow the retries
+  to every 5 s and make the Camera tab say which chip is silent, from the
+  drone's own console (camera-firmware.txt, "WHICH CHIP IS SILENT").
 - img-src includes blob:, for the above.
 
 - Frame size comes from each frame's header, never a constant. The only
@@ -269,9 +214,10 @@ INVARIANTS
   telemetry stream, and asking for it there would be looking in the wrong place.
 
 
-LAST VERIFIED  2026-09-23.
+LAST VERIFIED  2026-10-24 — the shared feed and the rate line in the harness
+  (real time: "LIVE · 0 MS"), the agent's rate tests. Before:
   test pattern   rendered in the tab through the real CSP and the real <img>
-  deck source    a real agent with CROPWATCHER_CAMERA=deck against a stand-in
+  deck source    a real agent with DRONEDECK_CAMERA=deck against a stand-in
                  deck on localhost: live, 324x244, frames change; stand-in
                  killed -> "Cannot reach the AI deck..." within seconds
   real deck      whole frames, recorded since 2026-09-24 (8 748 on the lab
@@ -289,3 +235,7 @@ consumed-by       drone-wifi.txt
                   sets the address DeckStream streams from
 consumed-by       ../pipeline/scene.txt
                   frames.csv: each frame's time and position, for scene@1
+consumed-by       capture.txt
+                  the recording it marks captured; the feed the Capture page shows
+depends-on        camera-firmware.txt
+                  the stream: its format, its rate, why it stalls

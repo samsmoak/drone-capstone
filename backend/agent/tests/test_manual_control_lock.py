@@ -26,12 +26,17 @@ REPO = Path(__file__).resolve().parents[3]
 #: manual.py re-fingerprinted 2026-10-01 at Samuel's ask (mission speed
 #: presets): fly_to() takes an optional speed_m_s, capped at MOVE_SPEED_M_S.
 #: Nothing the keys do changed — no key path, gain, lean or speed.
+#: manual.py and keyframe.py re-fingerprinted 2026-10-25 at Samuel's ask (the
+#: project-wide CropWatcher -> DroneDeck rename): the only change is the import
+#: token `cropwatcher` -> `dronedeck`. Verified identical to the pre-rename file
+#: after that substitution — no key path, gain, lean or speed changed. tuning.py
+#: carried no such token, so its fingerprint is unchanged.
 LOCKED: dict[str, str] = {
-    "backend/agent/cropwatcher/flight/manual.py":
-        "750c6b5742a815b458f30243e260122bcd479a7e39223b88dcce91a2aee41521",
-    "backend/agent/cropwatcher/flight/keyframe.py":
-        "705d999f2d70966aa582e206d81ac06a62a4eae0357008dded17b4c55819fc41",
-    "backend/agent/cropwatcher/flight/tuning.py":
+    "backend/agent/dronedeck/flight/manual.py":
+        "103d77ff808a69cb0fa41394276c308bb5bef2b7f1b9dbd3c6742ee726ba2b52",
+    "backend/agent/dronedeck/flight/keyframe.py":
+        "52acf1c460059422a608ead8a557ca25db51c4d056dce9bd5fe0f45d4343915f",
+    "backend/agent/dronedeck/flight/tuning.py":
         "0e598dd8a528cd8211d6f5bf78ff009e8c0e662642ed240bdf925fdac5c3568f",
     "desktop/src/lib/keys.ts":
         "c8c96e292a43da80611d7dc9ffc3b414f8fe2289b81268344d410de38af4a9dd",

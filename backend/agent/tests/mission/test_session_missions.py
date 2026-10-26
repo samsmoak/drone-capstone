@@ -14,13 +14,13 @@ from types import MappingProxyType, SimpleNamespace
 
 import pytest
 
-from cropwatcher.mission.controller import EventKind, MissionEvent, MissionState
-from cropwatcher.mission.plan.mission import InspectionPoint
-from cropwatcher.mission.plan.store import PlanStore
-from cropwatcher.session import Mode, Session, SessionError, State
-from cropwatcher.sync.cloud import Operator
-from cropwatcher.sync.outbox import Kind, Outbox
-from cropwatcher.telemetry.stream import Snapshot
+from dronedeck.mission.controller import EventKind, MissionEvent, MissionState
+from dronedeck.mission.plan.mission import InspectionPoint
+from dronedeck.mission.plan.store import PlanStore
+from dronedeck.session import Mode, Session, SessionError, State
+from dronedeck.sync.cloud import Operator
+from dronedeck.sync.outbox import Kind, Outbox
+from dronedeck.telemetry.stream import Snapshot
 from tests.mission.plans import mission, room
 from tests.test_session import REPORT, FakeLink, start_and_confirm, wait_for
 from tests.test_sync import FakeCloud
@@ -89,7 +89,7 @@ class PositionedLink(FakeLink):
 
 
 def make_rig(tmp_path, monkeypatch, controller=StandInController, at=(-1.0, -1.0)):
-    monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
     STARTED.clear()
     cloud = FakeCloud()
     cloud.sign_in = lambda email, password: Operator("user-1", email, "Ada", "operator")

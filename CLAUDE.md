@@ -23,8 +23,9 @@
 **drone-capstone** — DroneDeck: an autonomous indoor inspection system built around a
 Crazyflie 2.1. The drone flies a route of inspection points, records temperature,
 pressure and images at each, and the findings surface on a web dashboard. Named
-CropWatcher until 2026-09-28 (a greenhouse brief); the code keeps that name wherever
-changing it would move someone's data — see `docs/features/desktop/desktop-app.txt`,
+CropWatcher until 2026-09-28 (a greenhouse brief), then renamed DroneDeck; the
+2026-10-25 rename removed the CropWatcher name from the code and moved the data
+folder across (migrated on first run) — see `docs/features/desktop/desktop-app.txt`,
 "THE NAME". The project's parts, stories and owners come from
 `web/public/docs/dronedeck-project-management-planning.pdf`.
 
@@ -66,9 +67,10 @@ node scripts/setup.mjs --dev                 # --check: only check; drop --dev: 
 
 # agent
 cd backend/agent && source .venv/bin/activate
-ruff check . && mypy cropwatcher && pytest   # gates
-cropwatcher serve                            # serve (the api module has no entry point)
-cropwatcher process --fixture                # the data pipeline, on the test fixture
+ruff check . && mypy dronedeck && pytest   # gates
+dronedeck serve                            # serve (the api module has no entry point)
+dronedeck process --fixture                # the data pipeline, on the test fixture
+dronedeck setup                            # install the drone's software (DroneDeck quit); --check, --reinstall
 
 # web
 cd web && pnpm dev
@@ -87,8 +89,8 @@ fresh clone because the `PageProps` route types only exist after generation.
 
 ```bash
 cd backend/agent && source .venv/bin/activate
-cropwatcher check
-cropwatcher hover --height 0.3 --secs 30 --ambient 74F   # writes organized_flights/
+dronedeck check
+dronedeck hover --height 0.3 --secs 30 --ambient 74F   # writes organized_flights/
 pytest -m hardware                                       # deselected without a drone
 ```
 
@@ -121,7 +123,7 @@ that each lost the drone in the lab; as it stands now it "runs perfectly".
 This covers the keys, the lean and speeds, Shift (hold to reverse the arrows),
 which way the arrows point, and the controller tuning manual flight uses:
 
-- `backend/agent/cropwatcher/flight/manual.py`, `flight/keyframe.py`, `flight/tuning.py`
+- `backend/agent/dronedeck/flight/manual.py`, `flight/keyframe.py`, `flight/tuning.py`
 - `desktop/src/lib/keys.ts`, and the keyboard handler in `desktop/src/App.tsx`
 - the Arrows row: `desktop/src/lib/arrows.ts`, `desktop/src/pages/control/ArrowFrame.tsx`
 

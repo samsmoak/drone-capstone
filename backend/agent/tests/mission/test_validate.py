@@ -5,11 +5,11 @@ from __future__ import annotations
 
 import pytest
 
-from cropwatcher.mission.plan.floorplan import PlanError, Room
-from cropwatcher.mission.plan.geofence import Geofence
-from cropwatcher.mission.plan.mission import MIN_HOLD_S, InspectionPoint, Mission
-from cropwatcher.mission.plan.obstacles import Obstacle, ObstacleError, ObstacleKind
-from cropwatcher.mission.plan.validate import (
+from dronedeck.mission.plan.floorplan import PlanError, Room
+from dronedeck.mission.plan.geofence import Geofence
+from dronedeck.mission.plan.mission import MIN_HOLD_S, InspectionPoint, Mission
+from dronedeck.mission.plan.obstacles import Obstacle, ObstacleError, ObstacleKind
+from dronedeck.mission.plan.validate import (
     Severity,
     errors,
     flyable_bound,
@@ -92,6 +92,11 @@ class TestPoints:
     def test_a_short_hold(self):
         m = mission(points=(InspectionPoint("P1", -1.0, 0.9, 0.4, MIN_HOLD_S - 1),))
         assert "hold" in codes(validate_mission(m, room(), outer=OUTER))
+
+    def test_a_two_second_hold_is_allowed(self):
+        """2 s since 2026-10-25 — the owner relaxed story 3.4's 5 s."""
+        m = mission(points=(InspectionPoint("P1", -1.0, 0.9, 0.4, 2.0),))
+        assert "hold" not in codes(validate_mission(m, room(), outer=OUTER))
 
     def test_a_cruise_height_outside_the_band(self):
         assert "cruise_height" in codes(validate_mission(

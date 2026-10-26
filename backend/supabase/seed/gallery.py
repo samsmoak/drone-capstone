@@ -191,7 +191,7 @@ class Api:
 
 
 def download(url: str) -> bytes:
-    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "cropwatcher-seed"})) as r:
+    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "dronedeck-seed"})) as r:
         return r.read()
 
 

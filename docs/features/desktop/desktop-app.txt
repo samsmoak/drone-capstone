@@ -58,7 +58,7 @@ The halves can still be built separately when that is what is wanted:
 NO VIRTUALENV ACTIVATION IS NEEDED for any of this. sidecar.mjs runs the
 venv's Python by path (bin/python or Scripts/python.exe) and never reads the
 caller's PATH. The agent's
-CLI is the same: `./cropwatcher` at the repo root execs the venv's executable
+CLI is the same: `./dronedeck` at the repo root execs the venv's executable
 directly, so `source .venv/bin/activate` is not part of any workflow here.
 Rust lives in ~/.cargo/bin, which a login shell may not have on PATH.
 
@@ -104,7 +104,7 @@ DECISIONS
   is running"), keeps it in state (`agent_exit`) and emits `agent-exit`. The
   "Not connected" banner shows it with the log path (`agent_log_path`,
   mirroring paths.py). Before, the reason went out as `agent-log` events that
-  nothing listened to, and the operator read "Restart CropWatcher".
+  nothing listened to, and the operator read "Restart DroneDeck".
 - THE WINDOW COMES BACK WHEN THE ICON IS CLICKED (macOS). lib.rs handles
   RunEvent::Reopen — the Dock or Launchpad icon clicked while running — and
   RunEvent::Ready by showing, un-minimising and focusing the main window, which
@@ -112,7 +112,7 @@ DECISIONS
   window that was hidden or never ordered front stayed invisible however often
   the icon was clicked: on an Intel Mac (2026-09-25) Launchpad gave a Dock icon
   and no window, while starting the binary from Terminal gave one.
-- ONE LINE PER REPEATING MESSAGE in agent.log (cropwatcher/logfilter.py,
+- ONE LINE PER REPEATING MESSAGE in agent.log (dronedeck/logfilter.py,
   2026-10-05): "N cm off the commanded point" was written at 50 Hz and the
   camera watchdog's "not restarting the drone" every 5 s, rotating the lines
   that explain a flight out of a 2 MB × 3 log. Messages differing only in
@@ -136,10 +136,10 @@ DECISIONS
   MEASURED FROM A REAL BUILD, 2026-09-22 (the previous figures — 27 MB and a
   30 MB .dmg — were stale and had been quoted in arguments since):
 
-      Contents/MacOS/cropwatcher-agent   42 MB   the frozen agent
+      Contents/MacOS/dronedeck-agent   42 MB   the frozen agent
       Contents/MacOS/desktop            7.5 MB   the Rust shell + webview
-      DroneDeck.app (then CropWatcher)   50 MB
-      CropWatcher_0.1.0_aarch64.dmg      48 MB
+      DroneDeck.app (then DroneDeck)   50 MB
+      DroneDeck_0.1.0_aarch64.dmg      48 MB
 
   The growth is the AGENT, not the window: the frontend bundle was 647 KB
   (194 KB gzipped) then; 738 KB / 218 KB gz on main on 2026-09-29, and
@@ -148,7 +148,7 @@ DECISIONS
   (auto-control.txt). Re-measure after adding a Python dependency or a
   frontend library — this is the number that decides whether a library is
   affordable, so a stale one argues the wrong way.
-- The whole CLI is frozen, not just `serve`, so `cropwatcher-agent check` is
+- The whole CLI is frozen, not just `serve`, so `dronedeck-agent check` is
   available on a machine with no Python when a drone will not connect.
 - Installed from a terminal, never downloaded (2026-09-25): each machine
   builds its own with scripts/install.mjs. See ../development/releases.txt
@@ -156,32 +156,36 @@ DECISIONS
   Supabase's 50 MB limit) and what the website still shows.
 
 
-THE NAME: DRONEDECK SINCE 2026-09-28 (was CropWatcher)
+THE NAME: DRONEDECK (CropWatcher until 2026-09-28, a greenhouse brief)
 
-  Renamed           productName and window title (tauri.conf.json), the
-                    installed bundle (DroneDeck.app; %LOCALAPPDATA%\DroneDeck;
-                    ~/.local/lib/dronedeck + a `dronedeck` command), every
-                    message the app, the shell and the agent show, the icons
-                    (src-tauri/icons/, generated with `tauri icon` from the
-                    drone photograph in web/public/brand/CREDITS.txt), and the
-                    sidebar: the drone mark and the Space Grotesk wordmark
-                    (components/Wordmark.tsx, copied from the website's).
-  Kept, on purpose  the identifier com.cropwatcher.desktop, the agent's data
-                    folder (paths.py APP_NAME, mirrored in lib.rs), the keychain
-                    service in wifi/mod.rs, the Python package, the sidecar
-                    name cropwatcher-agent, the repo's `./cropwatcher` CLI and
-                    the CROPWATCHER_* environment variables. Each of the first
-                    three is where an existing sign-in, session history or saved
-                    Wi-Fi password lives; renaming them would lose it.
-  The old install   install.mjs removes it once DroneDeck is installed
-                    (removeLegacyCopy): the CropWatcher.app bundle, the old
-                    per-user Windows install via its own uninstall.exe /S, and
+  In two stages     2026-09-28 renamed everything a person sees — productName and
+                    window title (tauri.conf.json), the installed bundle
+                    (DroneDeck.app; %LOCALAPPDATA%\DroneDeck; ~/.local/lib/dronedeck
+                    + a `dronedeck` command), every message the app, the shell and
+                    the agent show, the icons (src-tauri/icons/, generated with
+                    `tauri icon` from the drone photograph in
+                    web/public/brand/CREDITS.txt), and the sidebar's drone mark and
+                    Space Grotesk wordmark (components/Wordmark.tsx, from the site's).
+  Finished 2026-10-25  the CropWatcher name came out of the rest: the bundle
+                    identifier (now com.dronedeck.desktop), the Python package
+                    (dronedeck), the sidecar (dronedeck-agent), the repo's
+                    `./dronedeck` CLI, the DRONEDECK_* environment variables, the
+                    keychain service (DroneDeck) and the agent's data folder (now
+                    DroneDeck — paths.py APP_NAME, mirrored in lib.rs).
+  Nobody's data lost  the data folder is migrated on first run: paths.py
+                    _migrate_legacy moves an existing CropWatcher folder across
+                    per-entry, so flights, sessions, sign-in and outbox come with
+                    it even if the shell wrote the new folder's launch log first.
+                    The one exception is the saved Wi-Fi password: the new bundle
+                    identifier is a new app to the Keychain, so it is asked again
+                    once (the banner in App.tsx says so).
+  The old install   install.mjs removes the pre-2026-09-28 copy once DroneDeck is
+                    installed (removeLegacyCopy): the CropWatcher.app bundle, the
+                    old per-user Windows install via its own uninstall.exe /S, and
                     the old Linux folder, menu entry, icon and command — only
                     what the script can prove it put there — and refuses to
                     start while the old copy is running. Skipped for a test
-                    install into CROPWATCHER_INSTALL_DIR.
-  On macOS          the renamed app is a new app to the Keychain: the first
-                    Wi-Fi connection asks again (the banner in App.tsx says so).
+                    install into DRONEDECK_INSTALL_DIR.
 
 LIGHT AND DARK
 
@@ -211,7 +215,7 @@ INVARIANTS
   a quit on 2026-09-30; the agent now exits within 20 s whatever the session
   does. See ../backend/agent-api.txt, "EVERY SHUTDOWN IS BOUNDED".
 - The verifier's probe agent is isolated: verify_sidecar.py runs it
-  with its own temporary data folder and CROPWATCHER_STANDBY=0 — without
+  with its own temporary data folder and DRONEDECK_STANDBY=0 — without
   that, verifying on a developer's laptop restored their saved sign-in and
   could reach for the radio.
 - The verifier's limits are ceilings for a hang, not estimates: 180 s to
@@ -222,7 +226,7 @@ INVARIANTS
   by the verifier on every OS CI builds (it had only been measured on macOS).
   An agent that survives fails the build and is killed with its whole tree.
 - LINUX INSTALLS PER USER, NO SUDO (install.mjs): the program in
-  ~/.local/lib/dronedeck (desktop + cropwatcher-agent side by side, as
+  ~/.local/lib/dronedeck (desktop + dronedeck-agent side by side, as
   tauri-build leaves them in target/release — the app finds its sidecar
   there), a menu entry in $XDG_DATA_HOME/applications (Desktop Entry Spec
   1.5, validated in CI), the icon in hicolor, a `dronedeck` link in
@@ -258,7 +262,7 @@ INVARIANTS
   on the Intel Mac, 2026-09-25, while the M4 and Windows signed in. setup.mjs
   installs with --only-binary=cryptography so a missing wheel fails the
   install instead.
-- EVERY BUILD PROVES ITS LAZY IMPORTS LOAD: `cropwatcher-agent selftest`
+- EVERY BUILD PROVES ITS LAZY IMPORTS LOAD: `dronedeck-agent selftest`
   imports each library the agent loads only on demand (SELFTEST_MODULES in
   cli.py), and verify_sidecar.py runs it offline. Add a module there when new
   code imports a third-party library inside a function.

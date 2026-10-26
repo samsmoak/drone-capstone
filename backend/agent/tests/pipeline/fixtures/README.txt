@@ -25,5 +25,5 @@ What the fixture proves: a flight's frames are the session's frames INSIDE its
 time window (1 and 7 are not); readings and frames group by point; transit
 readings belong to no point; a point never reached is insufficient_data.
 
-`cropwatcher process --fixture` runs the whole pipeline on it and writes to
+`dronedeck process --fixture` runs the whole pipeline on it and writes to
 fixtures/results/, which git ignores.

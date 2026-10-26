@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from cropwatcher.mission.plan.coverage import (
+from dronedeck.mission.plan.coverage import (
     MAX_RANGE_M,
     StationPose,
     Survey,
@@ -15,8 +15,8 @@ from cropwatcher.mission.plan.coverage import (
     predict,
     simplify,
 )
-from cropwatcher.mission.plan.geofence import Geofence
-from cropwatcher.mission.plan.shapes import point_in_polygon, signed_area
+from dronedeck.mission.plan.geofence import Geofence
+from dronedeck.mission.plan.shapes import point_in_polygon, signed_area
 
 
 def facing(origin, yaw_deg: float, pitch_down_deg: float) -> StationPose:
@@ -103,7 +103,7 @@ class TestSurvey:
             survey.add(x, y, 1.0, mask)
 
     def test_one_station_counts_by_default(self, monkeypatch):
-        monkeypatch.delenv("CROPWATCHER_MIN_STATIONS", raising=False)
+        monkeypatch.delenv("DRONEDECK_MIN_STATIONS", raising=False)
         assert Survey().add(0, 0, 1, 0b01)
 
     def test_a_room_that_insists_on_two_counts_only_two(self):

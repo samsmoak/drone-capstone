@@ -13,7 +13,7 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from cropwatcher.flight import radio
+from dronedeck.flight import radio
 
 
 @pytest.fixture

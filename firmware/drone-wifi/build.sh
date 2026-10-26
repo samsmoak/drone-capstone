@@ -11,7 +11,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 
 FW_TAG=2025.12.1
 TC_VER=13.3.rel1
-CACHE="${CROPWATCHER_CACHE:-$HOME/.cache/cropwatcher}"
+CACHE="${DRONEDECK_CACHE:-$HOME/.cache/dronedeck}"
 FW="$CACHE/crazyflie-firmware"
 
 # The bytes sent to the deck, through an exact copy of the ESP32's handling.

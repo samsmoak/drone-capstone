@@ -6,8 +6,8 @@ from types import MappingProxyType, SimpleNamespace
 
 import pytest
 
-from cropwatcher.flight import checks, supervisor
-from cropwatcher.flight.checks import (
+from dronedeck.flight import checks, supervisor
+from dronedeck.flight.checks import (
     BATTERY_TEST_WAIT_S,
     BatteryTestResult,
     CheckKey,
@@ -22,7 +22,7 @@ from cropwatcher.flight.checks import (
     run_checks,
     run_prop_test,
 )
-from cropwatcher.telemetry.stream import Snapshot
+from dronedeck.telemetry.stream import Snapshot
 
 # The lab drone's real MCU id, read 2026-09-16.
 LAB_CPU_ID = {"cpu.id0": "3080234", "cpu.id1": "859064082", "cpu.id2": "959656757"}
@@ -75,7 +75,8 @@ class TestHappyPath:
                             reset_estimator=lambda: resets.append(True))
 
         passed = [s.key for s in steps if s.status is CheckStatus.PASSED]
-        assert passed == list(CheckKey)
+        # Every key but CAMERA: that one is a capture session's (run_capture_checks).
+        assert passed == [k for k in CheckKey if k is not CheckKey.CAMERA]
         assert all(steps[i].status is CheckStatus.RUNNING for i in range(0, len(steps), 2))
         assert report.hardware_id == "cf-002f002a3334471239333335"
         assert report.ground_z_m == pytest.approx(0.012)

@@ -1,6 +1,11 @@
 ================================================================================
 CONTROL IN AUTO — plan a mission, check the drone, fly it
-Last verified: 2026-10-11 for the room map's `trail` only (playback's path
+Last verified: 2026-10-25 for the number boxes and edit → save → reopen (real
+editor on the agent, headless Chrome, 17 checks). 2026-10-24 for the tripods on the map (harness, both views and
+themes, screenshots; the layout at five widths 10 PASS) and ② Position's two stations only (every station from
+one press, per-station rows), against agent/two-base-stations — test_geometry.py,
+test_station_measure.py (53), pnpm build; NOT on the drone (its deck saw no light).
+2026-10-11 for the room map's `trail` only (playback's path
 flown, drawn in PlanCanvas and Room3D; nothing else in the map changed), against
 desktop/mission-playback — pnpm build and the harness at the five widths.
 2026-10-09 for the RESULTS panel only (the findings, below; agent.ts's
@@ -104,7 +109,7 @@ desktop/src/lib/agent.ts                           the calls and types
 • SIDE BY SIDE FROM 1280 px, STACKED BELOW (2026-09-29; it was 1024). At a
   1024 px window the monitor was 294 px wide: its tab list got 97 px for
   177 px of tabs and Camera ran into "10 Hz". The divider's own position
-  (cropwatcher.split.control.auto, 58/42) now stops at 45–70 %.
+  (dronedeck.split.control.auto, 58/42) now stops at 45–70 %.
 • FULL SCREEN IS THE SAME FLOW, RESTYLED IN PLACE (AutoControl
   FullScreenFrame), not a copy in an overlay: the same elements with other
   classes, so the step, the chosen mission and an unsaved plan survive going in
@@ -115,7 +120,7 @@ desktop/src/lib/agent.ts                           the calls and types
   room's flying space, obstacles at their height, the path at its heights, the
   drone at its height and heading — orbit, pan, zoom, camera presets (3/4, Top,
   Front, Side, Fit), double-click to swing round one object. The choice is
-  remembered (cropwatcher.auto.mapView) and V toggles it. Both views take the
+  remembered (dronedeck.auto.mapView) and V toggles it. Both views take the
   same editing callbacks, so every edit goes through the same clamping.
 • THREE.JS, REVERSED ON PURPOSE. SceneView.tsx avoided it (~170 KB gz) and said
   to reach for it "if this ever needs an orbitable camera" — orbiting, picking
@@ -151,11 +156,24 @@ desktop/src/lib/agent.ts                           the calls and types
   (dashed); touching a card selects it, and that first click does only that —
   a checkbox does not toggle, Remove does not remove (ObjectCard). A field
   clicked or tabbed into selects its object and is editable at once.
+• A NUMBER BOX SAYS WHAT IT KEPT (2026-10-25). A value outside a box's limits
+  is kept to them, and the box says so in place of its hint — "▲ Kept to
+  2–300 s"; a non-number says it left the value unchanged (fields.tsx). Before,
+  2 typed into a 5 s Hold quietly became 5.00, and the owner read it as "it
+  doesn't save the values".
+• EDIT → SAVE → REOPEN IS PROVEN ON THE AGENT. harness.html?agent=<token>&
+  port=<p>&edit=<mission id> opens the real editor on a running agent ("Plan ·
+  editor on the agent"). Driven in headless Chrome on 2026-10-25 against a copy
+  of the lab's missions: first click on a saved mission's box edits it, every
+  value typed (holds, a height, the name, the speed) is in the agent's copy
+  after Save and in the boxes after reopening. A point's boxes appear twice
+  while it is selected — its card and the panel under the map — so address a
+  box through its card ([data-object-card][aria-label^="Inspection point P1"]).
 • EACH OBJECT IS A CARD (ObjectCard): framed on all four sides, 1 px --muted;
   selected, 2 px --primary on all four sides (measured: 7.27 / 8.03 and
   6.07 / 3.95 : 1 on --surface-2, light / dark). The room, each obstacle, each
   point and the start are cards.
-• A DIVIDER BETWEEN THE MAP AND THE FORM (cropwatcher.split.editor), inline
+• A DIVIDER BETWEEN THE MAP AND THE FORM (dronedeck.split.editor), inline
   and in full screen, from 600 px of EDITOR width (its own, measured — not the
   window's); stacked below that. Its bounds are pixels (map ≥ 300, form ≥
   280) turned into fractions of the live width, and SplitPane now clamps to
@@ -275,10 +293,48 @@ desktop/src/lib/agent.ts                           the calls and types
   mirror images; the one whose STATION STANDS UPRIGHT wins (MIN_UPRIGHT
   0.5) — measured: (-1.33, +1.74, 1.49) up-z +0.89 against the mirror
   (+1.33, -1.74, 1.49) up-z -0.74. Neither upright is refused, never
-  guessed; the two-record walk stays in the terminal (`cropwatcher
+  guessed; the two-record walk stays in the terminal (`dronedeck
   geometry`) for that case. Done = the drone says positioning is ready
   (/station), never "a press happened". The camera watchdog never restarts
   the drone mid-measurement (Session.measuring_station).
+• EVERY STATION FROM THE SAME PRESS (2026-10-24, the lab's second station).
+  estimate_quick took only the FIRST station of the record, and storing
+  writes the whole table — cflib's write_and_store_config INVALIDATES every
+  station it is not given — so measuring with two up erased the second. Now
+  each received station is solved from the one record (each by its own
+  upright test), all stored together; the record must hold every station the
+  drone receives at that moment (SweepAngles min_stations), so one blinking
+  out is refused in words rather than silently cleared. With two, the reply
+  says how far apart they are — check it with a tape. A station stored
+  before and not measured now is named as cleared: (0, 0, 0) moved, so its
+  old place would be wrong. ② Position lists each station by channel
+  (StationStages, /station `stations`); channel n is the firmware's station
+  n − 1.
+  NOT BUILT: refining the two from a 20 s carry. cflib's multi-station solver
+  needs a measured x-axis step and floor samples to fix the frame
+  (align_and_scale_solution); doing without them means new geometry maths
+  that writes what the drone flies on, and it cannot be checked until the
+  deck sees light again. The full solver is `dronedeck geometry` (a 1 m
+  step and a few positions) — the refine that exists today.
+• THE BASE STATIONS ARE ON THE MAP, 2-D AND 3-D (2026-10-24, Samuel: "so
+  that we know where the base station is, both in the real world and in the
+  software"). Each measured station is a tripod where the drone has it
+  stored (GET /station/poses; plan/stations.ts, every 5 s): its head turned
+  the way it was measured, the edges of what it sweeps (Valve's 150° × 110°,
+  0.7 m long), L and R as seen standing behind it, "Ch n" and its height. A
+  red ring at 0, 0 — where the drone sat to measure — with an arrow along
+  +x, "Forward": the way the drone flies when told forward. Plan x/y ARE
+  Lighthouse metres (../missions/floor-plans.txt), so they line up with the
+  plan. The 2-D view and the 3-D camera widen to take the tripods in; the
+  room's own box is unchanged. Off in Playback (liveStations={false}):
+  today's places would mislead about a past flight's.
+  The tripods are AS RIGHT AS THE LAST MEASUREMENT AND NO MORE — not
+  tracked; a station moved since is drawn where it was until ② Position is
+  pressed again. A station's axes are its rotation's columns: x forward out
+  of its face, y its left, z up (coverage.py StationPose.axes).
+  NOT BUILT, by the owner's choice: the laptop's position (the radio gives
+  no direction) and an "I'm standing here" marker — the two stations and
+  the forward arrow are the reference.
 • THE STEP BAR IS NEVER SQUEEZED (StepBar.tsx, 2026-10-05): full labels;
   wide, the steps share the width; narrow, it scrolls sideways.
 • THE FLY MAP SHOWS THE AGENT'S AUTO-CORRECTED PLAN (GET …/from-drone every
@@ -299,8 +355,7 @@ depends-on        ../missions/mission-controller.txt
                   GET /missions/{id}/from-drone
 depends-on        pages-and-windows.txt
                   FlightDeck, Checklist, RetryPanel, HealthTestPanel, Field,
-                  ConsolePane, Tabs and SceneView are Manual's, reused — not
-                  copied
+                  ConsolePane and Tabs are Manual's, reused — not copied
 depends-on        ../pipeline/data-pipeline.txt
                   the DPP switch (Session.processing), POST /session/processing,
                   GET /flights/{id}/result
@@ -309,6 +364,10 @@ depends-on        desktop-app.txt
 depends-on        setup.txt
                   ② Position shares the station stages (StationStages.tsx)
                   with Set up's channels step, which must come first
+copied-to         manual-room-map.txt
+                  RoomMap, the tripods and the green reused by Manual, with
+                  optional keyArrows / droneScale / toolbar that Auto never
+                  passes — Auto's maps are unchanged
 depends-on        ../backend/flight-safety.txt
                   the drone (D), "Put the start where the drone is" and the
                   from-the-drone check use a position only when telemetry's

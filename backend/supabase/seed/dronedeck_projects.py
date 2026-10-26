@@ -41,7 +41,7 @@ from typing import Any
 PDF = "/docs/dronedeck-project-management-planning.pdf"
 NEVER_TOUCH = {"design-document"}
 RETIRE = [
-    "cropwatcher", "flight-safety", "desktop-flight-app",
+    "dronedeck", "flight-safety", "desktop-flight-app",
     "operator-dashboard", "temperature-correction", "offline-flight-data",
 ]
 
@@ -449,7 +449,7 @@ FLIGHT: dict[str, Any] = {
                       "Measure the Lighthouse geometry and fly on it."],
                accept=["The drone rises to 0.3 m above its take-off floor, holds for 10 seconds, and lands with no key pressed.",
                        "The flight trace shows it flew on the Lighthouse, not the barometer."],
-               how=[p("Built: a take-off → hold → land program (", code("./cropwatcher hover --height 0.3 --secs 10"),
+               how=[p("Built: a take-off → hold → land program (", code("./dronedeck hover --height 0.3 --secs 10"),
                       ", and Auto mode in the desktop app), with every wait watched by the same guards as manual "
                       "flight. What remains is flying it with positioning, and reading the trace to prove it."),
                     p("Three rules this code already follows, each learned the hard way: ",
@@ -465,10 +465,10 @@ FLIGHT: dict[str, Any] = {
                tasks=["Confirm the Lighthouse deck is detected; measure the base-station geometry; confirm the position estimate settles."],
                accept=["The pre-flight check reports the estimate settled under 2 cm.",
                        "Drift stays under 10 cm during a 10 s hover."],
-               how=[p("How we will do it: ", code("./cropwatcher check"), " to confirm the deck is seen (on 23 "
+               how=[p("How we will do it: ", code("./dronedeck check"), " to confirm the deck is seen (on 23 "
                       "September it read as absent until the boards were reseated), ",
-                      code("./cropwatcher geometry --distance 1.0"), " to measure the stations, then ",
-                      code("./cropwatcher check"), " again for the settle. Drift is read from the flight trace "
+                      code("./dronedeck geometry --distance 1.0"), " to measure the stations, then ",
+                      code("./dronedeck check"), " again for the settle. Drift is read from the flight trace "
                       "the agent writes beside every flight, not judged by eye."),
                     p("One more rule: the Lighthouse's zero is ", b("not"), " the floor — measured floor level "
                       "ranged from 0.85 to 1.40 m in the same room. Height is always measured from the floor "
@@ -881,9 +881,9 @@ TESTING: dict[str, Any] = {
                tasks=["The drone flies stably with manual controls; automated tests run on every change."],
                accept=["Manual flight works; the flight agent's 695 automated tests pass."],
                how=[p("Every lab session follows the same ladder, and writes what it measured to the flight log: ",
-                      code("./cropwatcher check"), " (every check, no motor spins), ", code("./cropwatcher stations"),
-                      " (which base stations the drone receives), ", code("./cropwatcher geometry"),
-                      " (where they are), then a short ", code("./cropwatcher hover"),
+                      code("./dronedeck check"), " (every check, no motor spins), ", code("./dronedeck stations"),
+                      " (which base stations the drone receives), ", code("./dronedeck geometry"),
+                      " (where they are), then a short ", code("./dronedeck hover"),
                       ". A number with no units is not a measurement; a conclusion with no number is an opinion.")]),
         h2("What is left"),
         li("Sprint 1: the boxes, the definitions and the reference readings. Sprints 2–3: the hand-warmer fault."),

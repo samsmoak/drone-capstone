@@ -25,7 +25,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from cropwatcher.api import rest
+from dronedeck.api import rest
 
 STARTUP_TIMEOUT_S = 20.0
 
@@ -52,9 +52,9 @@ def _start(port: int, data_dir: Path, *extra: str) -> subprocess.Popen:
     # Its own data folder and no standby. Without these the probe agent read the
     # operator's saved sign-in, wrote into their agent.log, and could have
     # opened the radio under a running app (seen 2026-09-30 in a real log).
-    env = os.environ | {"CROPWATCHER_DATA_DIR": str(data_dir), "CROPWATCHER_STANDBY": "0"}
+    env = os.environ | {"DRONEDECK_DATA_DIR": str(data_dir), "DRONEDECK_STANDBY": "0"}
     process = subprocess.Popen(
-        [sys.executable, "-m", "cropwatcher.cli", "serve", "--port", str(port), *extra],
+        [sys.executable, "-m", "dronedeck.cli", "serve", "--port", str(port), *extra],
         stdin=subprocess.PIPE,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -77,7 +77,7 @@ class TestExitWithParent:
                 process.kill()
 
     def test_keeps_running_without_the_flag(self, tmp_path):
-        """Opt-in: `cropwatcher serve` from a shell must not die on stdin EOF."""
+        """Opt-in: `dronedeck serve` from a shell must not die on stdin EOF."""
         port = _free_port()
         process = _start(port, tmp_path)
         try:
@@ -153,8 +153,8 @@ class TestShutdownIsBounded:
     def test_sigterm_is_bounded_too(self, hung_end, tmp_path, monkeypatch):
         """The lifespan shutdown calls the same `session.end`; serve arms it."""
         exits, _, release = hung_end
-        monkeypatch.setenv("CROPWATCHER_DATA_DIR", str(tmp_path))
-        monkeypatch.setenv("CROPWATCHER_STANDBY", "0")
+        monkeypatch.setenv("DRONEDECK_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("DRONEDECK_STANDBY", "0")
         monkeypatch.setattr(rest.app.state, "exit_deadline_s", 0.2, raising=False)
         # The shutdown runs on this thread, so the fake exit must unblock it.
         monkeypatch.setattr(rest.os, "_exit", lambda code: (exits.append(code), release.set()))
@@ -184,7 +184,7 @@ class TestShutdownIsBounded:
 class TestConsoleLoggingIsDropped:
     def test_stderr_goes_and_the_log_file_stays(self, tmp_path):
         """Nothing reads stderr once the parent is gone; a write can block there."""
-        logger = logging.getLogger("cropwatcher.test.console")
+        logger = logging.getLogger("dronedeck.test.console")
         console = logging.StreamHandler(sys.stderr)
         log_file = logging.FileHandler(tmp_path / "agent.log")
         logger.addHandler(console)

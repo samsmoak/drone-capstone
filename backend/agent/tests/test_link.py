@@ -9,10 +9,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from cropwatcher.flight import link as link_module
-from cropwatcher.flight.checks import ReadyReport
-from cropwatcher.flight.link import DroneLink, LinkError
-from cropwatcher.safety.flight_guard import PositioningStatus
+from dronedeck.flight import link as link_module
+from dronedeck.flight.checks import ReadyReport
+from dronedeck.flight.link import DroneLink, LinkError
+from dronedeck.safety.flight_guard import PositioningStatus
 
 
 class FakeScf:
@@ -23,10 +23,16 @@ class FakeScf:
         self.hang_open = hang_open
         self.opened = False
         self.closed = False
+        #: The Crazyflie's own close_link — what an abandoned handshake needs.
+        self.radio_closed = False
         self.cf = SimpleNamespace(
             commander=SimpleNamespace(),
             high_level_commander=SimpleNamespace(land=lambda z, d: None),
+            close_link=self._radio_close,
         )
+
+    def _radio_close(self) -> None:
+        self.radio_closed = True
 
     def open_link(self) -> None:
         if self.fail_open:
@@ -100,7 +106,7 @@ class TestOpen:
         "no such device", which read as a flat battery and sent an operator to
         re-plug a working dongle four times on 2026-09-22 while the desktop
         app quietly held it."""
-        from cropwatcher.flight import radio
+        from dronedeck.flight import radio
         monkeypatch.setattr(radio, "radio_seen", lambda: True)
         monkeypatch.setattr(radio, "windows_driver_problem", lambda: None)
         reason = link_module._nothing_found_reason()
@@ -126,7 +132,7 @@ class TestOpen:
         running"."""
         link, _, _ = make_link(FakeScf(hang_open=True))
         started = time.monotonic()
-        with pytest.raises(LinkError, match="stopped answering while connecting"):
+        with pytest.raises(LinkError, match="did not finish connecting"):
             link._open_link_within(link._scf_factory(link.uri), timeout_s=0.2)
         assert time.monotonic() - started < 5.0        # it gave up, not hung
         assert not link.is_open
@@ -136,7 +142,28 @@ class TestOpen:
         with pytest.raises(LinkError) as caught:
             link._open_link_within(link._scf_factory(link.uri), timeout_s=0.1)
         text = str(caught.value)
+        assert "off and on" in text                       # the fix that works first
         assert "Crazyradio" in text and "plugged in" in text
+
+    def test_a_stalled_handshake_gives_the_radio_back(self):
+        """SyncCrazyflie.close_link does nothing before the handshake ends, so
+        the abandoned link's radio thread kept the dongle busy and every later
+        attempt stalled too (2026-10-24). The Crazyflie's own close is called."""
+        scf = FakeScf(hang_open=True)
+        link, _, _ = make_link(scf)
+        with pytest.raises(LinkError):
+            link._open_link_within(scf, timeout_s=0.1)
+        assert scf.radio_closed
+
+    def test_a_close_that_blocks_does_not_wedge_the_caller(self, monkeypatch):
+        monkeypatch.setattr(link_module, "ABANDON_CLOSE_S", 0.1)
+        scf = FakeScf(hang_open=True)
+        scf.cf.close_link = lambda: threading.Event().wait()
+        link, _, _ = make_link(scf)
+        started = time.monotonic()
+        with pytest.raises(LinkError):
+            link._open_link_within(scf, timeout_s=0.1)
+        assert time.monotonic() - started < 2.0
 
     def test_configure_failure_still_stops_motors_and_closes(self):
         link, scf, cuts = make_link(configure_error=RuntimeError("param timeout"))
@@ -219,7 +246,7 @@ class TestCrashRecovery:
 
 class TestHealthTest:
     def test_a_failing_battery_half_still_returns_the_motor_result(self, monkeypatch):
-        from cropwatcher.flight.checks import PropTestResult
+        from dronedeck.flight.checks import PropTestResult
 
         link, _, _ = make_link()
         motors = PropTestResult((1, 2, 3, 4), ())

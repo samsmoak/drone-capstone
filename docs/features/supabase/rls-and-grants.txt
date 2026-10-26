@@ -118,3 +118,5 @@ RELATED
 
 shares-data-with  data-model.txt
                   the policies and grants of every table described there
+shares-data-with  ../development/commands.txt
+                  the checks/*.py commands, indexed there

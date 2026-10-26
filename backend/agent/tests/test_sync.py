@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from cropwatcher.audit import Action, AuditLog, Result
-from cropwatcher.sync.cloud import CloudError
-from cropwatcher.sync.outbox import Kind, Outbox
-from cropwatcher.sync.syncer import Syncer, close_orphaned_flights, parse_csv_row, read_rows_after
+from dronedeck.audit import Action, AuditLog, Result
+from dronedeck.sync.cloud import CloudError
+from dronedeck.sync.outbox import Kind, Outbox
+from dronedeck.sync.syncer import Syncer, close_orphaned_flights, parse_csv_row, read_rows_after
 
 COLUMNS = ["index", "recorded_at", "flight_id", "temp_unit", "raw_temp", "z_m", "motor_m1", "event"]
 
@@ -105,7 +105,7 @@ class FakeCloud:
             self.traces.setdefault(row["flight_id"], {}).setdefault(row["seq"], row)
 
     def _refuse_if(self, flight_id):
-        from cropwatcher.sync.cloud import CloudRefused
+        from dronedeck.sync.cloud import CloudRefused
         if flight_id in getattr(self, "refuse", set()):
             raise CloudRefused("Supabase refused it: not this account's flight")
 
@@ -144,7 +144,7 @@ def rig(tmp_path):
 
 def add_flight(outbox: Outbox, tmp_path: Path, *, flight_id="flight-1", rows=5, ended=True):
     outbox.put(Kind.DRONE, "cf-1", {
-        "hardware_id": "cf-1", "name": "CropWatcher 1", "uri": "radio://0/80/2M"})
+        "hardware_id": "cf-1", "name": "DroneDeck 1", "uri": "radio://0/80/2M"})
     outbox.put(Kind.SESSION, "session-1", {
         "id": "session-1", "drone_hardware_id": "cf-1", "started_at": "2026-09-16T20:00:00Z",
         "ended_at": "2026-09-16T20:30:00Z" if ended else None,

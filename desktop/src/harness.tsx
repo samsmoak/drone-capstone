@@ -21,11 +21,14 @@ import { WindowLog } from "@/pages/sessions/WindowLog";
 import { SessionsPage } from "@/pages/sessions/SessionsPage";
 import { FlightPlaybackView } from "@/pages/sessions/Playback";
 import { PlaybackPage } from "@/pages/playback/PlaybackPage";
+import { CapturePage } from "@/pages/capture/CapturePage";
 import { StartupPage } from "@/pages/startup/StartupPage";
 import { Install, SetupPage } from "@/pages/setup/SetupPage";
+import { WifiPage } from "@/pages/wifi/WifiPage";
 import {
   EMPTY_INTENT, connectToShell,
-  type FlightList, type FlightPlayback, type MissionView, type PlanLimits, type RoomView, type Session, type SetupState,
+  type CameraWifi, type FlightList, type FlightPlayback, type MissionView, type PlanLimits, type RoomView, type Session,
+  type SetupState,
   type Telemetry,
 } from "@/lib/agent";
 import type { LogLine } from "@/lib/commandLog";
@@ -33,6 +36,7 @@ import { FlightStrip } from "@/components/FlightStrip";
 import { Sidebar } from "@/components/Sidebar";
 import type { History } from "@/App";
 import { reportInto } from "@/measure";
+import { MissionStep } from "@/pages/control/auto/plan/MissionStep";
 import "./styles.css";
 
 const session: Session = {
@@ -119,7 +123,7 @@ const theme = query.get("theme");
 // `?map=2d|3d` pins the room map's view (RoomMap remembers it per machine).
 const mapView = query.get("map");
 if (mapView === "2d" || mapView === "3d") {
-  try { localStorage.setItem("cropwatcher.auto.mapView", mapView); } catch { /* private window */ }
+  try { localStorage.setItem("dronedeck.auto.mapView", mapView); } catch { /* private window */ }
 }
 if (theme === "dark" || theme === "light") document.documentElement.dataset.theme = theme;
 if (agentToken) {
@@ -142,7 +146,7 @@ if (agentToken) {
  */
 const sampleLimits: PlanLimits = {
   outer: { vertices: [[-2, -2], [2, -2], [2, 2], [-2, 2]], measured: false },
-  default_clearance_m: 0.25, min_hold_s: 5, z_min_m: 0.1, z_max_m: 1.0,
+  default_clearance_m: 0.25, min_hold_s: 2, z_min_m: 0.1, z_max_m: 1.0,
   move_speed_m_s: 0.2, climb_rate_m_s: 0.15,
 };
 const sampleRoom: RoomView = {
@@ -279,6 +283,24 @@ const sampleMissions: MissionView[] = [
   { ...sampleMission, id: "m-ok", name: "Pump check", points: sampleMission.points.slice(0, 2),
     problems: [sampleRoom.problems[0]], valid: true, flown_revision: null, estimated_duration_s: 41 },
 ];
+/** A stand-in camera frame, 324x244 like the deck's, drawn once. */
+let frameBlob: Promise<Blob> | null = null;
+function sampleFrame(): Promise<Blob> {
+  frameBlob ??= new Promise<Blob>((resolve) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 324;
+    canvas.height = 244;
+    const ctx = canvas.getContext("2d")!;
+    const g = ctx.createLinearGradient(0, 0, 324, 244);
+    g.addColorStop(0, "#202020");
+    g.addColorStop(1, "#7a7a7a");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 324, 244);
+    canvas.toBlob((b) => resolve(b ?? new Blob()), "image/png");
+  });
+  return frameBlob;
+}
+
 if (!agentToken) {
   const realFetch = window.fetch.bind(window);
   const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
@@ -323,6 +345,64 @@ if (!agentToken) {
         },
       });
     }
+    // The camera, for the Capture page and the Camera tab: a live deck with
+    // the measured rate, a frame drawn here, and five manual captures.
+    if (path === "/camera") {
+      return json({ live: true, kind: "ai-deck", reason: null, deck_fitted: true, width: 324, height: 244,
+        connecting: false,
+        rate: { window_s: 10, frames: 37, fps: 3.7, mean_bytes: 79056, longest_gap_s: 1.4, format: "raw" },
+        deck_timing: { lines: 20, capture_ms: 76, encoding_ms: 0, transfer_ms: 182, bytes: 79056, deck_fps: 3.88 } });
+    }
+    if (path === "/camera/wifi") return json({ ssid: "VT Open WiFi", phase: "joined", ip: "100.96.55.59", message: null, rssi: -61 });
+    if (path === "/camera/frame" || path.startsWith("/camera/recording/frame/")) return new Response(await sampleFrame());
+    if (path === "/camera/recording") {
+      return json({ recording: true, session_id: "3f1c", count: 412, latest_seq: 412, latest_t_s: 754.2,
+        upload_fps: 2, write_errors: 0, auto: true, captured: 96, manual: 5 });
+    }
+    if (path === "/camera/recording/frames") {
+      return json({ frames: [12, 88, 140, 301, 412].map((seq) => ({ seq, t_s: seq * 1.83,
+        recorded_at: "2026-10-24T10:00:00+00:00", upload: true, source: "manual" })) });
+    }
+    if (path === "/camera/capture" && post) {
+      return json({ seq: 413, t_s: 755.1, recorded_at: "2026-10-24T10:12:35+00:00", upload: true, source: "manual" });
+    }
+    // Two base stations at the room's corners, as /station/poses gives them:
+    // the tripods on the map (stations.ts), facing back into the room.
+    if (path === "/station/poses") {
+      return json({ stations: [
+        { id: 0, channel: 1, origin: [-2.3, 1.9, 1.62], forward: [0.721, -0.515, -0.464],
+          left: [0.581, 0.814, 0], up: [0.377, -0.269, 0.886] },
+        { id: 1, channel: 2, origin: [2.4, 2.1, 1.71], forward: [-0.78, -0.468, -0.416],
+          left: [0.514, -0.857, 0], up: [-0.357, -0.214, 0.909] },
+      ] });
+    }
+    // The station chain as the lab read it at 07:16 on 2026-10-24: both
+    // stations measured and calibrated, and no light on the deck at all.
+    if (path === "/station") {
+      return json({ connected: true, measuring: false, light_sensors: 0, calibrated: [0, 1], active: [],
+        received: [], measured: [0, 1], usable: [], uncertainty_cm: 501.7, ready: false,
+        stations: [{ id: 0, channel: 1, calibrated: true, received: false, measured: true, active: false },
+                   { id: 1, channel: 2, calibrated: true, received: false, measured: true, active: false }],
+        deck: { detected: true, needs_fw: false },
+        blocker: { stage: "light", text: "No light reaches the positioning deck (0 of 4 sensors).",
+                   fix: "Check both base stations' front LEDs are solid green and can see the top of the drone. Still 0 with the drone 1 m in front of a station: switch the drone off and on; then reseat the positioning deck." } });
+    }
+    if (path === "/setup/command") {
+      return json({ command: "/Applications/DroneDeck.app/Contents/MacOS/dronedeck-agent setup",
+                    check: "/Applications/DroneDeck.app/Contents/MacOS/dronedeck-agent setup --check" });
+    }
+    // Manual's room: where the two stations above reach (agent /station/space).
+    if (path === "/station/space") {
+      const reach: [number, number][] = [[-1.7, -1.4], [1.8, -1.5], [1.95, 1.2], [0.2, 1.75], [-1.9, 1.1]];
+      return json({
+        fence_half_extent_m: 2,
+        predicted: {
+          z_min_m: 0.1, z_max_m: 1.0,
+          slices: [0.1, 0.55, 1.0].map((z) => ({ z_m: z, outline: reach })),
+          everywhere: { shape: "polygon", vertices: reach, z_min: 0.1, z_max: 1.0 },
+        },
+      });
+    }
     if (path.startsWith("/history/flights/") && path.endsWith("/playback")) return json(samplePlayback);
     if (path === "/history/flights") return json(sampleFlights);
     if (path.startsWith("/missions/")) return json(missions.find((m) => path.endsWith(m.id)) ?? sampleMission);
@@ -360,7 +440,7 @@ const logLines: LogLine[] = [
  * `?only=<substring>` renders just the sections whose label matches.
  *
  * The harness stacks every page, so a screenshot captures whichever one happens
- * to be at the top. Isolating a section is how a canvas — the Scene tab, which
+ * to be at the top. Isolating a section is how a canvas — the room maps, which
  * the DOM measurement cannot see into — gets looked at at all.
  */
 const only = query.get("only")?.toLowerCase();
@@ -401,13 +481,29 @@ function Shell({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-const control = (label: string, override: Partial<Session>, autoStart?: FlowStart) => (
+/** Manual in the lab: both stations measured and heard, the drone turned 35°,
+ *  and a minute of flying behind it — the room map's trail. */
+const twoStations: Record<string, number> = {
+  ...values, "stabilizer.yaw": 35, "stateEstimate.x": 0.6, "stateEstimate.y": 0.2,
+  "lighthouse.bsReceive": 0b0011, "lighthouse.bsGeoVal": 0b0011, "lighthouse.bsCalVal": 0b0011,
+  "lighthouse.width0": 210, "lighthouse.width1": 204, "lighthouse.width2": 198, "lighthouse.width3": 201,
+};
+const manualTelemetry: Telemetry = { values: twoStations, height_m: 0.55, positioned: true, at: 0 };
+const manualHistory: History = Array.from({ length: 160 }, (_, i) => {
+  const a = i / 40;
+  return { t: i / 10, height_m: 0.3 + i / 640,
+           values: { ...twoStations, "stateEstimate.x": 0.6 * Math.sin(a) + i / 400 - 0.4 + 0.4,
+                     "stateEstimate.y": -0.9 + i / 120 * 0.8 } };
+});
+
+const control = (label: string, override: Partial<Session>, autoStart?: FlowStart,
+                 live: { telemetry: Telemetry; history: History } = { telemetry, history }) => (
   <Shell label={label}>
     <ControlPage
       autoStart={autoStart}
       session={{ ...session, ...override }}
-      telemetry={telemetry}
-      history={history}
+      telemetry={live.telemetry}
+      history={live.history}
       intent={{ ...EMPTY_INTENT, up: true, yaw_left: true }}
       flying={false}
       run={runHere}
@@ -434,6 +530,21 @@ const setupDone: SetupState = {
   facts: { battery_v: 4.12, ai_deck: true, deck_unrecorded: false },
   parts: { main: "installed", lighthouse: "installed", camera: "installed", wifi: "installed" },
 };
+const setupCommand = {
+  command: "/Applications/DroneDeck.app/Contents/MacOS/dronedeck-agent setup",
+  check: "/Applications/DroneDeck.app/Contents/MacOS/dronedeck-agent setup --check",
+};
+/** Drone Wi-Fi: a deck joined at the lab's weak signal, its radio held at
+ *  reduced power after a brownout (wifi-link.patch). */
+const wifiBrownout: CameraWifi = {
+  ssid: "VT Open WiFi", phase: "joined", ip: "100.96.55.59", rssi: -86, drops: 0,
+  message: "On VT Open WiFi at 100.96.55.59 · -86 dBm (weak). Its radio is on reduced power since a brownout — unplug the battery for 10 seconds to clear it.",
+  link: { bandwidth_mhz: 20, power_dbm: 20, beacon_timeout_s: 15, brownout: true },
+};
+const wifiFull: CameraWifi = {
+  ...wifiBrownout, message: "On VT Open WiFi at 100.96.55.59 · -86 dBm (weak).",
+  link: { bandwidth_mhz: 20, power_dbm: 20, beacon_timeout_s: 15, brownout: false },
+};
 const setupSession: Session = { ...session, session_id: null, radio: { state: "searching", message: "Looking for the drone…", hardware_id: null } };
 
 createRoot(document.getElementById("root")!).render(
@@ -445,8 +556,17 @@ createRoot(document.getElementById("root")!).render(
     <Shell label="Set up · new AI deck">
       <SetupPage session={setupSession} setup={setupSwapped} wifi={null} run={runHere} onGo={() => {}} />
     </Shell>
+    <Shell label="Drone Wi-Fi · deck radio after a brownout">
+      <WifiPage wifi={wifiBrownout} session={setupSession} onSaved={() => {}} />
+    </Shell>
+    <Shell label="Drone Wi-Fi · deck radio at full power">
+      <WifiPage wifi={wifiFull} session={setupSession} onSaved={() => {}} />
+    </Shell>
+    <Shell label="Set up · install by command">
+      <Install setup={setupSwapped} run={runHere} busy={false} onClose={() => {}} command={setupCommand} />
+    </Shell>
     <Shell label="Set up · installed, reinstall">
-      <Install setup={setupDone} run={runHere} busy={false} onClose={() => {}} />
+      <Install setup={setupDone} run={runHere} busy={false} onClose={() => {}} command={setupCommand} />
     </Shell>
     <Shell label="Home">
       <HomePage session={session} telemetry={telemetry} sync={null} connected run={noop} onGo={() => {}} />
@@ -510,6 +630,24 @@ createRoot(document.getElementById("root")!).render(
                   live: { chosen: "room", active: "takeoff", reason: "no_position", forward_deg: -116,
                           operator: null, operator_source: null } },
     })}
+    {control("Control · Manual, the room from the stations, flying", {
+      state: "busy", mode: "manual", activity: "manual", assisted: true, message: null,
+      controls: { key_frame: "operator", operator: [0.4, -1.8], operator_marked_at: "2026-09-30T09:00:00+00:00",
+                  live: { chosen: "operator", active: "operator", reason: null, forward_deg: 72.5,
+                          operator: [0.4, -1.8], operator_source: "marked" } },
+    }, undefined, { telemetry: manualTelemetry, history: manualHistory })}
+    {control("Control · Manual, the room from the stations, on the ground", {
+      state: "ready", mode: "manual", activity: null, assisted: true, message: null,
+      controls: { key_frame: "room", operator: null, operator_marked_at: null, live: null },
+    }, undefined, { telemetry: { ...manualTelemetry, height_m: 0.0 }, history: [] })}
+    {control("Control · Manual, not placed — no light", {
+      state: "awaiting_confirmation", mode: "manual", assisted: false,
+    }, undefined, { telemetry: { values: { ...twoStations, "lighthouse.bsReceive": 0, "lighthouse.width0": 0,
+      "lighthouse.width1": 0, "lighthouse.width2": 0, "lighthouse.width3": 0, "stabilizer.yaw": 20 },
+      height_m: null, positioned: false, at: 0 }, history: [] })}
+    {control("Control · Manual, unassisted, look again", {
+      state: "awaiting_confirmation", mode: "manual", assisted: false,
+    })}
     {control("Control · Manual, no position, on the ground", {
       state: "ready", mode: "manual", activity: null, assisted: false, message: null,
       controls: { key_frame: "operator", operator: null, operator_marked_at: null, live: null },
@@ -521,6 +659,14 @@ createRoot(document.getElementById("root")!).render(
     ))}
     {!agentToken && (
       <>
+        <Shell label="Capture · in a capture session">
+          <CapturePage session={{ ...session, state: "ready", session_id: "3f1c", message: null, purpose: "capture",
+                                  radio: { state: "connected", hardware_id: "cf-4a3b2c1d0e9f8a7b", message: null } }}
+                       run={runHere} onOpenControl={() => {}} />
+        </Shell>
+        <Shell label="Capture · no session">
+          <CapturePage session={{ ...session, state: "idle", session_id: null, message: null }} run={runHere} onOpenControl={() => {}} />
+        </Shell>
         <Shell label="Playback · the page, all flights">
           <PlaybackPage refreshKey="h" mode={(query.get("mode") as "auto" | "manual") ?? "auto"} />
         </Shell>
@@ -539,6 +685,12 @@ createRoot(document.getElementById("root")!).render(
         </Shell>
         <Shell label="Sessions">
           <SessionsPage refreshKey="h" mode={(query.get("mode") as "auto" | "manual") ?? "manual"} selectedId={query.get("session")} onSelect={() => {}} />
+        </Shell>
+        {/* `?edit=<mission id>`: the real editor on the real agent — edit, save
+            and reopen a saved mission end to end (2026-10-25). */}
+        <Shell label="Plan · editor on the agent">
+          <MissionStep run={runHere} telemetry={telemetry} selectedId={null} onUse={() => {}}
+                       openEditor={query.get("edit") ?? undefined} />
         </Shell>
       </>
     )}
